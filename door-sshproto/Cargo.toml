@@ -1,0 +1,21 @@
+[package]
+name = "door-sshproto"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+# snafu = { version = "0.7", default-features = false }
+snafu = { version = "0.7" }
+# nom = { version = "7.1", default-features = false }
+serde = { version = "1.0", default-features = false, features = ["derive"]}
+
+[dev-dependencies]
+toml = "0.5"
+# examples want std::error
+snafu = { version = "0.7", default-features = true }
+anyhow = { version = "1.0" }
+
+
+
