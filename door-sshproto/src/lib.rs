@@ -1,15 +1,21 @@
+// #![no_std]
 #![forbid(unsafe_code)]
-
-pub mod packets;
-// XXX public?
-pub mod wireformat;
-pub mod error;
+// XXX unused_imports only during dev churn
+#![allow(unused_imports)]
 
 #[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {
-        let result = 2 + 2;
-        assert_eq!(result, 4);
-    }
-}
+#[macro_use]
+extern crate std;
+
+pub mod packets;
+// XXX decide what is public
+pub mod conn;
+pub mod encrypt;
+pub mod error;
+pub mod ident;
+pub mod kex;
+pub mod test;
+pub mod traffic;
+pub mod wireformat;
+pub mod namelist;
+pub mod random;

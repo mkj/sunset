@@ -3,19 +3,36 @@ name = "door-sshproto"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
-# snafu = { version = "0.7", default-features = false }
-snafu = { version = "0.7" }
-# nom = { version = "7.1", default-features = false }
 serde = { version = "1.0", default-features = false, features = ["derive"]}
+snafu = { version = "0.7", default-features = false }
+# TODO: check that log macro calls disappear in no_std builds
+log = { version = "0.4" }
+# TODO: probably needs changing for embedded platforms
+rand = { version = "0.8", default-features = false, features = ["getrandom"] }
+
+ring = { version = "0.16", default-features = false }
+# for aes-ctr mode
+ctr = "0.9"
+aes = "0.8"
+sha2 = "0.10"
+hmac = "0.12"
+
+pretty-hex = "0.2"
+
+[features]
+std = []
+
+# serde_state = { version = "0.4", default-features = false, features = ["derive"]}
+# serde_derive_state = { version = "0.4" }
 
 [dev-dependencies]
-toml = "0.5"
+# toml = "0.5"
 # examples want std::error
 snafu = { version = "0.7", default-features = true }
 anyhow = { version = "1.0" }
+pretty-hex = "0.2"
 
-
+[[example]]
+name = "kex1"
 
