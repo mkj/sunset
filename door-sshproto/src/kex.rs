@@ -131,8 +131,8 @@ impl Kex {
         Ok(())
     }
 
-    pub fn make_kexinit<'a>(&self, conf: &'a AlgoConfig) -> packets::KexInit<'a> {
-        packets::KexInit {
+    pub fn make_kexinit<'a>(&self, conf: &'a AlgoConfig) -> packets::Packet<'a> {
+        let k = packets::KexInit {
             cookie: self.our_cookie,
             kex: (&conf.kexs).into(),
             hostkey: (&conf.hostkeys).into(),
@@ -146,7 +146,8 @@ impl Kex {
             lang_s2c: (&empty_localnames).into(),
             first_follows: false,
             reserved: 0,
-        }
+        };
+        packets::Packet::KexInit(k)
     }
 
     fn start_kexhash(

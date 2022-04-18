@@ -18,32 +18,50 @@ pub struct Runner<'a> {
 }
 
 impl<'a> Runner<'a> {
-    pub fn new(conn: Conn<'a>, iobuf: &'a mut [u8]) -> Self {
-        Runner {
+    pub fn new(conn: Conn<'a>, iobuf: &'a mut [u8]) -> Result<Self, Error> {
+        let mut r = Runner {
             conn,
             traffic: traffic::Traffic::new(iobuf),
-        }
+        };
+
+        r.conn.progress(&mut r.traffic);
+        Ok(r)
     }
 
     pub fn input(&mut self, buf: &[u8]) -> Result<usize, Error> {
         let (size, payload) = self.traffic.input(&mut self.conn.keys, &mut self.conn.remote_version, buf)?;
+
         if let Some(payload) = payload {
-            if matches!(self.conn.state, ConnState::Ident) {
-                self.conn.state = ConnState::PreKex;
-            }
             self.conn.handle_payload(payload)?
         }
+        self.conn.progress(&mut self.traffic);
         Ok(size)
     }
 
+    /// Write any pending output, returning the size written
+    pub fn output(
+        &mut self, buf: &mut [u8]
+    ) -> Result<usize, Error> {
+        let l = self.traffic.output(&mut self.conn.keys, buf)?;
+        self.conn.progress(&mut self.traffic);
+        Ok(l)
+    }
+
+    pub fn ready_input(&self) -> bool {
+        self.traffic.ready_input()
+    }
+
+    pub fn ready_output(&self) -> bool {
+        self.traffic.ready_output()
+    }
 }
 
 /// The core state of a SSH instance.
 pub struct Conn<'a> {
     state: ConnState,
 
-    /// In-progress kex state
-    kex: Option<kex::Kex>,
+    /// next kex to run
+    kex: kex::Kex,
 
     /// Current encryption/integrity keys
     keys: KeyState,
@@ -61,9 +79,12 @@ pub struct Conn<'a> {
     parse_ctx: packets::ParseContext,
 }
 
+#[derive(Debug)]
 enum ConnState {
+    SendIdent,
+    SendKexInit,
     /// Prior to SSH binary packet protocol, receiving remote version identification
-    Ident,
+    ReceiveIdent,
     /// Binary packet protocol has started, KexInit not yet received
     PreKex,
     /// At any time between receiving KexInit and NewKeys. Can occur multiple times
@@ -81,22 +102,46 @@ impl<'a> Conn<'a> {
     pub fn new() -> Self {
         let is_client = true; // TODO= true;
         Conn {
-            kex: None,
+            kex: kex::Kex::new(),
             keys: KeyState::new_cleartext(),
             sess_id: None,
             remote_version: ident::RemoteVersion::new(),
             parse_ctx: packets::ParseContext::new(),
-            state: ConnState::Ident,
+            state: ConnState::SendIdent,
             algo_conf: kex::AlgoConfig::new(is_client),
             is_client,
         }
     }
 
+    fn progress(&mut self, traffic: &mut Traffic) -> Result<(), Error> {
+        trace!("conn state {:?}", self.state);
+        match self.state {
+            ConnState::SendIdent => {
+                traffic.send_version(ident::OUR_VERSION)?;
+                self.state = ConnState::SendKexInit
+            }
+            ConnState::SendKexInit => {
+                let p = self.kex.make_kexinit(&self.algo_conf);
+                traffic.send_packet(&p)?;
+                self.state = ConnState::ReceiveIdent;
+            }
+            ConnState::ReceiveIdent => {
+                if self.remote_version.version().is_some() {
+                    self.state = ConnState::PreKex;
+                }
+            }
+            _ => { 
+                // TODO 
+            }
+
+        }
+        Ok(())
+
+    }
+
     /// Consumes an input payload
     pub(crate) fn handle_payload(&mut self, payload: &[u8]) -> Result<(), Error> {
-        if matches!(self.state, ConnState::Ident) {
-            return Err(Error::Bug);
-        }
+        trace!("conn state {:?}", self.state);
         self.keys.next_seq_decrypt();
         trace!("bef");
         let p = wireformat::packet_from_bytes(payload, &self.parse_ctx)?;
@@ -113,7 +158,7 @@ impl<'a> Conn<'a> {
                 if matches!(self.state, ConnState::InKex) {
                     return Err(Error::PacketWrong);
                 }
-                self.kex.get_or_insert_with(kex::Kex::new).handle_kexinit(
+                self.kex.handle_kexinit(
                     self.is_client,
                     &self.algo_conf,
                     &self.remote_version,

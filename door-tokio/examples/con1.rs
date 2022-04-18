@@ -3,6 +3,7 @@ use {
     // crate::error::Error,
     log::{debug, error, info, log, trace, warn},
 };
+use anyhow::Context;
 use std::error::Error;
 use pretty_hex::PrettyHex;
 use tokio::io::AsyncWriteExt;
@@ -29,15 +30,33 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let mut work = vec![0; 1000];
     let c = conn::Conn::new();
-    let mut r = conn::Runner::new(c, work.as_mut_slice());
+    let mut r = conn::Runner::new(c, work.as_mut_slice())?;
 
-    let mut buf = vec![0; 100];
+    let mut inbuf = vec![0; 1000];
+    let mut inpos = 0;
+    let mut inlen = 0;
+    let mut outbuf = vec![0; 1000];
+
     loop {
-        stream.readable().await?;
-        let n = stream.try_read(&mut buf)?;
-        let s = &buf.as_slice()[..n];
-        let l = r.input(s)?;
-        println!("read {l}");
+        while r.ready_output() {
+            let b = outbuf.as_mut_slice();
+            let l = r.output(b)?;
+            let b = &b[..l];
+            stream.write_all(b).await.context("write_all")?;
+        }
+
+        if r.ready_input() {
+            trace!("ready in");
+            stream.readable().await.context("readable")?;
+            if inlen == inpos {
+                inlen = stream.try_read(&mut inbuf).context("try_read")?;
+                trace!("read new {inlen}");
+                inpos = 0;
+            }
+
+            let l = r.input(&inbuf[inpos..inlen])?;
+            inpos += l;
+        }
     }
 
 

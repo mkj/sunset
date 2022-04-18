@@ -8,8 +8,8 @@ const SSH_PREFIX: &[u8] = "SSH-2.0-".as_bytes();
 // TODO find what's in the wild
 const MAX_REMOTE_VERSION_LEN: usize = 253;
 
-const CR: u8 = 0x0d;
-const LF: u8 = 0x0a;
+pub const CR: u8 = 0x0d;
+pub const LF: u8 = 0x0a;
 
 /// Parses and stores the remove SSH version string
 pub struct RemoteVersion {
