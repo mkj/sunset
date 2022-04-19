@@ -5,11 +5,10 @@ use {
 };
 
 use crate::encrypt::KeyState;
-use crate::encrypt::SSH_LENGTH_SIZE;
+use crate::encrypt::{SSH_LENGTH_SIZE, SSH_PAYLOAD_START};
 use crate::ident::RemoteVersion;
 use crate::*;
-
-const SSH_PAYLOAD_START: usize = SSH_LENGTH_SIZE+1;
+// use pretty_hex::PrettyHex;
 
 pub(crate) struct Traffic<'a> {
     // TODO: if smoltcp exposed both ends of a CircularBuffer to recv()

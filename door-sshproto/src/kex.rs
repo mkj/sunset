@@ -196,12 +196,12 @@ impl Kex {
         // list that is also present in the server's list.
         let kex_method = p
             .kex
-            .first_protocol_match(is_client, &conf.kexs)?
+            .first_match(is_client, &conf.kexs)?
             .ok_or(Error::AlgoNoMatch { algo: "kex" })?;
         let kex = SharedSecret::from_name(kex_method)?;
         let hostkey_method = p
             .hostkey
-            .first_protocol_match(is_client, &conf.hostkeys)?
+            .first_match(is_client, &conf.hostkeys)?
             .ok_or(Error::AlgoNoMatch { algo: "hostkey" })?;
 
         // Switch between client/server tx/rx
@@ -211,11 +211,11 @@ impl Kex {
             if is_client { (c2s, s2c) } else { (s2c, c2s) };
 
         let n = cipher_tx
-            .first_protocol_match(is_client, &conf.ciphers)?
+            .first_match(is_client, &conf.ciphers)?
             .ok_or(Error::AlgoNoMatch { algo: "encryption" })?;
         let cipher_enc = Cipher::from_name(n)?;
         let n = cipher_rx
-            .first_protocol_match(is_client, &conf.ciphers)?
+            .first_match(is_client, &conf.ciphers)?
             .ok_or(Error::AlgoNoMatch { algo: "encryption" })?;
         let cipher_dec = Cipher::from_name(n)?;
 
@@ -224,7 +224,7 @@ impl Kex {
             integ
         } else {
             let n = mac_tx
-                .first_protocol_match(is_client, &conf.macs)?
+                .first_match(is_client, &conf.macs)?
                 .ok_or(Error::AlgoNoMatch { algo: "mac" })?;
             Integ::from_name(n)?
         };
@@ -232,7 +232,7 @@ impl Kex {
             integ
         } else {
             let n = mac_rx
-                .first_protocol_match(is_client, &conf.macs)?
+                .first_match(is_client, &conf.macs)?
                 .ok_or(Error::AlgoNoMatch { algo: "mac" })?;
             Integ::from_name(n)?
         };
@@ -240,10 +240,10 @@ impl Kex {
         // Compression only matches "none", we don't need further handling
         // at the moment.
         comp_tx
-            .first_protocol_match(is_client, &conf.comps)?
+            .first_match(is_client, &conf.comps)?
             .ok_or(Error::AlgoNoMatch { algo: "compression" })?;
         comp_rx
-            .first_protocol_match(is_client, &conf.comps)?
+            .first_match(is_client, &conf.comps)?
             .ok_or(Error::AlgoNoMatch { algo: "compression" })?;
 
         // Ignore language fields at present. unsure which implementations
@@ -253,6 +253,7 @@ impl Kex {
     }
 }
 
+#[derive(Debug)]
 enum SharedSecret {
     KexCurve25519(KexCurve25519),
     // ECDH?
@@ -274,6 +275,7 @@ impl SharedSecret {
     }
 }
 
+#[derive(Debug)]
 struct KexCurve25519 {}
 
 impl KexCurve25519 {
@@ -292,16 +294,20 @@ mod tests {
     fn test_name_match() {
         // check that the from_name() functions are complete
         for k in kex::fixed_options_kex.0.iter() {
-            println!("{k}");
-            kex::SharedSecret::from_name(k).unwrap();
+            let n = kex::SharedSecret::from_name(k).unwrap();
+            println!("{k} {n:?}");
         }
         for k in kex::fixed_options_cipher.0.iter() {
-            println!("{k}");
-            encrypt::Cipher::from_name(k).unwrap();
+            let n = encrypt::Cipher::from_name(k).unwrap();
+            println!("{k} {n:?}");
         }
         for k in kex::fixed_options_mac.0.iter() {
-            println!("{k}");
-            encrypt::Integ::from_name(k).unwrap();
+            let n = encrypt::Integ::from_name(k).unwrap();
+            println!("{k} {n:?}");
         }
+        // unknown names fail
+        kex::SharedSecret::from_name("bad").unwrap_err();
+        encrypt::Cipher::from_name("bad").unwrap_err();
+        encrypt::Integ::from_name("bad").unwrap_err();
     }
 }

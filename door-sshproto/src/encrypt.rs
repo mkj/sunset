@@ -1,6 +1,6 @@
 #[allow(unused_imports)]
 use {
-    crate::error::Error,
+    crate::error::{Error,TrapBug},
     log::{debug, error, info, log, trace, warn},
 };
 
@@ -23,6 +23,7 @@ const SSH_MIN_PACKET_SIZE: usize = 16;
 const SSH_MIN_PADLEN: usize = 4;
 const SSH_MIN_BLOCK: usize = 8;
 pub const SSH_LENGTH_SIZE: usize = 4;
+pub const SSH_PAYLOAD_START: usize = SSH_LENGTH_SIZE+1;
 
 /// Stateful [`Keys`], stores a sequence number as well
 pub(crate) struct KeyState {
@@ -147,8 +148,8 @@ impl Keys {
         }
         // "MUST be a multiple of the cipher block size".
         // encrypted length for aead ciphers doesn't include the length prefix.
-        let len = if self.dec.is_aead() { 0 } else { SSH_LENGTH_SIZE } + buf.len()
-            - size_integ;
+        let extra = if self.dec.is_aead() { 0 } else { SSH_LENGTH_SIZE };
+        let len = extra + buf.len() - size_integ;
 
         if len % size_block != 0 {
             return Err(Error::SSHProtoError);
@@ -177,8 +178,7 @@ impl Keys {
             IntegKey::ChaPoly => {}
             IntegKey::NoInteg => {}
             IntegKey::HmacSha256(k) => {
-                // new_from_slice can't fail.
-                let mut h = HmacSha256::new_from_slice(&k).unwrap();
+                let mut h = HmacSha256::new_from_slice(&k).trap()?;
                 h.update(data);
                 h.verify_slice(mac)
                 .map_err(|_| Error::BadDecrypt)?;
@@ -226,6 +226,7 @@ impl Keys {
         // len is everything except the MAC
         let len = SSH_LENGTH_SIZE + 1 + payload_len + padlen;
 
+        trace!("send padlen {padlen} payload {payload_len} len {len}");
         if self.enc.is_aead() {
             debug_assert_eq!((len - SSH_LENGTH_SIZE) % size_block, 0);
         } else {
@@ -237,6 +238,7 @@ impl Keys {
             return Err(Error::Bug);
         }
 
+        buf[SSH_LENGTH_SIZE] = padlen as u8;
         // write the length
         buf[0..SSH_LENGTH_SIZE]
             .copy_from_slice(&((len - SSH_LENGTH_SIZE) as u32).to_be_bytes());
@@ -252,8 +254,7 @@ impl Keys {
             IntegKey::ChaPoly => {}
             IntegKey::NoInteg => {}
             IntegKey::HmacSha256(k) => {
-                // new_from_slice can't fail.
-                let mut h = HmacSha256::new_from_slice(&k).unwrap();
+                let mut h = HmacSha256::new_from_slice(&k).trap()?;
                 h.update(enc);
                 let result = h.finalize();
                 mac.copy_from_slice(&result.into_bytes());
@@ -281,6 +282,7 @@ impl Keys {
 
 /// Placeholder for a cipher type prior to creating a a [`EncKey`] or [`DecKey`],
 /// for use during key setup in [`kex`]
+#[derive(Debug)]
 pub(crate) enum Cipher {
     ChaPoly,
     Aes256Ctr,
@@ -293,7 +295,7 @@ impl Cipher {
         use crate::kex::*;
         match name {
             SSH_NAME_CHAPOLY => Ok(Cipher::ChaPoly),
-            SSH_NAME_SSH_NAME_AES256_CTR => Ok(Cipher::Aes256Ctr),
+            SSH_NAME_AES256_CTR => Ok(Cipher::Aes256Ctr),
             _ => Err(Error::Bug),
         }
     }
@@ -396,16 +398,18 @@ impl DecKey {
     }
 }
 
+/// Placeholder for a [`IntegKey`] type prior to keying. For use during key setup in [`kex`]
+#[derive(Debug)]
 pub(crate) enum Integ {
     ChaPoly,
     HmacSha256,
     // aesgcm?
 }
 
-/// Placeholder for a [`IntegKey`] type prior to keying. For use during key setup in [`kex`]
 impl Integ {
     /// Matches a MAC name. Should not be called for AEAD ciphers, instead use [`EncKey::integ`] etc
     pub fn from_name(name: &str) -> Result<Self, Error> {
+        use crate::kex::*;
         // TODO: match standalone HMAC names here.
         match name {
             SSH_NAME_HMAC_SHA256 => Ok(Integ::HmacSha256),
@@ -423,13 +427,12 @@ pub(crate) enum IntegKey {
 }
 
 impl IntegKey {
-    pub fn from_integ(integ: Integ, key: &[u8]) -> Self {
+    pub fn from_integ(integ: Integ, key: &[u8]) -> Result<Self, Error> {
         match integ {
-            Integ::ChaPoly => IntegKey::ChaPoly,
+            Integ::ChaPoly => Ok(IntegKey::ChaPoly),
             Integ::HmacSha256 => {
-                // hmac new_from_slice() can't fail.
-                let h = HmacSha256::new_from_slice(key).unwrap();
-                IntegKey::HmacSha256(key.try_into().unwrap())
+                let h = HmacSha256::new_from_slice(key).trap()?;
+                Ok(IntegKey::HmacSha256(key.try_into().trap()?))
             }
         }
     }
@@ -443,18 +446,19 @@ impl IntegKey {
 }
 #[cfg(test)]
 mod tests {
-    use crate::encrypt::{Keys, SSH_LENGTH_SIZE};
+    use crate::encrypt::{Keys, SSH_LENGTH_SIZE, SSH_PAYLOAD_START};
     use crate::error::Error;
     #[allow(unused_imports)]
     use log::{debug, error, info, log, trace, warn};
+    use pretty_hex::PrettyHex;
 
     #[test]
     fn roundtrip_nocipher() {
         // check padding works
-        let keys = Keys::new_cleartext();
+        let mut keys = Keys::new_cleartext();
         for i in 0usize..40 {
             let mut v: std::vec::Vec<u8> = (0u8..i as u8 + 30).collect();
-            let orig_payload = v[SSH_LENGTH_SIZE..SSH_LENGTH_SIZE + i].to_vec();
+            let orig_payload = v[SSH_PAYLOAD_START..SSH_PAYLOAD_START + i].to_vec();
             let seq = 123u32.rotate_left(i as u32); // something arbitrary
 
             let written = keys.encrypt(i, v.as_mut_slice(), seq).unwrap();
@@ -462,9 +466,10 @@ mod tests {
             v.truncate(written);
             let l =
                 keys.decrypt_first_block(v.as_mut_slice(), seq).unwrap() as usize;
-            keys.decrypt(v.as_mut_slice(), seq).unwrap();
-            let dec_payload = v[SSH_LENGTH_SIZE..SSH_LENGTH_SIZE + i].to_vec();
+            keys.decrypt(&mut v.as_mut_slice()[4..], seq).unwrap();
+            let dec_payload = v[SSH_PAYLOAD_START..SSH_PAYLOAD_START + i].to_vec();
             assert_eq!(written, l + SSH_LENGTH_SIZE + keys.integ_enc.size_out());
+            println!("i {i} or {:?} dec {:?}", orig_payload.hex_dump(), dec_payload.hex_dump());
             assert_eq!(orig_payload, dec_payload);
         }
     }

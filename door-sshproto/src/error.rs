@@ -51,6 +51,31 @@ impl Error {
     pub fn msg(m: &'static str) -> Error {
         Error::Custom { msg: m }
     }
+
+    #[inline]
+    /// Panics in debug builds, returns [`Error::Bug`] in release.
+    pub fn bug() -> Error {
+        // Easier to track the source of errors in development,
+        // but release builds shouldn't panic.
+        #[cfg(debug_assertions)]
+        panic!("Hit a bug");
+
+        Error::Bug
+    }
+}
+
+pub trait TrapBug<T> {
+    /// `.trap()` should be used like `.unwrap()`, in situations
+    /// never expected to fail. In debug builds it may panic, otherwise
+    /// returning `Error::Bug`.
+    fn trap(self) -> Result<T, Error>;
+}
+
+impl<T, E> TrapBug<T> for Result<T, E>
+{
+    fn trap(self) -> Result<T, Error> {
+        self.map_err(|_| Error::bug())
+    }
 }
 
 impl From<Utf8Error> for Error {

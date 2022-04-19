@@ -523,7 +523,7 @@ mod tests {
     fn test_hash_ssh() {
         use ring::digest;
         let input = "hello";
-        let mut     buf = vec![99; 20];
+        let mut buf = vec![99; 20];
         let w1 = wireformat::write_ssh(&mut buf, &input).unwrap();
         buf.truncate(w1);
 

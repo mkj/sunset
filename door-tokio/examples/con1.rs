@@ -6,7 +6,7 @@ use {
 use anyhow::Context;
 use std::error::Error;
 use pretty_hex::PrettyHex;
-use tokio::io::AsyncWriteExt;
+use tokio::{io::AsyncWriteExt,io};
 use tokio::net::TcpStream;
 
 use door_sshproto::*;
@@ -49,7 +49,21 @@ async fn main() -> Result<(), Box<dyn Error>> {
             trace!("ready in");
             stream.readable().await.context("readable")?;
             if inlen == inpos {
-                inlen = stream.try_read(&mut inbuf).context("try_read")?;
+                let inlen = match stream.try_read(&mut inbuf) {
+                    Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                        trace!("wouldblock");
+                        Ok(0)
+                    },
+                    Ok(n) => {
+                        if n == 0 {
+                            Err(io::Error::from(io::ErrorKind::UnexpectedEof))
+                        } else {
+                            Ok(n)
+                        }
+                    }
+
+                    other_error => other_error,
+                }.context("read")?;
                 trace!("read new {inlen}");
                 inpos = 0;
             }
