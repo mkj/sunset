@@ -12,7 +12,6 @@ use serde::Deserializer;
 
 use serde::{Deserialize, Serialize};
 
-
 /// A comma separated string, can be deserialized or serialized.
 /// Used for remote name lists.
 #[derive(Serialize, Deserialize, Debug)]
@@ -23,7 +22,7 @@ pub struct StringNames<'a>(pub &'a str);
 /// Deliberately 'static since it should only come from hardcoded local strings
 /// SSH_NAME_* in [`kex`]. We don't validate string contents.
 #[derive(Debug)]
-pub struct LocalNames<'a>(pub &'a[&'static str]);
+pub struct LocalNames<'a>(pub &'a [&'static str]);
 
 /// The general form that can store either representation
 #[derive(Serialize, Debug)]
@@ -54,9 +53,12 @@ impl<'a> Serialize for LocalNames<'a> {
     {
         let mut seq = serializer.serialize_seq(None)?;
         let names = &self.0;
+        let strlen = names.iter().map(|n| n.len()).sum::<usize>()
+            + names.len().saturating_sub(1);
+        seq.serialize_element(&(strlen as u32));
         for i in 0..names.len() {
             seq.serialize_element(names[i].as_bytes());
-            if i < names.len()-1 {
+            if i < names.len() - 1 {
                 seq.serialize_element(&(',' as u8));
             }
         }
@@ -83,7 +85,6 @@ impl<'a> Into<NameList<'a>> for &LocalNames<'a> {
     fn into(self) -> NameList<'a> {
         NameList::Local(LocalNames(self.0))
     }
-
 }
 
 impl<'a> NameList<'a> {
@@ -93,25 +94,23 @@ impl<'a> NameList<'a> {
     /// `self` is a remote list, `our_options` are our own allowed options in preference
     /// order.
     /// Must only be called on [`StringNames`], will fail if called with self as [`LocalNames`].
-    pub fn first_protocol_match(
+    pub fn first_match(
         &self, is_client: bool, our_options: &LocalNames,
     ) -> Result<Option<&str>, Error> {
         match self {
-            NameList::String(s) => {
-                Ok(if is_client {
-                    s.first_match(our_options)
-                } else {
-                    s.first_options_match(our_options)
-                })
-            },
-            NameList::Local(_) => Err(Error::Bug)
+            NameList::String(s) => Ok(if is_client {
+                s.first_options_match(our_options)
+            } else {
+                s.first_string_match(our_options)
+            }),
+            NameList::Local(_) => Err(Error::Bug),
         }
     }
 }
 
 impl<'a> StringNames<'a> {
     /// Returns the first name in this namelist that matches one of the provided options
-    fn first_match(&self, options: &LocalNames) -> Option<&str> {
+    fn first_string_match(&self, options: &LocalNames) -> Option<&str> {
         trace!("match {:?} options {:?}", self, options);
         for n in self.0.split(',') {
             for o in options.0.iter() {
@@ -141,10 +140,25 @@ impl<'a> StringNames<'a> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{wireformat};
     use crate::namelist::*;
+    use crate::wireformat;
     use pretty_hex::PrettyHex;
 
+    #[test]
+    fn test_match() {
+        let r1 = NameList::String("rho,cog".into());
+        let r2 = NameList::String("woe".into());
+        let l1 = LocalNames(&["rho", "cog"]);
+        let l2 = LocalNames(&["cog", "rho"]);
+        let l3 = LocalNames(&["now", "woe"]);
+        assert_eq!(r1.first_match(true, &l1).unwrap(), Some("rho"));
+        assert_eq!(r1.first_match(false, &l1).unwrap(), Some("rho"));
+        assert_eq!(r1.first_match(true, &l2).unwrap(), Some("cog"));
+        assert_eq!(r1.first_match(false, &l2).unwrap(), Some("rho"));
+        assert_eq!(r2.first_match(false, &l1).unwrap(), None);
+        assert_eq!(r2.first_match(false, &l2).unwrap(), None);
+        assert_eq!(r2.first_match(false, &l3).unwrap(), Some("woe"));
+    }
 
     #[test]
     fn test_localnames_serialize() {
@@ -165,7 +179,8 @@ mod tests {
             buf.truncate(l);
             let out1 = core::str::from_utf8(&buf).unwrap();
             // check that a join with std gives the same result.
-            assert_eq!(out1, t.join(","));
+            assert_eq!(buf[..4], ((buf.len() - 4) as u32).to_be_bytes());
+            assert_eq!(out1[4..], t.join(","));
         }
     }
 }
