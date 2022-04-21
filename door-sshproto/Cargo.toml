@@ -10,6 +10,7 @@ snafu = { version = "0.7", default-features = false }
 log = { version = "0.4" }
 # TODO: probably needs changing for embedded platforms
 rand = { version = "0.8", default-features = false, features = ["getrandom"] }
+zeroize = { version = "1.5", default-features = false }
 
 ring = { version = "0.16", default-features = false }
 # for aes-ctr mode

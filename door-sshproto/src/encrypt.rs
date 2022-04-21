@@ -6,9 +6,17 @@ use {
 
 use core::num::Wrapping;
 use ring::aead::chacha20_poly1305_openssh as chapoly;
+use ring::digest::{self, Context as DigestCtx, Digest};
 use aes::cipher::{KeyIvInit, KeySizeUser, BlockSizeUser, StreamCipher};
+use zeroize::{Zeroize,Zeroizing};
+
+// We are using hmac/sha2 crates rather than ring for hmac
+// because ring doesn't have multi-part verification
+// https://github.com/briansmith/ring/pull/825
+// If needed we probably could write the sequence into buf[0..4]
+// which has already been decrypted and read, but that's a mess.
 use hmac::{Hmac, Mac};
-use sha2::Digest;
+use sha2::Digest as Sha2DigestForTrait;
 
 use crate::kex;
 use crate::*;
@@ -24,6 +32,12 @@ const SSH_MIN_PADLEN: usize = 4;
 const SSH_MIN_BLOCK: usize = 8;
 pub const SSH_LENGTH_SIZE: usize = 4;
 pub const SSH_PAYLOAD_START: usize = SSH_LENGTH_SIZE+1;
+
+// TODO: should calculate/check these somehow
+/// Largest is aes256ctr
+const MAX_IV_LEN: usize = 32;
+/// Largest is chacha. Also applies to MAC keys
+const MAX_KEY_LEN: usize = 64;
 
 /// Stateful [`Keys`], stores a sequence number as well
 pub(crate) struct KeyState {
@@ -44,10 +58,6 @@ impl KeyState {
         }
     }
 
-    pub fn next_seq_decrypt(&mut self) {
-        self.seq_decrypt += 1;
-    }
-
     /// Decrypts the first block in the buffer, returning the length.
     pub fn decrypt_first_block(&mut self, buf: &mut [u8]) -> Result<u32, Error> {
         self.keys.decrypt_first_block(buf, self.seq_decrypt.0)
@@ -56,7 +66,9 @@ impl KeyState {
     /// Decrypt bytes 4 onwards of the buffer and validate AEAD Tag or MAC.
     /// Ensures that the packet meets minimum length.
     pub fn decrypt<'b>(&mut self, buf: &'b mut [u8]) -> Result<(), Error> {
-        self.keys.decrypt(buf, self.seq_decrypt.0)
+        let e = self.keys.decrypt(buf, self.seq_decrypt.0);
+        self.seq_decrypt += 1;
+        e
     }
 
     /// [`buf`] is the entire output buffer to encrypt in place.
@@ -105,6 +117,79 @@ impl Keys {
             integ_enc: IntegKey::NoInteg,
             integ_dec: IntegKey::NoInteg,
         }
+    }
+
+    /// RFC4253 7.2. K1 = HASH(K || H || "A" || session_id) etc
+    fn compute_key(letter: char, out: &mut[u8], hash: &'static digest::Algorithm, k: &Digest,
+            h: &Digest, sess_id: &Digest) {
+        // two rounds is sufficient with sha256 and current max key
+        debug_assert!(2*hash.output_len >= out.len());
+
+        let mut hash_ctx = DigestCtx::new(hash);
+        hash_ctx.update(k.as_ref());
+        hash_ctx.update(h.as_ref());
+        hash_ctx.update(&[letter as u8]);
+        hash_ctx.update(sess_id.as_ref());
+
+        let mut rest = out;
+        let mut w;
+        // fill first part
+        let k1 = hash_ctx.finish();
+        let k1 = k1.as_ref();
+        let l = rest.len().min(k1.len());
+        (w, rest) = rest.split_at_mut(l);
+        w.copy_from_slice(&k1[..l]);
+
+        if rest.len() > 0 {
+            // generate next block K2 = HASH(K || H || K1)
+            let mut hash_ctx = DigestCtx::new(hash);
+            hash_ctx.update(k.as_ref());
+            hash_ctx.update(h.as_ref());
+            hash_ctx.update(k1);
+            let k2 = hash_ctx.finish();
+            let k2 = k2.as_ref();
+            let l = rest.len().min(k2.len());
+            (w, rest) = rest.split_at_mut(l);
+            w.copy_from_slice(&k2[..l]);
+        }
+        debug_assert_eq!(rest.len(), 0);
+    }
+
+    pub fn new_from(k: &Digest, h: &Digest, sess_id: &Digest,
+        algos: &kex::Algos) -> Result<Self, Error> {
+        let mut key = [0u8; MAX_KEY_LEN];
+        let mut iv = [0u8; MAX_IV_LEN];
+        let hash = algos.kex.get_hash();
+
+        let (iv_e, iv_d, k_e, k_d, i_e, i_d) = if algos.is_client {
+            ('A', 'B', 'C', 'D', 'E', 'F')
+        } else {
+            ('B', 'A', 'D', 'C', 'F', 'E')
+        };
+
+        Self::compute_key(iv_e, &mut iv, hash, k, h, sess_id);
+        Self::compute_key(k_e, &mut key, hash, k, h, sess_id);
+        let enc = EncKey::from_cipher(&algos.cipher_enc, &key, &iv)?;
+
+        Self::compute_key(iv_d, &mut iv, hash, k, h, sess_id);
+        Self::compute_key(k_d, &mut key, hash, k, h, sess_id);
+        let dec = DecKey::from_cipher(&algos.cipher_dec, &key, &iv)?;
+
+        Self::compute_key(i_e, &mut key, hash, k, h, sess_id);
+        let integ_enc = IntegKey::from_integ(&algos.integ_enc, &key)?;
+
+        Self::compute_key(i_d, &mut key, hash, k, h, sess_id);
+        let integ_dec = IntegKey::from_integ(&algos.integ_dec, &key)?;
+
+        key.zeroize();
+        iv.zeroize();
+
+        Ok(Keys {
+            enc,
+            dec,
+            integ_enc,
+            integ_dec,
+        })
     }
 
     /// Decrypts the first block in the buffer, returning the length.
@@ -179,6 +264,7 @@ impl Keys {
             IntegKey::NoInteg => {}
             IntegKey::HmacSha256(k) => {
                 let mut h = HmacSha256::new_from_slice(&k).trap()?;
+                h.update(&seq.to_be_bytes());
                 h.update(data);
                 h.verify_slice(mac)
                 .map_err(|_| Error::BadDecrypt)?;
@@ -255,6 +341,7 @@ impl Keys {
             IntegKey::NoInteg => {}
             IntegKey::HmacSha256(k) => {
                 let mut h = HmacSha256::new_from_slice(&k).trap()?;
+                h.update(&seq.to_be_bytes());
                 h.update(enc);
                 let result = h.finalize();
                 mac.copy_from_slice(&result.into_bytes());
@@ -299,18 +386,23 @@ impl Cipher {
             _ => Err(Error::Bug),
         }
     }
+
+    /// length in bytes
     pub fn key_len(&self) -> usize {
         match self {
             Cipher::ChaPoly => chapoly::KEY_LEN,
             Cipher::Aes256Ctr => aes::Aes256::key_size(),
         }
     }
+
+    /// length in bytes
     pub fn iv_len(&self) -> usize {
         match self {
             Cipher::ChaPoly => 0,
             Cipher::Aes256Ctr => aes::Aes256::block_size(),
         }
     }
+
     /// Returns the [`Integ`] for this cipher, or None if not aead
     pub fn integ(&self) -> Option<Integ> {
         match self {
@@ -324,7 +416,6 @@ pub(crate) enum EncKey {
     ChaPoly(chapoly::SealingKey),
     Aes256Ctr(Aes256Ctr32BE),
     // AesGcm(Todo?)
-    // AesCtr(Todo?)
     NoCipher,
 }
 
@@ -410,10 +501,16 @@ impl Integ {
     /// Matches a MAC name. Should not be called for AEAD ciphers, instead use [`EncKey::integ`] etc
     pub fn from_name(name: &str) -> Result<Self, Error> {
         use crate::kex::*;
-        // TODO: match standalone HMAC names here.
         match name {
             SSH_NAME_HMAC_SHA256 => Ok(Integ::HmacSha256),
             _ => Err(Error::Bug),
+        }
+    }
+    /// length in bytes
+    fn key_len(&self) -> usize {
+        match self {
+            ChaPoly => 0,
+            HmacSha256 => 32,
         }
     }
 }
@@ -427,7 +524,7 @@ pub(crate) enum IntegKey {
 }
 
 impl IntegKey {
-    pub fn from_integ(integ: Integ, key: &[u8]) -> Result<Self, Error> {
+    pub fn from_integ(integ: &Integ, key: &[u8]) -> Result<Self, Error> {
         match integ {
             Integ::ChaPoly => Ok(IntegKey::ChaPoly),
             Integ::HmacSha256 => {
@@ -444,6 +541,7 @@ impl IntegKey {
         }
     }
 }
+
 #[cfg(test)]
 mod tests {
     use crate::encrypt::{Keys, SSH_LENGTH_SIZE, SSH_PAYLOAD_START};

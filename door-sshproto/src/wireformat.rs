@@ -15,6 +15,7 @@ use crate::packets::{DeserPacket, Packet, PacketState, ParseContext};
 use core::cell::Cell;
 use core::result::Result;
 use core::slice;
+use core::convert::AsRef;
 
 /// Parses a [`Packet`] from a borrowed `&[u8]` byte buffer.
 /// Requires [`ParseContext`] to indicate which Kex variant is being use.
@@ -62,6 +63,11 @@ type Res = Result<(), Error>;
 /// A SSH style binary string. 32 bit length followed by bytes.
 pub struct BinString<'a>(pub &'a [u8]);
 
+impl<'a> AsRef<[u8]> for BinString<'a> {
+    fn as_ref(&self) -> &'a [u8] {
+        self.0
+    }
+}
 
 // Helper to pass a serde_state DeserializeState impl where a DeserializeSeed is needed,
 // for next_element_seed() etc.

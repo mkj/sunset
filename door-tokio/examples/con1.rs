@@ -49,7 +49,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             trace!("ready in");
             stream.readable().await.context("readable")?;
             if inlen == inpos {
-                let inlen = match stream.try_read(&mut inbuf) {
+                inlen = match stream.try_read(&mut inbuf) {
                     Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
                         trace!("wouldblock");
                         Ok(0)
@@ -68,6 +68,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 inpos = 0;
             }
 
+            trace!("nputting {inlen}..{inpos}");
             let l = r.input(&inbuf[inpos..inlen])?;
             inpos += l;
         }

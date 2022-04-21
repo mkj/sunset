@@ -19,29 +19,33 @@ pub struct Runner<'a> {
 
 impl<'a> Runner<'a> {
     pub fn new(conn: Conn<'a>, iobuf: &'a mut [u8]) -> Result<Self, Error> {
-        let mut r = Runner {
-            conn,
-            traffic: traffic::Traffic::new(iobuf),
-        };
+        let mut r = Runner { conn, traffic: traffic::Traffic::new(iobuf) };
 
         r.conn.progress(&mut r.traffic);
         Ok(r)
     }
 
     pub fn input(&mut self, buf: &[u8]) -> Result<usize, Error> {
-        let (size, payload) = self.traffic.input(&mut self.conn.keys, &mut self.conn.remote_version, buf)?;
+        trace!("input of {}", buf.len());
+        let (size, payload) = self.traffic.input(
+            &mut self.conn.keys,
+            &mut self.conn.remote_version,
+            buf,
+        )?;
+        trace!("input handled {size} of {}", buf.len());
 
         if let Some(payload) = payload {
-            self.conn.handle_payload(payload)?
+            let resp = self.conn.handle_payload(payload)?;
+            if let Some(r) = resp {
+                self.traffic.send_packet(&r)?;
+            }
         }
         self.conn.progress(&mut self.traffic);
         Ok(size)
     }
 
     /// Write any pending output, returning the size written
-    pub fn output(
-        &mut self, buf: &mut [u8]
-    ) -> Result<usize, Error> {
+    pub fn output(&mut self, buf: &mut [u8]) -> Result<usize, Error> {
         let l = self.traffic.output(&mut self.conn.keys, buf)?;
         self.conn.progress(&mut self.traffic);
         Ok(l)
@@ -66,7 +70,8 @@ pub struct Conn<'a> {
     /// Current encryption/integrity keys
     keys: KeyState,
 
-    /// TODO: Digest is sized to fit 512 bits, we only need 256 for ours currently?
+    /// TODO: Digest is sized to fit 512 bits, we only need 256 for sha256.
+    /// Perhaps we could put it into a [u8: 256] newtype.
     sess_id: Option<Digest>,
 
     pub(crate) is_client: bool,
@@ -130,27 +135,26 @@ impl<'a> Conn<'a> {
                     self.state = ConnState::PreKex;
                 }
             }
-            _ => { 
-                // TODO 
+            _ => {
+                // TODO
             }
-
         }
         Ok(())
-
     }
 
     /// Consumes an input payload
-    pub(crate) fn handle_payload(&mut self, payload: &[u8]) -> Result<(), Error> {
+    pub(crate) fn handle_payload(
+        &mut self, payload: &[u8],
+    ) -> Result<Option<Packet>, Error> {
         trace!("conn state {:?}", self.state);
-        self.keys.next_seq_decrypt();
+        // self.keys.next_seq_decrypt();
         trace!("bef");
         let p = wireformat::packet_from_bytes(payload, &self.parse_ctx)?;
         trace!("handle_payload() got {p:#?}");
-        self.dispatch_packet(&p)?;
-        Ok(())
+        self.dispatch_packet(&p)
     }
 
-    fn dispatch_packet(&mut self, packet: &Packet) -> Result<(), Error> {
+    fn dispatch_packet(&mut self, packet: &Packet) -> Result<Option<Packet>, Error> {
         // TODO: perhaps could consolidate packet allowed checks into a separate function
         // to run first?
         match packet {
@@ -158,12 +162,18 @@ impl<'a> Conn<'a> {
                 if matches!(self.state, ConnState::InKex) {
                     return Err(Error::PacketWrong);
                 }
-                self.kex.handle_kexinit(
-                    self.is_client,
-                    &self.algo_conf,
-                    &self.remote_version,
-                    p,
-                )
+                self.state = ConnState::InKex;
+                self.kex
+                    .handle_kexinit(
+                        self.is_client,
+                        &self.algo_conf,
+                        &self.remote_version,
+                        p,
+                    )
+                    .map(|(kextype, resp)| {
+                        self.parse_ctx.kextype = Some(kextype);
+                        resp
+                    })
             }
             p => {
                 warn!("Unhandled packet {p:?}");

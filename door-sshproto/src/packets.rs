@@ -8,6 +8,11 @@
 //! string that switches between [`MethodPubkey`] and [`MethodPassword`]. Other packets
 //! such as [`KexDHReply`] don't have that structure, instead they depend on previous
 //! state of the SSH session. That state is passed with [`ParseContext`].
+#[allow(unused_imports)]
+use {
+    crate::error::{Error,TrapBug},
+    log::{debug, error, info, log, trace, warn},
+};
 use core::borrow::BorrowMut;
 use core::cell::Cell;
 use core::fmt;
@@ -20,27 +25,21 @@ use serde::Deserializer;
 
 use serde::{Deserialize, Serialize};
 
-use crate::error::Error;
+use crate::*;
+use crate::kex::KexType;
 use crate::namelist::NameList;
 use crate::wireformat::BinString;
 
-/// Negotiated Key Exchange (KEX) type, used to parse kexinit/kexreply packets.
-#[derive(Debug)]
-pub enum KexType {
-    Unset,
-    Curve25519,
-    DiffieHellman,
-}
 
 /// State to be passed to deserialisation. Use this so the parser can select the correct
 /// enum variant to deserialize.
 pub struct ParseContext {
-    pub kextype: KexType,
+    pub kextype: Option<KexType>,
 }
 
 impl ParseContext {
     pub fn new() -> Self {
-        ParseContext { kextype: KexType::Unset }
+        ParseContext { kextype: None }
     }
 }
 
@@ -70,7 +69,10 @@ impl TryFrom<u8> for MessageNumber {
             30 => Ok(MessageNumber::SSH_MSG_KEXDH_INIT),
             31 => Ok(MessageNumber::SSH_MSG_KEXDH_REPLY),
             50 => Ok(MessageNumber::SSH_MSG_USERAUTH_REQUEST),
-            _ => Err(Error::UnknownPacket),
+            _ => {
+                trace!("Unknown packet type {v}");
+                Err(Error::UnknownPacket)
+            }
         }
     }
 }
@@ -208,13 +210,13 @@ impl<'de: 'a, 'a> DeserializeSeed<'de> for DeserKexDHInit<'a> {
     {
         // Use the algo variant that was negotiated in KEX
         match self.0.ctx.kextype {
-            KexType::Curve25519 => Ok(KexDHInit::Curve25519Init(
+            Some(KexType::Curve25519) => Ok(KexDHInit::Curve25519Init(
                 Curve25519Init::deserialize(deserializer)?,
             )),
-            KexType::DiffieHellman => Ok(KexDHInit::DiffieHellmanInit(
-                DiffieHellmanInit::deserialize(deserializer)?,
-            )),
-            KexType::Unset => Err(de::Error::custom("kextype not set")),
+            // Some(KexType::DiffieHellman) => Ok(KexDHInit::DiffieHellmanInit(
+            //     DiffieHellmanInit::deserialize(deserializer)?,
+            // )),
+            None => Err(de::Error::custom("kextype not set")),
         }
     }
 }
@@ -222,10 +224,10 @@ impl<'de: 'a, 'a> DeserializeSeed<'de> for DeserKexDHInit<'a> {
 #[derive(Serialize, Debug)]
 pub enum KexDHReply<'a> {
     Curve25519Reply(Curve25519Reply<'a>),
-    DiffieHellmanReply(DiffieHellmanReply<'a>),
+    DiffieHellmanReply( DiffieHellmanReply<'a>),
 }
 
-/// Deserialize implementation  for KexDHReply
+/// Deserialize implementation for KexDHReply
 struct DeserKexDHReply<'a>(&'a PacketState<'a>);
 
 impl<'de: 'a, 'a> DeserializeSeed<'de> for DeserKexDHReply<'a> {
@@ -236,13 +238,13 @@ impl<'de: 'a, 'a> DeserializeSeed<'de> for DeserKexDHReply<'a> {
     {
         // Use the algo variant that was negotiated in KEX
         match self.0.ctx.kextype {
-            KexType::Curve25519 => Ok(KexDHReply::Curve25519Reply(
+            Some(KexType::Curve25519) => Ok(KexDHReply::Curve25519Reply(
                 Curve25519Reply::deserialize(deserializer)?,
             )),
-            KexType::DiffieHellman => Ok(KexDHReply::DiffieHellmanReply(
-                DiffieHellmanReply::deserialize(deserializer)?,
-            )),
-            KexType::Unset => Err(de::Error::custom("kextype not set")),
+            // KexType::DiffieHellman => Ok(KexDHReply::DiffieHellmanReply(
+            //     DiffieHellmanReply::deserialize(deserializer)?,
+            // )),
+            None => Err(de::Error::custom("kextype not set")),
         }
     }
 }

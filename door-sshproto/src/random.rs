@@ -1,4 +1,5 @@
 use rand::RngCore;
+use ring::rand::SecureRandom;
 use crate::error::Error;
 
 pub fn fill_random(buf: &mut [u8]) -> Result<(), Error> {

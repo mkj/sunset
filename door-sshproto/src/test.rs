@@ -3,14 +3,15 @@ mod tests {
     use crate::error::Error;
     use crate::packets::*;
     use crate::wireformat::BinString;
-    use crate::packets::{KexType, Packet};
+    use crate::packets::{Packet};
+    use crate::kex::{KexType};
     use crate::{packets, wireformat};
     use pretty_hex::PrettyHex;
     use serde::de::Unexpected;
     use serde::{Deserialize, Serialize};
 
     fn test_roundtrip_packet(
-        p: &Packet, kextype: packets::KexType,
+        p: &Packet, kextype: Option<KexType>,
     ) -> Result<(), Error> {
         let mut buf1 = vec![99; 500];
         let _w1 = wireformat::write_ssh(&mut buf1, &p)?;
@@ -49,7 +50,7 @@ mod tests {
             reserved: 0x6148291e,
         };
         let p = Packet::KexInit(k);
-        test_roundtrip_packet(&p, KexType::Unset).unwrap();
+        test_roundtrip_packet(&p, None).unwrap();
     }
 
     #[test]
@@ -59,7 +60,7 @@ mod tests {
         let p =
             Packet::KexDHInit(KexDHInit::Curve25519Init(Curve25519Init { q_c: bs }));
 
-        test_roundtrip_packet(&p, KexType::Curve25519).unwrap();
+        test_roundtrip_packet(&p, Some(KexType::Curve25519)).unwrap();
         // packet format needs to be consistent
         // test_roundtrip_packet(&p, KexType::DiffieHellman).unwrap_err();
         // test_roundtrip_packet(&p, KexType::Unset).unwrap_err();

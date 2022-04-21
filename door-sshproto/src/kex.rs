@@ -1,11 +1,14 @@
 use crate::encrypt::{Cipher, Integ};
 use crate::ident::RemoteVersion;
 use crate::namelist::LocalNames;
+use crate::wireformat::BinString;
+use crate::packets::{Packet, KexDHInit, Curve25519Init};
 use crate::*;
 use ring::digest::{self, Context as DigestCtx, Digest};
+use ring::agreement;
 #[allow(unused_imports)]
 use {
-    crate::error::Error,
+    crate::error::{Error,TrapBug},
     log::{debug, error, info, log, trace, warn},
 };
 
@@ -18,7 +21,7 @@ pub const SSH_NAME_EXT_INFO_S: &str = "ext-info-s";
 pub const SSH_NAME_EXT_INFO_C: &str = "ext-info-c";
 
 // RFC8709
-pub const SSH_NAME_ED25519: &str = "curve25519-sha256";
+pub const SSH_NAME_ED25519: &str = "ssh-ed25519";
 // RFC8332
 pub const SSH_NAME_RSA_SHA256: &str = "rsa-sha2-256";
 // RFC4253
@@ -85,11 +88,64 @@ pub(crate) struct Kex {
 
     // populated once we have sent and received KexInit
     algos: Option<Algos>,
-    // kexhash state. progessively include version idents, kexinit payloads, hostkey, e/f, secret
-    hash_ctx: Option<DigestCtx>,
 
-    // populated after kex reply, from hash_ctx
-    H: Option<Digest>,
+    kex_hash: Option<KexHash>,
+}
+
+struct KexHash {
+    hash_ctx: DigestCtx,
+}
+
+// kexhash state. progessively include version idents, kexinit payloads, hostkey, e/f, secret
+impl KexHash {
+    fn new(
+        kex: &Kex, algos: &Algos, algo_conf: &AlgoConfig, remote_version: &RemoteVersion,
+        remote_kexinit: &packets::KexInit,
+    ) -> Result<Self, Error> {
+        // RFC4253 section 8:
+        // The hash H is computed as the HASH hash of the concatenation of the
+        // following:
+        //    string    V_C, the client's identification string (CR and LF
+        //              excluded)
+        //    string    V_S, the server's identification string (CR and LF
+        //              excluded)
+        //    string    I_C, the payload of the client's SSH_MSG_KEXINIT
+        //    string    I_S, the payload of the server's SSH_MSG_KEXINIT
+        //    string    K_S, the host key
+        //    mpint     e, exchange value sent by the client
+        //    mpint     f, exchange value sent by the server
+        //    mpint     K, the shared secret
+
+        let mut hash_ctx = DigestCtx::new(algos.kex.get_hash());
+        let remote_version = remote_version.version().ok_or(Error::Bug)?;
+        // Recreate our own kexinit packet to hash
+        let own_kexinit = kex.make_kexinit(algo_conf);
+        if algos.is_client {
+            hash_ctx.update(ident::OUR_VERSION);
+            hash_ctx.update(remote_version);
+            wireformat::hash_ssh(&mut hash_ctx, &own_kexinit)?;
+            wireformat::hash_ssh(&mut hash_ctx, remote_kexinit)?;
+        } else {
+            hash_ctx.update(remote_version);
+            hash_ctx.update(ident::OUR_VERSION);
+            wireformat::hash_ssh(&mut hash_ctx, remote_kexinit)?;
+            wireformat::hash_ssh(&mut hash_ctx, &own_kexinit)?
+        }
+        // The remainder of hash_ctx is updated after kexdhreply
+
+        Ok(KexHash {
+            hash_ctx,
+        })
+    }
+
+    // Compute the remainder of the hash
+    fn finish(mut self, host_key: &[u8], e: &[u8], f: &[u8], k: &[u8]) -> Digest {
+        self.hash_ctx.update(host_key);
+        self.hash_ctx.update(e);
+        self.hash_ctx.update(f);
+        self.hash_ctx.update(k);
+        self.hash_ctx.finish()
+    }
 }
 
 enum KexState {
@@ -100,35 +156,48 @@ enum KexState {
 }
 
 /// Records the chosen algorithms while key exchange proceeds
-struct Algos {
-    kex: SharedSecret,
+pub(crate) struct Algos {
+    pub kex: SharedSecret,
     // hostkey: HostKey,
-    cipher_enc: Cipher,
-    cipher_dec: Cipher,
-    integ_enc: Integ,
-    integ_dec: Integ,
+    pub cipher_enc: Cipher,
+    pub cipher_dec: Cipher,
+    pub integ_enc: Integ,
+    pub integ_dec: Integ,
+
+    // avoid having to keep passing it separately, though this
+    // is global state.
+    pub is_client: bool,
 }
 
 impl Kex {
     pub fn new() -> Self {
         let mut our_cookie = [0u8; 16];
         random::fill_random(our_cookie.as_mut_slice());
-        Kex { our_cookie, algos: None, hash_ctx: None, H: None }
+        Kex { our_cookie, algos: None, kex_hash: None }
     }
-    pub fn handle_kexinit(
-        &mut self, is_client: bool, algo_conf: &AlgoConfig,
+    /// Returns `(kextype, Option<Packet>)` where the packet is a kexdhinit message to send,
+    /// `kextype` is the negotiated kex type.
+    pub fn handle_kexinit<'a>(
+        &'a mut self, is_client: bool, algo_conf: &AlgoConfig,
         remote_version: &RemoteVersion, remote_kexinit: &packets::KexInit,
-    ) -> Result<(), Error> {
+    ) -> Result<(KexType, Option<Packet<'a>>), Error> {
         let algos = Self::algo_negotiation(is_client, remote_kexinit, algo_conf)?;
-        self.hash_ctx = Some(self.start_kexhash(
+        self.kex_hash = Some(KexHash::new(self,
             &algos,
-            is_client,
             algo_conf,
             remote_version,
             remote_kexinit,
         )?);
+        let kextype = algos.kex.get_type();
         self.algos = Some(algos);
-        Ok(())
+
+
+        if is_client {
+            if let Some(algos) = &mut self.algos {
+                return Ok((kextype, Some(algos.kex.make_kexdhinit()?)))
+            }
+        }
+        Ok((kextype, None))
     }
 
     pub fn make_kexinit<'a>(&self, conf: &'a AlgoConfig) -> packets::Packet<'a> {
@@ -150,42 +219,14 @@ impl Kex {
         packets::Packet::KexInit(k)
     }
 
-    fn start_kexhash(
-        &mut self, algos: &Algos, is_client: bool, algo_conf: &AlgoConfig, remote_version: &RemoteVersion,
-        remote_kexinit: &packets::KexInit,
-    ) -> Result<DigestCtx, Error> {
-        // RFC4253 section 8:
-        // The hash H is computed as the HASH hash of the concatenation of the
-        // following:
-        //    string    V_C, the client's identification string (CR and LF
-        //              excluded)
-        //    string    V_S, the server's identification string (CR and LF
-        //              excluded)
-        //    string    I_C, the payload of the client's SSH_MSG_KEXINIT
-        //    string    I_S, the payload of the server's SSH_MSG_KEXINIT
-        //    string    K_S, the host key
-        //    mpint     e, exchange value sent by the client
-        //    mpint     f, exchange value sent by the server
-        //    mpint     K, the shared secret
 
-        let mut hash_ctx = DigestCtx::new(algos.kex.get_hash());
-        let remote_version = remote_version.version().ok_or(Error::Bug)?;
-        // Recreate our own kexinit packet to hash
-        let own_kexinit = self.make_kexinit(algo_conf);
-        if is_client {
-            hash_ctx.update(ident::OUR_VERSION);
-            hash_ctx.update(remote_version);
-            wireformat::hash_ssh(&mut hash_ctx, &own_kexinit)?;
-            wireformat::hash_ssh(&mut hash_ctx, remote_kexinit)?;
-        } else {
-            hash_ctx.update(remote_version);
-            hash_ctx.update(ident::OUR_VERSION);
-            wireformat::hash_ssh(&mut hash_ctx, remote_kexinit)?;
-            wireformat::hash_ssh(&mut hash_ctx, &own_kexinit)?
-        }
-        // The remainder of hash_ctx is updated after kexdhreply
-
-        Ok(hash_ctx)
+    // returns packet to send, and H exchange hash
+    pub fn handle_kexdhreply<'a>(&'a mut self, p: &packets::KexDHReply)
+        -> Result<(Packet, Digest), Error> {
+        let algos = self.algos.take().ok_or_else(|| Error::bug())?;
+        // let H = self.finish_kexhash(p.k_s, )
+        // self.algos.kex.
+        todo!()
     }
 
     /// Perform SSH algorithm negotiation
@@ -249,38 +290,109 @@ impl Kex {
         // Ignore language fields at present. unsure which implementations
         // use it, possibly SunSSH
 
-        Ok(Algos { kex, cipher_enc, cipher_dec, integ_enc, integ_dec })
+        Ok(Algos { kex, cipher_enc, cipher_dec, integ_enc, integ_dec, is_client })
     }
 }
 
+/// Negotiated Key Exchange (KEX) type, used to parse kexinit/kexreply packets.
 #[derive(Debug)]
-enum SharedSecret {
+pub enum KexType {
+    Curve25519,
+    // DiffieHellman,
+}
+
+#[derive(Debug)]
+pub(crate) enum SharedSecret {
     KexCurve25519(KexCurve25519),
     // ECDH?
 }
 
 impl SharedSecret {
-    pub fn from_name(name: &str) -> Result<Self, Error> {
+    fn from_name(name: &str) -> Result<Self, Error> {
         match name {
             SSH_NAME_CURVE25519 | SSH_NAME_CURVE25519_LIBSSH => {
-                Ok(SharedSecret::KexCurve25519(KexCurve25519::new()))
+                Ok(SharedSecret::KexCurve25519(KexCurve25519::new()?))
             }
             _ => Err(Error::Bug),
         }
     }
-    pub fn get_hash(&self) -> &'static digest::Algorithm {
+
+    fn get_type(&self) -> KexType {
+        match self {
+            SharedSecret::KexCurve25519(_) => KexType::Curve25519,
+        }
+    }
+
+    pub(crate) fn get_hash(&self) -> &'static digest::Algorithm {
         match self {
             SharedSecret::KexCurve25519(_) => &digest::SHA256,
         }
     }
+
+    fn make_kexdhinit(&self) -> Result<Packet, Error> {
+        match self {
+            SharedSecret::KexCurve25519(k) => k.make_kexdhinit()
+
+        }
+    }
+
+    // server only
+    fn make_kexdhreply(&self) -> Result<Packet, Error> {
+        match self {
+            SharedSecret::KexCurve25519(k) => k.make_kexdhreply()
+
+        }
+        // then sign it.
+    }
+
+    // client only
+    fn handle_kexdhreply<'a>(self, kh: &mut KexHash, p: &Packet) -> Result<Packet<'a>, Error> {
+        // let K = match self {
+        //     SharedSecret::KexCurve25519(k) => k.handle_kexdhreply(p)
+        // }
+        todo!()
+    }
 }
 
 #[derive(Debug)]
-struct KexCurve25519 {}
+pub(crate) struct KexCurve25519 {
+    ours: agreement::EphemeralPrivateKey,
+    pubkey: agreement::PublicKey,
+}
 
 impl KexCurve25519 {
-    fn new() -> Self {
-        KexCurve25519 {}
+    fn new() -> Result<Self, Error> {
+        let ours = agreement::EphemeralPrivateKey::generate(&agreement::X25519, &ring::rand::SystemRandom::new()).trap()?;
+        let pubkey = ours.compute_public_key().trap()?;
+        Ok(KexCurve25519 {
+            // TODO random source. also failure modes are unclear
+            ours: ours,
+            pubkey: pubkey,
+        })
+    }
+    // TODO: can we remove all the lifetimes?
+    fn make_kexdhinit<'a>(&'a self) -> Result<Packet<'a>, Error> {
+        Ok(Packet::KexDHInit(KexDHInit::Curve25519Init(
+            Curve25519Init { q_c: BinString(self.pubkey.as_ref()) }
+            )))
+    }
+
+    fn make_kexdhreply<'a>(&'a self) -> Result<Packet<'a>, Error> {
+        todo!();
+        // Ok(Packet::KexDHInit(KexDHInit::Curve25519Init(
+    }
+
+    fn handle_kexdhreply<'a>(self, kh: &mut KexHash, sessid: &Option<Digest>,
+            rep: &packets::Curve25519Reply) -> Result<Packet<'a>, Error> {
+        let theirs = agreement::UnparsedPublicKey::new(&agreement::X25519, &rep.q_s);
+        let k = agreement::agree_ephemeral(self.ours, &theirs, Error::Bug,
+            |k| {
+                todo!();
+                Ok(())
+            });
+
+        // Ok(Packet::KexDHInit(KexDHInit::Curve25519Init(
+        todo!()
     }
 }
 
