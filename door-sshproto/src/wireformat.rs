@@ -11,24 +11,17 @@ use serde::{
 };
 
 use crate::error::Error;
-use crate::packets::{DeserPacket, Packet, PacketState, ParseContext};
+use crate::packets::Packet;
 use core::cell::Cell;
 use core::result::Result;
 use core::slice;
 use core::convert::AsRef;
 
 /// Parses a [`Packet`] from a borrowed `&[u8]` byte buffer.
-/// Requires [`ParseContext`] to indicate which Kex variant is being use.
-pub fn packet_from_bytes<'a>(
-    b: &'a [u8], ctx: &ParseContext,
-) -> Result<Packet<'a>, Error> {
-    let seed = PacketState {
-        ctx,
-        // ty: Cell::new(None),
-    };
+pub fn packet_from_bytes<'a>(b: &'a [u8]) -> Result<Packet<'a>, Error> {
 
     let mut ds = DeSSHBytes::from_bytes(b);
-    let t = DeserPacket(&seed).deserialize(&mut ds)?;
+    let t = Packet::deserialize(&mut ds)?;
     Ok(t)
     // TODO check for trailing bytes, pos != b.len()
 }

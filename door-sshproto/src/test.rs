@@ -10,16 +10,11 @@ mod tests {
     use serde::de::Unexpected;
     use serde::{Deserialize, Serialize};
 
-    fn test_roundtrip_packet(
-        p: &Packet, kextype: Option<KexType>,
-    ) -> Result<(), Error> {
+    fn test_roundtrip_packet(p: &Packet) -> Result<(), Error> {
         let mut buf1 = vec![99; 500];
         let _w1 = wireformat::write_ssh(&mut buf1, &p)?;
 
-        let mut ctx = packets::ParseContext::new();
-        ctx.kextype = kextype;
-
-        let p2 = wireformat::packet_from_bytes(&buf1, &ctx)?;
+        let p2 = wireformat::packet_from_bytes(&buf1)?;
 
         let mut buf2 = vec![99; 500];
         let _w2 = wireformat::write_ssh(&mut buf2, &p2)?;
@@ -50,7 +45,7 @@ mod tests {
             reserved: 0x6148291e,
         };
         let p = Packet::KexInit(k);
-        test_roundtrip_packet(&p, None).unwrap();
+        test_roundtrip_packet(&p).unwrap();
     }
 
     #[test]
@@ -58,9 +53,9 @@ mod tests {
         // XXX: this should break later if the q_c length is
         let bs = BinString(&[0x11, 0x22, 0x33]);
         let p =
-            Packet::KexDHInit(KexDHInit::Curve25519Init(Curve25519Init { q_c: bs }));
+            Packet::KexDHInit(KexDHInit{ q_c: bs });
 
-        test_roundtrip_packet(&p, Some(KexType::Curve25519)).unwrap();
+        test_roundtrip_packet(&p).unwrap();
         // packet format needs to be consistent
         // test_roundtrip_packet(&p, KexType::DiffieHellman).unwrap_err();
         // test_roundtrip_packet(&p, KexType::Unset).unwrap_err();

@@ -28,7 +28,7 @@ fn main() -> Result<(), Error> {
 
     let bs = BinString(&[0x11, 0x22, 0x33]);
     let dhc =
-        Packet::KexDHInit(KexDHInit::Curve25519Init(Curve25519Init { q_c: bs }));
+        Packet::KexDHInit(KexDHInit { q_c: bs });
     println!("dhc1 {dhc:?}");
 
     // if let SpecificPacket::KexInit(ref k2) = p.p {
@@ -43,18 +43,7 @@ fn main() -> Result<(), Error> {
     let written = door_sshproto::wireformat::write_ssh(&mut buf, &p)?;
     buf.truncate(written);
     println!("{:?}", buf.hex_dump());
-    let ctx = door_sshproto::packets::ParseContext::new();
-    let x: Packet = door_sshproto::wireformat::packet_from_bytes(&buf, &ctx)?;
+    let x: Packet = door_sshproto::wireformat::packet_from_bytes(&buf)?;
     println!("fetched {x:?}");
-
-    // let mut buf = vec![0; 2000];
-    // let written = door_sshproto::wireformat::write_ssh(&mut buf, &dhc)?;
-    // buf.truncate(written);
-    // println!("wrote {written} {:?}", buf.hex_dump());
-    // let mut ctx = door_sshproto::packets::ParseContext::new();
-    // ctx.kextype = KexType::Curve25519;
-    // let x: Packet = door_sshproto::wireformat::packet_from_bytes(&buf, ctx)?;
-    // println!("fetched {:?}", buf.hex_dump());
-    // println!("fetched {x:?} {:p}", &x);
     Ok(())
 }

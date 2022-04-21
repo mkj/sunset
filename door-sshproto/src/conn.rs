@@ -80,8 +80,6 @@ pub struct Conn<'a> {
 
     /// Remote version string. Kept for later kexinit rekeying
     pub(crate) remote_version: ident::RemoteVersion,
-
-    parse_ctx: packets::ParseContext,
 }
 
 #[derive(Debug)]
@@ -111,7 +109,6 @@ impl<'a> Conn<'a> {
             keys: KeyState::new_cleartext(),
             sess_id: None,
             remote_version: ident::RemoteVersion::new(),
-            parse_ctx: packets::ParseContext::new(),
             state: ConnState::SendIdent,
             algo_conf: kex::AlgoConfig::new(is_client),
             is_client,
@@ -149,7 +146,7 @@ impl<'a> Conn<'a> {
         trace!("conn state {:?}", self.state);
         // self.keys.next_seq_decrypt();
         trace!("bef");
-        let p = wireformat::packet_from_bytes(payload, &self.parse_ctx)?;
+        let p = wireformat::packet_from_bytes(payload)?;
         trace!("handle_payload() got {p:#?}");
         self.dispatch_packet(&p)
     }
@@ -170,10 +167,6 @@ impl<'a> Conn<'a> {
                         &self.remote_version,
                         p,
                     )
-                    .map(|(kextype, resp)| {
-                        self.parse_ctx.kextype = Some(kextype);
-                        resp
-                    })
             }
             p => {
                 warn!("Unhandled packet {p:?}");

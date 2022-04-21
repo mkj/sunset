@@ -2,7 +2,7 @@ use crate::encrypt::{Cipher, Integ};
 use crate::ident::RemoteVersion;
 use crate::namelist::LocalNames;
 use crate::wireformat::BinString;
-use crate::packets::{Packet, KexDHInit, Curve25519Init};
+use crate::packets::Packet;
 use crate::*;
 use ring::digest::{self, Context as DigestCtx, Digest};
 use ring::agreement;
@@ -175,12 +175,11 @@ impl Kex {
         random::fill_random(our_cookie.as_mut_slice());
         Kex { our_cookie, algos: None, kex_hash: None }
     }
-    /// Returns `(kextype, Option<Packet>)` where the packet is a kexdhinit message to send,
-    /// `kextype` is the negotiated kex type.
+    /// Returns `Option<Packet>` with an optional kexdhinit message to send
     pub fn handle_kexinit<'a>(
         &'a mut self, is_client: bool, algo_conf: &AlgoConfig,
         remote_version: &RemoteVersion, remote_kexinit: &packets::KexInit,
-    ) -> Result<(KexType, Option<Packet<'a>>), Error> {
+    ) -> Result<Option<Packet<'a>>, Error> {
         let algos = Self::algo_negotiation(is_client, remote_kexinit, algo_conf)?;
         self.kex_hash = Some(KexHash::new(self,
             &algos,
@@ -188,16 +187,15 @@ impl Kex {
             remote_version,
             remote_kexinit,
         )?);
-        let kextype = algos.kex.get_type();
         self.algos = Some(algos);
 
 
         if is_client {
             if let Some(algos) = &mut self.algos {
-                return Ok((kextype, Some(algos.kex.make_kexdhinit()?)))
+                return Ok(Some(algos.kex.make_kexdhinit()?))
             }
         }
-        Ok((kextype, None))
+        Ok(None)
     }
 
     pub fn make_kexinit<'a>(&self, conf: &'a AlgoConfig) -> packets::Packet<'a> {
@@ -372,9 +370,8 @@ impl KexCurve25519 {
     }
     // TODO: can we remove all the lifetimes?
     fn make_kexdhinit<'a>(&'a self) -> Result<Packet<'a>, Error> {
-        Ok(Packet::KexDHInit(KexDHInit::Curve25519Init(
-            Curve25519Init { q_c: BinString(self.pubkey.as_ref()) }
-            )))
+        Ok(Packet::KexDHInit(
+            packets::KexDHInit { q_c: BinString(self.pubkey.as_ref()) } ))
     }
 
     fn make_kexdhreply<'a>(&'a self) -> Result<Packet<'a>, Error> {
@@ -383,8 +380,8 @@ impl KexCurve25519 {
     }
 
     fn handle_kexdhreply<'a>(self, kh: &mut KexHash, sessid: &Option<Digest>,
-            rep: &packets::Curve25519Reply) -> Result<Packet<'a>, Error> {
-        let theirs = agreement::UnparsedPublicKey::new(&agreement::X25519, &rep.q_s);
+            theirs: &[u8]) -> Result<Packet<'a>, Error> {
+        let theirs = agreement::UnparsedPublicKey::new(&agreement::X25519, &theirs);
         let k = agreement::agree_ephemeral(self.ours, &theirs, Error::Bug,
             |k| {
                 todo!();

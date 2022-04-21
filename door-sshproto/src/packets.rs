@@ -3,11 +3,6 @@
 //!
 //! These are mostly container formats though there is some logic to determine
 //! which enum variant needs deserializing for certain packet types.
-//!
-//! Some packet formats are self describing, eg [`UserauthRequest`] has a `method`
-//! string that switches between [`MethodPubkey`] and [`MethodPassword`]. Other packets
-//! such as [`KexDHReply`] don't have that structure, instead they depend on previous
-//! state of the SSH session. That state is passed with [`ParseContext`].
 #[allow(unused_imports)]
 use {
     crate::error::{Error,TrapBug},
@@ -30,26 +25,6 @@ use crate::kex::KexType;
 use crate::namelist::NameList;
 use crate::wireformat::BinString;
 
-
-/// State to be passed to deserialisation. Use this so the parser can select the correct
-/// enum variant to deserialize.
-pub struct ParseContext {
-    pub kextype: Option<KexType>,
-}
-
-impl ParseContext {
-    pub fn new() -> Self {
-        ParseContext { kextype: None }
-    }
-}
-
-/// State passed as the Deserializer seed.
-pub(crate) struct PacketState<'a> {
-    pub ctx: &'a ParseContext,
-    // Private fields that keep state during parsing.
-    // TODO Perhaps not actually necessary, could be removed and just pass ParseContext?
-    // pub(crate) ty: Cell<Option<MessageNumber>>,
-}
 
 #[derive(Debug)]
 #[repr(u8)]
@@ -77,20 +52,14 @@ impl TryFrom<u8> for MessageNumber {
     }
 }
 
-/// Some packets require context to parse, so we pass PacketState
-pub(crate) struct DeserPacket<'a>(pub(crate) &'a PacketState<'a>);
-
-impl<'de: 'a, 'a> DeserializeSeed<'de> for DeserPacket<'a> {
-    type Value = Packet<'de>;
-    fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+impl<'de: 'a, 'a> Deserialize<'de> for Packet<'a> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
-        struct PacketVisitor<'b> {
-            seed: &'b PacketState<'b>,
-        }
+        struct PacketVisitor;
 
-        impl<'de: 'b, 'b> Visitor<'de> for PacketVisitor<'b> {
+        impl<'de> Visitor<'de> for PacketVisitor {
             type Value = Packet<'de>;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
@@ -115,11 +84,11 @@ impl<'de: 'a, 'a> DeserializeSeed<'de> for DeserPacket<'a> {
                             .ok_or_else(|| de::Error::invalid_length(1, &self))?,
                     ),
                     MessageNumber::SSH_MSG_KEXDH_INIT => Packet::KexDHInit(
-                        seq.next_element_seed(DeserKexDHInit(self.seed))?
+                        seq.next_element()?
                             .ok_or_else(|| de::Error::invalid_length(1, &self))?,
                     ),
                     MessageNumber::SSH_MSG_KEXDH_REPLY => Packet::KexDHReply(
-                        seq.next_element_seed(DeserKexDHReply(self.seed))?
+                        seq.next_element()?
                             .ok_or_else(|| de::Error::invalid_length(1, &self))?,
                     ),
                     MessageNumber::SSH_MSG_USERAUTH_REQUEST => todo!("userauth"),
@@ -128,7 +97,7 @@ impl<'de: 'a, 'a> DeserializeSeed<'de> for DeserPacket<'a> {
                 Ok(p)
             }
         }
-        deserializer.deserialize_seq(PacketVisitor { seed: self.0 })
+        deserializer.deserialize_seq(PacketVisitor { })
     }
 }
 
@@ -166,6 +135,10 @@ impl<'a> Serialize for Packet<'a> {
     }
 }
 
+// Note:
+// Each struct needs one #[borrow] tag to avoid the cryptic error in derive:
+// error[E0495]: cannot infer an appropriate lifetime for lifetime parameter `'de` due to conflicting requirements
+
 /// Top level SSH packet enum
 #[derive(Debug)]
 pub enum Packet<'a> {
@@ -193,84 +166,17 @@ pub struct KexInit<'a> {
     pub reserved: u32,
 }
 
-#[derive(Serialize, Debug)]
-pub enum KexDHInit<'a> {
-    Curve25519Init(Curve25519Init<'a>),
-    DiffieHellmanInit(DiffieHellmanInit),
-}
-
-/// Deserialize implementation  for KexDHInit
-struct DeserKexDHInit<'a>(&'a PacketState<'a>);
-
-impl<'de: 'a, 'a> DeserializeSeed<'de> for DeserKexDHInit<'a> {
-    type Value = KexDHInit<'de>;
-    fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        // Use the algo variant that was negotiated in KEX
-        match self.0.ctx.kextype {
-            Some(KexType::Curve25519) => Ok(KexDHInit::Curve25519Init(
-                Curve25519Init::deserialize(deserializer)?,
-            )),
-            // Some(KexType::DiffieHellman) => Ok(KexDHInit::DiffieHellmanInit(
-            //     DiffieHellmanInit::deserialize(deserializer)?,
-            // )),
-            None => Err(de::Error::custom("kextype not set")),
-        }
-    }
-}
-
-#[derive(Serialize, Debug)]
-pub enum KexDHReply<'a> {
-    Curve25519Reply(Curve25519Reply<'a>),
-    DiffieHellmanReply( DiffieHellmanReply<'a>),
-}
-
-/// Deserialize implementation for KexDHReply
-struct DeserKexDHReply<'a>(&'a PacketState<'a>);
-
-impl<'de: 'a, 'a> DeserializeSeed<'de> for DeserKexDHReply<'a> {
-    type Value = KexDHReply<'de>;
-    fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        // Use the algo variant that was negotiated in KEX
-        match self.0.ctx.kextype {
-            Some(KexType::Curve25519) => Ok(KexDHReply::Curve25519Reply(
-                Curve25519Reply::deserialize(deserializer)?,
-            )),
-            // KexType::DiffieHellman => Ok(KexDHReply::DiffieHellmanReply(
-            //     DiffieHellmanReply::deserialize(deserializer)?,
-            // )),
-            None => Err(de::Error::custom("kextype not set")),
-        }
-    }
-}
-
 #[derive(Serialize, Deserialize, Debug)]
-pub struct Curve25519Init<'a> {
+pub struct KexDHInit<'a> {
     #[serde(borrow)]
     pub q_c: BinString<'a>,
 }
+
 #[derive(Serialize, Deserialize, Debug)]
-pub struct Curve25519Reply<'a> {
+pub struct KexDHReply<'a> {
     #[serde(borrow)]
     pub k_s: BinString<'a>,
     pub q_s: BinString<'a>,
-    pub sig: BinString<'a>,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct DiffieHellmanInit {
-    pub e: u32,
-}
-#[derive(Serialize, Deserialize, Debug)]
-pub struct DiffieHellmanReply<'a> {
-    #[serde(borrow)]
-    pub k_s: BinString<'a>,
-    pub f: BinString<'a>, // mpint
     pub sig: BinString<'a>,
 }
 
