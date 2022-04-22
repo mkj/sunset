@@ -14,7 +14,15 @@ use door_sshproto::*;
 use simplelog::*;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+async fn main() {
+
+    let r = run().await;
+    if let Err(e) = r {
+        error!("Finished with error: {:?}", e);
+    }
+}
+
+async fn run() -> Result<(), Box<dyn Error>> {
 
     CombinedLogger::init(
     vec![
@@ -29,7 +37,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let mut stream = TcpStream::connect("dropbear.nl:22").await?;
 
     let mut work = vec![0; 1000];
-    let c = conn::Conn::new();
+    let c = conn::Conn::new()?;
     let mut r = conn::Runner::new(c, work.as_mut_slice())?;
 
     let mut inbuf = vec![0; 1000];

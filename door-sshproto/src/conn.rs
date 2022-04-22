@@ -1,6 +1,6 @@
 #[allow(unused_imports)]
 use {
-    crate::error::Error,
+    crate::error::{Error,TrapBug},
     log::{debug, error, info, log, trace, warn},
 };
 
@@ -92,7 +92,8 @@ enum ConnState {
     PreKex,
     /// At any time between receiving KexInit and NewKeys. Can occur multiple times
     /// at later key exchanges
-    InKex,
+    InKex { output: Option<kex::KexOutput> },
+
     /// After first NewKeys, prior to auth success
     PreAuth,
     /// After auth success
@@ -102,17 +103,17 @@ enum ConnState {
 
 impl<'a> Conn<'a> {
     /// [`iobuf`] must be sized to fit the largest SSH packet allowed
-    pub fn new() -> Self {
+    pub fn new() -> Result<Self, Error> {
         let is_client = true; // TODO= true;
-        Conn {
-            kex: kex::Kex::new(),
+        Ok(Conn {
+            kex: kex::Kex::new()?,
             keys: KeyState::new_cleartext(),
             sess_id: None,
             remote_version: ident::RemoteVersion::new(),
             state: ConnState::SendIdent,
             algo_conf: kex::AlgoConfig::new(is_client),
             is_client,
-        }
+        })
     }
 
     fn progress(&mut self, traffic: &mut Traffic) -> Result<(), Error> {
@@ -156,17 +157,47 @@ impl<'a> Conn<'a> {
         // to run first?
         match packet {
             Packet::KexInit(p) => {
-                if matches!(self.state, ConnState::InKex) {
+                if matches!(self.state, ConnState::InKex { .. }) {
                     return Err(Error::PacketWrong);
                 }
-                self.state = ConnState::InKex;
+                self.state = ConnState::InKex { output: None };
                 self.kex
                     .handle_kexinit(
                         self.is_client,
                         &self.algo_conf,
                         &self.remote_version,
-                        p,
+                        packet,
                     )
+            }
+            Packet::KexDHInit(p) => {
+                match self.state {
+                    ConnState::InKex { ref mut output } => {
+                        if self.is_client {
+                            // TODO: client/server validity checks should move somewhere more general
+                            return Err(Error::SSHProtoError);
+                        }
+                        let kex = core::mem::replace(&mut self.kex, kex::Kex::new()?);
+                        *output = Some(kex.handle_kexdhinit(p, &self.sess_id)?);
+                        let reply = output.as_ref().trap()?.make_kexdhreply()?;
+                        Ok(Some(reply))
+                    }
+                    _ => Err(Error::PacketWrong)
+                }
+            }
+            Packet::KexDHReply(p) => {
+                match self.state {
+                    ConnState::InKex { ref mut output } => {
+                        if !self.is_client {
+                            // TODO: client/server validity checks should move somewhere more general
+                            return Err(Error::SSHProtoError);
+                        }
+                        let kex = core::mem::replace(&mut self.kex, kex::Kex::new()?);
+                        *output = Some(kex.handle_kexdhreply(p, &self.sess_id)?);
+                        trace!("after reply");
+                        Ok(None)
+                    }
+                    _ => Err(Error::PacketWrong)
+                }
             }
             p => {
                 warn!("Unhandled packet {p:?}");

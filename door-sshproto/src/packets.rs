@@ -31,6 +31,7 @@ use crate::wireformat::BinString;
 #[allow(non_camel_case_types)]
 pub enum MessageNumber {
     SSH_MSG_KEXINIT = 20,
+    SSH_MSG_NEWKEYS = 21,
     SSH_MSG_KEXDH_INIT = 30,
     SSH_MSG_KEXDH_REPLY = 31,
     SSH_MSG_USERAUTH_REQUEST = 50,
@@ -41,6 +42,7 @@ impl TryFrom<u8> for MessageNumber {
     fn try_from(v: u8) -> Result<Self, Error> {
         match v {
             20 => Ok(MessageNumber::SSH_MSG_KEXINIT),
+            21 => Ok(MessageNumber::SSH_MSG_NEWKEYS),
             30 => Ok(MessageNumber::SSH_MSG_KEXDH_INIT),
             31 => Ok(MessageNumber::SSH_MSG_KEXDH_REPLY),
             50 => Ok(MessageNumber::SSH_MSG_USERAUTH_REQUEST),
@@ -83,6 +85,10 @@ impl<'de: 'a, 'a> Deserialize<'de> for Packet<'a> {
                         seq.next_element()?
                             .ok_or_else(|| de::Error::invalid_length(1, &self))?,
                     ),
+                    MessageNumber::SSH_MSG_NEWKEYS => Packet::NewKeys(
+                        seq.next_element()?
+                            .ok_or_else(|| de::Error::invalid_length(1, &self))?,
+                    ),
                     MessageNumber::SSH_MSG_KEXDH_INIT => Packet::KexDHInit(
                         seq.next_element()?
                             .ok_or_else(|| de::Error::invalid_length(1, &self))?,
@@ -111,6 +117,11 @@ impl<'a> Serialize for Packet<'a> {
         match self {
             Packet::KexInit(p) => {
                 let t = MessageNumber::SSH_MSG_KEXINIT as u8;
+                seq.serialize_element(&t)?;
+                seq.serialize_element(p)?;
+            }
+            Packet::NewKeys(p) => {
+                let t = MessageNumber::SSH_MSG_NEWKEYS as u8;
                 seq.serialize_element(&t)?;
                 seq.serialize_element(p)?;
             }
@@ -143,6 +154,7 @@ impl<'a> Serialize for Packet<'a> {
 #[derive(Debug)]
 pub enum Packet<'a> {
     KexInit(KexInit<'a>),
+    NewKeys(NewKeys),
     KexDHInit(KexDHInit<'a>),
     KexDHReply(KexDHReply<'a>),
     UserauthRequest(UserauthRequest<'a>),
@@ -164,6 +176,10 @@ pub struct KexInit<'a> {
     pub lang_s2c: NameList<'a>,
     pub first_follows: bool,
     pub reserved: u32,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct NewKeys {
 }
 
 #[derive(Serialize, Deserialize, Debug)]

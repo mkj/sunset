@@ -1,4 +1,4 @@
-use crate::error::Error;
+use crate::error::{Error,TrapBug};
 
 pub(crate) const OUR_VERSION: &[u8] = "SSH-2.0-door".as_bytes();
 
@@ -7,6 +7,7 @@ const SSH_PREFIX: &[u8] = "SSH-2.0-".as_bytes();
 // RFC4253 4.2 says max length 255 incl CR LF.
 // TODO find what's in the wild
 const MAX_REMOTE_VERSION_LEN: usize = 253;
+const MAX_LINES: usize = 50;
 
 pub const CR: u8 = 0x0d;
 pub const LF: u8 = 0x0a;
@@ -16,6 +17,7 @@ pub struct RemoteVersion {
     storage: [u8; MAX_REMOTE_VERSION_LEN],
     /// Parse state
     st: VersPars,
+    num_lines: usize,
 }
 
 /// Version parsing state.
@@ -46,6 +48,7 @@ impl<'a> RemoteVersion {
         RemoteVersion {
             storage: [0; MAX_REMOTE_VERSION_LEN],
             st: VersPars::Start(0),
+            num_lines: 0,
         }
     }
 
@@ -94,6 +97,10 @@ impl<'a> RemoteVersion {
                 VersPars::Discarding => {
                     if b == LF {
                         self.st = VersPars::Start(0);
+                        self.num_lines += 1;
+                        if self.num_lines > MAX_LINES {
+                            return Err(Error::NotSSH);
+                        }
                     }
                 }
 
@@ -136,7 +143,7 @@ impl<'a> RemoteVersion {
 #[rustfmt::skip]
 mod tests {
     use crate::ident;
-    use crate::error::Error;
+    use crate::error::{Error,TrapBug};
 
     fn test_version(v: &str, split: usize, expect: &str) -> Result<usize, Error> {
         let mut r = ident::RemoteVersion::new();
@@ -155,7 +162,7 @@ mod tests {
             assert_eq!(taken1, a.len());
         }
 
-        let v = core::str::from_utf8(r.version().ok_or(Error::Bug)?)?;
+        let v = core::str::from_utf8(r.version().ok_or(Error::NotSSH)?)?;
         assert_eq!(v, expect);
         Ok(taken1 + taken2)
     }

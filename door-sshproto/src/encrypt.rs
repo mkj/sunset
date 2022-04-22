@@ -81,14 +81,8 @@ impl KeyState {
         self.seq_encrypt += 1;
         e
     }
-    pub fn size_integ_enc(&self) -> usize {
-        self.keys.integ_enc.size_out()
-    }
     pub fn size_integ_dec(&self) -> usize {
         self.keys.integ_dec.size_out()
-    }
-    pub fn size_block_enc(&self) -> usize {
-        self.keys.enc.size_block()
     }
     pub fn size_block_dec(&self) -> usize {
         self.keys.dec.size_block()
@@ -120,18 +114,21 @@ impl Keys {
     }
 
     /// RFC4253 7.2. K1 = HASH(K || H || "A" || session_id) etc
-    fn compute_key(letter: char, out: &mut[u8], hash: &'static digest::Algorithm, k: &Digest,
-            h: &Digest, sess_id: &Digest) {
+    fn compute_key<'a>(letter: char, len: usize, out: &'a mut[u8], hash: &'static digest::Algorithm, k: &[u8],
+            h: &Digest, sess_id: &Digest) -> Result<&'a [u8], Error> {
+        if len > out.len() {
+            return Err(Error::bug())
+        }
         // two rounds is sufficient with sha256 and current max key
         debug_assert!(2*hash.output_len >= out.len());
 
         let mut hash_ctx = DigestCtx::new(hash);
-        hash_ctx.update(k.as_ref());
+        hash_ctx.update(k);
         hash_ctx.update(h.as_ref());
         hash_ctx.update(&[letter as u8]);
         hash_ctx.update(sess_id.as_ref());
 
-        let mut rest = out;
+        let mut rest = &mut out[..];
         let mut w;
         // fill first part
         let k1 = hash_ctx.finish();
@@ -153,9 +150,10 @@ impl Keys {
             w.copy_from_slice(&k2[..l]);
         }
         debug_assert_eq!(rest.len(), 0);
+        Ok(&out[..len])
     }
 
-    pub fn new_from(k: &Digest, h: &Digest, sess_id: &Digest,
+    pub fn new_from(k: &[u8], h: &Digest, sess_id: &Digest,
         algos: &kex::Algos) -> Result<Self, Error> {
         let mut key = [0u8; MAX_KEY_LEN];
         let mut iv = [0u8; MAX_IV_LEN];
@@ -167,29 +165,38 @@ impl Keys {
             ('B', 'A', 'D', 'C', 'F', 'E')
         };
 
-        Self::compute_key(iv_e, &mut iv, hash, k, h, sess_id);
-        Self::compute_key(k_e, &mut key, hash, k, h, sess_id);
-        let enc = EncKey::from_cipher(&algos.cipher_enc, &key, &iv)?;
+        let enc = {
+            let i = Self::compute_key(iv_e, algos.cipher_enc.iv_len(), &mut iv, hash, k, h, sess_id)?;
+            let k = Self::compute_key(k_e, algos.cipher_enc.key_len(), &mut key, hash, k, h, sess_id)?;
+            EncKey::from_cipher(&algos.cipher_enc, k, i)?
+        };
 
-        Self::compute_key(iv_d, &mut iv, hash, k, h, sess_id);
-        Self::compute_key(k_d, &mut key, hash, k, h, sess_id);
-        let dec = DecKey::from_cipher(&algos.cipher_dec, &key, &iv)?;
+        let dec = {
+            let i = Self::compute_key(iv_d, algos.cipher_dec.iv_len(), &mut iv, hash, k, h, sess_id)?;
+            let k = Self::compute_key(k_d, algos.cipher_dec.key_len(), &mut key, hash, k, h, sess_id)?;
+            DecKey::from_cipher(&algos.cipher_dec, k, i)?
+        };
 
-        Self::compute_key(i_e, &mut key, hash, k, h, sess_id);
-        let integ_enc = IntegKey::from_integ(&algos.integ_enc, &key)?;
+        let integ_enc = {
+            let k = Self::compute_key(i_e, algos.integ_enc.key_len(), &mut key, hash, k, h, sess_id)?;
+            IntegKey::from_integ(&algos.integ_enc, k)?
+        };
 
-        Self::compute_key(i_d, &mut key, hash, k, h, sess_id);
-        let integ_dec = IntegKey::from_integ(&algos.integ_dec, &key)?;
+        let integ_dec = {
+            let k = Self::compute_key(i_d, algos.integ_enc.key_len(), &mut key, hash, k, h, sess_id)?;
+            IntegKey::from_integ(&algos.integ_dec, k)?
+        };
 
         key.zeroize();
         iv.zeroize();
 
-        Ok(Keys {
+        let o = Ok(Keys {
             enc,
             dec,
             integ_enc,
             integ_dec,
-        })
+        });
+        o
     }
 
     /// Decrypts the first block in the buffer, returning the length.
@@ -199,7 +206,7 @@ impl Keys {
         &mut self, buf: &mut [u8], seq: u32,
     ) -> Result<u32, Error> {
         if buf.len() < self.dec.size_block() {
-            return Err(Error::Bug);
+            return Err(Error::bug());
         }
         let buf4: [u8; 4] = buf[0..4].try_into().unwrap();
 
@@ -247,11 +254,9 @@ impl Keys {
         match &mut self.dec {
             DecKey::ChaPoly(openkey) => {
                 let mac: &mut [u8; chapoly::TAG_LEN] =
-                    mac.try_into().map_err(|_| Error::Bug)?;
+                    mac.try_into().trap()?;
 
-                openkey
-                    .open_in_place(seq, data, mac)
-                    .map_err(|_| Error::BadDecrypt)?;
+                openkey .open_in_place(seq, data, mac).trap()?;
             }
             DecKey::Aes256Ctr(a) => {
                 a.apply_keystream(data);
@@ -321,7 +326,7 @@ impl Keys {
 
         if len + size_integ > buf.len() {
             error!("Output buffer {} is too small for packet", buf.len());
-            return Err(Error::Bug);
+            return Err(Error::bug());
         }
 
         buf[SSH_LENGTH_SIZE] = padlen as u8;
@@ -331,7 +336,7 @@ impl Keys {
         // write random padding
         let pad_start = SSH_LENGTH_SIZE+1+payload_len;
         debug_assert_eq!(pad_start+padlen, len);
-        random::fill_random(&mut buf[pad_start..pad_start+padlen]);
+        random::fill_random(&mut buf[pad_start..pad_start+padlen])?;
 
         let (enc, rest) = buf.split_at_mut(len);
         let (mac, _) = rest.split_at_mut(size_integ);
@@ -350,8 +355,7 @@ impl Keys {
 
         match &mut self.enc {
             EncKey::ChaPoly(sealkey) => {
-                let mac: &mut [u8; chapoly::TAG_LEN] =
-                    mac.try_into().map_err(|_| Error::Bug)?;
+                let mac: &mut [u8; chapoly::TAG_LEN] = mac.try_into().trap()?;
 
                 sealkey.seal_in_place(seq, enc, mac);
             }
@@ -383,7 +387,7 @@ impl Cipher {
         match name {
             SSH_NAME_CHAPOLY => Ok(Cipher::ChaPoly),
             SSH_NAME_AES256_CTR => Ok(Cipher::Aes256Ctr),
-            _ => Err(Error::Bug),
+            _ => Err(Error::bug()),
         }
     }
 
@@ -421,16 +425,14 @@ pub(crate) enum EncKey {
 
 impl EncKey {
     /// Construct a key
-    pub fn from_cipher(cipher: &Cipher, key: &[u8], iv: &[u8]) -> Result<Self, Error> {
+    pub fn from_cipher<'a>(cipher: &Cipher, key: &'a [u8], iv: &'a [u8]) -> Result<Self, Error> {
         match cipher {
             Cipher::ChaPoly => {
-                let key: &[u8; 64] = key.try_into().map_err(|_| Error::Bug)?;
+                let key: &[u8; 64] = key.try_into().trap()?;
                 Ok(EncKey::ChaPoly(chapoly::SealingKey::new(key)))
             }
             Cipher::Aes256Ctr => {
-                let key: &[u8; 32] = key.try_into().map_err(|_| Error::Bug)?;
-                let iv: &[u8; 16] = iv.try_into().map_err(|_| Error::Bug)?;
-                Ok(EncKey::Aes256Ctr(Aes256Ctr32BE::new(key.into(), iv.into())))
+                Ok(EncKey::Aes256Ctr(Aes256Ctr32BE::new_from_slices(key, iv).trap()?))
             }
         }
     }
@@ -460,16 +462,14 @@ pub(crate) enum DecKey {
 
 impl DecKey {
     /// Construct a key
-    pub fn from_cipher(cipher: &Cipher, key: &[u8], iv: &[u8]) -> Result<Self, Error> {
+    pub fn from_cipher<'a>(cipher: &Cipher, key: &'a[u8], iv: &'a[u8]) -> Result<Self, Error> {
         match cipher {
             Cipher::ChaPoly => {
-                let key: &[u8; 64] = key.try_into().map_err(|_| Error::Bug)?;
+                let key: &[u8; 64] = key.try_into().trap()?;
                 Ok(DecKey::ChaPoly(chapoly::OpeningKey::new(key)))
             }
             Cipher::Aes256Ctr => {
-                let key: &[u8; 32] = key.try_into().map_err(|_| Error::Bug)?;
-                let iv: &[u8; 16] = iv.try_into().map_err(|_| Error::Bug)?;
-                Ok(DecKey::Aes256Ctr(Aes256Ctr32BE::new(key.into(), iv.into())))
+                Ok(DecKey::Aes256Ctr(Aes256Ctr32BE::new_from_slices(key, iv).trap()?))
             }
         }
     }
@@ -503,14 +503,14 @@ impl Integ {
         use crate::kex::*;
         match name {
             SSH_NAME_HMAC_SHA256 => Ok(Integ::HmacSha256),
-            _ => Err(Error::Bug),
+            _ => Err(Error::bug()),
         }
     }
     /// length in bytes
     fn key_len(&self) -> usize {
         match self {
-            ChaPoly => 0,
-            HmacSha256 => 32,
+            Integ::ChaPoly => 0,
+            Integ::HmacSha256 => 32,
         }
     }
 }
@@ -524,11 +524,11 @@ pub(crate) enum IntegKey {
 }
 
 impl IntegKey {
-    pub fn from_integ(integ: &Integ, key: &[u8]) -> Result<Self, Error> {
+    pub fn from_integ<'a>(integ: &Integ, key: &'a[u8]) -> Result<Self, Error> {
         match integ {
             Integ::ChaPoly => Ok(IntegKey::ChaPoly),
             Integ::HmacSha256 => {
-                let h = HmacSha256::new_from_slice(key).trap()?;
+                trace!("key {}", key.len());
                 Ok(IntegKey::HmacSha256(key.try_into().trap()?))
             }
         }

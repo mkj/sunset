@@ -103,7 +103,9 @@ impl<'a> NameList<'a> {
             } else {
                 s.first_string_match(our_options)
             }),
-            NameList::Local(_) => Err(Error::Bug),
+            // we only expect to call first_match() on a packet deserialized
+            // as a NameList::String
+            NameList::Local(_) => Err(Error::bug()),
         }
     }
 }

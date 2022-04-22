@@ -3,6 +3,7 @@
 use anyhow::{Context, Error, Result};
 use pretty_hex::PrettyHex;
 
+use door_sshproto::*;
 use door_sshproto::packets::*;
 use door_sshproto::wireformat::BinString;
 
@@ -39,11 +40,17 @@ fn main() -> Result<(), Error> {
     // let k2: KexInit = toml::from_str(&t).context("deser")?;
     // println!("kex2 {k:?}");
 
+
     let mut buf = vec![0; 2000];
     let written = door_sshproto::wireformat::write_ssh(&mut buf, &p)?;
     buf.truncate(written);
     println!("{:?}", buf.hex_dump());
     let x: Packet = door_sshproto::wireformat::packet_from_bytes(&buf)?;
     println!("fetched {x:?}");
+
+    let c = conn::Conn::new()?;
+    let mut work = vec![0; 2000];
+    let mut r = conn::Runner::new(c, work.as_mut_slice())?;
+    r.input(&buf)?;
     Ok(())
 }

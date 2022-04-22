@@ -24,6 +24,9 @@ pub enum Error {
     /// Error in received SSH protocol
     SSHProtoError,
 
+    /// Remote peer isn't SSH
+    NotSSH,
+
     /// Unknown packet type
     UnknownPacket,
 
@@ -40,10 +43,13 @@ pub enum Error {
     RngError,
 
     /// Other custom error
+    // TODO: these 
     Custom { msg: &'static str },
 
     /// Program bug.
     /// This state should not be reached, previous logic should have prevented it.
+    /// Don't create `Bug` directly, instead use [`Error::bug()`] or
+    /// [`.trap()`](TrapBug::trap) to make finding the source easier.
     Bug,
 }
 
@@ -54,20 +60,22 @@ impl Error {
 
     #[inline]
     /// Panics in debug builds, returns [`Error::Bug`] in release.
+    // TODO: this should return a Result since it's always used as Err(Error::bug())
     pub fn bug() -> Error {
         // Easier to track the source of errors in development,
         // but release builds shouldn't panic.
-        #[cfg(debug_assertions)]
-        panic!("Hit a bug");
-
-        Error::Bug
+        if cfg!(debug_assertions) {
+            panic!("Hit a bug");
+        } else {
+            Error::Bug
+        }
     }
 }
 
 pub trait TrapBug<T> {
     /// `.trap()` should be used like `.unwrap()`, in situations
-    /// never expected to fail. In debug builds it may panic, otherwise
-    /// returning `Error::Bug`.
+    /// never expected to fail. Instead it returns [`Error::Bug`].
+    /// (or debug builds may panic)
     fn trap(self) -> Result<T, Error>;
 }
 
@@ -78,8 +86,15 @@ impl<T, E> TrapBug<T> for Result<T, E>
     }
 }
 
+impl<T> TrapBug<T> for Option<T>
+{
+    fn trap(self) -> Result<T, Error> {
+        self.ok_or_else(|| Error::bug())
+    }
+}
+
 impl From<Utf8Error> for Error {
-    fn from(e: Utf8Error) -> Error {
+    fn from(_e: Utf8Error) -> Error {
         Error::BadString
     }
 }
