@@ -21,7 +21,6 @@ use serde::Deserializer;
 use serde::{Deserialize, Serialize};
 
 use crate::*;
-use crate::kex::KexType;
 use crate::namelist::NameList;
 use crate::wireformat::BinString;
 
@@ -127,10 +126,6 @@ impl<'a> Serialize for Packet<'a> {
     }
 }
 
-// Note:
-// Each struct needs one #[borrow] tag to avoid the cryptic error in derive:
-// error[E0495]: cannot infer an appropriate lifetime for lifetime parameter `'de` due to conflicting requirements
-
 /// Top level SSH packet enum
 #[derive(Debug)]
 pub enum Packet<'a> {
@@ -147,10 +142,10 @@ impl<'a> Packet<'a> {
             // Packet::KexInit() => {
             // ..
             $(
-            Packet::$SpecificPacketName(p) => {
+            Packet::$SpecificPacketName(_) => {
                 MessageNumber::$SSH_MESSAGE_NAME
             }
-                )*
+            )*
         }
     }
 }
@@ -163,12 +158,19 @@ messagetypes![
 (2, Ignore, Ignore, SSH_MSG_IGNORE),
 (3, Unimplemented, Unimplemented, SSH_MSG_UNIMPLEMENTED),
 (4, Debug, Debug<'a>, SSH_MSG_DEBUG),
+(5, ServiceRequest, ServiceRequest<'a>, SSH_MSG_SERVICE_REQUEST),
+(6, ServiceAccept, ServiceAccept<'a>, SSH_MSG_SERVICE_ACCEPT),
 (20, KexInit, KexInit<'a>, SSH_MSG_KEXINIT),
 (21, NewKeys, NewKeys, SSH_MSG_NEWKEYS),
 (30, KexDHInit, KexDHInit<'a>, SSH_MSG_KEXDH_INIT),
 (31, KexDHReply, KexDHReply<'a>, SSH_MSG_KEXDH_REPLY),
 (50, UserauthRequest, UserauthRequest<'a>, SSH_MSG_USERAUTH_REQUEST),
 ];
+
+
+// Note:
+// Each struct needs one #[borrow] tag to avoid the cryptic error in derive:
+// error[E0495]: cannot infer an appropriate lifetime for lifetime parameter `'de` due to conflicting requirements
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct KexInit<'a> {
@@ -227,6 +229,18 @@ pub struct KexDHReply<'a> {
     pub k_s: BinString<'a>,
     pub q_s: BinString<'a>,
     pub sig: BinString<'a>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ServiceRequest<'a> {
+    #[serde(borrow)]
+    name : &'a str,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ServiceAccept<'a> {
+    #[serde(borrow)]
+    name : &'a str,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

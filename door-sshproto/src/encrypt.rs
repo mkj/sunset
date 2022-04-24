@@ -8,7 +8,6 @@ use core::num::Wrapping;
 use ring::aead::chacha20_poly1305_openssh as chapoly;
 use ring::digest::{self, Context as DigestCtx, Digest};
 use aes::cipher::{KeyIvInit, KeySizeUser, BlockSizeUser, StreamCipher};
-use zeroize::{Zeroize,Zeroizing};
 
 // We are using hmac/sha2 crates rather than ring for hmac
 // because ring doesn't have multi-part verification
@@ -58,7 +57,7 @@ impl KeyState {
         }
     }
 
-    /// Updates new keys, keeping the same sequence numbers
+    /// Updates with new keys, keeping the same sequence numbers
     pub fn rekey(&mut self, keys: Keys) {
         self.keys = keys
     }
@@ -162,7 +161,7 @@ impl Keys {
         algos: &kex::Algos) -> Result<Self, Error> {
         let mut key = [0u8; MAX_KEY_LEN];
         let mut iv = [0u8; MAX_IV_LEN];
-        let hash = algos.kex.get_hash();
+        let hash = algos.kex.hash();
 
         let (iv_e, iv_d, k_e, k_d, i_e, i_d) = if algos.is_client {
             ('A', 'B', 'C', 'D', 'E', 'F')
@@ -191,9 +190,6 @@ impl Keys {
             let k = Self::compute_key(i_d, algos.integ_enc.key_len(), &mut key, hash, k, h, sess_id)?;
             IntegKey::from_integ(&algos.integ_dec, k)?
         };
-
-        key.zeroize();
-        iv.zeroize();
 
         let o = Ok(Keys {
             enc,
@@ -287,7 +283,7 @@ impl Keys {
     /// - minimum packet length
     /// - minimum padding size,
     /// - encrypted length being a multiple of block length
-    fn get_encrypt_pad(&self, payload_len: usize) -> usize {
+    fn calc_encrypt_pad(&self, payload_len: usize) -> usize {
         let size_block = self.enc.size_block();
         // aead ciphers don't include the initial length field in encrypted blocks
         let len =
@@ -317,7 +313,7 @@ impl Keys {
     ) -> Result<usize, Error> {
         let size_block = self.enc.size_block();
         let size_integ = self.integ_enc.size_out();
-        let padlen = self.get_encrypt_pad(payload_len);
+        let padlen = self.calc_encrypt_pad(payload_len);
         // len is everything except the MAC
         let len = SSH_LENGTH_SIZE + 1 + payload_len + padlen;
 

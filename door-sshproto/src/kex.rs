@@ -130,7 +130,7 @@ impl KexHash {
         //    mpint     f, exchange value sent by the server (aka q_s)
         //    mpint     K, the shared secret
 
-        let mut hash_ctx = DigestCtx::new(algos.kex.get_hash());
+        let mut hash_ctx = DigestCtx::new(algos.kex.hash());
         let remote_version = remote_version.version().trap()?;
         // Recreate our own kexinit packet to hash.
         // The remote packet is missing packet type so we add it.
@@ -364,13 +364,6 @@ impl Kex {
     }
 }
 
-/// Negotiated Key Exchange (KEX) type, used to parse kexinit/kexreply packets.
-#[derive(Debug)]
-pub enum KexType {
-    Curve25519,
-    // DiffieHellman,
-}
-
 #[derive(Debug)]
 pub(crate) enum SharedSecret {
     KexCurve25519(KexCurve25519),
@@ -387,13 +380,7 @@ impl SharedSecret {
         }
     }
 
-    fn get_type(&self) -> KexType {
-        match self {
-            SharedSecret::KexCurve25519(_) => KexType::Curve25519,
-        }
-    }
-
-    pub(crate) fn get_hash(&self) -> &'static digest::Algorithm {
+    pub(crate) fn hash(&self) -> &'static digest::Algorithm {
         match self {
             SharedSecret::KexCurve25519(_) => &digest::SHA256,
         }
@@ -517,6 +504,7 @@ impl KexCurve25519 {
         algos: &mut Algos, theirs: &[u8], kex_hash: KexHash,
         sess_id: &Option<Digest>,
     ) -> Result<KexOutput, Error> {
+        #[warn(irrefutable_let_patterns)] // until we have other algos
         let kex = if let SharedSecret::KexCurve25519(k) = &mut algos.kex {
             k
         } else {
@@ -555,13 +543,13 @@ mod tests {
     fn test_name_match() {
         // check that the from_name() functions are complete
         for k in kex::fixed_options_kex.0.iter() {
-            let n = kex::SharedSecret::from_name(k).unwrap();
+            kex::SharedSecret::from_name(k).unwrap();
         }
         for k in kex::fixed_options_cipher.0.iter() {
-            let n = encrypt::Cipher::from_name(k).unwrap();
+            encrypt::Cipher::from_name(k).unwrap();
         }
         for k in kex::fixed_options_mac.0.iter() {
-            let n = encrypt::Integ::from_name(k).unwrap();
+            encrypt::Integ::from_name(k).unwrap();
         }
     }
 

@@ -4,7 +4,10 @@ use {
     log::{debug, error, info, log, trace, warn},
 };
 
+use std::char::MAX;
+
 use ring::digest::Digest;
+use heapless::Vec; 
 
 use crate::*;
 use encrypt::KeyState;
@@ -36,7 +39,7 @@ impl<'a> Runner<'a> {
 
         if let Some(payload) = payload {
             let resp = self.conn.handle_payload(payload)?;
-            if let Some(r) = resp {
+            for r in resp {
                 self.traffic.send_packet(&r)?;
             }
         }
@@ -84,6 +87,7 @@ pub struct Conn<'a> {
 
 #[derive(Debug)]
 enum ConnState {
+
     SendIdent,
     SendKexInit,
     /// Prior to SSH binary packet protocol, receiving remote version identification
@@ -95,11 +99,13 @@ enum ConnState {
     InKex { done_auth: bool, output: Option<kex::KexOutput> },
 
     /// After first NewKeys, prior to auth success
-    _PreAuth,
+    PreAuth,
     /// After auth success
     Authed,
     // Cleanup ??
 }
+
+const MAX_RESPONSES: usize = 4;
 
 impl<'a> Conn<'a> {
     /// [`iobuf`] must be sized to fit the largest SSH packet allowed
@@ -143,7 +149,7 @@ impl<'a> Conn<'a> {
     /// Consumes an input payload
     pub(crate) fn handle_payload(
         &mut self, payload: &[u8],
-    ) -> Result<Option<Packet>, Error> {
+    ) -> Result<Vec<Packet, MAX_RESPONSES>, Error> {
         trace!("conn state {:?}", self.state);
         // self.keys.next_seq_decrypt();
         trace!("bef");
@@ -152,9 +158,11 @@ impl<'a> Conn<'a> {
         self.dispatch_packet(&p)
     }
 
-    fn dispatch_packet(&mut self, packet: &Packet) -> Result<Option<Packet>, Error> {
+    fn dispatch_packet<'b>(&'b mut self, packet: &Packet)
+            -> Result<Vec<Packet<'b>, MAX_RESPONSES>, Error> {
         // TODO: perhaps could consolidate packet allowed checks into a separate function
         // to run first?
+        let mut resp = Vec::new();
         match packet {
             Packet::KexInit(_) => {
                 if matches!(self.state, ConnState::InKex { .. }) {
@@ -170,7 +178,8 @@ impl<'a> Conn<'a> {
                         &self.algo_conf,
                         &self.remote_version,
                         packet,
-                    )
+                    )?.map(|p| resp.push(p));
+                Ok(resp)
             }
             Packet::KexDHInit(p) => {
                 match self.state {
@@ -180,12 +189,13 @@ impl<'a> Conn<'a> {
                             return Err(Error::SSHProtoError);
                         }
                         if self.kex.maybe_discard_packet() {
-                            Ok(None)
+                            Ok(resp)
                         } else {
                             let kex = core::mem::replace(&mut self.kex, kex::Kex::new()?);
                             *output = Some(kex.handle_kexdhinit(p, &self.sess_id)?);
                             let reply = output.as_ref().trap()?.make_kexdhreply()?;
-                            Ok(Some(reply))
+                            resp.push(reply);
+                            Ok(resp)
                         }
                     }
                     _ => Err(Error::PacketWrong)
@@ -199,24 +209,32 @@ impl<'a> Conn<'a> {
                             return Err(Error::SSHProtoError);
                         }
                         if self.kex.maybe_discard_packet() {
-                            Ok(None)
+                            Ok(resp)
                         } else {
                             let kex = core::mem::replace(&mut self.kex, kex::Kex::new()?);
                             *output = Some(kex.handle_kexdhreply(p, &self.sess_id)?);
                             trace!("after reply");
-                            Ok(Some(Packet::NewKeys(packets::NewKeys{})))
+                            resp.push(Packet::NewKeys(packets::NewKeys{}));
+                            Ok(resp)
                         }
                     }
                     _ => Err(Error::PacketWrong)
                 }
             }
-            Packet::NewKeys(p) => {
+            Packet::NewKeys(_) => {
                 match self.state {
                     ConnState::InKex { done_auth, ref mut output } => {
                         let output = output.take().trap()?;
                         self.keys.rekey(output.keys);
                         self.sess_id.get_or_insert(output.h);
-                        Ok(None)
+                        self.state = if done_auth {
+                            ConnState::Authed
+                        } else {
+                            ConnState::PreAuth
+                            // send service request
+                            // send userauth request
+                        };
+                        Ok(resp)
                     },
                     _ => Err(Error::PacketWrong)
                 }

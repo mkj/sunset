@@ -4,7 +4,6 @@ mod tests {
     use crate::packets::*;
     use crate::wireformat::BinString;
     use crate::packets::{Packet};
-    use crate::kex::{KexType};
     use crate::{packets, wireformat};
     use pretty_hex::PrettyHex;
     use serde::de::Unexpected;

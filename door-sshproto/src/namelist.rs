@@ -55,11 +55,11 @@ impl<'a> Serialize for LocalNames<'a> {
         let names = &self.0;
         let strlen = names.iter().map(|n| n.len()).sum::<usize>()
             + names.len().saturating_sub(1);
-        seq.serialize_element(&(strlen as u32));
+        seq.serialize_element(&(strlen as u32))?;
         for i in 0..names.len() {
-            seq.serialize_element(names[i].as_bytes());
+            seq.serialize_element(names[i].as_bytes())?;
             if i < names.len() - 1 {
-                seq.serialize_element(&(',' as u8));
+                seq.serialize_element(&(',' as u8))?;
             }
         }
         seq.end()
