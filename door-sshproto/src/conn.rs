@@ -21,7 +21,7 @@ impl<'a> Runner<'a> {
     pub fn new(conn: Conn<'a>, iobuf: &'a mut [u8]) -> Result<Self, Error> {
         let mut r = Runner { conn, traffic: traffic::Traffic::new(iobuf) };
 
-        r.conn.progress(&mut r.traffic);
+        r.conn.progress(&mut r.traffic)?;
         Ok(r)
     }
 
@@ -40,14 +40,14 @@ impl<'a> Runner<'a> {
                 self.traffic.send_packet(&r)?;
             }
         }
-        self.conn.progress(&mut self.traffic);
+        self.conn.progress(&mut self.traffic)?;
         Ok(size)
     }
 
     /// Write any pending output, returning the size written
     pub fn output(&mut self, buf: &mut [u8]) -> Result<usize, Error> {
         let l = self.traffic.output(&mut self.conn.keys, buf)?;
-        self.conn.progress(&mut self.traffic);
+        self.conn.progress(&mut self.traffic)?;
         Ok(l)
     }
 
@@ -90,14 +90,14 @@ enum ConnState {
     ReceiveIdent,
     /// Binary packet protocol has started, KexInit not yet received
     PreKex,
-    /// At any time between receiving KexInit and NewKeys. Can occur multiple times
-    /// at later key exchanges
-    InKex { output: Option<kex::KexOutput> },
+    /// At any time between receiving KexInit and NewKeys.
+    /// Can occur multiple times during a session, at later key exchanges
+    InKex { done_auth: bool, output: Option<kex::KexOutput> },
 
     /// After first NewKeys, prior to auth success
-    PreAuth,
+    _PreAuth,
     /// After auth success
-    Auth,
+    Authed,
     // Cleanup ??
 }
 
@@ -156,11 +156,14 @@ impl<'a> Conn<'a> {
         // TODO: perhaps could consolidate packet allowed checks into a separate function
         // to run first?
         match packet {
-            Packet::KexInit(p) => {
+            Packet::KexInit(_) => {
                 if matches!(self.state, ConnState::InKex { .. }) {
                     return Err(Error::PacketWrong);
                 }
-                self.state = ConnState::InKex { output: None };
+                self.state = ConnState::InKex {
+                    done_auth: matches!(self.state, ConnState::Authed),
+                    output: None,
+                };
                 self.kex
                     .handle_kexinit(
                         self.is_client,
@@ -171,31 +174,50 @@ impl<'a> Conn<'a> {
             }
             Packet::KexDHInit(p) => {
                 match self.state {
-                    ConnState::InKex { ref mut output } => {
+                    ConnState::InKex { done_auth: _, ref mut output } => {
                         if self.is_client {
                             // TODO: client/server validity checks should move somewhere more general
                             return Err(Error::SSHProtoError);
                         }
-                        let kex = core::mem::replace(&mut self.kex, kex::Kex::new()?);
-                        *output = Some(kex.handle_kexdhinit(p, &self.sess_id)?);
-                        let reply = output.as_ref().trap()?.make_kexdhreply()?;
-                        Ok(Some(reply))
+                        if self.kex.maybe_discard_packet() {
+                            Ok(None)
+                        } else {
+                            let kex = core::mem::replace(&mut self.kex, kex::Kex::new()?);
+                            *output = Some(kex.handle_kexdhinit(p, &self.sess_id)?);
+                            let reply = output.as_ref().trap()?.make_kexdhreply()?;
+                            Ok(Some(reply))
+                        }
                     }
                     _ => Err(Error::PacketWrong)
                 }
             }
             Packet::KexDHReply(p) => {
                 match self.state {
-                    ConnState::InKex { ref mut output } => {
+                    ConnState::InKex { done_auth: _, ref mut output } => {
                         if !self.is_client {
                             // TODO: client/server validity checks should move somewhere more general
                             return Err(Error::SSHProtoError);
                         }
-                        let kex = core::mem::replace(&mut self.kex, kex::Kex::new()?);
-                        *output = Some(kex.handle_kexdhreply(p, &self.sess_id)?);
-                        trace!("after reply");
-                        Ok(None)
+                        if self.kex.maybe_discard_packet() {
+                            Ok(None)
+                        } else {
+                            let kex = core::mem::replace(&mut self.kex, kex::Kex::new()?);
+                            *output = Some(kex.handle_kexdhreply(p, &self.sess_id)?);
+                            trace!("after reply");
+                            Ok(Some(Packet::NewKeys(packets::NewKeys{})))
+                        }
                     }
+                    _ => Err(Error::PacketWrong)
+                }
+            }
+            Packet::NewKeys(p) => {
+                match self.state {
+                    ConnState::InKex { done_auth, ref mut output } => {
+                        let output = output.take().trap()?;
+                        self.keys.rekey(output.keys);
+                        self.sess_id.get_or_insert(output.h);
+                        Ok(None)
+                    },
                     _ => Err(Error::PacketWrong)
                 }
             }

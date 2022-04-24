@@ -108,27 +108,40 @@ impl<'a> NameList<'a> {
             NameList::Local(_) => Err(Error::bug()),
         }
     }
+
+    /// Returns whether the `algo` is contained in this list
+    pub fn has_algo(&self, algo: &str) -> Result<bool, Error> {
+        match self {
+            NameList::String(s) => Ok(s.has_algo(algo)),
+            // only expected to be called on remote lists
+            NameList::Local(_) => Err(Error::bug()),
+        }
+    }
+
+    /// Returns the first algorithm in the list, or "" if the list is empty.
+    pub fn first(&self) -> &str {
+        match self {
+            NameList::String(s) => s.first(),
+            NameList::Local(s) => s.first(),
+        }
+    }
 }
 
 impl<'a> StringNames<'a> {
     /// Returns the first name in this namelist that matches one of the provided options
     fn first_string_match(&self, options: &LocalNames) -> Option<&str> {
-        trace!("match {:?} options {:?}", self, options);
         for n in self.0.split(',') {
             for o in options.0.iter() {
-                trace!("match {} options {} {}", n, *o, (*n == **o));
                 if n == *o {
                     return Some(n);
                 }
             }
         }
-        trace!("None");
         None
     }
 
     /// Returns the first of "options" that is in this namelist
     fn first_options_match(&self, options: &LocalNames) -> Option<&str> {
-        trace!("firstopmatch {:?} options {:?}", self, options);
         for o in options.0.iter() {
             for n in self.0.split(',') {
                 if n == *o {
@@ -137,6 +150,25 @@ impl<'a> StringNames<'a> {
             }
         }
         None
+    }
+
+    fn first(&self) -> &str {
+        // unwrap is OK, split() always returns an item
+        self.0.split(',').next().unwrap()
+    }
+
+    fn has_algo(&self, algo: &str) -> bool {
+        self.0.split(',').any(|a| a == algo)
+    }
+}
+
+impl<'a> LocalNames<'a> {
+    pub fn first(&self) -> &str {
+        if self.0.len() == 0 {
+            ""
+        } else {
+            self.0[0]
+        }
     }
 }
 
@@ -184,5 +216,44 @@ mod tests {
             assert_eq!(buf[..4], ((buf.len() - 4) as u32).to_be_bytes());
             assert_eq!(out1[4..], t.join(","));
         }
+    }
+
+    #[test]
+    fn test_first() {
+        let tests: Vec<&[&str]> = vec![
+            &["foo", "quux", "boo"],
+            &[],
+            &["one"],
+        ];
+
+        for t in tests.iter() {
+            let l = NameList::Local(LocalNames(t));
+            let x = t.join(",");
+            let s = NameList::String(StringNames(&x));
+            assert_eq!(l.first(), s.first());
+            if t.len() == 0{
+                assert_eq!(l.first(), "");
+            } else {
+                assert_eq!(l.first(), t[0]);
+            }
+        }
+
+    }
+
+    #[test]
+    fn test_has_algo() {
+        fn n(list: &str, has: &str) -> bool {
+            NameList::String(StringNames(list)).has_algo(has).unwrap()
+        }
+        assert_eq!(n("", ""), true);
+        assert_eq!(n("", "one"), false);
+        assert_eq!(n("zzz", ""), false);
+        assert_eq!(n("zzz", "one"), false);
+        assert_eq!(n("zzz", "zzz"), true);
+        assert_eq!(n("zzz", "zz"), false);
+        assert_eq!(n("zz,more", "zzz"), false);
+        assert_eq!(n("zzz,boo", "zzz"), true);
+        assert_eq!(n("zzz,boo", "boo"), true);
+        assert_eq!(n("zzz,boo", "urp"), false);
     }
 }

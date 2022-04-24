@@ -58,6 +58,11 @@ impl KeyState {
         }
     }
 
+    /// Updates new keys, keeping the same sequence numbers
+    pub fn rekey(&mut self, keys: Keys) {
+        self.keys = keys
+    }
+
     /// Decrypts the first block in the buffer, returning the length.
     pub fn decrypt_first_block(&mut self, buf: &mut [u8]) -> Result<u32, Error> {
         self.keys.decrypt_first_block(buf, self.seq_decrypt.0)
@@ -284,23 +289,22 @@ impl Keys {
     /// - encrypted length being a multiple of block length
     fn get_encrypt_pad(&self, payload_len: usize) -> usize {
         let size_block = self.enc.size_block();
-        let size_integ = self.integ_enc.size_out();
         // aead ciphers don't include the initial length field in encrypted blocks
         let len =
             1 + payload_len + if self.enc.is_aead() { 0 } else { SSH_LENGTH_SIZE };
 
         // round padding length upwards so that len is a multiple of block size
-        let mut padlen = self.enc.size_block() - len % self.enc.size_block();
+        let mut padlen = size_block - len % size_block;
 
         // need at least 4 bytes padding
         if padlen < SSH_MIN_PADLEN {
-            padlen += self.enc.size_block()
+            padlen += size_block
         }
 
         // The minimum size of a packet is 16 (plus mac)
         // We know we already have at least 8 bytes because of blocksize rounding.
         if SSH_LENGTH_SIZE + 1 + payload_len + padlen < SSH_MIN_PACKET_SIZE {
-            padlen += self.enc.size_block()
+            padlen += size_block;
         }
         padlen
     }

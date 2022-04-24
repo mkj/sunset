@@ -140,6 +140,7 @@ impl<'a> Traffic<'a> {
 
     pub fn send_packet(&mut self, p: &packets::Packet) -> Result<(), Error> {
         // TODO: we could probably move the encryption from output() here.
+        trace!("send_packet {:?}", p.message_num());
         let len = wireformat::write_ssh(&mut self.buf[SSH_PAYLOAD_START..], p)?;
         self.state = TrafState::OutPayload { len };
         Ok(())

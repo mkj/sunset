@@ -25,27 +25,30 @@ use crate::kex::KexType;
 use crate::namelist::NameList;
 use crate::wireformat::BinString;
 
+macro_rules! messagetypes {
+    ( $( ( $message_num:literal, $SpecificPacketName:ident, $SpecificPacketType:ty, $SSH_MESSAGE_NAME:ident ), )* ) => {
+
 
 #[derive(Debug)]
 #[repr(u8)]
 #[allow(non_camel_case_types)]
 pub enum MessageNumber {
-    SSH_MSG_KEXINIT = 20,
-    SSH_MSG_NEWKEYS = 21,
-    SSH_MSG_KEXDH_INIT = 30,
-    SSH_MSG_KEXDH_REPLY = 31,
-    SSH_MSG_USERAUTH_REQUEST = 50,
+    // variants are eg
+    // SSH_MSG_KEXINIT = 20,
+    $(
+    $SSH_MESSAGE_NAME = $message_num,
+    )*
 }
 
 impl TryFrom<u8> for MessageNumber {
     type Error = Error;
     fn try_from(v: u8) -> Result<Self, Error> {
         match v {
-            20 => Ok(MessageNumber::SSH_MSG_KEXINIT),
-            21 => Ok(MessageNumber::SSH_MSG_NEWKEYS),
-            30 => Ok(MessageNumber::SSH_MSG_KEXDH_INIT),
-            31 => Ok(MessageNumber::SSH_MSG_KEXDH_REPLY),
-            50 => Ok(MessageNumber::SSH_MSG_USERAUTH_REQUEST),
+            // eg
+            // 20 = Ok(MessageNumber::SSH_MSG_KEXINIT)
+            $(
+            $message_num => Ok(MessageNumber::$SSH_MESSAGE_NAME),
+            )*
             _ => {
                 trace!("Unknown packet type {v}");
                 Err(Error::UnknownPacket)
@@ -81,23 +84,15 @@ impl<'de: 'a, 'a> Deserialize<'de> for Packet<'a> {
 
                 // Decode based on the message number
                 let p = match ty {
-                    MessageNumber::SSH_MSG_KEXINIT => Packet::KexInit(
+                    // eg
+                    // MessageNumber::SSH_MESSAGE_KEXINIT => Packet::KexInit(
+                    // ...
+                    $(
+                    MessageNumber::$SSH_MESSAGE_NAME => Packet::$SpecificPacketName(
                         seq.next_element()?
                             .ok_or_else(|| de::Error::invalid_length(1, &self))?,
                     ),
-                    MessageNumber::SSH_MSG_NEWKEYS => Packet::NewKeys(
-                        seq.next_element()?
-                            .ok_or_else(|| de::Error::invalid_length(1, &self))?,
-                    ),
-                    MessageNumber::SSH_MSG_KEXDH_INIT => Packet::KexDHInit(
-                        seq.next_element()?
-                            .ok_or_else(|| de::Error::invalid_length(1, &self))?,
-                    ),
-                    MessageNumber::SSH_MSG_KEXDH_REPLY => Packet::KexDHReply(
-                        seq.next_element()?
-                            .ok_or_else(|| de::Error::invalid_length(1, &self))?,
-                    ),
-                    MessageNumber::SSH_MSG_USERAUTH_REQUEST => todo!("userauth"),
+                    )*
                 };
 
                 Ok(p)
@@ -114,32 +109,18 @@ impl<'a> Serialize for Packet<'a> {
     {
         let mut seq = serializer.serialize_seq(None)?;
 
+        let t = self.message_num() as u8;
+        seq.serialize_element(&t)?;
+
         match self {
-            Packet::KexInit(p) => {
-                let t = MessageNumber::SSH_MSG_KEXINIT as u8;
-                seq.serialize_element(&t)?;
+            // eg
+            // Packet::KexInit(p) => {
+            // ...
+            $(
+            Packet::$SpecificPacketName(p) => {
                 seq.serialize_element(p)?;
             }
-            Packet::NewKeys(p) => {
-                let t = MessageNumber::SSH_MSG_NEWKEYS as u8;
-                seq.serialize_element(&t)?;
-                seq.serialize_element(p)?;
-            }
-            Packet::KexDHInit(p) => {
-                let t = MessageNumber::SSH_MSG_KEXDH_INIT as u8;
-                seq.serialize_element(&t)?;
-                seq.serialize_element(p)?;
-            }
-            Packet::KexDHReply(p) => {
-                let t = MessageNumber::SSH_MSG_KEXDH_REPLY as u8;
-                seq.serialize_element(&t)?;
-                seq.serialize_element(p)?;
-            }
-            Packet::UserauthRequest(p) => {
-                let t = MessageNumber::SSH_MSG_USERAUTH_REQUEST as u8;
-                seq.serialize_element(&t)?;
-                seq.serialize_element(p)?;
-            }
+            )*
         };
 
         seq.end()
@@ -153,12 +134,41 @@ impl<'a> Serialize for Packet<'a> {
 /// Top level SSH packet enum
 #[derive(Debug)]
 pub enum Packet<'a> {
-    KexInit(KexInit<'a>),
-    NewKeys(NewKeys),
-    KexDHInit(KexDHInit<'a>),
-    KexDHReply(KexDHReply<'a>),
-    UserauthRequest(UserauthRequest<'a>),
+    // eg KexInit(KexInit<'a>),
+    $(
+    $SpecificPacketName($SpecificPacketType),
+    )*
 }
+
+impl<'a> Packet<'a> {
+    pub fn message_num(&self) -> MessageNumber {
+        match self {
+            // eg
+            // Packet::KexInit() => {
+            // ..
+            $(
+            Packet::$SpecificPacketName(p) => {
+                MessageNumber::$SSH_MESSAGE_NAME
+            }
+                )*
+        }
+    }
+}
+
+}
+}
+
+messagetypes![
+(1, Disconnect, Disconnect<'a>, SSH_MSG_DISCONNECT),
+(2, Ignore, Ignore, SSH_MSG_IGNORE),
+(3, Unimplemented, Unimplemented, SSH_MSG_UNIMPLEMENTED),
+(4, Debug, Debug<'a>, SSH_MSG_DEBUG),
+(20, KexInit, KexInit<'a>, SSH_MSG_KEXINIT),
+(21, NewKeys, NewKeys, SSH_MSG_NEWKEYS),
+(30, KexDHInit, KexDHInit<'a>, SSH_MSG_KEXDH_INIT),
+(31, KexDHReply, KexDHReply<'a>, SSH_MSG_KEXDH_REPLY),
+(50, UserauthRequest, UserauthRequest<'a>, SSH_MSG_USERAUTH_REQUEST),
+];
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct KexInit<'a> {
@@ -180,6 +190,29 @@ pub struct KexInit<'a> {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct NewKeys {
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Ignore {
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Debug<'a> {
+    pub always_display: bool,
+    pub message: &'a str,
+    pub lang: &'a str,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Disconnect<'a> {
+    pub reason: u32,
+    pub desc: &'a str,
+    pub lang: &'a str,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Unimplemented {
+    pub seq: u32,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

@@ -1,8 +1,8 @@
 // TODO: for fixed_ names, remove once they're removed
 #![allow(non_upper_case_globals)]
 
-use core::marker::PhantomData;
 use core::fmt;
+use core::marker::PhantomData;
 
 use crate::encrypt::{Cipher, Integ, Keys};
 use crate::ident::RemoteVersion;
@@ -29,6 +29,9 @@ pub const SSH_NAME_CURVE25519_LIBSSH: &str = "curve25519-sha256@libssh.org";
 // RFC8308 Extension Negotiation
 pub const SSH_NAME_EXT_INFO_S: &str = "ext-info-s";
 pub const SSH_NAME_EXT_INFO_C: &str = "ext-info-c";
+// Implemented by Dropbear to improve first_kex_packet_follows, described
+// https://mailarchive.ietf.org/arch/msg/secsh/3n6lNzDHmsGsIQSqhmHHwigIbuo/
+pub const SSH_NAME_KEXGUESS2: &str = "kexguess2@matt.ucc.asn.au";
 
 // RFC8709
 pub const SSH_NAME_ED25519: &str = "ssh-ed25519";
@@ -76,7 +79,7 @@ pub(crate) struct AlgoConfig<'a> {
 impl<'a> AlgoConfig<'a> {
     /// Creates the standard algorithm configuration
     /// TODO: ext-info-s and ext-info-c
-    pub fn new(is_client: bool) -> Self {
+    pub fn new(_is_client: bool) -> Self {
         AlgoConfig {
             kexs: fixed_options_kex,
             hostkeys: fixed_options_hostkey,
@@ -164,13 +167,6 @@ impl KexHash {
     }
 }
 
-enum KexState {
-    New,
-    SentKexInit,
-    RecvKexInit,
-    //... todo
-}
-
 /// Records the chosen algorithms while key exchange proceeds
 pub(crate) struct Algos {
     pub kex: SharedSecret,
@@ -179,6 +175,14 @@ pub(crate) struct Algos {
     pub cipher_dec: Cipher,
     pub integ_enc: Integ,
     pub integ_dec: Integ,
+
+    // If first_kex_packet_follows was set in SSH_MSG_KEXINIT but the
+    // guessed algorithms don't match, we discard the next message (RFC4253 Sec 7).
+    // This flag is reset to `false` after the packet has been discarded.
+    //
+    // We allow it for client or server, though it doesn't make much sense
+    // for a server to guess a kexdhreply message - the signature will be wrong.
+    discard_next: bool,
 
     // avoid having to keep passing it separately, though this
     // is global state.
@@ -197,25 +201,25 @@ impl Kex {
         &'a mut self, is_client: bool, algo_conf: &AlgoConfig,
         remote_version: &RemoteVersion, p: &packets::Packet,
     ) -> Result<Option<Packet<'a>>, Error> {
-        let remote_kexinit = if let Packet::KexInit(k) = p {
-            k
-        } else {
-            return Err(Error::bug())
-        };
+        let remote_kexinit =
+            if let Packet::KexInit(k) = p { k } else { return Err(Error::bug()) };
         let algos = Self::algo_negotiation(is_client, remote_kexinit, algo_conf)?;
-        self.kex_hash = Some(KexHash::new(
-            self,
-            &algos,
-            algo_conf,
-            remote_version,
-            p,
-        )?);
+        self.kex_hash =
+            Some(KexHash::new(self, &algos, algo_conf, remote_version, p)?);
         self.algos = Some(algos);
 
         if is_client {
             Ok(Some(self.algos.as_ref().trap()?.kex.make_kexdhinit()?))
         } else {
             Ok(None)
+        }
+    }
+
+    pub fn maybe_discard_packet(&mut self) -> bool {
+        if let Some(ref mut a) = self.algos {
+            core::mem::replace(&mut a.discard_next, false)
+        } else {
+            false
         }
     }
 
@@ -272,17 +276,34 @@ impl Kex {
     fn algo_negotiation(
         is_client: bool, p: &packets::KexInit, conf: &AlgoConfig,
     ) -> Result<Algos, Error> {
+        let kexguess2 = p.kex.has_algo(SSH_NAME_KEXGUESS2)?;
+
         // For each algorithm we select the first name in the client's
         // list that is also present in the server's list.
         let kex_method = p
             .kex
             .first_match(is_client, &conf.kexs)?
             .ok_or(Error::AlgoNoMatch { algo: "kex" })?;
+        if kex_method == SSH_NAME_KEXGUESS2 {
+            trace!("kexguess2 was negotiated, returning AlgoNoMatch");
+            return Err(Error::AlgoNoMatch { algo: "kex" });
+        }
         let kex = SharedSecret::from_name(kex_method)?;
+        let goodguess_kex = if kexguess2 {
+            p.kex.first() == kex_method
+        } else {
+            p.kex.first() == conf.kexs.first()
+        };
+
         let hostkey_method = p
             .hostkey
             .first_match(is_client, &conf.hostkeys)?
             .ok_or(Error::AlgoNoMatch { algo: "hostkey" })?;
+        let goodguess_hostkey = if kexguess2 {
+            p.hostkey.first() == hostkey_method
+        } else {
+            p.hostkey.first() == conf.hostkeys.first()
+        };
 
         // Switch between client/server tx/rx
         let c2s = (&p.cipher_c2s, &p.mac_c2s, &p.comp_c2s);
@@ -329,7 +350,17 @@ impl Kex {
         // Ignore language fields at present. unsure which implementations
         // use it, possibly SunSSH
 
-        Ok(Algos { kex, cipher_enc, cipher_dec, integ_enc, integ_dec, is_client })
+        let discard_next = p.first_follows && !(goodguess_kex && goodguess_hostkey);
+
+        Ok(Algos {
+            kex,
+            cipher_enc,
+            cipher_dec,
+            integ_enc,
+            integ_dec,
+            discard_next,
+            is_client,
+        })
     }
 }
 
@@ -419,8 +450,8 @@ impl SharedSecret {
 }
 
 pub(crate) struct KexOutput {
-    h: Digest,
-    keys: Keys,
+    pub h: Digest,
+    pub keys: Keys,
 
     // storage for kex packet reply contents that outlives Kex
     shsec: Option<SharedSecret>,
@@ -429,8 +460,12 @@ pub(crate) struct KexOutput {
 
 impl fmt::Debug for KexOutput {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "KexOutput, shsec {} sig {}",
-            self.shsec.is_some(), self.sig.is_some())
+        write!(
+            f,
+            "KexOutput, shsec {} sig {}",
+            self.shsec.is_some(),
+            self.sig.is_some()
+        )
     }
 }
 
@@ -455,7 +490,6 @@ impl<'a> KexOutput {
         Ok(Packet::KexDHReply(packets::KexDHReply { k_s, q_s, sig }))
         // then sign it.
     }
-
 }
 
 #[derive(Debug)]
@@ -583,7 +617,8 @@ mod tests {
         let sout = serv.handle_kexdhinit(&ci, &None).unwrap();
         let kexreply = sout.make_kexdhreply().unwrap();
 
-        let kexreply = if let Packet::KexDHReply(k) = kexreply { k } else { panic!() };
+        let kexreply =
+            if let Packet::KexDHReply(k) = kexreply { k } else { panic!() };
         let cout = cli.handle_kexdhreply(&kexreply, &None).unwrap();
 
         assert_eq!(cout.h.as_ref(), sout.h.as_ref());
