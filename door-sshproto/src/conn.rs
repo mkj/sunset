@@ -16,13 +16,20 @@ use traffic::Traffic;
 
 pub struct Runner<'a> {
     conn: Conn<'a>,
+
     /// Binary packet handling
     traffic: Traffic<'a>,
+
+    /// Current encryption/integrity keys
+    keys: KeyState,
 }
 
 impl<'a> Runner<'a> {
     pub fn new(conn: Conn<'a>, iobuf: &'a mut [u8]) -> Result<Self, Error> {
-        let mut r = Runner { conn, traffic: traffic::Traffic::new(iobuf) };
+        let mut r = Runner { conn,
+            traffic: traffic::Traffic::new(iobuf),
+            keys: KeyState::new_cleartext(),
+             };
 
         r.conn.progress(&mut r.traffic)?;
         Ok(r)
@@ -31,16 +38,16 @@ impl<'a> Runner<'a> {
     pub fn input(&mut self, buf: &[u8]) -> Result<usize, Error> {
         trace!("input of {}", buf.len());
         let (size, payload) = self.traffic.input(
-            &mut self.conn.keys,
+            &mut self.keys,
             &mut self.conn.remote_version,
             buf,
         )?;
         trace!("input handled {size} of {}", buf.len());
 
         if let Some(payload) = payload {
-            let resp = self.conn.handle_payload(payload)?;
+            let resp = self.conn.handle_payload(payload, &mut self.keys)?;
             for r in resp {
-                self.traffic.send_packet(&r)?;
+                self.traffic.send_packet(&r, &mut self.keys)?;
             }
         }
         self.conn.progress(&mut self.traffic)?;
@@ -49,7 +56,7 @@ impl<'a> Runner<'a> {
 
     /// Write any pending output, returning the size written
     pub fn output(&mut self, buf: &mut [u8]) -> Result<usize, Error> {
-        let l = self.traffic.output(&mut self.conn.keys, buf)?;
+        let l = self.traffic.output(buf)?;
         self.conn.progress(&mut self.traffic)?;
         Ok(l)
     }
@@ -70,9 +77,6 @@ pub struct Conn<'a> {
     /// next kex to run
     kex: kex::Kex,
 
-    /// Current encryption/integrity keys
-    keys: KeyState,
-
     /// TODO: Digest is sized to fit 512 bits, we only need 256 for sha256.
     /// Perhaps we could put it into a [u8: 256] newtype.
     sess_id: Option<Digest>,
@@ -89,7 +93,7 @@ pub struct Conn<'a> {
 enum ConnState {
 
     SendIdent,
-    SendKexInit,
+    SendFirstKexInit,
     /// Prior to SSH binary packet protocol, receiving remote version identification
     ReceiveIdent,
     /// Binary packet protocol has started, KexInit not yet received
@@ -113,7 +117,6 @@ impl<'a> Conn<'a> {
         let is_client = true; // TODO= true;
         Ok(Conn {
             kex: kex::Kex::new()?,
-            keys: KeyState::new_cleartext(),
             sess_id: None,
             remote_version: ident::RemoteVersion::new(),
             state: ConnState::SendIdent,
@@ -127,11 +130,12 @@ impl<'a> Conn<'a> {
         match self.state {
             ConnState::SendIdent => {
                 traffic.send_version(ident::OUR_VERSION)?;
-                self.state = ConnState::SendKexInit
+                self.state = ConnState::SendFirstKexInit
             }
-            ConnState::SendKexInit => {
+            ConnState::SendFirstKexInit => {
                 let p = self.kex.make_kexinit(&self.algo_conf);
-                traffic.send_packet(&p)?;
+                let mut dummy_keys = KeyState::new_cleartext();
+                traffic.send_packet(&p, &mut dummy_keys)?;
                 self.state = ConnState::ReceiveIdent;
             }
             ConnState::ReceiveIdent => {
@@ -148,17 +152,17 @@ impl<'a> Conn<'a> {
 
     /// Consumes an input payload
     pub(crate) fn handle_payload(
-        &mut self, payload: &[u8],
+        &mut self, payload: &[u8], keys: &mut KeyState,
     ) -> Result<Vec<Packet, MAX_RESPONSES>, Error> {
         trace!("conn state {:?}", self.state);
         // self.keys.next_seq_decrypt();
         trace!("bef");
         let p = wireformat::packet_from_bytes(payload)?;
         trace!("handle_payload() got {p:#?}");
-        self.dispatch_packet(&p)
+        self.dispatch_packet(&p, keys)
     }
 
-    fn dispatch_packet<'b>(&'b mut self, packet: &Packet)
+    fn dispatch_packet<'b>(&'b mut self, packet: &Packet, keys: &mut KeyState)
             -> Result<Vec<Packet<'b>, MAX_RESPONSES>, Error> {
         // TODO: perhaps could consolidate packet allowed checks into a separate function
         // to run first?
@@ -228,7 +232,7 @@ impl<'a> Conn<'a> {
                 match self.state {
                     ConnState::InKex { done_auth, ref mut output } => {
                         let output = output.take().trap()?;
-                        self.keys.rekey(output.keys);
+                        keys.rekey(output.keys);
                         self.sess_id.get_or_insert(output.h);
                         self.state = if done_auth {
                             ConnState::Authed

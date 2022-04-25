@@ -40,9 +40,9 @@ enum TrafState {
     /// Decrypted complete input payload
     InPayload { len: usize },
 
-    /// Packet awaiting output
-    OutPayload { len: usize },
-    /// Encrypted, writing to the socket
+    /// Writing to the socket. Buffer is encrypted in-place.
+    /// Should never be left in idx==len state,
+    /// instead should transition to Idle
     Write {
         idx: usize,
         len: usize,
@@ -61,15 +61,13 @@ impl<'a> Traffic<'a> {
             | TrafState::Read { .. } => true,
             TrafState::ReadComplete { .. }
             | TrafState::InPayload { .. }
-            | TrafState::OutPayload { .. }
             | TrafState::Write { .. } => false,
         }
     }
 
     pub fn ready_output(&self) -> bool {
         match self.state {
-            TrafState::Write { .. }
-            | TrafState::OutPayload { .. } => true,
+            TrafState::Write { .. } => true,
             _ => false
         }
     }
@@ -104,59 +102,47 @@ impl<'a> Traffic<'a> {
     }
 
     pub fn send_version(&mut self, buf: &[u8]) -> Result<(), Error> {
-        self.send(buf)?;
-        match self.state {
-            TrafState::Write { idx: _, ref mut len } => {
-                // add the newline
-                if *len > self.buf.len() + 2 {
-                    return Err(Error::bug());
-                }
-                self.buf[*len] = ident::CR;
-                self.buf[*len + 1] = ident::LF;
-                *len += 2;
-            }
-            _ => {}
-        }
-        Ok(())
-    }
-
-    fn send(&mut self, buf: &[u8]) -> Result<(), Error> {
         if !matches!(self.state, TrafState::Idle) {
             return Err(Error::bug());
         }
 
-        if buf.len() > self.buf.len() {
+        if buf.len() + 2 > self.buf.len() {
             return Err(Error::NoRoom);
         }
 
         self.buf[..buf.len()].copy_from_slice(buf);
-        self.state =
-            TrafState::Write { idx: 0, len: buf.len() };
-        trace!("state {:?}", self.state);
-
+        self.buf[buf.len()] = ident::CR;
+        self.buf[buf.len()+1] = ident::LF;
+        self.state = TrafState::Write { idx: 0, len: buf.len() + 2 };
         Ok(())
     }
 
-
-    pub fn send_packet(&mut self, p: &packets::Packet) -> Result<(), Error> {
-        // TODO: we could probably move the encryption from output() here.
+    pub fn send_packet(&mut self, p: &packets::Packet, keys: &mut KeyState) -> Result<(), Error> {
         trace!("send_packet {:?}", p.message_num());
-        let len = wireformat::write_ssh(&mut self.buf[SSH_PAYLOAD_START..], p)?;
-        self.state = TrafState::OutPayload { len };
+
+        let (idx, len) = match self.state {
+            TrafState::Idle => (0, 0),
+            TrafState::Write { idx, len } => (idx, len),
+            _ => Err(Error::bug())?,
+        };
+
+        // use the remainder of our buffer to write the packet
+        let wbuf = &mut self.buf[len..];
+        if wbuf.len() <= SSH_PAYLOAD_START+1 {
+            return Err(Error::NoRoom)
+        }
+        let plen = wireformat::write_ssh(&mut wbuf[SSH_PAYLOAD_START..], p)?;
+
+        // encrypt in place
+        let elen = keys.encrypt(plen, wbuf)?;
+        self.state = TrafState::Write { idx: idx, len: len+elen };
         Ok(())
 
     }
 
     /// Write any pending output, returning the size written
-    pub fn output(
-        &mut self, keys: &mut KeyState, buf: &mut [u8],
-    ) -> Result<usize, Error> {
+    pub fn output(&mut self, buf: &mut [u8]) -> Result<usize, Error> {
         trace!("output state {:?}", self.state);
-        if let TrafState::OutPayload { len } = self.state {
-            // Payload ready, encrypt it
-            let len = keys.encrypt(len, self.buf)?;
-            self.state = TrafState::Write { idx: 0, len };
-        }
 
         match self.state {
             TrafState::Write { ref mut idx, len } => {
