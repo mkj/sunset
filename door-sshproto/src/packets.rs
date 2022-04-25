@@ -234,13 +234,13 @@ pub struct KexDHReply<'a> {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ServiceRequest<'a> {
     #[serde(borrow)]
-    name : &'a str,
+    pub name : &'a str,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ServiceAccept<'a> {
     #[serde(borrow)]
-    name : &'a str,
+    pub name : &'a str,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -258,6 +258,7 @@ pub enum AuthMethod<'a> {
     #[serde(borrow)]
     Password(MethodPassword<'a>),
     Pubkey(MethodPubkey<'a>),
+    None,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

@@ -8,6 +8,11 @@ mod tests {
     use pretty_hex::PrettyHex;
     use serde::de::Unexpected;
     use serde::{Deserialize, Serialize};
+    use simplelog::{TestLogger,self,LevelFilter};
+
+    pub fn init_log() {
+        let _ = TestLogger::init(LevelFilter::Trace, simplelog::Config::default());
+    }
 
     fn test_roundtrip_packet(p: &Packet) -> Result<(), Error> {
         let mut buf1 = vec![99; 500];

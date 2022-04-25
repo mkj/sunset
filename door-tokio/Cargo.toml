@@ -12,4 +12,4 @@ log = { version = "0.4" }
 snafu = { version = "0.7", default-features = true }
 anyhow = { version = "1.0" }
 pretty-hex = "0.2"
-simplelog = "0.11"
+simplelog = "0.12"

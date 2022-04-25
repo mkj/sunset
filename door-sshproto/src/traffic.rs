@@ -135,7 +135,7 @@ impl<'a> Traffic<'a> {
 
         // encrypt in place
         let elen = keys.encrypt(plen, wbuf)?;
-        self.state = TrafState::Write { idx: idx, len: len+elen };
+        self.state = TrafState::Write { idx, len: len+elen };
         Ok(())
 
     }
@@ -218,9 +218,9 @@ impl<'a> Traffic<'a> {
         }
 
         if let TrafState::ReadComplete { len } = self.state {
-            let w = &mut self.buf[SSH_LENGTH_SIZE..len];
+            let w = &mut self.buf[0..len];
             keys.decrypt(w)?;
-            let padlen = w[0] as usize;
+            let padlen = w[SSH_LENGTH_SIZE] as usize;
             let payload_len = len
                 .checked_sub(SSH_LENGTH_SIZE + 1 + size_integ + padlen)
                 .ok_or(Error::SSHProtoError)?;

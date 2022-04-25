@@ -19,8 +19,8 @@ pub struct StringNames<'a>(pub &'a str);
 
 /// A list of names, can only be serialized. Used for local name lists, comes
 /// from local fixed lists
-/// Deliberately 'static since it should only come from hardcoded local strings
-/// SSH_NAME_* in [`kex`]. We don't validate string contents.
+/// Deliberately `'static` since it should only come from hardcoded local strings
+/// `SSH_NAME_*` in [`crate::sshnames`]. We don't validate string contents.
 #[derive(Debug)]
 pub struct LocalNames<'a>(pub &'a [&'static str]);
 
@@ -118,7 +118,7 @@ impl<'a> NameList<'a> {
         }
     }
 
-    /// Returns the first algorithm in the list, or "" if the list is empty.
+    /// Returns the first algorithm in the list, or `""` if the list is empty.
     pub fn first(&self) -> &str {
         match self {
             NameList::String(s) => s.first(),

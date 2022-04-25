@@ -1,8 +1,9 @@
 use core::str::Utf8Error;
 
-use snafu::{prelude::*,Location};
+use snafu::{prelude::*,Location,GenerateImplicitData};
 
 // TODO: can we make Snafu not require Debug?
+// TODO: maybe split this into a list of public vs private errors?
 #[non_exhaustive]
 #[derive(Snafu, Debug)]
 pub enum Error {
@@ -30,7 +31,8 @@ pub enum Error {
     /// Unknown packet type
     UnknownPacket,
 
-    /// Received packet at a disallowed time
+    /// Received packet at a disallowed time.
+    // TODO: this is kind of a subset of SSHProtoError, maybe not needed
     PacketWrong,
 
     /// No matching algorithm

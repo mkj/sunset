@@ -19,3 +19,11 @@ pub mod traffic;
 pub mod wireformat;
 pub mod namelist;
 pub mod random;
+pub mod sshnames;
+pub mod doorlog;
+
+pub mod client;
+pub mod cliauth;
+
+pub mod server;
+pub mod servauth;

@@ -52,7 +52,8 @@ where
 type Res = Result<()>;
 
 #[derive(Deserialize, Debug)]
-/// A SSH style binary string. 32 bit length followed by bytes.
+/// A SSH style binary string. Serialized as 32 bit length followed by the bytes
+/// of the slice.
 pub struct BinString<'a>(pub &'a [u8]);
 
 impl<'a> AsRef<[u8]> for BinString<'a> {
@@ -60,22 +61,6 @@ impl<'a> AsRef<[u8]> for BinString<'a> {
         self.0
     }
 }
-
-// Helper to pass a serde_state DeserializeState impl where a DeserializeSeed is needed,
-// for next_element_seed() etc.
-// struct SeedForState<'a, T, S> {
-//     seed: &'a mut S,
-//     value: PhantomData<T>,
-// }
-
-// impl<'a, T, S> SeedForState<'a, T, S> {
-//     pub fn new(seed: &'a mut S) -> Self {
-//         Self {
-//             seed,
-//             value: PhantomData,
-//         }
-//     }
-// }
 
 impl<'a> Serialize for BinString<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
