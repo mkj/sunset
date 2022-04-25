@@ -10,15 +10,14 @@ use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
 };
 
-use crate::error::Error;
+use crate::error::{Error,Result};
 use crate::packets::Packet;
 use core::cell::Cell;
-use core::result::Result;
 use core::slice;
 use core::convert::AsRef;
 
 /// Parses a [`Packet`] from a borrowed `&[u8]` byte buffer.
-pub fn packet_from_bytes<'a>(b: &'a [u8]) -> Result<Packet<'a>, Error> {
+pub fn packet_from_bytes<'a>(b: &'a [u8]) -> Result<Packet<'a>> {
 
     let mut ds = DeSSHBytes::from_bytes(b);
     let t = Packet::deserialize(&mut ds)?;
@@ -28,7 +27,7 @@ pub fn packet_from_bytes<'a>(b: &'a [u8]) -> Result<Packet<'a>, Error> {
 
 
 /// Writes a SSH packet to a buffer. Returns the length written.
-pub fn write_ssh<T>(target: &mut [u8], value: &T) -> Result<usize, Error>
+pub fn write_ssh<T>(target: &mut [u8], value: &T) -> Result<usize>
 where
     T: Serialize,
 {
@@ -41,7 +40,7 @@ where
 }
 
 /// Hashes the contents of a SSH packet, updating the provided context.
-pub fn hash_ssh<T>(hash_ctx: &mut ring::digest::Context, value: &T) -> Result<(), Error>
+pub fn hash_ssh<T>(hash_ctx: &mut ring::digest::Context, value: &T) -> Result<()>
 where
     T: Serialize,
 {
@@ -50,7 +49,7 @@ where
     Ok(())
 }
 
-type Res = Result<(), Error>;
+type Res = Result<()>;
 
 #[derive(Deserialize, Debug)]
 /// A SSH style binary string. 32 bit length followed by bytes.
@@ -181,15 +180,15 @@ impl Serializer for &mut SeSSHBytes<'_> {
     }
     fn serialize_seq(
         self, _len: Option<usize>,
-    ) -> Result<Self::SerializeSeq, Error> {
+    ) -> Result<Self::SerializeSeq> {
         Ok(self)
     }
     fn serialize_struct(
         self, _name: &'static str, _len: usize,
-    ) -> Result<Self::SerializeSeq, Error> {
+    ) -> Result<Self::SerializeSeq> {
         Ok(self)
     }
-    fn serialize_tuple(self, _len: usize) -> Result<Self::SerializeTuple, Error> {
+    fn serialize_tuple(self, _len: usize) -> Result<Self::SerializeTuple> {
         Ok(self)
     }
 
@@ -237,24 +236,24 @@ impl Serializer for &mut SeSSHBytes<'_> {
     }
     fn serialize_tuple_struct(
         self, _name: &'static str, _len: usize,
-    ) -> Result<Self::SerializeTupleStruct, Error> {
+    ) -> Result<Self::SerializeTupleStruct> {
         Err(Error::NoSerializer)
     }
     fn serialize_tuple_variant(
         self, _name: &'static str, _variant_index: u32, _variant: &'static str,
         _len: usize,
-    ) -> Result<Self::SerializeTupleVariant, Error> {
+    ) -> Result<Self::SerializeTupleVariant> {
         Err(Error::NoSerializer)
     }
     fn serialize_map(
         self, _len: Option<usize>,
-    ) -> Result<Self::SerializeMap, Error> {
+    ) -> Result<Self::SerializeMap> {
         Err(Error::NoSerializer)
     }
     fn serialize_struct_variant(
         self, _name: &'static str, _variant_index: u32, _variant: &'static str,
         _len: usize,
-    ) -> Result<Self::SerializeStructVariant, Error> {
+    ) -> Result<Self::SerializeStructVariant> {
         Err(Error::NoSerializer)
     }
 }
@@ -322,7 +321,7 @@ impl<'de> DeSSHBytes<'de> {
         DeSSHBytes { input, pos: 0 }
     }
     // #[inline]
-    fn take(&mut self, len: usize) -> Result<&'de [u8], Error> {
+    fn take(&mut self, len: usize) -> Result<&'de [u8]> {
         if len > self.input.len() {
             return Err(Error::RanOut);
         }
@@ -333,7 +332,7 @@ impl<'de> DeSSHBytes<'de> {
     }
 
     #[inline]
-    fn parse_u8(&mut self) -> Result<u8, Error> {
+    fn parse_u8(&mut self) -> Result<u8> {
         let t = self.take(core::mem::size_of::<u8>())?;
         let u = u8::from_be_bytes(t.try_into().unwrap());
         // println!("deser u8 {u}");
@@ -341,20 +340,20 @@ impl<'de> DeSSHBytes<'de> {
     }
 
     #[inline]
-    fn parse_u32(&mut self) -> Result<u32, Error> {
+    fn parse_u32(&mut self) -> Result<u32> {
         let t = self.take(core::mem::size_of::<u32>())?;
         let u = u32::from_be_bytes(t.try_into().unwrap());
         // println!("deser u32 {u}");
         Ok(u)
     }
 
-    fn parse_u64(&mut self) -> Result<u64, Error> {
+    fn parse_u64(&mut self) -> Result<u64> {
         let t = self.take(core::mem::size_of::<u64>())?;
         Ok(u64::from_be_bytes(t.try_into().unwrap()))
     }
 
     #[inline]
-    fn parse_str(&mut self) -> Result<&'de str, Error> {
+    fn parse_str(&mut self) -> Result<&'de str> {
         let len = self.parse_u32()?;
         let t = self.take(len as usize)?;
         let s = core::str::from_utf8(t).map_err(|_| Error::BadString)?;
@@ -372,7 +371,7 @@ impl<'a, 'b: 'a> SeqAccess<'b> for SeqAccessDeSSH<'a, 'b> {
     #[inline]
     fn next_element_seed<V: DeserializeSeed<'b>>(
         &mut self, seed: V,
-    ) -> Result<Option<V::Value>, Error> {
+    ) -> Result<Option<V::Value>> {
         if let Some(ref mut len) = self.len {
             if *len > 0 {
                 *len -= 1;
@@ -393,35 +392,35 @@ impl<'a, 'b: 'a> SeqAccess<'b> for SeqAccessDeSSH<'a, 'b> {
 impl<'de, 'a> Deserializer<'de> for &'a mut DeSSHBytes<'de> {
     type Error = Error;
 
-    fn deserialize_bool<V>(self, visitor: V) -> Result<V::Value, Error>
+    fn deserialize_bool<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
         visitor.visit_bool(self.parse_u8()? != 0)
     }
 
-    fn deserialize_u8<V>(self, visitor: V) -> Result<V::Value, Error>
+    fn deserialize_u8<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
         visitor.visit_u8(self.parse_u8()?)
     }
 
-    fn deserialize_u32<V>(self, visitor: V) -> Result<V::Value, Error>
+    fn deserialize_u32<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
         visitor.visit_u32(self.parse_u32()?)
     }
 
-    fn deserialize_u64<V>(self, visitor: V) -> Result<V::Value, Error>
+    fn deserialize_u64<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
         visitor.visit_u64(self.parse_u64()?)
     }
 
-    fn deserialize_str<V>(self, visitor: V) -> Result<V::Value, Error>
+    fn deserialize_str<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
@@ -430,7 +429,7 @@ impl<'de, 'a> Deserializer<'de> for &'a mut DeSSHBytes<'de> {
 
     /* deserialize_bytes() is like a string but with binary data. it has
     a u32 prefix of the length. Fixed length byte arrays use _tuple() */
-    fn deserialize_bytes<V>(self, visitor: V) -> Result<V::Value, Error>
+    fn deserialize_bytes<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
@@ -439,7 +438,7 @@ impl<'de, 'a> Deserializer<'de> for &'a mut DeSSHBytes<'de> {
         visitor.visit_borrowed_bytes(t)
     }
 
-    fn deserialize_tuple<V>(self, len: usize, visitor: V) -> Result<V::Value, Error>
+    fn deserialize_tuple<V>(self, len: usize, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
@@ -455,7 +454,7 @@ impl<'de, 'a> Deserializer<'de> for &'a mut DeSSHBytes<'de> {
 
     fn deserialize_struct<V>(
         self, _name: &'static str, fields: &'static [&'static str], visitor: V,
-    ) -> Result<V::Value, Error>
+    ) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
@@ -503,7 +502,7 @@ impl<'de, 'a> Deserializer<'de> for &'a mut DeSSHBytes<'de> {
         map identifier ignored_any
         option
     }
-    fn deserialize_any<V>(self, _visitor: V) -> Result<V::Value, Error>
+    fn deserialize_any<V>(self, _visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {

@@ -109,7 +109,7 @@ impl<'a> Traffic<'a> {
             TrafState::Write { idx: _, ref mut len } => {
                 // add the newline
                 if *len > self.buf.len() + 2 {
-                    return Err(Error::Bug);
+                    return Err(Error::bug());
                 }
                 self.buf[*len] = ident::CR;
                 self.buf[*len + 1] = ident::LF;
@@ -122,7 +122,7 @@ impl<'a> Traffic<'a> {
 
     fn send(&mut self, buf: &[u8]) -> Result<(), Error> {
         if !matches!(self.state, TrafState::Idle) {
-            return Err(Error::Bug);
+            return Err(Error::bug());
         }
 
         if buf.len() > self.buf.len() {

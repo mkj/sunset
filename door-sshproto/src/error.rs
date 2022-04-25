@@ -1,6 +1,6 @@
 use core::str::Utf8Error;
 
-use snafu::prelude::*;
+use snafu::{prelude::*,Location};
 
 // TODO: can we make Snafu not require Debug?
 #[non_exhaustive]
@@ -50,7 +50,9 @@ pub enum Error {
     /// This state should not be reached, previous logic should have prevented it.
     /// Don't create `Bug` directly, instead use [`Error::bug()`] or
     /// [`.trap()`](TrapBug::trap) to make finding the source easier.
-    Bug,
+    Bug {
+        location: snafu::Location,
+    }
 }
 
 impl Error {
@@ -58,7 +60,8 @@ impl Error {
         Error::Custom { msg: m }
     }
 
-    #[inline]
+    #[track_caller]
+    #[cold]
     /// Panics in debug builds, returns [`Error::Bug`] in release.
     // TODO: this should return a Result since it's always used as Err(Error::bug())
     pub fn bug() -> Error {
@@ -67,29 +70,43 @@ impl Error {
         if cfg!(debug_assertions) {
             panic!("Hit a bug");
         } else {
-            Error::Bug
+            let caller = std::panic::Location::caller();
+            Error::Bug { location: snafu::Location::new(caller.file(), caller.line(), caller.column()) }
         }
     }
 }
+
+pub type Result<T, E = Error> = core::result::Result<T, E>;
 
 pub trait TrapBug<T> {
     /// `.trap()` should be used like `.unwrap()`, in situations
     /// never expected to fail. Instead it returns [`Error::Bug`].
     /// (or debug builds may panic)
+    #[track_caller]
     fn trap(self) -> Result<T, Error>;
 }
 
 impl<T, E> TrapBug<T> for Result<T, E>
 {
     fn trap(self) -> Result<T, Error> {
-        self.map_err(|_| Error::bug())
+        // call directly so that Location::caller() works
+        if let Ok(i) = self {
+            Ok(i)
+        } else {
+            Err(Error::bug())
+        }
     }
 }
 
 impl<T> TrapBug<T> for Option<T>
 {
     fn trap(self) -> Result<T, Error> {
-        self.ok_or_else(|| Error::bug())
+        // call directly so that Location::caller() works
+        if let Some(i) = self {
+            Ok(i)
+        } else {
+            Err(Error::bug())
+        }
     }
 }
 

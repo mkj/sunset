@@ -1,7 +1,7 @@
 //! SSH comma separated algorithm lists.
 #[allow(unused_imports)]
 use {
-    crate::error::Error,
+    crate::error::{Error,Result},
     log::{debug, error, info, log, trace, warn},
 };
 
@@ -96,7 +96,7 @@ impl<'a> NameList<'a> {
     /// Must only be called on [`StringNames`], will fail if called with self as [`LocalNames`].
     pub fn first_match(
         &self, is_client: bool, our_options: &LocalNames,
-    ) -> Result<Option<&str>, Error> {
+    ) -> Result<Option<&str>> {
         match self {
             NameList::String(s) => Ok(if is_client {
                 s.first_options_match(our_options)
@@ -110,7 +110,7 @@ impl<'a> NameList<'a> {
     }
 
     /// Returns whether the `algo` is contained in this list
-    pub fn has_algo(&self, algo: &str) -> Result<bool, Error> {
+    pub fn has_algo(&self, algo: &str) -> Result<bool> {
         match self {
             NameList::String(s) => Ok(s.has_algo(algo)),
             // only expected to be called on remote lists

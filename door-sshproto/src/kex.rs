@@ -15,7 +15,7 @@ use ring::digest::{self, Context as DigestCtx, Digest};
 use ring::signature::Signature;
 #[allow(unused_imports)]
 use {
-    crate::error::{Error, TrapBug},
+    crate::error::{Error, Result, TrapBug},
     log::{debug, error, info, log, trace, warn},
 };
 
@@ -115,7 +115,7 @@ impl KexHash {
     fn new(
         kex: &Kex, algos: &Algos, algo_conf: &AlgoConfig,
         remote_version: &RemoteVersion, remote_kexinit: &packets::Packet,
-    ) -> Result<Self, Error> {
+    ) -> Result<Self> {
         // RFC4253 section 8:
         // The hash H is computed as the HASH hash of the concatenation of the
         // following:
@@ -190,7 +190,7 @@ pub(crate) struct Algos {
 }
 
 impl Kex {
-    pub fn new() -> Result<Self, Error> {
+    pub fn new() -> Result<Self> {
         let mut our_cookie = [0u8; 16];
         random::fill_random(our_cookie.as_mut_slice())?;
         Ok(Kex { our_cookie, algos: None, kex_hash: None })
@@ -200,7 +200,7 @@ impl Kex {
     pub fn handle_kexinit<'a>(
         &'a mut self, is_client: bool, algo_conf: &AlgoConfig,
         remote_version: &RemoteVersion, p: &packets::Packet,
-    ) -> Result<Option<Packet<'a>>, Error> {
+    ) -> Result<Option<Packet<'a>>> {
         let remote_kexinit =
             if let Packet::KexInit(k) = p { k } else { return Err(Error::bug()) };
         let algos = Self::algo_negotiation(is_client, remote_kexinit, algo_conf)?;
@@ -242,7 +242,7 @@ impl Kex {
         packets::Packet::KexInit(k)
     }
 
-    fn make_kexdhinit(&self) -> Result<Packet, Error> {
+    fn make_kexdhinit(&self) -> Result<Packet> {
         let algos = self.algos.as_ref().trap()?;
         if !algos.is_client {
             return Err(Error::bug());
@@ -254,7 +254,7 @@ impl Kex {
     // consumes self.
     pub fn handle_kexdhinit<'a>(
         self, p: &packets::KexDHInit, sess_id: &Option<Digest>,
-    ) -> Result<KexOutput, Error> {
+    ) -> Result<KexOutput> {
         if self.algos.as_ref().trap()?.is_client {
             return Err(Error::bug());
         }
@@ -265,7 +265,7 @@ impl Kex {
     // consumes self.
     pub fn handle_kexdhreply<'a>(
         self, p: &packets::KexDHReply, sess_id: &Option<Digest>,
-    ) -> Result<KexOutput, Error> {
+    ) -> Result<KexOutput> {
         if !self.algos.as_ref().trap()?.is_client {
             return Err(Error::bug());
         }
@@ -275,7 +275,7 @@ impl Kex {
     /// Perform SSH algorithm negotiation
     fn algo_negotiation(
         is_client: bool, p: &packets::KexInit, conf: &AlgoConfig,
-    ) -> Result<Algos, Error> {
+    ) -> Result<Algos> {
         let kexguess2 = p.kex.has_algo(SSH_NAME_KEXGUESS2)?;
 
         // For each algorithm we select the first name in the client's
@@ -371,7 +371,7 @@ pub(crate) enum SharedSecret {
 }
 
 impl SharedSecret {
-    fn from_name(name: &str) -> Result<Self, Error> {
+    fn from_name(name: &str) -> Result<Self> {
         match name {
             SSH_NAME_CURVE25519 | SSH_NAME_CURVE25519_LIBSSH => {
                 Ok(SharedSecret::KexCurve25519(KexCurve25519::new()?))
@@ -386,7 +386,7 @@ impl SharedSecret {
         }
     }
 
-    fn make_kexdhinit(&self) -> Result<Packet, Error> {
+    fn make_kexdhinit(&self) -> Result<Packet> {
         let q_c = match self {
             SharedSecret::KexCurve25519(k) => k.pubkey(),
         };
@@ -397,7 +397,7 @@ impl SharedSecret {
     // client only
     fn handle_kexdhreply<'a>(
         mut kex: Kex, p: &packets::KexDHReply, sess_id: &Option<Digest>,
-    ) -> Result<KexOutput, Error> {
+    ) -> Result<KexOutput> {
         // let mut algos = kex.algos.take().trap()?;
         let mut algos = kex.algos.trap()?;
         let mut kex_hash = kex.kex_hash.take().trap()?;
@@ -414,7 +414,7 @@ impl SharedSecret {
     // server only. consumes kex.
     fn handle_kexdhinit<'a>(
         mut kex: Kex, p: &packets::KexDHInit, sess_id: &Option<Digest>,
-    ) -> Result<KexOutput, Error> {
+    ) -> Result<KexOutput> {
         // let mut algos = kex.algos.take().trap()?;
         let mut algos = kex.algos.trap()?;
         let mut kex_hash = kex.kex_hash.take().trap()?;
@@ -459,7 +459,7 @@ impl fmt::Debug for KexOutput {
 impl<'a> KexOutput {
     fn make(
         k: &[u8], algos: &Algos, kex_hash: KexHash, sess_id: &Option<Digest>,
-    ) -> Result<Self, Error> {
+    ) -> Result<Self> {
         let h = kex_hash.finish(k);
 
         let sess_id = sess_id.as_ref().unwrap_or(&h);
@@ -469,7 +469,7 @@ impl<'a> KexOutput {
     }
 
     // server only
-    pub fn make_kexdhreply(&'a self) -> Result<Packet<'a>, Error> {
+    pub fn make_kexdhreply(&'a self) -> Result<Packet<'a>> {
         let q_s = self.shsec.as_ref().trap()?.pubkey();
         let q_s = BinString(q_s);
         let k_s = BinString(&[]); // TODO
@@ -486,7 +486,7 @@ pub(crate) struct KexCurve25519 {
 }
 
 impl KexCurve25519 {
-    fn new() -> Result<Self, Error> {
+    fn new() -> Result<Self> {
         let ours = agreement::EphemeralPrivateKey::generate(
             &agreement::X25519,
             &ring::rand::SystemRandom::new(),
@@ -503,7 +503,7 @@ impl KexCurve25519 {
     fn secret<'a>(
         algos: &mut Algos, theirs: &[u8], kex_hash: KexHash,
         sess_id: &Option<Digest>,
-    ) -> Result<KexOutput, Error> {
+    ) -> Result<KexOutput> {
         #[warn(irrefutable_let_patterns)] // until we have other algos
         let kex = if let SharedSecret::KexCurve25519(k) = &mut algos.kex {
             k

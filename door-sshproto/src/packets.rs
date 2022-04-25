@@ -5,7 +5,7 @@
 //! which enum variant needs deserializing for certain packet types.
 #[allow(unused_imports)]
 use {
-    crate::error::{Error,TrapBug},
+    crate::error::{Error,Result,TrapBug},
     log::{debug, error, info, log, trace, warn},
 };
 use core::borrow::BorrowMut;
@@ -41,7 +41,7 @@ pub enum MessageNumber {
 
 impl TryFrom<u8> for MessageNumber {
     type Error = Error;
-    fn try_from(v: u8) -> Result<Self, Error> {
+    fn try_from(v: u8) -> Result<Self> {
         match v {
             // eg
             // 20 = Ok(MessageNumber::SSH_MSG_KEXINIT)

@@ -172,13 +172,16 @@ impl<'a> Conn<'a> {
                     done_auth: matches!(self.state, ConnState::Authed),
                     output: None,
                 };
-                self.kex
+                let r = self.kex
                     .handle_kexinit(
                         self.is_client,
                         &self.algo_conf,
                         &self.remote_version,
                         packet,
-                    )?.map(|p| resp.push(p));
+                    )?;
+                if let Some(r) = r {
+                    resp.push(r).trap()?;
+                }
                 Ok(resp)
             }
             Packet::KexDHInit(p) => {
@@ -194,7 +197,7 @@ impl<'a> Conn<'a> {
                             let kex = core::mem::replace(&mut self.kex, kex::Kex::new()?);
                             *output = Some(kex.handle_kexdhinit(p, &self.sess_id)?);
                             let reply = output.as_ref().trap()?.make_kexdhreply()?;
-                            resp.push(reply);
+                            resp.push(reply).trap()?;
                             Ok(resp)
                         }
                     }
@@ -214,7 +217,7 @@ impl<'a> Conn<'a> {
                             let kex = core::mem::replace(&mut self.kex, kex::Kex::new()?);
                             *output = Some(kex.handle_kexdhreply(p, &self.sess_id)?);
                             trace!("after reply");
-                            resp.push(Packet::NewKeys(packets::NewKeys{}));
+                            resp.push(Packet::NewKeys(packets::NewKeys{})).trap()?;
                             Ok(resp)
                         }
                     }
