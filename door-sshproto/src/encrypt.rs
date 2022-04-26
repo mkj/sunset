@@ -1,14 +1,14 @@
 #[allow(unused_imports)]
 use {
-    crate::error::{Error,TrapBug},
+    crate::error::{Error, TrapBug},
     log::{debug, error, info, log, trace, warn},
 };
 
+use aes::cipher::{BlockSizeUser, KeyIvInit, KeySizeUser, StreamCipher};
 use core::num::Wrapping;
+use pretty_hex::PrettyHex;
 use ring::aead::chacha20_poly1305_openssh as chapoly;
 use ring::digest::{self, Context as DigestCtx, Digest};
-use aes::cipher::{KeyIvInit, KeySizeUser, BlockSizeUser, StreamCipher};
-use pretty_hex::PrettyHex;
 
 // We are using hmac/sha2 crates rather than ring for hmac
 // because ring doesn't have multi-part verification
@@ -26,13 +26,12 @@ use crate::*;
 type Aes256Ctr32BE = ctr::Ctr32BE<aes::Aes256>;
 type HmacSha256 = hmac::Hmac<sha2::Sha256>;
 
-
 // RFC4253 Section 6. Including length u32 length field, excluding MAC
 const SSH_MIN_PACKET_SIZE: usize = 16;
 const SSH_MIN_PADLEN: usize = 4;
 const SSH_MIN_BLOCK: usize = 8;
 pub const SSH_LENGTH_SIZE: usize = 4;
-pub const SSH_PAYLOAD_START: usize = SSH_LENGTH_SIZE+1;
+pub const SSH_PAYLOAD_START: usize = SSH_LENGTH_SIZE + 1;
 
 // TODO: should calculate/check these somehow
 /// Largest is aes256ctr
@@ -113,8 +112,9 @@ impl Keys {
         }
     }
 
-    pub fn new_from(k: &[u8], h: &Digest, sess_id: &Digest,
-        algos: &kex::Algos) -> Result<Self, Error> {
+    pub fn new_from(
+        k: &[u8], h: &Digest, sess_id: &Digest, algos: &kex::Algos,
+    ) -> Result<Self, Error> {
         let mut key = [0u8; MAX_KEY_LEN];
         let mut iv = [0u8; MAX_IV_LEN];
         let hash = algos.kex.hash();
@@ -126,44 +126,89 @@ impl Keys {
         };
 
         let enc = {
-            let i = Self::compute_key(iv_e, algos.cipher_enc.iv_len(), &mut iv, hash, k, h, sess_id)?;
-            let k = Self::compute_key(k_e, algos.cipher_enc.key_len(), &mut key, hash, k, h, sess_id)?;
+            let i = Self::compute_key(
+                iv_e,
+                algos.cipher_enc.iv_len(),
+                &mut iv,
+                hash,
+                k,
+                h,
+                sess_id,
+            )?;
+            let k = Self::compute_key(
+                k_e,
+                algos.cipher_enc.key_len(),
+                &mut key,
+                hash,
+                k,
+                h,
+                sess_id,
+            )?;
             EncKey::from_cipher(&algos.cipher_enc, k, i)?
         };
 
         let dec = {
-            let i = Self::compute_key(iv_d, algos.cipher_dec.iv_len(), &mut iv, hash, k, h, sess_id)?;
-            let k = Self::compute_key(k_d, algos.cipher_dec.key_len(), &mut key, hash, k, h, sess_id)?;
+            let i = Self::compute_key(
+                iv_d,
+                algos.cipher_dec.iv_len(),
+                &mut iv,
+                hash,
+                k,
+                h,
+                sess_id,
+            )?;
+            let k = Self::compute_key(
+                k_d,
+                algos.cipher_dec.key_len(),
+                &mut key,
+                hash,
+                k,
+                h,
+                sess_id,
+            )?;
             DecKey::from_cipher(&algos.cipher_dec, k, i)?
         };
 
         let integ_enc = {
-            let k = Self::compute_key(i_e, algos.integ_enc.key_len(), &mut key, hash, k, h, sess_id)?;
+            let k = Self::compute_key(
+                i_e,
+                algos.integ_enc.key_len(),
+                &mut key,
+                hash,
+                k,
+                h,
+                sess_id,
+            )?;
             IntegKey::from_integ(&algos.integ_enc, k)?
         };
 
         let integ_dec = {
-            let k = Self::compute_key(i_d, algos.integ_enc.key_len(), &mut key, hash, k, h, sess_id)?;
+            let k = Self::compute_key(
+                i_d,
+                algos.integ_enc.key_len(),
+                &mut key,
+                hash,
+                k,
+                h,
+                sess_id,
+            )?;
             IntegKey::from_integ(&algos.integ_dec, k)?
         };
 
-        let o = Ok(Keys {
-            enc,
-            dec,
-            integ_enc,
-            integ_dec,
-        });
+        let o = Ok(Keys { enc, dec, integ_enc, integ_dec });
         o
     }
 
     /// RFC4253 7.2. K1 = HASH(K || H || "A" || session_id) etc
-    fn compute_key<'a>(letter: char, len: usize, out: &'a mut[u8], hash: &'static digest::Algorithm, k: &[u8],
-            h: &Digest, sess_id: &Digest) -> Result<&'a [u8], Error> {
+    fn compute_key<'a>(
+        letter: char, len: usize, out: &'a mut [u8],
+        hash: &'static digest::Algorithm, k: &[u8], h: &Digest, sess_id: &Digest,
+    ) -> Result<&'a [u8], Error> {
         if len > out.len() {
-            return Err(Error::bug())
+            return Err(Error::bug());
         }
         // two rounds is sufficient with sha256 and current max key
-        debug_assert!(2*hash.output_len >= out.len());
+        debug_assert!(2 * hash.output_len >= out.len());
 
         let mut hash_ctx = DigestCtx::new(hash);
         hash_ctx.update(k);
@@ -209,13 +254,8 @@ impl Keys {
         }
         let buf4: [u8; 4] = buf[0..4].try_into().unwrap();
 
-        trace!("decrypt_first seq {seq}");
-
-        trace!("dec buf4 {:?}", buf4.hex_dump());
         let d4 = match &mut self.dec {
-            DecKey::ChaPoly(openkey) => {
-                openkey.decrypt_packet_length(seq, buf4)
-            }
+            DecKey::ChaPoly(openkey) => openkey.decrypt_packet_length(seq, buf4),
             DecKey::Aes256Ctr(a) => {
                 a.apply_keystream(&mut buf[..16]);
                 buf[..4].try_into().unwrap()
@@ -223,11 +263,10 @@ impl Keys {
             DecKey::NoCipher => buf4,
         };
 
-        trace!("dec done d4 {:?}", d4.hex_dump());
         let len = u32::from_be_bytes(d4);
         let total_len = len
-                .checked_add((SSH_LENGTH_SIZE + self.integ_dec.size_out()) as u32)
-                .ok_or(Error::BadDecrypt)?;
+            .checked_add((SSH_LENGTH_SIZE + self.integ_dec.size_out()) as u32)
+            .ok_or(Error::BadDecrypt)?;
 
         Ok(total_len)
     }
@@ -242,11 +281,11 @@ impl Keys {
         let size_integ = self.integ_dec.size_out();
 
         if buf.len() < size_block + size_integ {
-            trace!("bad packet, {} smaller than block size", buf.len());
-            return Err(Error::BadDecrypt);
+            trace!("Bad packet, {} smaller than block size", buf.len());
+            return Err(Error::SSHProtoError);
         }
         if buf.len() < SSH_MIN_PACKET_SIZE + size_integ {
-            trace!("bad packet, {} smaller than min packet size", buf.len());
+            trace!("Bad packet, {} smaller than min packet size", buf.len());
             return Err(Error::SSHProtoError);
         }
         // "MUST be a multiple of the cipher block size".
@@ -255,7 +294,7 @@ impl Keys {
         let len = buf.len() - size_integ - sublength;
 
         if len % size_block != 0 {
-            trace!("bad packet, not multiple of block size");
+            trace!("Bad packet, not multiple of block size");
             return Err(Error::SSHProtoError);
         }
 
@@ -263,18 +302,11 @@ impl Keys {
 
         // TODO: ETM modes would check integrity here.
 
-        trace!("decrypt seq {seq}");
-
         match &mut self.dec {
             DecKey::ChaPoly(openkey) => {
-                let mac: &mut [u8; chapoly::TAG_LEN] =
-                    mac.try_into().trap()?;
+                let mac: &mut [u8; chapoly::TAG_LEN] = mac.try_into().trap()?;
 
-                trace!("dec seq {:?}", seq.to_be_bytes().hex_dump());
-                trace!("dec {:?}", data.hex_dump());
-                trace!("mac {:?}", mac.hex_dump());
-                openkey.open_in_place(seq, data, mac)
-                .map_err(|_| {
+                openkey.open_in_place(seq, data, mac).map_err(|_| {
                     trace!("Packet integrity failed");
                     Error::BadDecrypt
                 })?;
@@ -293,11 +325,8 @@ impl Keys {
             IntegKey::HmacSha256(k) => {
                 let mut h = HmacSha256::new_from_slice(&k).trap()?;
                 h.update(&seq.to_be_bytes());
-                trace!("dec update {:?}", seq.to_be_bytes().hex_dump());
                 h.update(data);
-                trace!("dec update {:?}", data.hex_dump());
-                h.verify_slice(mac)
-                .map_err(|_| {
+                h.verify_slice(mac).map_err(|_| {
                     trace!("Packet integrity failed");
                     Error::BadDecrypt
                 })?;
@@ -307,11 +336,12 @@ impl Keys {
         let padlen = data[SSH_LENGTH_SIZE] as usize;
         if padlen < SSH_MIN_PADLEN {
             trace!("Packet padding too short");
-            return Err(Error::BadDecrypt);
+            return Err(Error::SSHProtoError);
         }
 
         // trace!("padlen {padlen} len {len} size_integ {}"
-        let payload_len = buf.len()
+        let payload_len = buf
+            .len()
             .checked_sub(SSH_LENGTH_SIZE + 1 + size_integ + padlen)
             .ok_or_else(|| {
                 trace!("Bad padding length");
@@ -378,9 +408,9 @@ impl Keys {
         buf[0..SSH_LENGTH_SIZE]
             .copy_from_slice(&((len - SSH_LENGTH_SIZE) as u32).to_be_bytes());
         // write random padding
-        let pad_start = SSH_LENGTH_SIZE+1+payload_len;
-        debug_assert_eq!(pad_start+padlen, len);
-        random::fill_random(&mut buf[pad_start..pad_start+padlen])?;
+        let pad_start = SSH_LENGTH_SIZE + 1 + payload_len;
+        debug_assert_eq!(pad_start + padlen, len);
+        random::fill_random(&mut buf[pad_start..pad_start + padlen])?;
 
         let (enc, rest) = buf.split_at_mut(len);
         let (mac, _) = rest.split_at_mut(size_integ);
@@ -474,15 +504,17 @@ pub(crate) enum EncKey {
 
 impl EncKey {
     /// Construct a key
-    pub fn from_cipher<'a>(cipher: &Cipher, key: &'a [u8], iv: &'a [u8]) -> Result<Self, Error> {
+    pub fn from_cipher<'a>(
+        cipher: &Cipher, key: &'a [u8], iv: &'a [u8],
+    ) -> Result<Self, Error> {
         match cipher {
             Cipher::ChaPoly => {
                 let key: &[u8; 64] = key.try_into().trap()?;
                 Ok(EncKey::ChaPoly(chapoly::SealingKey::new(key)))
             }
-            Cipher::Aes256Ctr => {
-                Ok(EncKey::Aes256Ctr(Aes256Ctr32BE::new_from_slices(key, iv).trap()?))
-            }
+            Cipher::Aes256Ctr => Ok(EncKey::Aes256Ctr(
+                Aes256Ctr32BE::new_from_slices(key, iv).trap()?,
+            )),
         }
     }
     pub fn is_aead(&self) -> bool {
@@ -511,15 +543,17 @@ pub(crate) enum DecKey {
 
 impl DecKey {
     /// Construct a key
-    pub fn from_cipher<'a>(cipher: &Cipher, key: &'a[u8], iv: &'a[u8]) -> Result<Self, Error> {
+    pub fn from_cipher<'a>(
+        cipher: &Cipher, key: &'a [u8], iv: &'a [u8],
+    ) -> Result<Self, Error> {
         match cipher {
             Cipher::ChaPoly => {
                 let key: &[u8; 64] = key.try_into().trap()?;
                 Ok(DecKey::ChaPoly(chapoly::OpeningKey::new(key)))
             }
-            Cipher::Aes256Ctr => {
-                Ok(DecKey::Aes256Ctr(Aes256Ctr32BE::new_from_slices(key, iv).trap()?))
-            }
+            Cipher::Aes256Ctr => Ok(DecKey::Aes256Ctr(
+                Aes256Ctr32BE::new_from_slices(key, iv).trap()?,
+            )),
         }
     }
     pub fn is_aead(&self) -> bool {
@@ -572,7 +606,7 @@ pub(crate) enum IntegKey {
 }
 
 impl IntegKey {
-    pub fn from_integ<'a>(integ: &Integ, key: &'a[u8]) -> Result<Self, Error> {
+    pub fn from_integ<'a>(integ: &Integ, key: &'a [u8]) -> Result<Self, Error> {
         match integ {
             Integ::ChaPoly => Ok(IntegKey::ChaPoly),
             Integ::HmacSha256 => {
@@ -592,8 +626,8 @@ impl IntegKey {
 
 #[cfg(test)]
 mod tests {
-    use crate::encrypt::*;
     use crate::doorlog::*;
+    use crate::encrypt::*;
     use crate::error::Error;
     use crate::sshnames::SSH_NAME_CURVE25519;
     #[allow(unused_imports)]
@@ -602,11 +636,11 @@ mod tests {
     // setting `corrupt` tests that incorrect mac is detected
     fn do_roundtrips(keys: &mut KeyState, corrupt: bool) {
         // for i in 0usize..40 {
-        for i in 4usize..40 {
+        for i in 0usize..40 {
             let mut v: std::vec::Vec<u8> = (0u8..i as u8 + 60).collect();
             let orig_payload = v[SSH_PAYLOAD_START..SSH_PAYLOAD_START + i].to_vec();
 
-            println!("roundtrips, i={i}");
+            trace!("roundtrips, i={i}");
             let written = keys.encrypt(i, v.as_mut_slice()).unwrap();
 
             v.truncate(written);
@@ -623,14 +657,13 @@ mod tests {
 
             if corrupt {
                 assert!(matches!(dec, Err(Error::BadDecrypt)));
-                return
+                return;
             }
             let payload_len = dec.unwrap();
             assert_eq!(payload_len, i);
             let dec_payload = v[SSH_PAYLOAD_START..SSH_PAYLOAD_START + i].to_vec();
             assert_eq!(orig_payload, dec_payload);
         }
-
     }
 
     #[test]
@@ -638,6 +671,14 @@ mod tests {
         // check padding works
         let mut keys = KeyState::new_cleartext();
         do_roundtrips(&mut keys, false);
+    }
+
+    #[test]
+    #[should_panic]
+    fn roundtrip_nocipher_corrupt() {
+        // test the test, cleartext has no mac
+        let mut keys = KeyState::new_cleartext();
+        do_roundtrips(&mut keys, true);
     }
 
     #[test]
@@ -660,18 +701,20 @@ mod tests {
                 is_client: false,
             };
 
-            println!("Trying cipher {c:?} integ {i:?}");
+            trace!("Trying cipher {c:?} integ {i:?}");
 
-            let h = digest::digest(&digest::SHA256, "some exchange hash".as_bytes());
-            let sess_id = digest::digest(&digest::SHA256, "some sessid".as_bytes());
-            let mut newkeys = Keys::new_from("hello".as_bytes(), &h, &sess_id,
-                &algos).unwrap();
+            // arbitrary keys
+            let hash = algos.kex.hash();
+            let h = digest::digest(hash, "some exchange hash".as_bytes());
+            let sess_id = digest::digest(hash, "some sessid".as_bytes());
+            let sharedkey = "hello".as_bytes();
+            let mut newkeys =
+                Keys::new_from(sharedkey, &h, &sess_id, &algos).unwrap();
 
             // client and server enc/dec keys are derived differently, we need them
             // to match for this test
             algos.is_client = !algos.is_client;
-            let newkeys_b = Keys::new_from("hello".as_bytes(), &h, &sess_id,
-                &algos).unwrap();
+            let newkeys_b = Keys::new_from(sharedkey, &h, &sess_id, &algos).unwrap();
             newkeys.dec = newkeys_b.dec;
             newkeys.integ_dec = newkeys_b.integ_dec;
 
@@ -680,7 +723,5 @@ mod tests {
             do_roundtrips(&mut keys, false);
             do_roundtrips(&mut keys, true);
         }
-
-
     }
 }
