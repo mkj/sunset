@@ -46,7 +46,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
     let mut outbuf = vec![0; 1000];
 
     loop {
-        while r.ready_output() {
+        while r.output_pending() {
             let b = outbuf.as_mut_slice();
             let l = r.output(b)?;
             let b = &b[..l];

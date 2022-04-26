@@ -217,7 +217,7 @@ impl Serializer for &mut SeSSHBytes<'_> {
     fn serialize_unit_variant(
         self, _name: &'static str, _variant_index: u32, _variant: &'static str,
     ) -> Res {
-        Err(Error::NoSerializer)
+        Ok(())
     }
     fn serialize_tuple_struct(
         self, _name: &'static str, _len: usize,

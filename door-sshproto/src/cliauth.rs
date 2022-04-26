@@ -26,6 +26,7 @@ impl<'a> CliAuth<'a> {
 
     pub fn start(&mut self, resp: &mut RespPackets<'a>) -> Result<()> {
         if !self.started {
+            self.started = true;
             resp.push(Packet::ServiceRequest(
                 packets::ServiceRequest { name: SSH_SERVICE_USERAUTH })).trap()?;
             resp.push(Packet::UserauthRequest(

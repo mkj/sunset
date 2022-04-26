@@ -65,9 +65,17 @@ impl<'a> Traffic<'a> {
         }
     }
 
-    pub fn ready_output(&self) -> bool {
+    pub fn output_pending(&self) -> bool {
         match self.state {
             TrafState::Write { .. } => true,
+            _ => false
+        }
+    }
+
+    pub fn can_output(&self) -> bool {
+        match self.state {
+            TrafState::Write { .. }
+            | TrafState::Idle => true,
             _ => false
         }
     }

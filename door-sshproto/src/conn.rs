@@ -33,16 +33,19 @@ pub struct Runner<'a> {
 impl<'a> Runner<'a> {
     /// [`iobuf`] must be sized to fit the largest SSH packet allowed.
     pub fn new(conn: Conn<'a>, iobuf: &'a mut [u8]) -> Result<Self, Error> {
-        let mut r = Runner { conn,
+        let mut runner = Runner { conn,
             traffic: traffic::Traffic::new(iobuf),
             keys: KeyState::new_cleartext(),
              };
 
-        r.conn.progress(&mut r.traffic)?;
-        Ok(r)
+        let resp = runner.conn.progress(&mut runner.traffic)?;
+        for r in resp {
+            runner.traffic.send_packet(&r, &mut runner.keys)?;
+        }
+        Ok(runner)
     }
 
-    pub fn input(&'a mut self, buf: &[u8]) -> Result<usize, Error> {
+    pub fn input(&mut self, buf: &[u8]) -> Result<usize, Error> {
         trace!("input of {}", buf.len());
         let (size, payload) = self.traffic.input(
             &mut self.keys,
@@ -57,14 +60,20 @@ impl<'a> Runner<'a> {
         }
         trace!("input handled {size} of {}", buf.len());
 
-        self.conn.progress(&mut self.traffic)?;
+        let resp = self.conn.progress(&mut self.traffic)?;
+        for r in resp {
+            self.traffic.send_packet(&r, &mut self.keys)?;
+        }
         Ok(size)
     }
 
     /// Write any pending output, returning the size written
-    pub fn output(&'a mut self, buf: &mut [u8]) -> Result<usize, Error> {
+    pub fn output(&mut self, buf: &mut [u8]) -> Result<usize, Error> {
         let l = self.traffic.output(buf)?;
-        self.conn.progress(&mut self.traffic)?;
+        let resp = self.conn.progress(&mut self.traffic)?;
+        for r in resp {
+            self.traffic.send_packet(&r, &mut self.keys)?;
+        }
         Ok(l)
     }
 
@@ -72,8 +81,8 @@ impl<'a> Runner<'a> {
         self.traffic.ready_input()
     }
 
-    pub fn ready_output(&self) -> bool {
-        self.traffic.ready_output()
+    pub fn output_pending(&self) -> bool {
+        self.traffic.output_pending()
     }
 }
 
@@ -146,18 +155,16 @@ impl<'a> Conn<'a> {
         })
     }
 
-    fn progress(&mut self, traffic: &mut Traffic) -> Result<(), Error> {
+    fn progress(&mut self, traffic: &mut Traffic) -> Result<RespPackets, Error> {
         trace!("conn state {:?}", self.state);
+        let mut resp = RespPackets::new();
         match self.state {
             ConnState::SendIdent => {
                 traffic.send_version(ident::OUR_VERSION)?;
-                self.state = ConnState::SendFirstKexInit
-            }
-            ConnState::SendFirstKexInit => {
                 let p = self.kex.make_kexinit(&self.algo_conf);
                 let mut dummy_keys = KeyState::new_cleartext();
                 traffic.send_packet(&p, &mut dummy_keys)?;
-                self.state = ConnState::ReceiveIdent;
+                self.state = ConnState::ReceiveIdent
             }
             ConnState::ReceiveIdent => {
                 if self.remote_version.version().is_some() {
@@ -167,20 +174,19 @@ impl<'a> Conn<'a> {
             ConnState::PreAuth => {
                 // TODO. need to figure how we'll do "unbounded" responses
                 // and backpressure.
-
-                // if let ClientServer::Client(c) = &mut self.cliserv {
-                //     c.auth.start(&mut resp)?;
-                // }
-                // resp.push(Packet::ServiceRequest(
-                //     packets::ServiceRequest { name: SSH_SERVICE_USERAUTH })).trap()?;
-                // // send userauth request
+                if (traffic.can_output()) {
+                    if let ClientServer::Client(c) = &mut self.cliserv {
+                        c.auth.start(&mut resp)?;
+                    }
+                }
+                // send userauth request
             }
 
             _ => {
                 // TODO
             }
         }
-        Ok(())
+        Ok(resp)
     }
 
     /// Consumes an input payload
