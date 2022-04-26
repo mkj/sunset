@@ -71,7 +71,7 @@ impl KeyState {
 
     /// Decrypt bytes 4 onwards of the buffer and validate AEAD Tag or MAC.
     /// Ensures that the packet meets minimum length.
-    pub fn decrypt<'b>(&mut self, buf: &'b mut [u8]) -> Result<(), Error> {
+    pub fn decrypt<'b>(&mut self, buf: &'b mut [u8]) -> Result<usize, Error> {
         let e = self.keys.decrypt(buf, self.seq_decrypt.0);
         self.seq_decrypt += 1;
         e
@@ -196,7 +196,9 @@ impl Keys {
         Ok(&out[..len])
     }
 
-    /// Decrypts the first block in the buffer, returning the length.
+    /// Decrypts the first block in the buffer, returning the length of the
+    /// total SSH packet (including length+mac) which is calculated
+    /// from the decrypted first 4 bytes.
     /// Whether bytes `buf[4..block_size]` are decrypted depends on the cipher, they may be
     /// handled later by [`decrypt`]. Bytes `buf[0..4]` may not be modified.
     pub fn decrypt_first_block(
@@ -209,39 +211,51 @@ impl Keys {
 
         trace!("decrypt_first seq {seq}");
 
+        trace!("dec buf4 {:?}", buf4.hex_dump());
         let d4 = match &mut self.dec {
             DecKey::ChaPoly(openkey) => {
-                openkey.decrypt_packet_length(seq, buf4);
-                &buf4
+                openkey.decrypt_packet_length(seq, buf4)
             }
             DecKey::Aes256Ctr(a) => {
                 a.apply_keystream(&mut buf[..16]);
                 buf[..4].try_into().unwrap()
             }
-            DecKey::NoCipher => &buf4,
+            DecKey::NoCipher => buf4,
         };
-        Ok(u32::from_be_bytes(*d4))
+
+        trace!("dec done d4 {:?}", d4.hex_dump());
+        let len = u32::from_be_bytes(d4);
+        let total_len = len
+                .checked_add((SSH_LENGTH_SIZE + self.integ_dec.size_out()) as u32)
+                .ok_or(Error::BadDecrypt)?;
+
+        Ok(total_len)
     }
 
     /// Decrypt the whole packet buffer and validate AEAD Tag or MAC.
+    /// Returns the payload length.
     /// Ensures that the packet meets minimum length.
     /// The first block_size bytes may have been already decrypted by
     /// [`decrypt_first_block`] depending on the cipher.
-    pub fn decrypt(&mut self, buf: &mut [u8], seq: u32) -> Result<(), Error> {
+    pub fn decrypt(&mut self, buf: &mut [u8], seq: u32) -> Result<usize, Error> {
         let size_block = self.dec.size_block();
         let size_integ = self.integ_dec.size_out();
-        if buf.len() < size_block {
+
+        if buf.len() < size_block + size_integ {
+            trace!("bad packet, {} smaller than block size", buf.len());
             return Err(Error::BadDecrypt);
         }
-        if buf.len() - size_integ < SSH_MIN_PACKET_SIZE {
+        if buf.len() < SSH_MIN_PACKET_SIZE + size_integ {
+            trace!("bad packet, {} smaller than min packet size", buf.len());
             return Err(Error::SSHProtoError);
         }
         // "MUST be a multiple of the cipher block size".
         // encrypted length for aead ciphers doesn't include the length prefix.
-        let extra = if self.dec.is_aead() { 0 } else { SSH_LENGTH_SIZE };
-        let len = extra + buf.len() - size_integ;
+        let sublength = if self.dec.is_aead() { SSH_LENGTH_SIZE } else { 0 };
+        let len = buf.len() - size_integ - sublength;
 
         if len % size_block != 0 {
+            trace!("bad packet, not multiple of block size");
             return Err(Error::SSHProtoError);
         }
 
@@ -256,8 +270,14 @@ impl Keys {
                 let mac: &mut [u8; chapoly::TAG_LEN] =
                     mac.try_into().trap()?;
 
+                trace!("dec seq {:?}", seq.to_be_bytes().hex_dump());
+                trace!("dec {:?}", data.hex_dump());
+                trace!("mac {:?}", mac.hex_dump());
                 openkey.open_in_place(seq, data, mac)
-                .map_err(|_| Error::BadDecrypt)?;
+                .map_err(|_| {
+                    trace!("Packet integrity failed");
+                    Error::BadDecrypt
+                })?;
             }
             DecKey::Aes256Ctr(a) => {
                 if data.len() > 16 {
@@ -277,10 +297,28 @@ impl Keys {
                 h.update(data);
                 trace!("dec update {:?}", data.hex_dump());
                 h.verify_slice(mac)
-                .map_err(|_| Error::BadDecrypt)?;
+                .map_err(|_| {
+                    trace!("Packet integrity failed");
+                    Error::BadDecrypt
+                })?;
             }
         }
-        Ok(())
+
+        let padlen = data[SSH_LENGTH_SIZE] as usize;
+        if padlen < SSH_MIN_PADLEN {
+            trace!("Packet padding too short");
+            return Err(Error::BadDecrypt);
+        }
+
+        // trace!("padlen {padlen} len {len} size_integ {}"
+        let payload_len = buf.len()
+            .checked_sub(SSH_LENGTH_SIZE + 1 + size_integ + padlen)
+            .ok_or_else(|| {
+                trace!("Bad padding length");
+                Error::SSHProtoError
+            })?;
+
+        Ok(payload_len)
     }
 
     /// Padding is required to meet
@@ -365,7 +403,11 @@ impl Keys {
             EncKey::ChaPoly(sealkey) => {
                 let mac: &mut [u8; chapoly::TAG_LEN] = mac.try_into().trap()?;
 
+                trace!("enc seq {:?}", seq.to_be_bytes().hex_dump());
+                trace!("enc {:?}", enc.hex_dump());
                 sealkey.seal_in_place(seq, enc, mac);
+                trace!("out {:?}", enc.hex_dump());
+                trace!("mac {:?}", mac.hex_dump());
             }
             EncKey::Aes256Ctr(a) => {
                 a.apply_keystream(enc);
@@ -557,24 +599,35 @@ mod tests {
     #[allow(unused_imports)]
     use pretty_hex::PrettyHex;
 
-    fn do_roundtrips(keys: &mut KeyState) {
+    // setting `corrupt` tests that incorrect mac is detected
+    fn do_roundtrips(keys: &mut KeyState, corrupt: bool) {
         // for i in 0usize..40 {
         for i in 4usize..40 {
             let mut v: std::vec::Vec<u8> = (0u8..i as u8 + 60).collect();
             let orig_payload = v[SSH_PAYLOAD_START..SSH_PAYLOAD_START + i].to_vec();
 
             println!("roundtrips, i={i}");
-            println!("orig payload {:?}", orig_payload.hex_dump());
             let written = keys.encrypt(i, v.as_mut_slice()).unwrap();
 
             v.truncate(written);
-            println!("written {:?}", v.hex_dump());
-            let l =
-                keys.decrypt_first_block(v.as_mut_slice()).unwrap() as usize;
-            println!("first block {l}");
-            keys.decrypt(v.as_mut_slice()).unwrap();
+
+            if corrupt {
+                // flip a bit of the payload
+                v[SSH_PAYLOAD_START] ^= 4;
+            }
+
+            let l = keys.decrypt_first_block(v.as_mut_slice()).unwrap() as usize;
+            assert_eq!(l, v.len());
+
+            let dec = keys.decrypt(v.as_mut_slice());
+
+            if corrupt {
+                assert!(matches!(dec, Err(Error::BadDecrypt)));
+                return
+            }
+            let payload_len = dec.unwrap();
+            assert_eq!(payload_len, i);
             let dec_payload = v[SSH_PAYLOAD_START..SSH_PAYLOAD_START + i].to_vec();
-            assert_eq!(written, l + SSH_LENGTH_SIZE + keys.keys.integ_enc.size_out());
             assert_eq!(orig_payload, dec_payload);
         }
 
@@ -584,7 +637,7 @@ mod tests {
     fn roundtrip_nocipher() {
         // check padding works
         let mut keys = KeyState::new_cleartext();
-        do_roundtrips(&mut keys);
+        do_roundtrips(&mut keys, false);
     }
 
     #[test]
@@ -624,7 +677,8 @@ mod tests {
 
             let mut keys = KeyState::new_cleartext();
             keys.rekey(newkeys);
-            do_roundtrips(&mut keys);
+            do_roundtrips(&mut keys, false);
+            do_roundtrips(&mut keys, true);
         }
 
 

@@ -25,7 +25,7 @@ use crate::namelist::NameList;
 use crate::wireformat::BinString;
 
 macro_rules! messagetypes {
-    ( $( ( $message_num:literal, $SpecificPacketName:ident, $SpecificPacketType:ty, $SSH_MESSAGE_NAME:ident ), )* ) => {
+    ( $( ( $message_num:literal, $SpecificPacketVariant:ident, $SpecificPacketType:ty, $SSH_MESSAGE_NAME:ident ), )* ) => {
 
 
 #[derive(Debug)]
@@ -49,8 +49,7 @@ impl TryFrom<u8> for MessageNumber {
             $message_num => Ok(MessageNumber::$SSH_MESSAGE_NAME),
             )*
             _ => {
-                trace!("Unknown packet type {v}");
-                Err(Error::UnknownPacket)
+                Err(Error::UnknownPacket { number: v })
             }
         }
     }
@@ -84,10 +83,10 @@ impl<'de: 'a, 'a> Deserialize<'de> for Packet<'a> {
                 // Decode based on the message number
                 let p = match ty {
                     // eg
-                    // MessageNumber::SSH_MESSAGE_KEXINIT => Packet::KexInit(
+                    // MessageNumber::SSH_MSG_KEXINIT => Packet::KexInit(
                     // ...
                     $(
-                    MessageNumber::$SSH_MESSAGE_NAME => Packet::$SpecificPacketName(
+                    MessageNumber::$SSH_MESSAGE_NAME => Packet::$SpecificPacketVariant(
                         seq.next_element()?
                             .ok_or_else(|| de::Error::invalid_length(1, &self))?,
                     ),
@@ -116,7 +115,7 @@ impl<'a> Serialize for Packet<'a> {
             // Packet::KexInit(p) => {
             // ...
             $(
-            Packet::$SpecificPacketName(p) => {
+            Packet::$SpecificPacketVariant(p) => {
                 seq.serialize_element(p)?;
             }
             )*
@@ -131,7 +130,7 @@ impl<'a> Serialize for Packet<'a> {
 pub enum Packet<'a> {
     // eg KexInit(KexInit<'a>),
     $(
-    $SpecificPacketName($SpecificPacketType),
+    $SpecificPacketVariant($SpecificPacketType),
     )*
 }
 
@@ -142,7 +141,7 @@ impl<'a> Packet<'a> {
             // Packet::KexInit() => {
             // ..
             $(
-            Packet::$SpecificPacketName(_) => {
+            Packet::$SpecificPacketVariant(_) => {
                 MessageNumber::$SSH_MESSAGE_NAME
             }
             )*
@@ -169,7 +168,8 @@ messagetypes![
 
 
 // Note:
-// Each struct needs one #[borrow] tag to avoid the cryptic error in derive:
+// Each struct needs one #[borrow] tag before one of the struct fields with a lifetime 
+// (eg "blob: BinString<'a>"). That avoids the cryptic error in derive:
 // error[E0495]: cannot infer an appropriate lifetime for lifetime parameter `'de` due to conflicting requirements
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -233,13 +233,11 @@ pub struct KexDHReply<'a> {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ServiceRequest<'a> {
-    #[serde(borrow)]
     pub name : &'a str,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ServiceAccept<'a> {
-    #[serde(borrow)]
     pub name : &'a str,
 }
 

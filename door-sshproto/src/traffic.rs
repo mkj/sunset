@@ -188,16 +188,11 @@ impl<'a> Traffic<'a> {
         if let TrafState::ReadInitial { idx } = self.state {
             if idx >= size_block {
                 let w = &mut self.buf[..size_block];
-                let total_len =
-                    keys.decrypt_first_block(w)?
-                        .checked_add((SSH_LENGTH_SIZE + size_integ) as u32)
-                        .ok_or(Error::BadDecrypt)? as usize;
-
+                let total_len = keys.decrypt_first_block(w)? as usize;
                 if total_len > self.buf.len() {
                     // TODO: Or just BadDecrypt could make more sense if
                     // it were packet corruption/decryption failure
-                    warn!("total_len {total_len:08x}");
-                    return Err(Error::BigPacket);
+                    return Err(Error::BigPacket { size: total_len });
                 }
                 self.state = TrafState::Read { idx, expect: total_len }
             }
@@ -219,12 +214,7 @@ impl<'a> Traffic<'a> {
 
         if let TrafState::ReadComplete { len } = self.state {
             let w = &mut self.buf[0..len];
-            keys.decrypt(w)?;
-            let padlen = w[SSH_LENGTH_SIZE] as usize;
-            let payload_len = len
-                .checked_sub(SSH_LENGTH_SIZE + 1 + size_integ + padlen)
-                .ok_or(Error::SSHProtoError)?;
-
+            let payload_len = keys.decrypt(w)?;
             self.state = TrafState::InPayload { len: payload_len }
         }
 

@@ -294,9 +294,25 @@ impl<'a> Conn<'a> {
                 warn!("SSH debug message from remote host: '{}'", p.message.escape_default());
                 Ok(resp)
             }
-            p => {
-                warn!("Unhandled packet {p:?}");
-                Err(Error::UnknownPacket)
+            Packet::Disconnect(p) => {
+                // TODO: SSH2_DISCONNECT_BY_APPLICATION is normal, sent by openssh client.
+                info!("Received disconnect: {}", p.desc.escape_default());
+                Ok(resp)
+            }
+            Packet::Disconnect(p) => {
+                // TODO: SSH2_DISCONNECT_BY_APPLICATION is normal, sent by openssh client.
+                info!("Received disconnect: {}", p.desc.escape_default());
+                Ok(resp)
+            }
+            Packet::ServiceRequest(p) => {
+                // TODO: this is server only
+                todo!("service request");
+                Ok(resp)
+            }
+            Packet::UserauthRequest(p) => {
+                // TODO: this is server only
+                todo!("userauth request");
+                Ok(resp)
             }
         }
     }

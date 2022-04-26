@@ -29,7 +29,7 @@ pub enum Error {
     NotSSH,
 
     /// Unknown packet type
-    UnknownPacket,
+    UnknownPacket { number: u8 },
 
     /// Received packet at a disallowed time.
     // TODO: this is kind of a subset of SSHProtoError, maybe not needed
@@ -39,7 +39,7 @@ pub enum Error {
     AlgoNoMatch { algo: &'static str },
 
     /// Packet size too large (or bad decrypt)
-    BigPacket,
+    BigPacket { size: usize },
 
     /// Random number generation failure
     RngError,
