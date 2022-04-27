@@ -38,7 +38,7 @@ impl<'a> Runner<'a> {
             keys: KeyState::new_cleartext(),
              };
 
-        let resp = runner.conn.progress(&mut runner.traffic)?;
+        let resp = runner.conn.progress(&mut runner.traffic, &mut runner.keys)?;
         for r in resp {
             runner.traffic.send_packet(&r, &mut runner.keys)?;
         }
@@ -60,7 +60,7 @@ impl<'a> Runner<'a> {
         }
         trace!("input handled {size} of {}", buf.len());
 
-        let resp = self.conn.progress(&mut self.traffic)?;
+        let resp = self.conn.progress(&mut self.traffic, &mut self.keys)?;
         for r in resp {
             self.traffic.send_packet(&r, &mut self.keys)?;
         }
@@ -70,7 +70,7 @@ impl<'a> Runner<'a> {
     /// Write any pending output, returning the size written
     pub fn output(&mut self, buf: &mut [u8]) -> Result<usize, Error> {
         let l = self.traffic.output(buf)?;
-        let resp = self.conn.progress(&mut self.traffic)?;
+        let resp = self.conn.progress(&mut self.traffic, &mut self.keys)?;
         for r in resp {
             self.traffic.send_packet(&r, &mut self.keys)?;
         }
@@ -155,15 +155,14 @@ impl<'a> Conn<'a> {
         })
     }
 
-    fn progress(&mut self, traffic: &mut Traffic) -> Result<RespPackets, Error> {
+    fn progress(&mut self, traffic: &mut Traffic, keys: &mut KeyState) -> Result<RespPackets, Error> {
         trace!("conn state {:?}", self.state);
         let mut resp = RespPackets::new();
         match self.state {
             ConnState::SendIdent => {
                 traffic.send_version(ident::OUR_VERSION)?;
                 let p = self.kex.make_kexinit(&self.algo_conf);
-                let mut dummy_keys = KeyState::new_cleartext();
-                traffic.send_packet(&p, &mut dummy_keys)?;
+                traffic.send_packet(&p, keys)?;
                 self.state = ConnState::ReceiveIdent
             }
             ConnState::ReceiveIdent => {

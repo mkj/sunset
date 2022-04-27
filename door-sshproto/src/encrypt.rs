@@ -20,6 +20,7 @@ use sha2::Digest as Sha2DigestForTrait;
 
 use crate::kex;
 use crate::sshnames::*;
+use crate::wireformat::hash_mpint;
 use crate::*;
 
 // TODO: check that Ctr32 is sufficient. Should be OK with SSH rekeying.
@@ -83,6 +84,7 @@ impl KeyState {
         &mut self, payload_len: usize, buf: &'b mut [u8],
     ) -> Result<usize, Error> {
         let e = self.keys.encrypt(payload_len, buf, self.seq_encrypt.0);
+        trace!("seq_encrypt {}", self.seq_encrypt);
         self.seq_encrypt += 1;
         e
     }
@@ -119,11 +121,17 @@ impl Keys {
         let mut iv = [0u8; MAX_IV_LEN];
         let hash = algos.kex.hash();
 
+        trace!("new kex k {:?}", k.hex_dump());
+        trace!("new kex h {:?}", h.hex_dump());
+        trace!("new kex s {:?}", sess_id.hex_dump());
+
         let (iv_e, iv_d, k_e, k_d, i_e, i_d) = if algos.is_client {
             ('A', 'B', 'C', 'D', 'E', 'F')
         } else {
             ('B', 'A', 'D', 'C', 'F', 'E')
         };
+
+        trace!("using algos {:?}", algos);
 
         let enc = {
             let i = Self::compute_key(
@@ -179,6 +187,7 @@ impl Keys {
                 h,
                 sess_id,
             )?;
+            trace!("enc");
             IntegKey::from_integ(&algos.integ_enc, k)?
         };
 
@@ -192,6 +201,7 @@ impl Keys {
                 h,
                 sess_id,
             )?;
+            trace!("dec");
             IntegKey::from_integ(&algos.integ_dec, k)?
         };
 
@@ -211,7 +221,7 @@ impl Keys {
         debug_assert!(2 * hash.output_len >= out.len());
 
         let mut hash_ctx = DigestCtx::new(hash);
-        hash_ctx.update(k);
+        hash_mpint(&mut hash_ctx, k);
         hash_ctx.update(h.as_ref());
         hash_ctx.update(&[letter as u8]);
         hash_ctx.update(sess_id.as_ref());
@@ -228,7 +238,7 @@ impl Keys {
         if rest.len() > 0 {
             // generate next block K2 = HASH(K || H || K1)
             let mut hash_ctx = DigestCtx::new(hash);
-            hash_ctx.update(k.as_ref());
+            hash_mpint(&mut hash_ctx, k);
             hash_ctx.update(h.as_ref());
             hash_ctx.update(k1);
             let k2 = hash_ctx.finish();
@@ -419,9 +429,12 @@ impl Keys {
             IntegKey::ChaPoly => {}
             IntegKey::NoInteg => {}
             IntegKey::HmacSha256(k) => {
+                trace!("hmac key {:?}", k.hex_dump());
                 let mut h = HmacSha256::new_from_slice(&k).trap()?;
                 h.update(&seq.to_be_bytes());
+                trace!("hmac {:?}", seq.to_be_bytes().hex_dump());
                 trace!("enc update {:?}", seq.to_be_bytes().hex_dump());
+                trace!("hmac {:?}", enc.hex_dump());
                 h.update(enc);
                 let result = h.finalize();
                 trace!("enc update {:?}", enc.hex_dump());
@@ -507,6 +520,8 @@ impl EncKey {
     pub fn from_cipher<'a>(
         cipher: &Cipher, key: &'a [u8], iv: &'a [u8],
     ) -> Result<Self, Error> {
+        trace!("enc key {:?}", key.hex_dump());
+        trace!("iv {:?}", iv.hex_dump());
         match cipher {
             Cipher::ChaPoly => {
                 let key: &[u8; 64] = key.try_into().trap()?;
@@ -546,6 +561,8 @@ impl DecKey {
     pub fn from_cipher<'a>(
         cipher: &Cipher, key: &'a [u8], iv: &'a [u8],
     ) -> Result<Self, Error> {
+        trace!("dec key {:?}", key.hex_dump());
+        trace!("iv {:?}", iv.hex_dump());
         match cipher {
             Cipher::ChaPoly => {
                 let key: &[u8; 64] = key.try_into().trap()?;
@@ -607,10 +624,11 @@ pub(crate) enum IntegKey {
 
 impl IntegKey {
     pub fn from_integ<'a>(integ: &Integ, key: &'a [u8]) -> Result<Self, Error> {
+        warn!("key {:?}", key.hex_dump());
         match integ {
             Integ::ChaPoly => Ok(IntegKey::ChaPoly),
             Integ::HmacSha256 => {
-                trace!("key {}", key.len());
+                trace!("integ key {}", key.len());
                 Ok(IntegKey::HmacSha256(key.try_into().trap()?))
             }
         }

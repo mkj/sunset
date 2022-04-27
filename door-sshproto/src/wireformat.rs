@@ -25,6 +25,18 @@ pub fn packet_from_bytes<'a>(b: &'a [u8]) -> Result<Packet<'a>> {
     // TODO check for trailing bytes, pos != b.len()
 }
 
+// Hashes a slice to be treated as a mpint. Has u32 length prefix
+// and an extra 0x00 byte if the MSB is set.
+pub fn hash_mpint(hash_ctx: &mut ring::digest::Context, m: &[u8]) {
+    let pad = m.len() > 0 && (m[0] & 0x80) != 0;
+    let l = m.len() as u32 + pad as u32;
+    hash_ctx.update(&l.to_be_bytes());
+    if pad {
+        hash_ctx.update(&[0x00]);
+    }
+    hash_ctx.update(m);
+}
+
 
 /// Writes a SSH packet to a buffer. Returns the length written.
 pub fn write_ssh<T>(target: &mut [u8], value: &T) -> Result<usize>
@@ -44,6 +56,13 @@ pub fn hash_ssh<T>(hash_ctx: &mut ring::digest::Context, value: &T) -> Result<()
 where
     T: Serialize,
 {
+    let mut serializer = SeSSHBytes::Length { pos: 0 };
+    value.serialize(&mut serializer)?;
+    let len = match serializer {
+        SeSSHBytes::Length { pos } => pos,
+        _ => 0, // TODO is there a better syntax here? we know it's always WriteBytes
+    } as u32;
+    hash_ctx.update(&len.to_be_bytes());
     let mut serializer = SeSSHBytes::WriteHash { hash_ctx };
     value.serialize(&mut serializer)?;
     Ok(())
@@ -86,8 +105,8 @@ impl<'a> Serialize for BinString<'a> {
 /// Optionally compute the hash of the packet rather than serializing.
 enum SeSSHBytes<'a> {
     WriteBytes { target: &'a mut [u8], pos: usize },
-
-    WriteHash { hash_ctx: &'a mut ring::digest::Context }
+    Length { pos: usize },
+    WriteHash { hash_ctx: &'a mut ring::digest::Context },
 }
 
 impl SeSSHBytes<'_> {
@@ -98,6 +117,9 @@ impl SeSSHBytes<'_> {
                     return Err(Error::NoRoom);
                 }
                 target[*pos..*pos + v.len()].copy_from_slice(v);
+                *pos += v.len();
+            }
+            SeSSHBytes::Length { ref mut pos } => {
                 *pos += v.len();
             }
             SeSSHBytes::WriteHash { hash_ctx } => {

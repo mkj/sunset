@@ -34,7 +34,8 @@ async fn run() -> Result<(), Box<dyn Error>> {
     trace!("tracing main");
 
     // Connect to a peer
-    let mut stream = TcpStream::connect("dropbear.nl:22").await?;
+    // let mut stream = TcpStream::connect("dropbear.nl:22").await?;
+    let mut stream = TcpStream::connect("localhost:2244").await?;
 
     let mut work = vec![0; 1000];
     let c = conn::Conn::new()?;
