@@ -8,7 +8,7 @@ use crate::encrypt::{Cipher, Integ, Keys};
 use crate::ident::RemoteVersion;
 use crate::namelist::LocalNames;
 use crate::packets::Packet;
-use crate::wireformat::{BinString,hash_mpint};
+use crate::wireformat::{BinString,hash_mpint,hash_packet};
 use crate::*;
 use crate::sshnames::*;
 use ring::agreement;
@@ -78,8 +78,6 @@ pub(crate) struct Kex {
 
 struct KexHash {
     hash_ctx: DigestCtx,
-    v: Vec<u8>,
-
 }
 
 // kexhash state. progessively include version idents, kexinit payloads, hostkey, e/f, secret
@@ -102,10 +100,8 @@ impl KexHash {
         //    mpint     f, exchange value sent by the server (aka q_s)
         //    mpint     K, the shared secret
 
-let mut v = Vec::new();
-
-        let mut hash_ctx = DigestCtx::new(algos.kex.hash());
-        let mut kh = KexHash { hash_ctx, v };
+        let hash_ctx = DigestCtx::new(algos.kex.hash());
+        let mut kh = KexHash { hash_ctx };
         let remote_version = remote_version.version().trap()?;
         // Recreate our own kexinit packet to hash.
         // The remote packet is missing packet type so we add it.
@@ -113,25 +109,13 @@ let mut v = Vec::new();
         if algos.is_client {
             kh.hash_slice(ident::OUR_VERSION);
             kh.hash_slice(remote_version);
-            let mut b = vec![0u8; 1000];
-            let l = wireformat::write_ssh(&mut b, &own_kexinit)?;
-            b.truncate(l);
-            kh.v.extend_from_slice(&(b.len() as u32).to_be_bytes());
-            kh.v.extend_from_slice(&b);
-            wireformat::hash_ssh(&mut kh.hash_ctx, &own_kexinit)?;
-            // hash_ctx.update(&[packets::MessageNumber::SSH_MSG_KEXINIT as u8]);
-            let mut b = vec![0u8; 1000];
-            let l = wireformat::write_ssh(&mut b, &remote_kexinit)?;
-            b.truncate(l);
-            kh.v.extend_from_slice(&(b.len() as u32).to_be_bytes());
-            kh.v.extend_from_slice(&b);
-            wireformat::hash_ssh(&mut kh.hash_ctx, remote_kexinit)?;
+            hash_packet(&mut kh.hash_ctx, &own_kexinit)?;
+            hash_packet(&mut kh.hash_ctx, remote_kexinit)?;
         } else {
-            kh.hash_ctx.update(remote_version);
-            kh.hash_ctx.update(ident::OUR_VERSION);
-            // hash_ctx.update(&[packets::MessageNumber::SSH_MSG_KEXINIT as u8]);
-            wireformat::hash_ssh(&mut kh.hash_ctx, remote_kexinit)?;
-            wireformat::hash_ssh(&mut kh.hash_ctx, &own_kexinit)?
+            kh.hash_slice(remote_version);
+            kh.hash_slice(ident::OUR_VERSION);
+            hash_packet(&mut kh.hash_ctx, remote_kexinit)?;
+            hash_packet(&mut kh.hash_ctx, &own_kexinit)?
         }
         // The remainder of hash_ctx is updated after kexdhreply
 
@@ -152,15 +136,12 @@ let mut v = Vec::new();
     /// internally.
     fn finish(mut self, k: &[u8]) -> Digest {
         hash_mpint(&mut self.hash_ctx, k);
-        trace!("kexhash of {:?}", self.v.hex_dump());
         self.hash_ctx.finish()
     }
 
-    // Hashes a buffer Has u32 length prefix.
+    // Hashes a slice, with added u32 length prefix.
     fn hash_slice(&mut self, v: &[u8]) {
-        self.v.extend_from_slice(&(v.len() as u32).to_be_bytes());
         self.hash_ctx.update(&(v.len() as u32).to_be_bytes());
-        self.v.extend_from_slice(v);
         self.hash_ctx.update(v);
     }
 }

@@ -35,16 +35,16 @@ async fn run() -> Result<(), Box<dyn Error>> {
 
     // Connect to a peer
     // let mut stream = TcpStream::connect("dropbear.nl:22").await?;
-    let mut stream = TcpStream::connect("localhost:2244").await?;
+    let mut stream = TcpStream::connect("130.95.13.18:22").await?;
 
-    let mut work = vec![0; 1000];
+    let mut work = vec![0; 3000];
     let c = conn::Conn::new()?;
     let mut r = conn::Runner::new(c, work.as_mut_slice())?;
 
-    let mut inbuf = vec![0; 1000];
+    let mut inbuf = vec![0; 3000];
     let mut inpos = 0;
     let mut inlen = 0;
-    let mut outbuf = vec![0; 1000];
+    let mut outbuf = vec![0; 3000];
 
     loop {
         while r.output_pending() {

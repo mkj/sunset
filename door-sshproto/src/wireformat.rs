@@ -52,10 +52,11 @@ where
 }
 
 /// Hashes the contents of a SSH packet, updating the provided context.
-pub fn hash_ssh<T>(hash_ctx: &mut ring::digest::Context, value: &T) -> Result<()>
+pub fn hash_packet<T>(hash_ctx: &mut ring::digest::Context, value: &T) -> Result<()>
 where
     T: Serialize,
 {
+    // calculate the u32 length prefix
     let mut serializer = SeSSHBytes::Length { pos: 0 };
     value.serialize(&mut serializer)?;
     let len = match serializer {
@@ -64,6 +65,7 @@ where
     } as u32;
     hash_ctx.update(&len.to_be_bytes());
     let mut serializer = SeSSHBytes::WriteHash { hash_ctx };
+    // the rest of the packet
     value.serialize(&mut serializer)?;
     Ok(())
 }
@@ -530,8 +532,8 @@ mod tests {
     // use pretty_hex::PrettyHex;
 
     #[test]
-    /// check that hash_ssh() matches hashing a serialized message
-    fn test_hash_ssh() {
+    /// check that hash_packet() matches hashing a serialized message
+    fn test_hash_packet() {
         use ring::digest;
         let input = "hello";
         let mut buf = vec![99; 20];
@@ -539,9 +541,14 @@ mod tests {
         buf.truncate(w1);
 
         let mut hash_ctx = digest::Context::new(&digest::SHA256);
-        wireformat::hash_ssh(&mut hash_ctx, &input).unwrap();
+        wireformat::hash_packet(&mut hash_ctx, &input).unwrap();
         let digest1 = hash_ctx.finish();
-        let digest2 = digest::digest(&digest::SHA256, &buf);
+
+        let mut hash_ctx = digest::Context::new(&digest::SHA256);
+        hash_ctx.update(&(w1 as u32).to_be_bytes());
+        hash_ctx.update(&buf);
+        let digest2 = hash_ctx.finish();
+
         assert_eq!(digest1.as_ref(), digest2.as_ref());
     }
 
