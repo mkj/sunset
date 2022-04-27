@@ -51,7 +51,7 @@ where
 
 type Res = Result<()>;
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize)]
 /// A SSH style binary string. Serialized as 32 bit length followed by the bytes
 /// of the slice.
 pub struct BinString<'a>(pub &'a [u8]);
@@ -59,6 +59,12 @@ pub struct BinString<'a>(pub &'a [u8]);
 impl<'a> AsRef<[u8]> for BinString<'a> {
     fn as_ref(&self) -> &'a [u8] {
         self.0
+    }
+}
+
+impl<'a> core::fmt::Debug for BinString<'a> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "BinString(len={}", self.0.len())
     }
 }
 
