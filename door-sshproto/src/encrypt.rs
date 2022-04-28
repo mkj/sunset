@@ -683,6 +683,7 @@ mod tests {
         for (c, i) in combos {
             let mut algos = kex::Algos {
                 kex: kex::SharedSecret::from_name(SSH_NAME_CURVE25519).unwrap(),
+                hostsig: sign::SigType::Ed25519,
                 cipher_enc: c.clone(),
                 cipher_dec: c.clone(),
                 integ_enc: i.clone(),

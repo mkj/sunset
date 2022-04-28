@@ -13,8 +13,8 @@ pub const SSH_NAME_KEXGUESS2: &str = "kexguess2@matt.ucc.asn.au";
 pub const SSH_NAME_ED25519: &str = "ssh-ed25519";
 // RFC8332
 pub const SSH_NAME_RSA_SHA256: &str = "rsa-sha2-256";
-// RFC4253
-pub const SSH_NAME_RSA_SHA1: &str = "ssh-rsa";
+// RFC4253. Deprecated for signatures but is a valid key type.
+pub const SSH_NAME_RSA: &str = "ssh-rsa";
 
 // RFC4344
 pub const SSH_NAME_AES256_CTR: &str = "aes256-ctr";

@@ -187,7 +187,7 @@ pub struct KexInit<'a> {
     pub cookie: [u8; 16],
     #[serde(borrow)]
     pub kex: NameList<'a>,
-    pub hostkey: NameList<'a>,
+    pub hostkey: NameList<'a>, // is actually a signature type, not a key type
     pub cipher_c2s: NameList<'a>,
     pub cipher_s2c: NameList<'a>,
     pub mac_c2s: NameList<'a>,

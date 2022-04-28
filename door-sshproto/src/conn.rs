@@ -170,7 +170,7 @@ impl<'a> Conn<'a> {
             ConnState::PreAuth => {
                 // TODO. need to figure how we'll do "unbounded" responses
                 // and backpressure.
-                if traffic.can_output() {
+                if traffic.can_output()  {
                     if let ClientServer::Client(c) = &mut self.cliserv {
                         c.auth.start(&mut resp)?;
                     }

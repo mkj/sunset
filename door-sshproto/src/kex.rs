@@ -11,6 +11,7 @@ use crate::packets::Packet;
 use crate::wireformat::{BinString,hash_mpint,hash_packet};
 use crate::*;
 use crate::sshnames::*;
+use crate::sign::SigType;
 use ring::agreement;
 use ring::digest::{self, Context as DigestCtx, Digest};
 use ring::signature::Signature;
@@ -28,8 +29,12 @@ const EMPTY_LOCALNAMES: LocalNames = LocalNames(&[]);
 // TODO this will be configurable.
 const fixed_options_kex: LocalNames =
     LocalNames(&[SSH_NAME_CURVE25519, SSH_NAME_CURVE25519_LIBSSH]);
-const fixed_options_hostkey: LocalNames =
-    LocalNames(&[SSH_NAME_ED25519, SSH_NAME_RSA_SHA256, SSH_NAME_RSA_SHA1]);
+const fixed_options_hostsig: LocalNames =
+    LocalNames(&[
+        SSH_NAME_ED25519,
+        #[cfg(std)]
+        SSH_NAME_RSA_SHA256
+        ]);
 
 const fixed_options_cipher: LocalNames =
     LocalNames(&[SSH_NAME_CHAPOLY, SSH_NAME_AES256_CTR]);
@@ -38,7 +43,7 @@ const fixed_options_comp: LocalNames = LocalNames(&[SSH_NAME_NONE]);
 
 pub(crate) struct AlgoConfig<'a> {
     kexs: LocalNames<'a>,
-    hostkeys: LocalNames<'a>,
+    hostsig: LocalNames<'a>,
     ciphers: LocalNames<'a>,
     macs: LocalNames<'a>,
     comps: LocalNames<'a>,
@@ -50,7 +55,7 @@ impl<'a> AlgoConfig<'a> {
     pub fn new(_is_client: bool) -> Self {
         AlgoConfig {
             kexs: fixed_options_kex,
-            hostkeys: fixed_options_hostkey,
+            hostsig: fixed_options_hostsig,
             ciphers: fixed_options_cipher,
             macs: fixed_options_mac,
             comps: fixed_options_comp,
@@ -78,7 +83,7 @@ struct KexHash {
     hash_ctx: DigestCtx,
 }
 
-// kexhash state. progessively include version idents, kexinit payloads, hostkey, e/f, secret
+// kexhash state. progessively include version idents, kexinit payloads, hostsig, e/f, secret
 impl KexHash {
     fn new(
         kex: &Kex, algos: &Algos, algo_conf: &AlgoConfig,
@@ -148,7 +153,7 @@ impl KexHash {
 #[derive(Debug)]
 pub(crate) struct Algos {
     pub kex: SharedSecret,
-    // hostkey: HostKey,
+    pub hostsig: SigType,
     pub cipher_enc: Cipher,
     pub cipher_dec: Cipher,
     pub integ_enc: Integ,
@@ -205,7 +210,7 @@ impl Kex {
         let k = packets::KexInit {
             cookie: self.our_cookie,
             kex: (&conf.kexs).into(),
-            hostkey: (&conf.hostkeys).into(),
+            hostkey: (&conf.hostsig).into(),
             cipher_c2s: (&conf.ciphers).into(),
             cipher_s2c: (&conf.ciphers).into(),
             mac_c2s: (&conf.macs).into(),
@@ -273,14 +278,15 @@ impl Kex {
             p.kex.first() == conf.kexs.first()
         };
 
-        let hostkey_method = p
+        let hostsig_method = p
             .hostkey
-            .first_match(is_client, &conf.hostkeys)?
+            .first_match(is_client, &conf.hostsig)?
             .ok_or(Error::AlgoNoMatch { algo: "hostkey" })?;
+        let hostsig = SigType::from_name(hostsig_method)?;
         let goodguess_hostkey = if kexguess2 {
-            p.hostkey.first() == hostkey_method
+            p.hostkey.first() == hostsig_method
         } else {
-            p.hostkey.first() == conf.hostkeys.first()
+            p.hostkey.first() == conf.hostsig.first()
         };
 
         // Switch between client/server tx/rx
@@ -332,6 +338,7 @@ impl Kex {
 
         Ok(Algos {
             kex,
+            hostsig: hostsig,
             cipher_enc,
             cipher_dec,
             integ_enc,
@@ -523,6 +530,9 @@ mod tests {
         for k in kex::fixed_options_kex.0.iter() {
             kex::SharedSecret::from_name(k).unwrap();
         }
+        for k in kex::fixed_options_hostsig.0.iter() {
+            sign::SigType::from_name(k).unwrap();
+        }
         for k in kex::fixed_options_cipher.0.iter() {
             encrypt::Cipher::from_name(k).unwrap();
         }
@@ -531,11 +541,17 @@ mod tests {
         }
     }
 
-    // unknown names fail.
+    // Unknown names fail. This is easy to hit if the names of from_name()
+    // match statements are mistyped or aren't imported.
     #[test]
     #[should_panic]
     fn test_unknown_kex() {
         kex::SharedSecret::from_name("bad").unwrap();
+    }
+    #[test]
+    #[should_panic]
+    fn test_unknown_sig() {
+        sign::SigType::from_name("bad").unwrap();
     }
     #[test]
     #[should_panic]

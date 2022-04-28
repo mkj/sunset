@@ -19,6 +19,8 @@ impl<'a> Client<'a> {
         }
     }
 
+    // pub fn check_hostkey(hostkey: )
+
 
     pub fn banner(&mut self, banner: &packets::UserauthBanner) {
         info!("Got banner:\n{}", banner.message);
