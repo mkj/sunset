@@ -46,7 +46,6 @@ impl<'a> Runner<'a> {
     }
 
     pub fn input(&mut self, buf: &[u8]) -> Result<usize, Error> {
-        trace!("input of {}", buf.len());
         let (size, payload) = self.traffic.input(
             &mut self.keys,
             &mut self.conn.remote_version,
@@ -58,8 +57,6 @@ impl<'a> Runner<'a> {
                 self.traffic.send_packet(&r, &mut self.keys)?;
             }
         }
-        trace!("input handled {size} of {}", buf.len());
-
         let resp = self.conn.progress(&mut self.traffic, &mut self.keys)?;
         for r in resp {
             self.traffic.send_packet(&r, &mut self.keys)?;
@@ -173,7 +170,7 @@ impl<'a> Conn<'a> {
             ConnState::PreAuth => {
                 // TODO. need to figure how we'll do "unbounded" responses
                 // and backpressure.
-                if (traffic.can_output()) {
+                if traffic.can_output() {
                     if let ClientServer::Client(c) = &mut self.cliserv {
                         c.auth.start(&mut resp)?;
                     }
@@ -185,6 +182,9 @@ impl<'a> Conn<'a> {
                 // TODO
             }
         }
+
+        // TODO: if keys.seq > MAX_REKEY then we must rekey for security.
+
         Ok(resp)
     }
 
@@ -194,9 +194,7 @@ impl<'a> Conn<'a> {
     ) -> Result<RespPackets, Error> {
         trace!("conn state {:?}", self.state);
         // self.keys.next_seq_decrypt();
-        trace!("bef");
         let p = wireformat::packet_from_bytes(payload)?;
-        trace!("handle_payload() got {p:#?}");
         self.dispatch_packet(&p, keys)
     }
 
@@ -258,7 +256,6 @@ impl<'a> Conn<'a> {
                         } else {
                             let kex = core::mem::replace(&mut self.kex, kex::Kex::new()?);
                             *output = Some(kex.handle_kexdhreply(p, &self.sess_id)?);
-                            trace!("after reply");
                             resp.push(Packet::NewKeys(packets::NewKeys{})).trap()?;
                             Ok(resp)
                         }
@@ -318,6 +315,36 @@ impl<'a> Conn<'a> {
                 // TODO: this is server only
                 todo!("userauth request");
                 Ok(resp)
+            }
+            Packet::UserauthFailure(p) => {
+                // TODO: client only
+                if let ClientServer::Client(cli) = &mut self.cliserv {
+                    cli.auth.failure(p)?;
+                    Ok(resp)
+                } else {
+                    debug!("Received UserauthFailure as a server");
+                    Err(Error::SSHProtoError)
+                }
+            }
+            Packet::UserauthSuccess(p) => {
+                // TODO: client only
+                if let ClientServer::Client(cli) = &mut self.cliserv {
+                    cli.auth.success(p)?;
+                    Ok(resp)
+                } else {
+                    debug!("Received UserauthSuccess as a server");
+                    Err(Error::SSHProtoError)
+                }
+            }
+            Packet::UserauthBanner(p) => {
+                // TODO: client only
+                if let ClientServer::Client(cli) = &mut self.cliserv {
+                    cli.banner(p);
+                    Ok(resp)
+                } else {
+                    debug!("Received banner as a server");
+                    Err(Error::SSHProtoError)
+                }
             }
         }
     }

@@ -1,6 +1,9 @@
+#[allow(unused_imports)]
+use log::{debug, error, info, log, trace, warn};
 use core::str::Utf8Error;
 
-use snafu::{prelude::*,Location,GenerateImplicitData};
+use serde::de::{Expected, Unexpected};
+use snafu::{prelude::*,Location};
 
 // TODO: can we make Snafu not require Debug?
 // TODO: maybe split this into a list of public vs private errors?
@@ -14,6 +17,7 @@ pub enum Error {
     RanOut,
 
     /// Not implemented (unused in SSH protocol)
+    // internal
     NoSerializer,
 
     /// Not a UTF8 string
@@ -41,8 +45,9 @@ pub enum Error {
     /// Packet size too large (or bad decrypt)
     BigPacket { size: usize },
 
-    /// Random number generation failure
-    RngError,
+    /// Serde invalid value
+    // internal
+    InvalidDeserializeU8 { value: u8 },
 
     /// Other custom error
     // TODO: these 
@@ -56,6 +61,10 @@ pub enum Error {
         location: snafu::Location,
     }
 }
+
+trait SomeError {}
+
+impl SomeError for Error {}
 
 impl Error {
     pub fn msg(m: &'static str) -> Error {
@@ -143,5 +152,23 @@ impl serde::de::Error for Error {
         println!("custom de error: {}", msg);
 
         Error::msg("de error")
+    }
+
+    fn invalid_value(unexp: Unexpected<'_>, exp: &dyn Expected) -> Self {
+        if let Unexpected::Unsigned(val) = unexp {
+            if val <= 255 {
+                return Error::InvalidDeserializeU8 { value: val as u8 };
+            }
+        }
+        debug!("Invalid deserialize. Expected {} got {}", exp, unexp);
+        Error::bug()
+    }
+}
+
+pub struct ExpectedMessageNumber;
+
+impl Expected for ExpectedMessageNumber {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(formatter, "a known SSH message number")
     }
 }

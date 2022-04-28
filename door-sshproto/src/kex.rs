@@ -33,8 +33,6 @@ const fixed_options_hostkey: LocalNames =
 
 const fixed_options_cipher: LocalNames =
     LocalNames(&[SSH_NAME_CHAPOLY, SSH_NAME_AES256_CTR]);
-// const fixed_options_cipher: LocalNames =
-    // LocalNames(&[SSH_NAME_AES256_CTR]);
 const fixed_options_mac: LocalNames = LocalNames(&[SSH_NAME_HMAC_SHA256]);
 const fixed_options_comp: LocalNames = LocalNames(&[SSH_NAME_NONE]);
 

@@ -3,26 +3,26 @@
 //!
 //! These are mostly container formats though there is some logic to determine
 //! which enum variant needs deserializing for certain packet types.
-#[allow(unused_imports)]
-use {
-    crate::error::{Error,Result,TrapBug},
-    log::{debug, error, info, log, trace, warn},
-};
 use core::borrow::BorrowMut;
 use core::cell::Cell;
 use core::fmt;
 use core::marker::PhantomData;
+#[allow(unused_imports)]
+use {
+    crate::error::{Error, Result, TrapBug},
+    log::{debug, error, info, log, trace, warn},
+};
 
 use serde::de;
-use serde::de::{DeserializeSeed, SeqAccess, Visitor};
+use serde::de::{DeserializeSeed, Expected, SeqAccess, Visitor};
 use serde::ser::{SerializeSeq, SerializeTuple, Serializer};
 use serde::Deserializer;
 
 use serde::{Deserialize, Serialize};
 
-use crate::*;
 use crate::namelist::NameList;
 use crate::wireformat::BinString;
+use crate::*;
 
 macro_rules! messagetypes {
     ( $( ( $message_num:literal, $SpecificPacketVariant:ident, $SpecificPacketType:ty, $SSH_MESSAGE_NAME:ident ), )* ) => {
@@ -70,15 +70,21 @@ impl<'de: 'a, 'a> Deserialize<'de> for Packet<'a> {
             }
             fn visit_seq<V>(self, mut seq: V) -> Result<Packet<'de>, V::Error>
             where
-                V: SeqAccess<'de>,
+                V: SeqAccess<'de>
             {
                 // First byte is always message number
                 let msg_num: u8 = seq
                     .next_element()?
-                    .ok_or_else(|| de::Error::invalid_length(0, &self))?;
-                let ty: MessageNumber = msg_num
-                    .try_into()
-                    .map_err(|_| de::Error::custom("Unknown packet type"))?;
+                    // .map_err(|_| Error::RanOut)?
+                    .ok_or_else(|| de::Error::missing_field("message number"))?;
+                let ty = MessageNumber::try_from(msg_num);
+                let ty = match ty {
+                    Ok(t) => t,
+                    Err(_) => {
+                        return Err(de::Error::invalid_value(de::Unexpected::Unsigned(msg_num as u64),
+                            &self));
+                    }
+                };
 
                 // Decode based on the message number
                 let p = match ty {
@@ -88,7 +94,9 @@ impl<'de: 'a, 'a> Deserialize<'de> for Packet<'a> {
                     $(
                     MessageNumber::$SSH_MESSAGE_NAME => Packet::$SpecificPacketVariant(
                         seq.next_element()?
-                            .ok_or_else(|| de::Error::invalid_length(1, &self))?,
+                        // .map_err(|_| Error::RanOut)?
+                        .ok_or_else(|| de::Error::missing_field("rest of packet"))?
+                        // .ok_or_else(|| Error::RanOut)?
                     ),
                     )*
                 };
@@ -164,11 +172,13 @@ messagetypes![
 (30, KexDHInit, KexDHInit<'a>, SSH_MSG_KEXDH_INIT),
 (31, KexDHReply, KexDHReply<'a>, SSH_MSG_KEXDH_REPLY),
 (50, UserauthRequest, UserauthRequest<'a>, SSH_MSG_USERAUTH_REQUEST),
+(51, UserauthFailure, UserauthFailure<'a>, SSH_MSG_USERAUTH_FAILURE),
+(52, UserauthSuccess, UserauthSuccess, SSH_MSG_USERAUTH_SUCCESS),
+(53, UserauthBanner, UserauthBanner<'a>, SSH_MSG_USERAUTH_BANNER),
 ];
 
-
 // Note:
-// Each struct needs one #[borrow] tag before one of the struct fields with a lifetime 
+// Each struct needs one #[borrow] tag before one of the struct fields with a lifetime
 // (eg "blob: BinString<'a>"). That avoids the cryptic error in derive:
 // error[E0495]: cannot infer an appropriate lifetime for lifetime parameter `'de` due to conflicting requirements
 
@@ -191,12 +201,10 @@ pub struct KexInit<'a> {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct NewKeys {
-}
+pub struct NewKeys {}
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct Ignore {
-}
+pub struct Ignore {}
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Debug<'a> {
@@ -233,12 +241,12 @@ pub struct KexDHReply<'a> {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ServiceRequest<'a> {
-    pub name : &'a str,
+    pub name: &'a str,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ServiceAccept<'a> {
-    pub name : &'a str,
+    pub name: &'a str,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -274,9 +282,27 @@ pub struct MethodPubkey<'a> {
     pub sig: Option<&'a [u8]>,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct UserauthFailure<'a> {
+    #[serde(borrow)]
+    pub methods: NameList<'a>,
+    pub partial: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct UserauthSuccess {
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct UserauthBanner<'a> {
+    #[serde(borrow)]
+    pub message: &'a str,
+    pub lang: &'a str,
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::{packets,wireformat};
+    use crate::{packets, wireformat};
 
     #[test]
     /// check round trip of packet enums is right
@@ -288,5 +314,4 @@ mod tests {
             }
         }
     }
-
 }

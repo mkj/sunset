@@ -121,17 +121,11 @@ impl Keys {
         let mut iv = [0u8; MAX_IV_LEN];
         let hash = algos.kex.hash();
 
-        trace!("new kex k {:?}", k.hex_dump());
-        trace!("new kex h {:?}", h.hex_dump());
-        trace!("new kex s {:?}", sess_id.hex_dump());
-
         let (iv_e, iv_d, k_e, k_d, i_e, i_d) = if algos.is_client {
             ('A', 'B', 'C', 'D', 'E', 'F')
         } else {
             ('B', 'A', 'D', 'C', 'F', 'E')
         };
-
-        trace!("using algos {:?}", algos);
 
         let enc = {
             let i = Self::compute_key(
@@ -187,7 +181,6 @@ impl Keys {
                 h,
                 sess_id,
             )?;
-            trace!("enc");
             IntegKey::from_integ(&algos.integ_enc, k)?
         };
 
@@ -201,7 +194,6 @@ impl Keys {
                 h,
                 sess_id,
             )?;
-            trace!("dec");
             IntegKey::from_integ(&algos.integ_dec, k)?
         };
 
@@ -291,11 +283,11 @@ impl Keys {
         let size_integ = self.integ_dec.size_out();
 
         if buf.len() < size_block + size_integ {
-            trace!("Bad packet, {} smaller than block size", buf.len());
+            debug!("Bad packet, {} smaller than block size", buf.len());
             return Err(Error::SSHProtoError);
         }
         if buf.len() < SSH_MIN_PACKET_SIZE + size_integ {
-            trace!("Bad packet, {} smaller than min packet size", buf.len());
+            debug!("Bad packet, {} smaller than min packet size", buf.len());
             return Err(Error::SSHProtoError);
         }
         // "MUST be a multiple of the cipher block size".
@@ -304,7 +296,7 @@ impl Keys {
         let len = buf.len() - size_integ - sublength;
 
         if len % size_block != 0 {
-            trace!("Bad packet, not multiple of block size");
+            debug!("Bad packet, not multiple of block size");
             return Err(Error::SSHProtoError);
         }
 
@@ -317,7 +309,7 @@ impl Keys {
                 let mac: &mut [u8; chapoly::TAG_LEN] = mac.try_into().trap()?;
 
                 openkey.open_in_place(seq, data, mac).map_err(|_| {
-                    trace!("Packet integrity failed");
+                    info!("Packet integrity failed");
                     Error::BadDecrypt
                 })?;
             }
@@ -337,7 +329,7 @@ impl Keys {
                 h.update(&seq.to_be_bytes());
                 h.update(data);
                 h.verify_slice(mac).map_err(|_| {
-                    trace!("Packet integrity failed");
+                    info!("Packet integrity failed");
                     Error::BadDecrypt
                 })?;
             }
@@ -345,7 +337,7 @@ impl Keys {
 
         let padlen = data[SSH_LENGTH_SIZE] as usize;
         if padlen < SSH_MIN_PADLEN {
-            trace!("Packet padding too short");
+            debug!("Packet padding too short");
             return Err(Error::SSHProtoError);
         }
 
@@ -354,7 +346,7 @@ impl Keys {
             .len()
             .checked_sub(SSH_LENGTH_SIZE + 1 + size_integ + padlen)
             .ok_or_else(|| {
-                trace!("Bad padding length");
+                debug!("Bad padding length");
                 Error::SSHProtoError
             })?;
 
@@ -399,9 +391,6 @@ impl Keys {
         // len is everything except the MAC
         let len = SSH_LENGTH_SIZE + 1 + payload_len + padlen;
 
-        trace!("encrypyt seq {seq}");
-
-        trace!("send padlen {padlen} payload {payload_len} len {len}");
         if self.enc.is_aead() {
             debug_assert_eq!((len - SSH_LENGTH_SIZE) % size_block, 0);
         } else {
@@ -429,15 +418,10 @@ impl Keys {
             IntegKey::ChaPoly => {}
             IntegKey::NoInteg => {}
             IntegKey::HmacSha256(k) => {
-                trace!("hmac key {:?}", k.hex_dump());
                 let mut h = HmacSha256::new_from_slice(&k).trap()?;
                 h.update(&seq.to_be_bytes());
-                trace!("hmac {:?}", seq.to_be_bytes().hex_dump());
-                trace!("enc update {:?}", seq.to_be_bytes().hex_dump());
-                trace!("hmac {:?}", enc.hex_dump());
                 h.update(enc);
                 let result = h.finalize();
-                trace!("enc update {:?}", enc.hex_dump());
                 mac.copy_from_slice(&result.into_bytes());
             }
         }
@@ -445,12 +429,7 @@ impl Keys {
         match &mut self.enc {
             EncKey::ChaPoly(sealkey) => {
                 let mac: &mut [u8; chapoly::TAG_LEN] = mac.try_into().trap()?;
-
-                trace!("enc seq {:?}", seq.to_be_bytes().hex_dump());
-                trace!("enc {:?}", enc.hex_dump());
                 sealkey.seal_in_place(seq, enc, mac);
-                trace!("out {:?}", enc.hex_dump());
-                trace!("mac {:?}", mac.hex_dump());
             }
             EncKey::Aes256Ctr(a) => {
                 a.apply_keystream(enc);
@@ -520,8 +499,6 @@ impl EncKey {
     pub fn from_cipher<'a>(
         cipher: &Cipher, key: &'a [u8], iv: &'a [u8],
     ) -> Result<Self, Error> {
-        trace!("enc key {:?}", key.hex_dump());
-        trace!("iv {:?}", iv.hex_dump());
         match cipher {
             Cipher::ChaPoly => {
                 let key: &[u8; 64] = key.try_into().trap()?;
@@ -561,8 +538,6 @@ impl DecKey {
     pub fn from_cipher<'a>(
         cipher: &Cipher, key: &'a [u8], iv: &'a [u8],
     ) -> Result<Self, Error> {
-        trace!("dec key {:?}", key.hex_dump());
-        trace!("iv {:?}", iv.hex_dump());
         match cipher {
             Cipher::ChaPoly => {
                 let key: &[u8; 64] = key.try_into().trap()?;
@@ -624,11 +599,9 @@ pub(crate) enum IntegKey {
 
 impl IntegKey {
     pub fn from_integ<'a>(integ: &Integ, key: &'a [u8]) -> Result<Self, Error> {
-        warn!("key {:?}", key.hex_dump());
         match integ {
             Integ::ChaPoly => Ok(IntegKey::ChaPoly),
             Integ::HmacSha256 => {
-                trace!("integ key {}", key.len());
                 Ok(IntegKey::HmacSha256(key.try_into().trap()?))
             }
         }
@@ -658,7 +631,6 @@ mod tests {
             let mut v: std::vec::Vec<u8> = (0u8..i as u8 + 60).collect();
             let orig_payload = v[SSH_PAYLOAD_START..SSH_PAYLOAD_START + i].to_vec();
 
-            trace!("roundtrips, i={i}");
             let written = keys.encrypt(i, v.as_mut_slice()).unwrap();
 
             v.truncate(written);

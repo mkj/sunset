@@ -1,3 +1,10 @@
+#[allow(unused_imports)]
+use {
+    crate::error::{Error, Result, TrapBug},
+    log::{debug, error, info, log, trace, warn},
+};
+
+
 use crate::*;
 use crate::cliauth::CliAuth;
 
@@ -10,5 +17,10 @@ impl<'a> Client<'a> {
         Client {
             auth: CliAuth::new(),
         }
+    }
+
+
+    pub fn banner(&mut self, banner: &packets::UserauthBanner) {
+        info!("Got banner:\n{}", banner.message);
     }
 }

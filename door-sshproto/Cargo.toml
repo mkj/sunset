@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 serde = { version = "1.0", default-features = false, features = ["derive"]}
-snafu = { version = "0.7", default-features = false }
+snafu = { version = "0.7", default-features = false, features = ["rust_1_46"] }
 # TODO: check that log macro calls disappear in no_std builds
 log = { version = "0.4" }
 # TODO: probably needs changing for embedded platforms

@@ -39,4 +39,12 @@ impl<'a> CliAuth<'a> {
         }
         Ok(())
     }
+
+    pub fn failure(&mut self, failure: &packets::UserauthFailure) -> Result<()> {
+        Ok(())
+    }
+
+    pub fn success(&mut self, success: &packets::UserauthSuccess) -> Result<()> {
+        Ok(())
+    }
 }

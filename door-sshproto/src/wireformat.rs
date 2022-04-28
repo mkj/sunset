@@ -20,8 +20,16 @@ use core::convert::AsRef;
 pub fn packet_from_bytes<'a>(b: &'a [u8]) -> Result<Packet<'a>> {
 
     let mut ds = DeSSHBytes::from_bytes(b);
-    let t = Packet::deserialize(&mut ds)?;
-    Ok(t)
+    Packet::deserialize(&mut ds)
+    .map_err(|e| {
+        if let Error::InvalidDeserializeU8 { value } = e {
+            // This assumes that the only deserialize that can hit
+            // invalid_value() is an unknown packet type. Seems safe at present.
+            Error::UnknownPacket { number: value }
+        } else {
+            e
+        }
+    })
     // TODO check for trailing bytes, pos != b.len()
 }
 
