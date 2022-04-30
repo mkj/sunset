@@ -5,12 +5,18 @@
 //! [RFC4253](https://datatracker.ietf.org/doc/html/rfc4253) and others for packet structure
 use serde::{
     de, ser,
-    de::{DeserializeSeed, SeqAccess, Visitor},
+    de::{DeserializeSeed, SeqAccess, Visitor, EnumAccess, VariantAccess},
     ser::SerializeSeq,
     Deserialize, Deserializer, Serialize, Serializer,
 };
 
-use crate::error::{Error,Result};
+#[allow(unused_imports)]
+use {
+    crate::error::{Error, Result, TrapBug},
+    log::{debug, error, info, log, trace, warn},
+};
+use pretty_hex::PrettyHex;
+
 use crate::packets::Packet;
 use core::cell::Cell;
 use core::slice;
@@ -193,12 +199,13 @@ impl Serializer for &mut SeSSHBytes<'_> {
         v.serialize(self)
     }
     fn serialize_newtype_variant<T>(
-        self, _name: &'static str, _variant_index: u32, _variant: &'static str,
+        self, _name: &'static str, _variant_index: u32, variant: &'static str,
         v: &T,
     ) -> Res
     where
         T: ?Sized + Serialize,
     {
+        self.serialize_str(variant)?;
         v.serialize(self)
     }
     fn serialize_seq(
@@ -351,6 +358,7 @@ impl<'de> DeSSHBytes<'de> {
         let (t, rest) = self.input.split_at(len);
         self.input = rest;
         self.pos += len;
+        trace!("take new pos {}, {:?}", self.pos, t.hex_dump());
         Ok(t)
     }
 
@@ -380,6 +388,7 @@ impl<'de> DeSSHBytes<'de> {
         let len = self.parse_u32()?;
         let t = self.take(len as usize)?;
         let s = core::str::from_utf8(t).map_err(|_| Error::BadString)?;
+        trace!("parse_str '{s}'");
         Ok(s)
     }
 }
@@ -450,6 +459,13 @@ impl<'de, 'a> Deserializer<'de> for &'a mut DeSSHBytes<'de> {
         visitor.visit_borrowed_str(self.parse_str()?)
     }
 
+    fn deserialize_identifier<V>(self, visitor: V) -> Result<V::Value>
+    where
+        V: Visitor<'de>,
+    {
+        self.deserialize_str(visitor)
+    }
+
     /* deserialize_bytes() is like a string but with binary data. it has
     a u32 prefix of the length. Fixed length byte arrays use _tuple() */
     fn deserialize_bytes<V>(self, visitor: V) -> Result<V::Value>
@@ -485,13 +501,12 @@ impl<'de, 'a> Deserializer<'de> for &'a mut DeSSHBytes<'de> {
     }
 
     fn deserialize_enum<V>(
-        self, _name: &'static str, _variants: &'static [&'static str], _visitor: V,
+        self, name: &'static str, _variants: &'static [&'static str], visitor: V,
     ) -> Result<V::Value, Self::Error>
     where
         V: Visitor<'de>,
     {
-        // visitor.visit_enum(self);
-        panic!("enum")
+        visitor.visit_enum(StringEnum(self))
     }
 
     fn deserialize_newtype_struct<V>(
@@ -522,13 +537,54 @@ impl<'de, 'a> Deserializer<'de> for &'a mut DeSSHBytes<'de> {
     serde::forward_to_deserialize_any! {
         i8 i16 i32 i64 i128 u16 u128 f32 f64 char string
         byte_buf unit_struct
-        map identifier ignored_any
+        map ignored_any
         option
     }
     fn deserialize_any<V>(self, _visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
+        Err(Error::NoSerializer)
+    }
+}
+
+struct StringEnum<'a, 'de: 'a> (&'a mut DeSSHBytes<'de>);
+
+// figures which SSH string (eg "password") identifies the enum
+impl<'de, 'a> EnumAccess<'de> for StringEnum<'a, 'de> {
+    type Error = crate::error::Error;
+    type Variant = Self;
+
+    fn variant_seed<V>(self, seed: V) -> Result<(V::Value, Self::Variant)>
+    where
+        V: DeserializeSeed<'de>,
+    {
+        let variant_name = seed.deserialize(&mut *self.0)?;
+        Ok((variant_name, self))
+    }
+}
+
+// decodes a variant from an enum
+impl<'de, 'a> VariantAccess<'de> for StringEnum<'a, 'de> {
+    type Error = Error;
+
+    fn newtype_variant_seed<T>(self, seed: T) -> Result<T::Value, Self::Error>
+            where T: DeserializeSeed<'de> {
+        seed.deserialize(self.0)
+    }
+
+    fn tuple_variant<V>(self, len: usize, visitor: V ) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+        panic!();
+        Err(Error::NoSerializer)
+    }
+
+    fn unit_variant(self) -> Result<(), Self::Error> {
+        panic!();
+        Err(Error::NoSerializer)
+    }
+
+    fn struct_variant<V>(self, fields: &'static [&'static str], visitor: V ) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+        panic!();
         Err(Error::NoSerializer)
     }
 }

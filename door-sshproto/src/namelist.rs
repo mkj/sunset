@@ -26,6 +26,7 @@ pub struct LocalNames<'a>(pub &'a [&'static str]);
 
 /// The general form that can store either representation
 #[derive(Serialize, Debug)]
+#[serde(untagged)]
 pub enum NameList<'a> {
     String(StringNames<'a>),
     Local(LocalNames<'a>),

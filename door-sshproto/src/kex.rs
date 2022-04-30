@@ -8,10 +8,10 @@ use crate::encrypt::{Cipher, Integ, Keys};
 use crate::ident::RemoteVersion;
 use crate::namelist::LocalNames;
 use crate::packets::Packet;
-use crate::wireformat::{BinString,hash_mpint,hash_packet};
-use crate::*;
-use crate::sshnames::*;
 use crate::sign::SigType;
+use crate::sshnames::*;
+use crate::wireformat::{hash_mpint, hash_packet, BinString};
+use crate::*;
 use ring::agreement;
 use ring::digest::{self, Context as DigestCtx, Digest};
 use ring::signature::Signature;
@@ -29,12 +29,11 @@ const EMPTY_LOCALNAMES: LocalNames = LocalNames(&[]);
 // TODO this will be configurable.
 const fixed_options_kex: LocalNames =
     LocalNames(&[SSH_NAME_CURVE25519, SSH_NAME_CURVE25519_LIBSSH]);
-const fixed_options_hostsig: LocalNames =
-    LocalNames(&[
-        SSH_NAME_ED25519,
-        #[cfg(std)]
-        SSH_NAME_RSA_SHA256
-        ]);
+const fixed_options_hostsig: LocalNames = LocalNames(&[
+    SSH_NAME_ED25519,
+    #[cfg(std)]
+    SSH_NAME_RSA_SHA256,
+]);
 
 const fixed_options_cipher: LocalNames =
     LocalNames(&[SSH_NAME_CHAPOLY, SSH_NAME_AES256_CTR]);
@@ -378,6 +377,11 @@ impl SharedSecret {
         Ok(Packet::KexDHInit(packets::KexDHInit { q_c }))
     }
 
+    // fn verify_sig(&self, h: &Digest, keyblob: &BinString, sigblob: &BinString) -> Result<()>
+    // {
+    //     self.algos.
+    // }
+
     // client only
     fn handle_kexdhreply<'a>(
         mut kex: Kex, p: &packets::KexDHReply, sess_id: &Option<Digest>,
@@ -386,11 +390,14 @@ impl SharedSecret {
         let mut algos = kex.algos.trap()?;
         let mut kex_hash = kex.kex_hash.take().trap()?;
         kex_hash.prefinish(p.k_s.0, algos.kex.pubkey(), p.q_s.0);
+        // consumes the sharedsecret private key in algos
         let kex_out = match algos.kex {
             SharedSecret::KexCurve25519(_) => {
                 KexCurve25519::secret(&mut algos, p.q_s.0, kex_hash, sess_id)?
             }
         };
+
+        algos.hostsig.verify(p.k_s.0, kex_out.h.as_ref(), p.sig.0)?;
         warn!("Need to validate signature");
         Ok(kex_out)
     }

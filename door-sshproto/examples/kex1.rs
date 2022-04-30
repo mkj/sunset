@@ -7,7 +7,37 @@ use door_sshproto::*;
 use door_sshproto::packets::*;
 use door_sshproto::wireformat::BinString;
 
-fn main() -> Result<(), Error> {
+use simplelog::{TestLogger,self,LevelFilter};
+
+fn main() -> Result<()> {
+    let _ = TestLogger::init(LevelFilter::Trace, simplelog::Config::default());
+    // do_kexinit()?;
+    do_userauth()?;
+    Ok(())
+}
+
+fn do_userauth() -> Result<()> {
+    let p = packets::Packet::UserauthRequest(packets::UserauthRequest {
+        username: "matt",
+        service: "con",
+        method: AuthMethod::Password(packets::MethodPassword { change: false, password: "123" }),
+    });
+
+    let mut buf = vec![0; 2000];
+    let written = door_sshproto::wireformat::write_ssh(&mut buf, &p)?;
+    buf.truncate(written);
+    println!("buf {:?}", buf.hex_dump());
+
+    let x: Packet = door_sshproto::wireformat::packet_from_bytes(&buf)?;
+    println!("{x:?}");
+
+    Ok(())
+
+
+}
+
+fn do_kexinit() -> Result<()> {
+
     let k = KexInit {
         // cookie: &[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16],
         cookie: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
@@ -53,4 +83,5 @@ fn main() -> Result<(), Error> {
     let mut r = conn::Runner::new(c, work.as_mut_slice())?;
     r.input(&buf)?;
     Ok(())
+
 }

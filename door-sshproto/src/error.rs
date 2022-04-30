@@ -26,6 +26,9 @@ pub enum Error {
     /// Decryption failure or integrity mismatch
     BadDecrypt,
 
+    /// Signature is incorrect
+    BadSignature,
+
     /// Error in received SSH protocol
     SSHProtoError,
 

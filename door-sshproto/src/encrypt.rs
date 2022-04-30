@@ -1,6 +1,6 @@
 #[allow(unused_imports)]
 use {
-    crate::error::{Error, TrapBug},
+    crate::error::{Error, Result, TrapBug},
     log::{debug, error, info, log, trace, warn},
 };
 

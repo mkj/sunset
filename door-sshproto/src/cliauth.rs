@@ -33,8 +33,7 @@ impl<'a> CliAuth<'a> {
                 packets::UserauthRequest {
                     username: self.username,
                     service: SSH_SERVICE_CONNECTION,
-                    method: SSH_NAME_NONE,
-                    a: packets::AuthMethod::None,
+                    method: packets::AuthMethod::None,
                 })).trap()?;
         }
         Ok(())

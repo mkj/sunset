@@ -24,6 +24,7 @@ use crate::namelist::NameList;
 use crate::wireformat::BinString;
 use crate::*;
 
+// we have repeated `match` statements for the various packet types, use a macro
 macro_rules! messagetypes {
     ( $( ( $message_num:literal, $SpecificPacketVariant:ident, $SpecificPacketType:ty, $SSH_MESSAGE_NAME:ident ), )* ) => {
 
@@ -157,8 +158,7 @@ impl<'a> Packet<'a> {
     }
 }
 
-}
-}
+} } // macro
 
 messagetypes![
 (1, Disconnect, Disconnect<'a>, SSH_MSG_DISCONNECT),
@@ -179,7 +179,7 @@ messagetypes![
 
 // Note:
 // Each struct needs one #[borrow] tag before one of the struct fields with a lifetime
-// (eg "blob: BinString<'a>"). That avoids the cryptic error in derive:
+// (eg `blob: BinString<'a>`). That avoids the cryptic error in derive:
 // error[E0495]: cannot infer an appropriate lifetime for lifetime parameter `'de` due to conflicting requirements
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -253,17 +253,18 @@ pub struct ServiceAccept<'a> {
 pub struct UserauthRequest<'a> {
     pub username: &'a str,
     pub service: &'a str,
-    pub method: &'a str,
-    // TODO: need to deserialize AuthMethod enum
-    pub a: AuthMethod<'a>,
+    pub method: AuthMethod<'a>,
 }
 
 /// The method-specific part of a [`UserauthRequest`].
 #[derive(Serialize, Deserialize, Debug)]
 pub enum AuthMethod<'a> {
     #[serde(borrow)]
+    #[serde(rename = "password")]
     Password(MethodPassword<'a>),
+    #[serde(rename = "publickey")]
     Pubkey(MethodPubkey<'a>),
+    #[serde(rename = "none")]
     None,
 }
 
@@ -277,7 +278,7 @@ pub struct MethodPassword<'a> {
 pub struct MethodPubkey<'a> {
     pub trial: bool,
     pub algo: &'a str,
-    pub pubkey: &'a [u8],
+    pub pubkey: PubKey<'a>,
     // TODO: need to deserialize sig as an Option
     pub sig: Option<&'a [u8]>,
 }
@@ -290,14 +291,18 @@ pub struct UserauthFailure<'a> {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct UserauthSuccess {
-}
+pub struct UserauthSuccess {}
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct UserauthBanner<'a> {
     #[serde(borrow)]
     pub message: &'a str,
     pub lang: &'a str,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct PubKey<'a> {
+    pub name: &'a str,
 }
 
 #[cfg(test)]
