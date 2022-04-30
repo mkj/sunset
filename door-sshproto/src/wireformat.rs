@@ -21,6 +21,8 @@ use crate::packets::Packet;
 use core::cell::Cell;
 use core::slice;
 use core::convert::AsRef;
+use core::fmt::Debug;
+use std::marker::PhantomData;
 
 /// Parses a [`Packet`] from a borrowed `&[u8]` byte buffer.
 pub fn packet_from_bytes<'a>(b: &'a [u8]) -> Result<Packet<'a>> {
@@ -66,23 +68,31 @@ where
 }
 
 /// Hashes the contents of a SSH packet, updating the provided context.
-pub fn hash_packet<T>(hash_ctx: &mut ring::digest::Context, value: &T) -> Result<()>
+/// Adds a `u32` length prefix.
+pub fn hash_ser_length<T>(hash_ctx: &mut ring::digest::Context, value: &T) -> Result<()>
 where
     T: Serialize,
 {
     // calculate the u32 length prefix
-    let mut serializer = SeSSHBytes::Length { pos: 0 };
-    value.serialize(&mut serializer)?;
-    let len = match serializer {
-        SeSSHBytes::Length { pos } => pos,
-        _ => 0, // TODO is there a better syntax here? we know it's always WriteBytes
-    } as u32;
+    let len = SeSSHBytes::get_length(value)? as u32;
     hash_ctx.update(&len.to_be_bytes());
     let mut serializer = SeSSHBytes::WriteHash { hash_ctx };
     // the rest of the packet
     value.serialize(&mut serializer)?;
     Ok(())
 }
+
+/// Hashes the contents of a `Serialize` item such as a public key.
+/// No length prefix is added.
+pub fn hash_ser<T>(hash_ctx: &mut ring::digest::Context, value: &T) -> Result<()>
+where
+    T: Serialize,
+{
+    let mut serializer = SeSSHBytes::WriteHash { hash_ctx };
+    value.serialize(&mut serializer)?;
+    Ok(())
+}
+
 
 type Res = Result<()>;
 
@@ -97,9 +107,9 @@ impl<'a> AsRef<[u8]> for BinString<'a> {
     }
 }
 
-impl<'a> core::fmt::Debug for BinString<'a> {
+impl<'a> Debug for BinString<'a> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "BinString(len={}", self.0.len())
+        write!(f, "BinString(len={})", self.0.len())
     }
 }
 
@@ -116,16 +126,100 @@ impl<'a> Serialize for BinString<'a> {
     }
 }
 
+// a wrapper for a u32 prefixed data structure `B`, such as a public key blob
+pub struct Blob<B>(pub B);
+
+impl<'a, B> AsRef<B> for Blob<B> {
+    fn as_ref(&self) -> &B {
+        &self.0
+    }
+}
+
+impl<'a, B: Debug> Debug for Blob<B> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "Blob({:?})", self.0)
+    }
+}
+
+impl<'a, B: Serialize> Serialize for Blob<B> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer
+    {
+        let mut seq = serializer.serialize_seq(None)?;
+        let len = SeSSHBytes::get_length(&self.0)
+            .map_err(|_| ser::Error::custom(Error::bug()))? as u32;
+        seq.serialize_element(&len)?;
+        seq.serialize_element(&self.0)?;
+        seq.end()
+    }
+}
+
+impl<'de, B: Deserialize<'de>+Serialize> Deserialize<'de> for Blob<B> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct Vis<'de, B> {
+            ph: PhantomData<B>,
+            lifetime: PhantomData<&'de()>
+        }
+
+        impl<'de, B: Deserialize<'de>+Serialize> Visitor<'de> for Vis<'de, B> {
+            type Value = Blob<B>;
+
+            fn expecting(&self, formatter: &mut core::fmt::Formatter) -> core::fmt::Result {
+                formatter.write_str("length prefixed blob")
+            }
+            fn visit_seq<V>(self, mut seq: V) -> Result<Blob<B>, V::Error>
+            where
+                V: SeqAccess<'de>
+            {
+                let bloblen: u32 = seq.next_element()?
+                    .ok_or_else(|| de::Error::missing_field("length"))?;
+
+                let inner: B = seq.next_element()?
+                .ok_or_else(|| de::Error::missing_field("rest of packet"))?;
+
+                // TODO: is there a better way to find the length consumed?
+                // If we could enforce that D is a DeSSHBytes we can look
+                // at the length...
+                let gotlen = SeSSHBytes::get_length(&inner)
+                .map_err(|_| de::Error::custom(Error::bug()))?;
+                if bloblen as usize != gotlen {
+                    return Err(de::Error::custom(
+                        format_args!("Expected {} of length {}, got {}",
+                            core::any::type_name::<B>(), bloblen, gotlen)));
+                }
+                Ok(Blob(inner))
+            }
+        }
+        deserializer.deserialize_seq(Vis { ph: PhantomData, lifetime: PhantomData })
+    }
+}
+
 
 /// Serializer for the SSH wire protocol. Writes into a borrowed `&mut [u8]` buffer.
-/// Optionally compute the hash of the packet rather than serializing.
+/// Optionally compute the hash of the packet or the length required.
 enum SeSSHBytes<'a> {
     WriteBytes { target: &'a mut [u8], pos: usize },
-    Length { pos: usize },
     WriteHash { hash_ctx: &'a mut ring::digest::Context },
+    Length { pos: usize },
 }
 
 impl SeSSHBytes<'_> {
+    /// Returns the length required to serialize `value`
+    pub fn get_length<S>(value: S) -> Result<usize> where S: Serialize {
+        let mut serializer = SeSSHBytes::Length { pos: 0 };
+        value.serialize(&mut serializer)?;
+        let len = match serializer {
+            SeSSHBytes::Length { pos } => pos,
+            _ => 0, // TODO is there a better syntax here? we know it's always WriteBytes
+        };
+        Ok(len)
+    }
+
+    /// Appends serialized data
     fn push(&mut self, v: &[u8]) -> Res {
         match self {
             SeSSHBytes::WriteBytes { target, ref mut pos } => {
@@ -358,7 +452,7 @@ impl<'de> DeSSHBytes<'de> {
         let (t, rest) = self.input.split_at(len);
         self.input = rest;
         self.pos += len;
-        trace!("take new pos {}, {:?}", self.pos, t.hex_dump());
+        trace!(target: "serde,hexdump", "take new pos {}, {:?}", self.pos, t.hex_dump());
         Ok(t)
     }
 
@@ -388,36 +482,8 @@ impl<'de> DeSSHBytes<'de> {
         let len = self.parse_u32()?;
         let t = self.take(len as usize)?;
         let s = core::str::from_utf8(t).map_err(|_| Error::BadString)?;
-        trace!("parse_str '{s}'");
+        trace!(target: "serde", "parse_str '{s}'");
         Ok(s)
-    }
-}
-
-struct SeqAccessDeSSH<'a, 'b: 'a> {
-    ds: &'a mut DeSSHBytes<'b>,
-    len: Option<usize>,
-}
-
-impl<'a, 'b: 'a> SeqAccess<'b> for SeqAccessDeSSH<'a, 'b> {
-    type Error = Error;
-    #[inline]
-    fn next_element_seed<V: DeserializeSeed<'b>>(
-        &mut self, seed: V,
-    ) -> Result<Option<V::Value>> {
-        if let Some(ref mut len) = self.len {
-            if *len > 0 {
-                *len -= 1;
-                Ok(Some(DeserializeSeed::deserialize(seed, &mut *self.ds)?))
-            } else {
-                Ok(None)
-            }
-        } else {
-            Ok(Some(DeserializeSeed::deserialize(seed, &mut *self.ds)?))
-        }
-    }
-
-    fn size_hint(&self) -> Option<usize> {
-        self.len
     }
 }
 
@@ -501,7 +567,7 @@ impl<'de, 'a> Deserializer<'de> for &'a mut DeSSHBytes<'de> {
     }
 
     fn deserialize_enum<V>(
-        self, name: &'static str, _variants: &'static [&'static str], visitor: V,
+        self, _name: &'static str, _variants: &'static [&'static str], visitor: V,
     ) -> Result<V::Value, Self::Error>
     where
         V: Visitor<'de>,
@@ -548,6 +614,34 @@ impl<'de, 'a> Deserializer<'de> for &'a mut DeSSHBytes<'de> {
     }
 }
 
+struct SeqAccessDeSSH<'a, 'b: 'a> {
+    ds: &'a mut DeSSHBytes<'b>,
+    len: Option<usize>,
+}
+
+impl<'a, 'b: 'a> SeqAccess<'b> for SeqAccessDeSSH<'a, 'b> {
+    type Error = Error;
+    #[inline]
+    fn next_element_seed<V: DeserializeSeed<'b>>(
+        &mut self, seed: V,
+    ) -> Result<Option<V::Value>> {
+        if let Some(ref mut len) = self.len {
+            if *len > 0 {
+                *len -= 1;
+                Ok(Some(DeserializeSeed::deserialize(seed, &mut *self.ds)?))
+            } else {
+                Ok(None)
+            }
+        } else {
+            Ok(Some(DeserializeSeed::deserialize(seed, &mut *self.ds)?))
+        }
+    }
+
+    fn size_hint(&self) -> Option<usize> {
+        self.len
+    }
+}
+
 struct StringEnum<'a, 'de: 'a> (&'a mut DeSSHBytes<'de>);
 
 // figures which SSH string (eg "password") identifies the enum
@@ -568,23 +662,21 @@ impl<'de, 'a> EnumAccess<'de> for StringEnum<'a, 'de> {
 impl<'de, 'a> VariantAccess<'de> for StringEnum<'a, 'de> {
     type Error = Error;
 
+    // we only use newtype variants
     fn newtype_variant_seed<T>(self, seed: T) -> Result<T::Value, Self::Error>
             where T: DeserializeSeed<'de> {
         seed.deserialize(self.0)
     }
 
-    fn tuple_variant<V>(self, len: usize, visitor: V ) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-        panic!();
+    fn tuple_variant<V>(self, _len: usize, _visitor: V ) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
         Err(Error::NoSerializer)
     }
 
     fn unit_variant(self) -> Result<(), Self::Error> {
-        panic!();
         Err(Error::NoSerializer)
     }
 
-    fn struct_variant<V>(self, fields: &'static [&'static str], visitor: V ) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-        panic!();
+    fn struct_variant<V>(self, _fields: &'static [&'static str], _visitor: V ) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
         Err(Error::NoSerializer)
     }
 }
@@ -596,7 +688,7 @@ mod tests {
     // use pretty_hex::PrettyHex;
 
     #[test]
-    /// check that hash_packet() matches hashing a serialized message
+    /// check that hash_ser_length() matches hashing a serialized message
     fn test_hash_packet() {
         use ring::digest;
         let input = "hello";
@@ -604,8 +696,9 @@ mod tests {
         let w1 = wireformat::write_ssh(&mut buf, &input).unwrap();
         buf.truncate(w1);
 
+        // hash_ser_length
         let mut hash_ctx = digest::Context::new(&digest::SHA256);
-        wireformat::hash_packet(&mut hash_ctx, &input).unwrap();
+        wireformat::hash_ser_length(&mut hash_ctx, &input).unwrap();
         let digest1 = hash_ctx.finish();
 
         let mut hash_ctx = digest::Context::new(&digest::SHA256);
@@ -614,6 +707,13 @@ mod tests {
         let digest2 = hash_ctx.finish();
 
         assert_eq!(digest1.as_ref(), digest2.as_ref());
+
+        // hash_ser
+        let mut hash_ctx = digest::Context::new(&digest::SHA256);
+        hash_ctx.update(&(w1 as u32).to_be_bytes());
+        wireformat::hash_ser(&mut hash_ctx, &input).unwrap();
+        let digest3 = hash_ctx.finish();
+        assert_eq!(digest3.as_ref(), digest2.as_ref());
     }
 
 }

@@ -29,6 +29,9 @@ pub enum Error {
     /// Signature is incorrect
     BadSignature,
 
+    /// Signature doesn't match key type
+    SignatureMismatch { key: &'static str, sig: &'static str },
+
     /// Error in received SSH protocol
     SSHProtoError,
 

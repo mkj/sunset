@@ -21,7 +21,7 @@ use serde::Deserializer;
 use serde::{Deserialize, Serialize};
 
 use crate::namelist::NameList;
-use crate::wireformat::BinString;
+use crate::wireformat::{BinString, Blob};
 use crate::*;
 
 // we have repeated `match` statements for the various packet types, use a macro
@@ -61,9 +61,9 @@ impl<'de: 'a, 'a> Deserialize<'de> for Packet<'a> {
     where
         D: Deserializer<'de>,
     {
-        struct PacketVisitor;
+        struct Vis;
 
-        impl<'de> Visitor<'de> for PacketVisitor {
+        impl<'de> Visitor<'de> for Vis {
             type Value = Packet<'de>;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
@@ -105,7 +105,7 @@ impl<'de: 'a, 'a> Deserialize<'de> for Packet<'a> {
                 Ok(p)
             }
         }
-        deserializer.deserialize_seq(PacketVisitor { })
+        deserializer.deserialize_seq(Vis { })
     }
 }
 
@@ -234,9 +234,9 @@ pub struct KexDHInit<'a> {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct KexDHReply<'a> {
     #[serde(borrow)]
-    pub k_s: BinString<'a>,
+    pub k_s: Blob<PubKey<'a>>,
     pub q_s: BinString<'a>,
-    pub sig: BinString<'a>,
+    pub sig: Blob<Signature<'a>>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -301,9 +301,49 @@ pub struct UserauthBanner<'a> {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct PubKey<'a> {
-    pub name: &'a str,
+pub enum PubKey<'a> {
+    #[serde(borrow)]
+    #[serde(rename = "ssh-ed25519")]
+    Ed25519(Ed25519PubKey<'a>),
+    #[serde(rename = "ssh-rsa")]
+    RSA(RSAPubKey<'a>),
 }
+
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Ed25519PubKey<'a> {
+    #[serde(borrow)]
+    pub key: BinString<'a>
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct RSAPubKey<'a> {
+    #[serde(borrow)]
+    pub e: BinString<'a>,
+    pub n: BinString<'a>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum Signature<'a> {
+    #[serde(borrow)]
+    #[serde(rename = "ssh-ed25519")]
+    Ed25519(Ed25519Sig<'a>),
+    #[serde(rename = "rsa-sha2-256")]
+    RSA(RSASig<'a>),
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Ed25519Sig<'a> {
+    #[serde(borrow)]
+    pub sig: BinString<'a>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct RSASig<'a> {
+    #[serde(borrow)]
+    pub sig: BinString<'a>,
+}
+
 
 #[cfg(test)]
 mod tests {

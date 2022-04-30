@@ -24,9 +24,13 @@ async fn main() {
 
 async fn run() -> Result<(), Box<dyn Error>> {
 
+    let conf = simplelog::ConfigBuilder::new()
+    // .add_filter_ignore_str("serde")
+    .build();
+
     CombinedLogger::init(
     vec![
-        TermLogger::new(LevelFilter::Trace, Config::default(), TerminalMode::Mixed, ColorChoice::Auto),
+        TermLogger::new(LevelFilter::Trace, conf, TerminalMode::Mixed, ColorChoice::Auto),
     ]
     ).unwrap();
 
@@ -35,7 +39,8 @@ async fn run() -> Result<(), Box<dyn Error>> {
 
     // Connect to a peer
     // let mut stream = TcpStream::connect("dropbear.nl:22").await?;
-    let mut stream = TcpStream::connect("130.95.13.18:22").await?;
+    let mut stream = TcpStream::connect("::1:2244").await?;
+    // let mut stream = TcpStream::connect("130.95.13.18:22").await?;
 
     let mut work = vec![0; 3000];
     let c = conn::Conn::new()?;

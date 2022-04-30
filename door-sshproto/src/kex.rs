@@ -7,14 +7,13 @@ use core::marker::PhantomData;
 use crate::encrypt::{Cipher, Integ, Keys};
 use crate::ident::RemoteVersion;
 use crate::namelist::LocalNames;
-use crate::packets::Packet;
+use crate::packets::{Packet, PubKey, Signature};
 use crate::sign::SigType;
 use crate::sshnames::*;
-use crate::wireformat::{hash_mpint, hash_packet, BinString};
+use crate::wireformat::{hash_mpint, hash_ser, hash_ser_length, BinString, Blob};
 use crate::*;
 use ring::agreement;
 use ring::digest::{self, Context as DigestCtx, Digest};
-use ring::signature::Signature;
 #[allow(unused_imports)]
 use {
     crate::error::{Error, Result, TrapBug},
@@ -111,13 +110,13 @@ impl KexHash {
         if algos.is_client {
             kh.hash_slice(ident::OUR_VERSION);
             kh.hash_slice(remote_version);
-            hash_packet(&mut kh.hash_ctx, &own_kexinit)?;
-            hash_packet(&mut kh.hash_ctx, remote_kexinit)?;
+            hash_ser_length(&mut kh.hash_ctx, &own_kexinit)?;
+            hash_ser_length(&mut kh.hash_ctx, remote_kexinit)?;
         } else {
             kh.hash_slice(remote_version);
             kh.hash_slice(ident::OUR_VERSION);
-            hash_packet(&mut kh.hash_ctx, remote_kexinit)?;
-            hash_packet(&mut kh.hash_ctx, &own_kexinit)?
+            hash_ser_length(&mut kh.hash_ctx, remote_kexinit)?;
+            hash_ser_length(&mut kh.hash_ctx, &own_kexinit)?
         }
         // The remainder of hash_ctx is updated after kexdhreply
 
@@ -127,8 +126,8 @@ impl KexHash {
     /// Fill everything except K.
     /// q_c and q_s need to be padded as mpint (extra 0x00 if high bit set)
     /// for ecdsa and DH modes, but not for curve25519.
-    fn prefinish(&mut self, host_key: &[u8], q_c: &[u8], q_s: &[u8]) {
-        self.hash_slice(host_key);
+    fn prefinish(&mut self, host_key: &PubKey, q_c: &[u8], q_s: &[u8]) {
+        hash_ser_length(&mut self.hash_ctx, host_key);
         self.hash_slice(q_c);
         self.hash_slice(q_s);
     }
@@ -389,7 +388,7 @@ impl SharedSecret {
         // let mut algos = kex.algos.take().trap()?;
         let mut algos = kex.algos.trap()?;
         let mut kex_hash = kex.kex_hash.take().trap()?;
-        kex_hash.prefinish(p.k_s.0, algos.kex.pubkey(), p.q_s.0);
+        kex_hash.prefinish(&p.k_s.0, algos.kex.pubkey(), p.q_s.0);
         // consumes the sharedsecret private key in algos
         let kex_out = match algos.kex {
             SharedSecret::KexCurve25519(_) => {
@@ -397,8 +396,8 @@ impl SharedSecret {
             }
         };
 
-        algos.hostsig.verify(p.k_s.0, kex_out.h.as_ref(), p.sig.0)?;
-        warn!("Need to validate signature");
+        algos.hostsig.verify(&p.k_s.0, kex_out.h.as_ref(), &p.sig.0)?;
+        debug!("Hostkey signature is valid");
         Ok(kex_out)
     }
 
@@ -409,7 +408,9 @@ impl SharedSecret {
         // let mut algos = kex.algos.take().trap()?;
         let mut algos = kex.algos.trap()?;
         let mut kex_hash = kex.kex_hash.take().trap()?;
-        kex_hash.prefinish(&[], p.q_c.0, algos.kex.pubkey());
+        // TODO
+        let fake_hostkey = PubKey::Ed25519(packets::Ed25519PubKey{ key: BinString(&[]) });
+        kex_hash.prefinish(&fake_hostkey, p.q_c.0, algos.kex.pubkey());
         let mut kex_out = match algos.kex {
             SharedSecret::KexCurve25519(_) => {
                 KexCurve25519::secret(&mut algos, p.q_c.0, kex_hash, sess_id)?
@@ -433,16 +434,14 @@ pub(crate) struct KexOutput {
 
     // storage for kex packet reply contents that outlives Kex
     shsec: Option<SharedSecret>,
-    sig: Option<Signature>,
 }
 
 impl fmt::Debug for KexOutput {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "KexOutput, shsec {} sig {}",
+            "KexOutput, shared secret {}",
             self.shsec.is_some(),
-            self.sig.is_some()
         )
     }
 }
@@ -456,16 +455,17 @@ impl<'a> KexOutput {
         let sess_id = sess_id.as_ref().unwrap_or(&h);
         let keys = Keys::new_from(k, &h, &sess_id, algos)?;
 
-        Ok(KexOutput { h, keys, shsec: None, sig: None })
+        Ok(KexOutput { h, keys, shsec: None })
     }
 
     // server only
     pub fn make_kexdhreply(&'a self) -> Result<Packet<'a>> {
         let q_s = self.shsec.as_ref().trap()?.pubkey();
         let q_s = BinString(q_s);
-        let k_s = BinString(&[]); // TODO
-        let sig = BinString(&[]);
-        Ok(Packet::KexDHReply(packets::KexDHReply { k_s, q_s, sig }))
+        // TODO
+        let k_s = Blob(PubKey::Ed25519(packets::Ed25519PubKey{ key: BinString(&[]) }));
+        let sig = Blob(Signature::Ed25519(packets::Ed25519Sig{ sig: BinString(&[]) }));
+        Ok(Packet::KexDHReply(packets::KexDHReply { k_s, q_s, sig: sig }))
         // then sign it.
     }
 }
@@ -502,20 +502,15 @@ impl KexCurve25519 {
             return Err(Error::bug());
         };
         let ours = kex.ours.take().trap()?;
-        trace!("pubkey theirs {:?}", theirs.hex_dump());
         let theirs = agreement::UnparsedPublicKey::new(&agreement::X25519, &theirs);
-        let o = agreement::agree_ephemeral(
+        agreement::agree_ephemeral(
             ours,
             &theirs,
             Error::Custom { msg: "x25519 agree failed" },
             |k| {
-                let o = KexOutput::make(k, algos, kex_hash, sess_id);
-                trace!("kexout , is_err {}", o.is_err());
-                o
+                KexOutput::make(k, algos, kex_hash, sess_id)
             },
-        );
-        trace!("agree");
-        o
+        )
     }
 }
 

@@ -5,5 +5,8 @@ pub use ::log::{debug, error, info, log, trace, warn};
 
 #[cfg(test)]
 pub fn init_test_log() {
-    let _ = TestLogger::init(LevelFilter::Trace, simplelog::Config::default());
+    let conf = simplelog::ConfigBuilder::new()
+    .add_filter_ignore_str("serde")
+    .build();
+    let _ = TestLogger::init(LevelFilter::Trace, conf);
 }

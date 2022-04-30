@@ -1,3 +1,6 @@
+// Note these string literals are also copy+pasted to #[serde(rename)]
+// directives in packets.rs
+
 // RFC8731
 pub const SSH_NAME_CURVE25519: &str = "curve25519-sha256";
 // An older alias prior to standardisation. Eventually could be removed
