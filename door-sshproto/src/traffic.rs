@@ -8,7 +8,7 @@ use crate::encrypt::KeyState;
 use crate::encrypt::{SSH_LENGTH_SIZE, SSH_PAYLOAD_START};
 use crate::ident::RemoteVersion;
 use crate::*;
-// use pretty_hex::PrettyHex;
+use pretty_hex::PrettyHex;
 
 pub(crate) struct Traffic<'a> {
     // TODO: if smoltcp exposed both ends of a CircularBuffer to recv()
@@ -140,6 +140,8 @@ impl<'a> Traffic<'a> {
             return Err(Error::NoRoom)
         }
         let plen = wireformat::write_ssh(&mut wbuf[SSH_PAYLOAD_START..], p)?;
+        trace!("sending {p:?}");
+        trace!("{:?}", (&wbuf[SSH_PAYLOAD_START..SSH_PAYLOAD_START+plen]).hex_dump());
 
         // encrypt in place
         let elen = keys.encrypt(plen, wbuf)?;

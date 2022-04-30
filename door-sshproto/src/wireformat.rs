@@ -277,14 +277,16 @@ impl Serializer for &mut SeSSHBytes<'_> {
         self.serialize_u32(b.len() as u32)?;
         self.push(b)
     }
-    fn serialize_none(self) -> Res {
-        Ok(())
-    }
+
     fn serialize_some<T>(self, v: &T) -> Res
     where
         T: ?Sized + Serialize,
     {
         v.serialize(self)
+    }
+    // for truncated last option for publickey
+    fn serialize_none(self) -> Res {
+        Ok(())
     }
     fn serialize_newtype_struct<T>(self, _name: &'static str, v: &T) -> Res
     where
@@ -302,6 +304,14 @@ impl Serializer for &mut SeSSHBytes<'_> {
         self.serialize_str(variant)?;
         v.serialize(self)
     }
+
+    // for "none" variant
+    fn serialize_unit_variant(
+        self, _name: &'static str, _variant_index: u32, variant: &'static str,
+    ) -> Res {
+        self.serialize_str(variant)
+    }
+
     fn serialize_seq(
         self, _len: Option<usize>,
     ) -> Result<Self::SerializeSeq> {
@@ -316,12 +326,10 @@ impl Serializer for &mut SeSSHBytes<'_> {
         Ok(self)
     }
 
-    // Required for no_std
+
     fn collect_str<T: ?Sized>(self, _: &T) -> Res {
         Err(Error::NoSerializer)
     }
-
-    // Not in the SSH protocol
     fn serialize_i8(self, _: i8) -> Res {
         Err(Error::NoSerializer)
     }
@@ -352,11 +360,6 @@ impl Serializer for &mut SeSSHBytes<'_> {
     }
     fn serialize_unit_struct(self, _name: &'static str) -> Res {
         Err(Error::NoSerializer)
-    }
-    fn serialize_unit_variant(
-        self, _name: &'static str, _variant_index: u32, _variant: &'static str,
-    ) -> Res {
-        Ok(())
     }
     fn serialize_tuple_struct(
         self, _name: &'static str, _len: usize,

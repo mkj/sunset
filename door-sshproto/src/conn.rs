@@ -319,7 +319,7 @@ impl<'a> Conn<'a> {
             Packet::UserauthFailure(p) => {
                 // TODO: client only
                 if let ClientServer::Client(cli) = &mut self.cliserv {
-                    cli.auth.failure(p)?;
+                    cli.auth.failure(p, &mut resp)?;
                     Ok(resp)
                 } else {
                     debug!("Received UserauthFailure as a server");

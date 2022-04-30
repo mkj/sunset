@@ -175,6 +175,9 @@ messagetypes![
 (51, UserauthFailure, UserauthFailure<'a>, SSH_MSG_USERAUTH_FAILURE),
 (52, UserauthSuccess, UserauthSuccess, SSH_MSG_USERAUTH_SUCCESS),
 (53, UserauthBanner, UserauthBanner<'a>, SSH_MSG_USERAUTH_BANNER),
+// either SSH_MSG_USERAUTH_PASSWD_CHANGEREQ
+// or SSH_MSG_USERAUTH_PK_OK
+// (60, Userauth60, Userauth60<'a>, SSH_MSG_USERAUTH_60),
 ];
 
 // Note:

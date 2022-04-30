@@ -39,3 +39,6 @@ pub const SSH_SERVICE_USERAUTH: &str = "ssh-userauth";
 // RFC4254
 pub const SSH_SERVICE_CONNECTION: &str = "ssh-connection";
 
+pub const SSH_AUTHMETHOD_PASSWORD: &str = "password";
+pub const SSH_AUTHMETHOD_PUBLICKEY: &str = "publickey";
+
