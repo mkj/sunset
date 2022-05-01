@@ -8,6 +8,7 @@ use std::char::MAX;
 
 use heapless::Vec;
 use ring::digest::Digest;
+use pretty_hex::PrettyHex;
 
 use crate::sshnames::*;
 use crate::*;
@@ -56,15 +57,14 @@ impl<'a> Runner<'a> {
             for r in resp {
                 self.traffic.send_packet(r, &mut self.keys)?;
             }
+            self.conn.progress(&mut self.traffic, &mut self.keys)?;
         }
-        self.conn.progress(&mut self.traffic, &mut self.keys)?;
         Ok(size)
     }
 
     /// Write any pending output, returning the size written
     pub fn output(&mut self, buf: &mut [u8]) -> Result<usize, Error> {
         let l = self.traffic.output(buf)?;
-        self.conn.progress(&mut self.traffic, &mut self.keys)?;
         Ok(l)
     }
 
@@ -148,6 +148,7 @@ impl<'a> Conn<'a> {
         })
     }
 
+    /// Updates `ConnState` and sends any packets required to progress the connection state.
     fn progress<'b>(
         &mut self, traffic: &mut Traffic, keys: &mut KeyState,
     ) -> Result<(), Error> {
@@ -169,8 +170,8 @@ impl<'a> Conn<'a> {
                 // TODO. need to figure how we'll do "unbounded" responses
                 // and backpressure.
                 if traffic.can_output() {
-                    if let ClientServer::Client(c) = &mut self.cliserv {
-                        c.auth.start(&mut resp)?;
+                    if let ClientServer::Client(cli) = &mut self.cliserv {
+                        cli.auth.start(&mut resp)?;
                     }
                 }
                 // send userauth request
@@ -189,7 +190,9 @@ impl<'a> Conn<'a> {
         Ok(())
     }
 
-    /// Consumes an input payload
+    /// Consumes an input payload which is a view into [`traffic::Traffic::buf`].
+    /// We queue response packets that can be sent (written into the same buffer)
+    /// after `handle_payload()` runs.
     pub(crate) fn handle_payload(
         &mut self, payload: &[u8], keys: &mut KeyState,
     ) -> Result<RespPackets, Error> {
@@ -279,12 +282,16 @@ impl<'a> Conn<'a> {
                     _ => return Err(Error::PacketWrong),
                 }
             }
+            Packet::ServiceRequest(_p) => {
+                // TODO: this is server only
+                todo!("service request");
+            }
             Packet::ServiceAccept(p) => {
                 // Don't need to do anything, if a request failed the server disconnects
                 trace!("Received service accept {}", p.name);
             }
             Packet::Ignore(_) => {
-                //ok
+                // nothing to do
             }
             Packet::Unimplemented(_) => {
                 warn!("Received SSH unimplemented message");
@@ -299,15 +306,9 @@ impl<'a> Conn<'a> {
                 // TODO: SSH2_DISCONNECT_BY_APPLICATION is normal, sent by openssh client.
                 info!("Received disconnect: {}", p.desc.escape_default());
             }
-            Packet::ServiceRequest(_p) => {
-                // TODO: this is server only
-                todo!("service request");
-                // Ok(resp)
-            }
             Packet::UserauthRequest(_p) => {
                 // TODO: this is server only
                 todo!("userauth request");
-                // Ok(resp)
             }
             Packet::UserauthFailure(p) => {
                 // TODO: client only
@@ -321,7 +322,12 @@ impl<'a> Conn<'a> {
             Packet::UserauthSuccess(p) => {
                 // TODO: client only
                 if let ClientServer::Client(cli) = &mut self.cliserv {
-                    cli.auth.success(p)?;
+                    if matches!(self.state, ConnState::PreAuth) {
+                        cli.auth_success(&mut resp)?;
+                        self.state = ConnState::Authed;
+                    } else {
+                        debug!("Received UserauthSuccess unrequested")
+                    }
                 } else {
                     debug!("Received UserauthSuccess as a server");
                     return Err(Error::SSHProtoError)

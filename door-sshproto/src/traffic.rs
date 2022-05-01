@@ -89,7 +89,7 @@ impl<'a> Traffic<'a> {
         let mut inlen = 0;
         trace!("state {:?} input {}", self.state, buf.len());
         if !self.done_version && matches!(self.state, TrafState::Idle) {
-            // handle initial version string
+            // Handle initial version string
             let l;
             (l, self.done_version) = remote_version.consume(buf)?;
             inlen += l;
@@ -125,25 +125,28 @@ impl<'a> Traffic<'a> {
         Ok(())
     }
 
+    /// Serializes and and encrypts a packet to send
     pub fn send_packet(&mut self, p: packets::Packet, keys: &mut KeyState) -> Result<(), Error> {
         trace!("send_packet {:?}", p.message_num());
 
+        // Either a fresh buffer or appending to write
         let (idx, len) = match self.state {
             TrafState::Idle => (0, 0),
             TrafState::Write { idx, len } => (idx, len),
             _ => Err(Error::bug())?,
         };
 
-        // use the remainder of our buffer to write the packet
+        // Use the remainder of our buffer to write the packet. Payload starts
+        // after the length and padding bytes which get filled by encrypt()
         let wbuf = &mut self.buf[len..];
-        if wbuf.len() <= SSH_PAYLOAD_START+1 {
+        if wbuf.len() < SSH_PAYLOAD_START {
             return Err(Error::NoRoom)
         }
         let plen = wireformat::write_ssh(&mut wbuf[SSH_PAYLOAD_START..], &p)?;
-        trace!("sending {p:?}");
+        trace!("Sending {p:?}");
         trace!("{:?}", (&wbuf[SSH_PAYLOAD_START..SSH_PAYLOAD_START+plen]).hex_dump());
 
-        // encrypt in place
+        // Encrypt in place
         let elen = keys.encrypt(plen, wbuf)?;
         self.state = TrafState::Write { idx, len: len+elen };
         Ok(())

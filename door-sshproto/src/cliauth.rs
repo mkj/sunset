@@ -4,7 +4,7 @@ use {
     log::{debug, error, info, log, trace, warn},
 };
 
-use heapless::Vec;
+use heapless::{Vec,String};
 
 use crate::conn::RespPackets;
 use crate::packets::Packet;
@@ -23,6 +23,7 @@ pub(crate) struct CliAuth<'a> {
     started: bool,
 
     last_req: ReqType<'a>,
+    last_pw: String<30>, // TODO. also zeroize?
 }
 
 impl<'a> CliAuth<'a> {
@@ -31,6 +32,7 @@ impl<'a> CliAuth<'a> {
             started: false,
             username: "matt", // TODO. also this username length counts towards packet buffer size limit
             last_req: ReqType::None,
+            last_pw: String::new(),
         }
     }
 
@@ -50,20 +52,23 @@ impl<'a> CliAuth<'a> {
         Ok(())
     }
 
-    fn try_password(&self) -> Packet {
+    fn try_password(&mut self) -> Packet {
         // todo bodge
-        // let mut pw = String::new();
-        // std::io::stdin().read_line(&mut pw).unwrap_or(0);
-        let pw = "123";
+        let mut pw = std::string::String::new();
+        std::io::stdin().read_line(&mut pw).unwrap_or(0);
+        let pw = pw.trim_end_matches("\n");
+        self.last_pw.clear();
+        self.last_pw.push_str(&pw).unwrap(); // TODO unwrap
 
         Packet::UserauthRequest(
             packets::UserauthRequest {
                 username: self.username,
                 service: SSH_SERVICE_CONNECTION,
                 method: packets::AuthMethod::Password(packets::MethodPassword
-                    { change: false, password: &pw } ) } )
+                    { change: false, password: &self.last_pw } ) } )
     }
 
+    // TODO: not quite sure why the 'b lifetime is required
     pub fn failure<'b>(&'b mut self, failure: &packets::UserauthFailure,
         resp: &mut RespPackets<'b>) -> Result<()> {
         // match self.last_req {
