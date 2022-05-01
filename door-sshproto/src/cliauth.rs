@@ -12,7 +12,8 @@ use crate::*;
 use crate::sshnames::*;
 use crate::sign::SignKey;
 
-enum ReqType<'a> {
+// pub for packets::ParseContext
+pub enum ReqType<'a> {
     None,
     Password,
     PubKey(&'a SignKey),

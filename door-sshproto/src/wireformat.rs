@@ -17,7 +17,7 @@ use {
 };
 use pretty_hex::PrettyHex;
 
-use crate::packets::Packet;
+use crate::packets::{DeserPacket, Packet, PacketState, ParseContext};
 use core::cell::Cell;
 use core::slice;
 use core::convert::AsRef;
@@ -25,10 +25,14 @@ use core::fmt::Debug;
 use std::marker::PhantomData;
 
 /// Parses a [`Packet`] from a borrowed `&[u8]` byte buffer.
-pub fn packet_from_bytes<'a>(b: &'a [u8]) -> Result<Packet<'a>> {
+pub fn packet_from_bytes<'a>(b: &'a [u8], ctx: &ParseContext) -> Result<Packet<'a>> {
 
     let mut ds = DeSSHBytes::from_bytes(b);
-    Packet::deserialize(&mut ds)
+    let seed = PacketState {
+        ctx,
+        // ty: Cell::new(None),
+    };
+    DeserPacket(&seed).deserialize(&mut ds)
     .map_err(|e| {
         if let Error::InvalidDeserializeU8 { value } = e {
             // This assumes that the only deserialize that can hit

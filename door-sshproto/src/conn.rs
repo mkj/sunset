@@ -14,7 +14,7 @@ use crate::sshnames::*;
 use crate::*;
 use client::Client;
 use encrypt::KeyState;
-use packets::Packet;
+use packets::{Packet,ParseContext};
 use server::Server;
 use traffic::Traffic;
 
@@ -203,7 +203,8 @@ impl<'a> Conn<'a> {
         &mut self, payload: &[u8], keys: &mut KeyState,
     ) -> Result<RespPackets, Error> {
         trace!("conn state {:?}", self.state);
-        let p = wireformat::packet_from_bytes(payload)?;
+        let ctx = ParseContext::new();
+        let p = wireformat::packet_from_bytes(payload, &ctx)?;
         self.dispatch_packet(&p, keys)
     }
 

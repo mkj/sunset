@@ -520,7 +520,7 @@ mod tests {
     use crate::error::Error;
     use crate::ident::RemoteVersion;
     use crate::kex;
-    use crate::packets::Packet;
+    use crate::packets::{Packet,ParseContext};
     use crate::*;
     use pretty_hex::PrettyHex;
 
@@ -569,7 +569,8 @@ mod tests {
     /// Round trip a `Packet`
     fn reserialize<'a>(out_buf: &'a mut [u8], p: Packet) -> Packet<'a> {
         wireformat::write_ssh(out_buf, &p).unwrap();
-        wireformat::packet_from_bytes(out_buf).unwrap()
+        let ctx = ParseContext::new();
+        wireformat::packet_from_bytes(out_buf, &ctx).unwrap()
     }
 
     #[test]

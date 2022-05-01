@@ -24,6 +24,26 @@ use crate::namelist::NameList;
 use crate::wireformat::{BinString, Blob};
 use crate::*;
 
+/// State to be passed to deserialisation.
+/// Use this so the parser can select the correct enum variant to deserialize.
+pub struct ParseContext<'a> {
+    pub cli_auth_type: Option<cliauth::ReqType<'a>>,
+}
+
+impl<'a> ParseContext<'a> {
+    pub fn new() -> Self {
+        ParseContext { cli_auth_type: None }
+    }
+}
+
+/// State passed as the Deserializer seed.
+pub(crate) struct PacketState<'a> {
+    pub ctx: &'a ParseContext<'a>,
+    // Private fields that keep state during parsing.
+    // TODO Perhaps not actually necessary, could be removed and just pass ParseContext?
+    // pub(crate) ty: Cell<Option<MessageNumber>>,
+}
+
 // we have repeated `match` statements for the various packet types, use a macro
 macro_rules! messagetypes {
     ( $( ( $message_num:literal, $SpecificPacketVariant:ident, $SpecificPacketType:ty, $SSH_MESSAGE_NAME:ident ), )* ) => {
@@ -56,14 +76,21 @@ impl TryFrom<u8> for MessageNumber {
     }
 }
 
-impl<'de: 'a, 'a> Deserialize<'de> for Packet<'a> {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+/// Some packets require context to parse, so we pass PacketState
+pub(crate) struct DeserPacket<'a>(pub(crate) &'a PacketState<'a>);
+
+impl<'de: 'a, 'a> DeserializeSeed<'de> for DeserPacket<'a> {
+    type Value = Packet<'de>;
+
+    fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
     where
         D: Deserializer<'de>,
     {
-        struct Vis;
+        struct Vis<'b> {
+            seed: &'b PacketState<'b>,
+        }
 
-        impl<'de> Visitor<'de> for Vis {
+        impl<'de: 'b, 'b> Visitor<'de> for Vis<'b> {
             type Value = Packet<'de>;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
@@ -105,7 +132,7 @@ impl<'de: 'a, 'a> Deserialize<'de> for Packet<'a> {
                 Ok(p)
             }
         }
-        deserializer.deserialize_seq(Vis { })
+        deserializer.deserialize_seq(Vis { seed: self.0 })
     }
 }
 

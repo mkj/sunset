@@ -3,7 +3,7 @@ mod tests {
     use crate::error::Error;
     use crate::packets::*;
     use crate::wireformat::BinString;
-    use crate::packets::{Packet};
+    use crate::packets::{Packet,ParseContext};
     use crate::{packets, wireformat};
     use pretty_hex::PrettyHex;
     use serde::de::Unexpected;
@@ -18,7 +18,9 @@ mod tests {
         let mut buf1 = vec![99; 500];
         let _w1 = wireformat::write_ssh(&mut buf1, &p)?;
 
-        let p2 = wireformat::packet_from_bytes(&buf1)?;
+        let ctx = ParseContext::new();
+
+        let p2 = wireformat::packet_from_bytes(&buf1, &ctx)?;
 
         let mut buf2 = vec![99; 500];
         let _w2 = wireformat::write_ssh(&mut buf2, &p2)?;

@@ -28,7 +28,8 @@ fn do_userauth() -> Result<()> {
     buf.truncate(written);
     println!("buf {:?}", buf.hex_dump());
 
-    let x: Packet = door_sshproto::wireformat::packet_from_bytes(&buf)?;
+    let ctx = ParseContext::new();
+    let x: Packet = door_sshproto::wireformat::packet_from_bytes(&buf, &ctx)?;
     println!("{x:?}");
 
     Ok(())
@@ -75,7 +76,8 @@ fn do_kexinit() -> Result<()> {
     let written = door_sshproto::wireformat::write_ssh(&mut buf, &p)?;
     buf.truncate(written);
     println!("{:?}", buf.hex_dump());
-    let x: Packet = door_sshproto::wireformat::packet_from_bytes(&buf)?;
+    let ctx = ParseContext::new();
+    let x: Packet = door_sshproto::wireformat::packet_from_bytes(&buf, &ctx)?;
     println!("fetched {x:?}");
 
     let c = conn::Conn::new()?;
