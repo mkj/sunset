@@ -1,22 +1,23 @@
 #[allow(unused_imports)]
 use {
-    crate::error::{Error,TrapBug},
+    crate::error::{Error, TrapBug},
     log::{debug, error, info, log, trace, warn},
 };
 
 use std::char::MAX;
 
-use ring::digest::Digest;
 use heapless::Vec;
+use ring::digest::Digest;
 
+use crate::sshnames::*;
 use crate::*;
+use client::Client;
 use encrypt::KeyState;
 use packets::Packet;
-use traffic::Traffic;
-use client::Client;
 use server::Server;
-use crate::sshnames::*;
+use traffic::Traffic;
 
+// TODO a max value needs to be analysed
 const MAX_RESPONSES: usize = 4;
 pub(crate) type RespPackets<'a> = Vec<Packet<'a>, MAX_RESPONSES>;
 
@@ -31,17 +32,16 @@ pub struct Runner<'a> {
 }
 
 impl<'a> Runner<'a> {
-    /// [`iobuf`] must be sized to fit the largest SSH packet allowed.
+    /// `iobuf` must be sized to fit the largest SSH packet allowed.
     pub fn new(conn: Conn<'a>, iobuf: &'a mut [u8]) -> Result<Self, Error> {
-        let mut runner = Runner { conn,
+        let mut runner = Runner {
+            conn,
             traffic: traffic::Traffic::new(iobuf),
             keys: KeyState::new_cleartext(),
-             };
+        };
 
-        let resp = runner.conn.progress(&mut runner.traffic, &mut runner.keys)?;
-        for r in resp {
-            runner.traffic.send_packet(&r, &mut runner.keys)?;
-        }
+        runner.conn.progress(&mut runner.traffic, &mut runner.keys)?;
+        let runner = runner;
         Ok(runner)
     }
 
@@ -54,23 +54,17 @@ impl<'a> Runner<'a> {
         if let Some(payload) = payload {
             let resp = self.conn.handle_payload(payload, &mut self.keys)?;
             for r in resp {
-                self.traffic.send_packet(&r, &mut self.keys)?;
+                self.traffic.send_packet(r, &mut self.keys)?;
             }
         }
-        let resp = self.conn.progress(&mut self.traffic, &mut self.keys)?;
-        for r in resp {
-            self.traffic.send_packet(&r, &mut self.keys)?;
-        }
+        self.conn.progress(&mut self.traffic, &mut self.keys)?;
         Ok(size)
     }
 
     /// Write any pending output, returning the size written
     pub fn output(&mut self, buf: &mut [u8]) -> Result<usize, Error> {
         let l = self.traffic.output(buf)?;
-        let resp = self.conn.progress(&mut self.traffic, &mut self.keys)?;
-        for r in resp {
-            self.traffic.send_packet(&r, &mut self.keys)?;
-        }
+        self.conn.progress(&mut self.traffic, &mut self.keys)?;
         Ok(l)
     }
 
@@ -121,7 +115,6 @@ impl<'a> ClientServer<'a> {
 
 #[derive(Debug)]
 enum ConnState {
-
     SendIdent,
     SendFirstKexInit,
     /// Prior to SSH binary packet protocol, receiving remote version identification
@@ -130,9 +123,12 @@ enum ConnState {
     PreKex,
     /// At any time between receiving KexInit and NewKeys.
     /// Can occur multiple times during a session, at later key exchanges
-    InKex { done_auth: bool, output: Option<kex::KexOutput> },
+    InKex {
+        done_auth: bool,
+        output: Option<kex::KexOutput>,
+    },
 
-    /// After first NewKeys, prior to auth success. 
+    /// After first NewKeys, prior to auth success.
     PreAuth,
     /// After auth success
     Authed,
@@ -152,14 +148,16 @@ impl<'a> Conn<'a> {
         })
     }
 
-    fn progress(&mut self, traffic: &mut Traffic, keys: &mut KeyState) -> Result<RespPackets, Error> {
+    fn progress<'b>(
+        &mut self, traffic: &mut Traffic, keys: &mut KeyState,
+    ) -> Result<(), Error> {
         trace!("conn state {:?}", self.state);
         let mut resp = RespPackets::new();
         match self.state {
             ConnState::SendIdent => {
                 traffic.send_version(ident::OUR_VERSION)?;
                 let p = self.kex.make_kexinit(&self.algo_conf);
-                traffic.send_packet(&p, keys)?;
+                traffic.send_packet(p, keys)?;
                 self.state = ConnState::ReceiveIdent
             }
             ConnState::ReceiveIdent => {
@@ -170,7 +168,7 @@ impl<'a> Conn<'a> {
             ConnState::PreAuth => {
                 // TODO. need to figure how we'll do "unbounded" responses
                 // and backpressure.
-                if traffic.can_output()  {
+                if traffic.can_output() {
                     if let ClientServer::Client(c) = &mut self.cliserv {
                         c.auth.start(&mut resp)?;
                     }
@@ -182,10 +180,13 @@ impl<'a> Conn<'a> {
                 // TODO
             }
         }
+        for r in resp {
+            traffic.send_packet(r, keys)?;
+        }
 
         // TODO: if keys.seq > MAX_REKEY then we must rekey for security.
 
-        Ok(resp)
+        Ok(())
     }
 
     /// Consumes an input payload
@@ -193,13 +194,13 @@ impl<'a> Conn<'a> {
         &mut self, payload: &[u8], keys: &mut KeyState,
     ) -> Result<RespPackets, Error> {
         trace!("conn state {:?}", self.state);
-        // self.keys.next_seq_decrypt();
         let p = wireformat::packet_from_bytes(payload)?;
         self.dispatch_packet(&p, keys)
     }
 
-    fn dispatch_packet(&mut self, packet: &Packet, keys: &mut KeyState)
-            -> Result<RespPackets, Error> {
+    fn dispatch_packet(
+        &mut self, packet: &Packet, keys: &mut KeyState,
+    ) -> Result<RespPackets, Error> {
         // TODO: perhaps could consolidate packet allowed checks into a separate function
         // to run first?
         let mut resp = Vec::new();
@@ -212,17 +213,15 @@ impl<'a> Conn<'a> {
                     done_auth: matches!(self.state, ConnState::Authed),
                     output: None,
                 };
-                let r = self.kex
-                    .handle_kexinit(
-                        self.cliserv.is_client(),
-                        &self.algo_conf,
-                        &self.remote_version,
-                        packet,
-                    )?;
+                let r = self.kex.handle_kexinit(
+                    self.cliserv.is_client(),
+                    &self.algo_conf,
+                    &self.remote_version,
+                    packet,
+                )?;
                 if let Some(r) = r {
                     resp.push(r).trap()?;
                 }
-                Ok(resp)
             }
             Packet::KexDHInit(p) => {
                 match self.state {
@@ -232,16 +231,16 @@ impl<'a> Conn<'a> {
                             return Err(Error::SSHProtoError);
                         }
                         if self.kex.maybe_discard_packet() {
-                            Ok(resp)
+                            // ok
                         } else {
-                            let kex = core::mem::replace(&mut self.kex, kex::Kex::new()?);
+                            let kex =
+                                core::mem::replace(&mut self.kex, kex::Kex::new()?);
                             *output = Some(kex.handle_kexdhinit(p, &self.sess_id)?);
                             let reply = output.as_ref().trap()?.make_kexdhreply()?;
                             resp.push(reply).trap()?;
-                            Ok(resp)
                         }
                     }
-                    _ => Err(Error::PacketWrong)
+                    _ => return Err(Error::PacketWrong),
                 }
             }
             Packet::KexDHReply(p) => {
@@ -252,15 +251,16 @@ impl<'a> Conn<'a> {
                             return Err(Error::SSHProtoError);
                         }
                         if self.kex.maybe_discard_packet() {
-                            Ok(resp)
+                            // ok
                         } else {
-                            let kex = core::mem::replace(&mut self.kex, kex::Kex::new()?);
+                            let kex =
+                                core::mem::replace(&mut self.kex, kex::Kex::new()?);
                             *output = Some(kex.handle_kexdhreply(p, &self.sess_id)?);
-                            resp.push(Packet::NewKeys(packets::NewKeys{})).trap()?;
-                            Ok(resp)
+                            resp.push(Packet::NewKeys(packets::NewKeys {}))
+                                .trap()?;
                         }
                     }
-                    _ => Err(Error::PacketWrong)
+                    _ => return Err(Error::PacketWrong),
                 }
             }
             Packet::NewKeys(_) => {
@@ -275,77 +275,68 @@ impl<'a> Conn<'a> {
                         } else {
                             ConnState::PreAuth
                         };
-                        Ok(resp)
-                    },
-                    _ => Err(Error::PacketWrong)
+                    }
+                    _ => return Err(Error::PacketWrong),
                 }
             }
             Packet::ServiceAccept(p) => {
                 // Don't need to do anything, if a request failed the server disconnects
                 trace!("Received service accept {}", p.name);
-                Ok(resp)
             }
             Packet::Ignore(_) => {
-                Ok(resp)
+                //ok
             }
             Packet::Unimplemented(_) => {
                 warn!("Received SSH unimplemented message");
-                Ok(resp)
             }
             Packet::Debug(p) => {
-                warn!("SSH debug message from remote host: '{}'", p.message.escape_default());
-                Ok(resp)
+                warn!(
+                    "SSH debug message from remote host: '{}'",
+                    p.message.escape_default()
+                );
             }
             Packet::Disconnect(p) => {
                 // TODO: SSH2_DISCONNECT_BY_APPLICATION is normal, sent by openssh client.
                 info!("Received disconnect: {}", p.desc.escape_default());
-                Ok(resp)
             }
-            Packet::Disconnect(p) => {
-                // TODO: SSH2_DISCONNECT_BY_APPLICATION is normal, sent by openssh client.
-                info!("Received disconnect: {}", p.desc.escape_default());
-                Ok(resp)
-            }
-            Packet::ServiceRequest(p) => {
+            Packet::ServiceRequest(_p) => {
                 // TODO: this is server only
                 todo!("service request");
-                Ok(resp)
+                // Ok(resp)
             }
-            Packet::UserauthRequest(p) => {
+            Packet::UserauthRequest(_p) => {
                 // TODO: this is server only
                 todo!("userauth request");
-                Ok(resp)
+                // Ok(resp)
             }
             Packet::UserauthFailure(p) => {
                 // TODO: client only
                 if let ClientServer::Client(cli) = &mut self.cliserv {
                     cli.auth.failure(p, &mut resp)?;
-                    Ok(resp)
                 } else {
                     debug!("Received UserauthFailure as a server");
-                    Err(Error::SSHProtoError)
+                    return Err(Error::SSHProtoError)
                 }
             }
             Packet::UserauthSuccess(p) => {
                 // TODO: client only
                 if let ClientServer::Client(cli) = &mut self.cliserv {
                     cli.auth.success(p)?;
-                    Ok(resp)
                 } else {
                     debug!("Received UserauthSuccess as a server");
-                    Err(Error::SSHProtoError)
+                    return Err(Error::SSHProtoError)
                 }
             }
             Packet::UserauthBanner(p) => {
                 // TODO: client only
                 if let ClientServer::Client(cli) = &mut self.cliserv {
                     cli.banner(p);
-                    Ok(resp)
                 } else {
                     debug!("Received banner as a server");
-                    Err(Error::SSHProtoError)
+                    return Err(Error::SSHProtoError)
                 }
             }
-        }
+        };
+        Ok(resp)
     }
 }

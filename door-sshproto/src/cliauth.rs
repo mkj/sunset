@@ -50,10 +50,12 @@ impl<'a> CliAuth<'a> {
         Ok(())
     }
 
-    fn try_password(&self) -> Packet<'a> {
-        let mut pw = String::new();
+    fn try_password(&self) -> Packet {
+        // todo bodge
+        // let mut pw = String::new();
+        // std::io::stdin().read_line(&mut pw).unwrap_or(0);
+        let pw = "123";
 
-        std::io::stdin().read_line(&mut pw).unwrap_or(0);
         Packet::UserauthRequest(
             packets::UserauthRequest {
                 username: self.username,
@@ -62,8 +64,8 @@ impl<'a> CliAuth<'a> {
                     { change: false, password: &pw } ) } )
     }
 
-    pub fn failure(&mut self, failure: &packets::UserauthFailure,
-        resp: &mut RespPackets<'a>) -> Result<()> {
+    pub fn failure<'b>(&'b mut self, failure: &packets::UserauthFailure,
+        resp: &mut RespPackets<'b>) -> Result<()> {
         // match self.last_req {
         //     ReqType::PubKey(k) => {
         //         // TODO: remove k from the list
@@ -73,7 +75,7 @@ impl<'a> CliAuth<'a> {
         // }
 
         if failure.methods.has_algo(SSH_AUTHMETHOD_PASSWORD)? {
-            resp.push(self.try_password());
+            resp.push(self.try_password()).trap()?;
         }
         Ok(())
     }

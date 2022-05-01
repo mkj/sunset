@@ -142,6 +142,7 @@ impl serde::ser::Error for Error {
     where
         T: core::fmt::Display,
     {
+        let _ = msg;
         #[cfg(feature = "std")]
         println!("custom ser error: {}", msg);
 
@@ -154,6 +155,7 @@ impl serde::de::Error for Error {
     where
         T: core::fmt::Display,
     {
+        let _ = msg;
         #[cfg(feature = "std")]
         println!("custom de error: {}", msg);
 

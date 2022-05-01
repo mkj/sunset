@@ -178,10 +178,10 @@ impl Kex {
     }
 
     /// Returns `Option<Packet>` with an optional kexdhinit message to send
-    pub fn handle_kexinit<'a>(
-        &'a mut self, is_client: bool, algo_conf: &AlgoConfig,
+    pub fn handle_kexinit(
+        &mut self, is_client: bool, algo_conf: &AlgoConfig,
         remote_version: &RemoteVersion, p: &packets::Packet,
-    ) -> Result<Option<Packet<'a>>> {
+    ) -> Result<Option<Packet>> {
         let remote_kexinit =
             if let Packet::KexInit(k) = p { k } else { return Err(Error::bug()) };
         let algos = Self::algo_negotiation(is_client, remote_kexinit, algo_conf)?;
@@ -432,7 +432,7 @@ pub(crate) struct KexOutput {
     pub h: Digest,
     pub keys: Keys,
 
-    // storage for kex packet reply contents that outlives Kex
+    // storage for kex packet reply content that outlives Kex
     shsec: Option<SharedSecret>,
 }
 
@@ -465,7 +465,7 @@ impl<'a> KexOutput {
         // TODO
         let k_s = Blob(PubKey::Ed25519(packets::Ed25519PubKey{ key: BinString(&[]) }));
         let sig = Blob(Signature::Ed25519(packets::Ed25519Sig{ sig: BinString(&[]) }));
-        Ok(Packet::KexDHReply(packets::KexDHReply { k_s, q_s, sig: sig }))
+        Ok(Packet::KexDHReply(packets::KexDHReply { k_s, q_s, sig }))
         // then sign it.
     }
 }

@@ -125,7 +125,7 @@ impl<'a> Traffic<'a> {
         Ok(())
     }
 
-    pub fn send_packet(&mut self, p: &packets::Packet, keys: &mut KeyState) -> Result<(), Error> {
+    pub fn send_packet(&mut self, p: packets::Packet, keys: &mut KeyState) -> Result<(), Error> {
         trace!("send_packet {:?}", p.message_num());
 
         let (idx, len) = match self.state {
@@ -139,7 +139,7 @@ impl<'a> Traffic<'a> {
         if wbuf.len() <= SSH_PAYLOAD_START+1 {
             return Err(Error::NoRoom)
         }
-        let plen = wireformat::write_ssh(&mut wbuf[SSH_PAYLOAD_START..], p)?;
+        let plen = wireformat::write_ssh(&mut wbuf[SSH_PAYLOAD_START..], &p)?;
         trace!("sending {p:?}");
         trace!("{:?}", (&wbuf[SSH_PAYLOAD_START..SSH_PAYLOAD_START+plen]).hex_dump());
 
@@ -174,7 +174,6 @@ impl<'a> Traffic<'a> {
         &mut self, keys: &mut KeyState, buf: &[u8],
     ) -> Result<usize, Error> {
         let size_block = keys.size_block_dec();
-        let size_integ = keys.size_integ_dec();
         // 'r' is the remaining input, a slice that moves along.
         // Used to calculate the size to return
         let mut r = buf;
