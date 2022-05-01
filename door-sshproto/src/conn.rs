@@ -53,6 +53,12 @@ impl<'a> Runner<'a> {
             buf,
         )?;
         if let Some(payload) = payload {
+            // Lifetimes here are a bit subtle.
+            // `payload` has self.traffic lifetime, used until `handle_payload` completes.
+            // The `resp` from handle_payload() references self.conn, consumed
+            // by the send_packet().
+            // After that progress() can perform more send_packet() itself.
+
             let resp = self.conn.handle_payload(payload, &mut self.keys)?;
             for r in resp {
                 self.traffic.send_packet(r, &mut self.keys)?;
@@ -158,7 +164,7 @@ impl<'a> Conn<'a> {
             ConnState::SendIdent => {
                 traffic.send_version(ident::OUR_VERSION)?;
                 let p = self.kex.make_kexinit(&self.algo_conf);
-                traffic.send_packet(p, keys)?;
+                resp.push(p).trap()?;
                 self.state = ConnState::ReceiveIdent
             }
             ConnState::ReceiveIdent => {

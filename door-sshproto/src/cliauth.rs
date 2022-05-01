@@ -36,7 +36,7 @@ impl<'a> CliAuth<'a> {
         }
     }
 
-    pub fn start(&mut self, resp: &mut RespPackets<'a>) -> Result<()> {
+    pub fn start<'b>(&'b mut self, resp: &mut RespPackets<'b>) -> Result<()> {
         if !self.started {
             self.started = true;
             resp.push(Packet::ServiceRequest(
