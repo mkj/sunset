@@ -26,6 +26,7 @@ use crate::*;
 
 /// State to be passed to deserialisation.
 /// Use this so the parser can select the correct enum variant to deserialize.
+#[derive(Default)]
 pub struct ParseContext<'a> {
     pub cli_auth_type: Option<cliauth::ReqType<'a>>,
 }
@@ -46,7 +47,9 @@ pub(crate) struct PacketState<'a> {
 
 // we have repeated `match` statements for the various packet types, use a macro
 macro_rules! messagetypes {
-    ( $( ( $message_num:literal, $SpecificPacketVariant:ident, $SpecificPacketType:ty, $SSH_MESSAGE_NAME:ident ), )* ) => {
+    (
+        $( ( $message_num:literal, $SpecificPacketVariant:ident, $SpecificPacketType:ty, $SSH_MESSAGE_NAME:ident ), )*
+    ) => {
 
 
 #[derive(Debug)]
@@ -204,7 +207,7 @@ messagetypes![
 (53, UserauthBanner, UserauthBanner<'a>, SSH_MSG_USERAUTH_BANNER),
 // either SSH_MSG_USERAUTH_PASSWD_CHANGEREQ
 // or SSH_MSG_USERAUTH_PK_OK
-// (60, Userauth60, Userauth60<'a>, SSH_MSG_USERAUTH_60),
+(60, Userauth60, Userauth60<'a>, SSH_MSG_USERAUTH_60),
 ];
 
 // Note:
@@ -296,6 +299,37 @@ pub enum AuthMethod<'a> {
     Pubkey(MethodPubkey<'a>),
     #[serde(rename = "none")]
     None,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum Userauth60<'a> {
+    #[serde(borrow)]
+    PkOk(UserauthPkOk<'a>),
+    PwChangeReq(UserauthPwChangeReq<'a>)
+}
+
+impl<'a> Userauth60<'a> {
+    /// Special handling in [`wireformat`]
+    pub(crate) fn variant(ctx: &ParseContext) -> Result<&'static str> {
+        match ctx.cli_auth_type {
+            Some(cliauth::ReqType::Password) => Ok("PwChangeReq"),
+            Some(cliauth::ReqType::PubKey(..)) => Ok("PkOk"),
+            _ => return Err(Error::PacketWrong),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct UserauthPkOk<'a> {
+    pub algo: &'a str,
+    #[serde(borrow)]
+    pub key: Blob<PubKey<'a>>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct UserauthPwChangeReq<'a> {
+    pub prompt: &'a str,
+    pub lang: &'a str,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

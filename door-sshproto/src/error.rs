@@ -159,6 +159,7 @@ impl serde::de::Error for Error {
         #[cfg(feature = "std")]
         println!("custom de error: {}", msg);
 
+        error!("serde de error: {}", msg);
         Error::msg("de error")
     }
 

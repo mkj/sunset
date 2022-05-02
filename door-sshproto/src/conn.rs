@@ -349,6 +349,15 @@ impl<'a> Conn<'a> {
                     return Err(Error::SSHProtoError)
                 }
             }
+            Packet::Userauth60(p) => {
+                // TODO: client only
+                if let ClientServer::Client(cli) = &mut self.cliserv {
+                    todo!();
+                } else {
+                    debug!("Received banner as a server");
+                    return Err(Error::SSHProtoError)
+                }
+            }
         };
         Ok(resp)
     }

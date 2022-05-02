@@ -40,3 +40,7 @@ simplelog = { version = "0.12", features = ["test"] }
 [[example]]
 name = "kex1"
 
+[profile.release]
+debug = true
+lto = true
+opt-level = "s"

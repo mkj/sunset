@@ -567,9 +567,8 @@ mod tests {
     }
 
     /// Round trip a `Packet`
-    fn reserialize<'a>(out_buf: &'a mut [u8], p: Packet) -> Packet<'a> {
+    fn reserialize<'a>(out_buf: &'a mut [u8], p: Packet, ctx: &'a ParseContext) -> Packet<'a> {
         wireformat::write_ssh(out_buf, &p).unwrap();
-        let ctx = ParseContext::new();
         wireformat::packet_from_bytes(out_buf, &ctx).unwrap()
     }
 
@@ -589,10 +588,11 @@ mod tests {
         let mut serv = kex::Kex::new().unwrap();
 
         // reserialize so we end up with NameList::String not Local
+        let ctx = ParseContext::new();
         let si = serv.make_kexinit(&serv_conf);
-        let si = reserialize(&mut bufs, si);
+        let si = reserialize(&mut bufs, si, &ctx);
         let ci = cli.make_kexinit(&cli_conf);
-        let ci = reserialize(&mut bufc, ci);
+        let ci = reserialize(&mut bufc, ci, &ctx);
 
         serv.handle_kexinit(false, &serv_conf, &cli_version, &ci).unwrap();
         cli.handle_kexinit(true, &cli_conf, &serv_version, &si).unwrap();

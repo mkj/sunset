@@ -17,6 +17,7 @@ use {
 };
 use pretty_hex::PrettyHex;
 
+use crate::{*, packets::UserauthPkOk};
 use crate::packets::{DeserPacket, Packet, PacketState, ParseContext};
 use core::cell::Cell;
 use core::slice;
@@ -25,9 +26,9 @@ use core::fmt::Debug;
 use std::marker::PhantomData;
 
 /// Parses a [`Packet`] from a borrowed `&[u8]` byte buffer.
-pub fn packet_from_bytes<'a>(b: &'a [u8], ctx: &ParseContext) -> Result<Packet<'a>> {
+pub fn packet_from_bytes<'a>(b: &'a [u8], ctx: &'a ParseContext<'a>) -> Result<Packet<'a>> {
 
-    let mut ds = DeSSHBytes::from_bytes(b);
+    let mut ds = DeSSHBytes::from_bytes(b, ctx);
     let seed = PacketState {
         ctx,
         // ty: Cell::new(None),
@@ -299,13 +300,19 @@ impl Serializer for &mut SeSSHBytes<'_> {
         v.serialize(self)
     }
     fn serialize_newtype_variant<T>(
-        self, _name: &'static str, _variant_index: u32, variant: &'static str,
+        self, name: &'static str, _variant_index: u32, variant: &'static str,
         v: &T,
     ) -> Res
     where
         T: ?Sized + Serialize,
     {
-        self.serialize_str(variant)?;
+        match name {
+            "Userauth60"
+            // Stateful enums don't have a name prefix
+            => { }
+            // Name based enums like methods have a string name prefix
+            _ => self.serialize_str(variant)?
+        };
         v.serialize(self)
     }
 
@@ -444,13 +451,20 @@ impl ser::SerializeTuple for &mut SeSSHBytes<'_> {
 struct DeSSHBytes<'a> {
     input: &'a [u8],
     pos: usize,
+
+    parse_ctx: &'a ParseContext<'a>,
+    // Used for stateful parsing such as Userauth60. A bit of a hack
+    // around serde but is simpler than passing stateful Seed deserializers
+    // around.
+    override_enum: Option<&'a str>,
 }
 
 impl<'de> DeSSHBytes<'de> {
     // XXX: rename to new() ?
-    pub fn from_bytes(input: &'de [u8]) -> Self {
-        DeSSHBytes { input, pos: 0 }
+    pub fn from_bytes(input: &'de [u8], ctx: &'de ParseContext) -> Self {
+        DeSSHBytes { input, pos: 0, parse_ctx: ctx, override_enum: None }
     }
+
     // #[inline]
     fn take(&mut self, len: usize) -> Result<&'de [u8]> {
         if len > self.input.len() {
@@ -536,7 +550,14 @@ impl<'de, 'a> Deserializer<'de> for &'a mut DeSSHBytes<'de> {
     where
         V: Visitor<'de>,
     {
-        self.deserialize_str(visitor)
+        let v = match self.override_enum {
+            Some("Userauth60") => {
+                visitor.visit_borrowed_str(
+                    packets::Userauth60::variant(self.parse_ctx)?)
+            }
+            _ => self.deserialize_str(visitor)
+        };
+        v
     }
 
     /* deserialize_bytes() is like a string but with binary data. it has
@@ -574,12 +595,22 @@ impl<'de, 'a> Deserializer<'de> for &'a mut DeSSHBytes<'de> {
     }
 
     fn deserialize_enum<V>(
-        self, _name: &'static str, _variants: &'static [&'static str], visitor: V,
+        mut self, name: &'static str, _variants: &'static [&'static str], visitor: V,
     ) -> Result<V::Value, Self::Error>
     where
         V: Visitor<'de>,
     {
-        visitor.visit_enum(StringEnum(self))
+        match name {
+            "Userauth60"
+            => {
+                trace!("setting override_enum for {name}");
+                self.override_enum = Some(name);
+            }
+            _ => {}
+        };
+        let v = visitor.visit_enum(StringEnum(self))?;
+        self.override_enum = None;
+        Ok(v)
     }
 
     fn deserialize_newtype_struct<V>(
@@ -661,6 +692,9 @@ impl<'de, 'a> EnumAccess<'de> for StringEnum<'a, 'de> {
         V: DeserializeSeed<'de>,
     {
         let variant_name = seed.deserialize(&mut *self.0)?;
+        // Override has been used, must be cleared quickly to avoid
+        // it applying to child enums in the struct
+        self.0.override_enum = None;
         Ok((variant_name, self))
     }
 }
@@ -692,6 +726,9 @@ impl<'de, 'a> VariantAccess<'de> for StringEnum<'a, 'de> {
 mod tests {
     use crate::error::Error;
     use crate::*;
+    use crate::packets::*;
+    use crate::wireformat::*;
+    use crate::doorlog::init_test_log;
     // use pretty_hex::PrettyHex;
 
     #[test]
@@ -723,4 +760,39 @@ mod tests {
         assert_eq!(digest3.as_ref(), digest2.as_ref());
     }
 
+    fn test_roundtrip_context(p: &Packet, ctx: &ParseContext) {
+        let mut buf = vec![99; 200];
+        let l = write_ssh(&mut buf, &p).unwrap();
+        buf.truncate(l);
+        trace!("wrote pwchange {:?}", buf.hex_dump());
+
+        let p2 = packet_from_bytes(&buf, &ctx).unwrap();
+        trace!("p2 {:?}", p2);
+        let mut buf2 = vec![99; 200];
+        let l = write_ssh(&mut buf2, &p2).unwrap();
+        buf2.truncate(l);
+        assert_eq!(buf, buf2);
+    }
+
+    /// Tests parsing a packet with a ParseContext.
+    #[test]
+    fn test_parse_context() {
+        init_test_log();
+        let mut ctx = ParseContext::new();
+
+        let p = Packet::Userauth60(Userauth60::PwChangeReq(UserauthPwChangeReq { prompt: "change the password", lang: "" }));
+        ctx.cli_auth_type = Some(cliauth::ReqType::Password);
+        test_roundtrip_context(&p, &ctx);
+
+        // PkOk is a more interesting case because the PubKey inside it is also
+        // an enum but that can identify its own enum variant.
+        let p = Packet::Userauth60(Userauth60::PkOk(UserauthPkOk{ algo: "ed25519",
+            key: Blob(PubKey::Ed25519(Ed25519PubKey { key: BinString(&[0x11, 0x22, 0x33])})) } ) );
+        let rng = ring::rand::SystemRandom::new();
+        let pkcs8_bytes = ring::signature::Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
+        let ed = ring::signature::Ed25519KeyPair::from_pkcs8(pkcs8_bytes.as_ref()).unwrap();
+        let s = sign::SignKey::Ed25519(ed);
+        ctx.cli_auth_type = Some(cliauth::ReqType::PubKey(&s));
+        test_roundtrip_context(&p, &ctx);
+    }
 }
