@@ -3,14 +3,14 @@
 
 //! See [RFC4251](https://datatracker.ietf.org/doc/html/rfc4251) for encodings,
 //! [RFC4253](https://datatracker.ietf.org/doc/html/rfc4253) and others for packet structure
+use serde::de::value::BorrowedStrDeserializer;
 use serde::{
-    de::{self, MapAccess, value::MapAccessDeserializer, IntoDeserializer},
+    de::{self, value::MapAccessDeserializer, IntoDeserializer, MapAccess},
     de::{DeserializeSeed, EnumAccess, SeqAccess, VariantAccess, Visitor},
     ser,
     ser::SerializeSeq,
     Deserialize, Deserializer, Serialize, Serializer,
 };
-use serde::de::value::StrDeserializer;
 
 use pretty_hex::PrettyHex;
 #[allow(unused_imports)]
@@ -134,7 +134,7 @@ impl<'a, B> AsRef<B> for Blob<B> {
     }
 }
 
-impl<'a, B: Serialize+Debug> Debug for Blob<B> {
+impl<'a, B: Serialize + Debug> Debug for Blob<B> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let len = SeSSHBytes::get_length(&self.0)
             .map_err(|_| ser::Error::custom(Error::bug()))?;
@@ -312,17 +312,18 @@ impl Serializer for &mut SeSSHBytes<'_> {
         T: ?Sized + Serialize,
     {
         match name {
-            "Userauth60"
-            // Stateful enums don't have a name prefix
-            => { }
-            // Name based enums like methods have a string name prefix
-            "PubKey"
-            | "Signature"
-            | "AuthMethod"
-            => self.serialize_str(variant)?,
-
-            // a mystery Enum
-            _ => return Err(Error::bug())
+            "Userauth60" | "ChannelType" => {
+                // Name is elsewhere, part of the parent struct or
+                // from ParseContext
+            }
+            "PubKey" | "Signature" | "AuthMethod" => {
+                // Name is immediately before the enum
+                self.serialize_str(variant)?;
+            }
+            _ => return {
+                warn!("Mystery enum {name}");
+                Err(Error::bug())
+            }
         };
         v.serialize(self)
     }
@@ -334,15 +335,15 @@ impl Serializer for &mut SeSSHBytes<'_> {
         self.serialize_str(variant)
     }
 
-    fn serialize_seq(self, _len: Option<usize>) -> Result<Self::SerializeSeq> {
+    fn serialize_seq(self, _len: Option<usize>) -> Result<Self> {
         Ok(self)
     }
     fn serialize_struct(
         self, _name: &'static str, _len: usize,
-    ) -> Result<Self::SerializeSeq> {
+    ) -> Result<Self> {
         Ok(self)
     }
-    fn serialize_tuple(self, _len: usize) -> Result<Self::SerializeTuple> {
+    fn serialize_tuple(self, _len: usize) -> Result<Self> {
         Ok(self)
     }
 
@@ -459,19 +460,27 @@ struct DeSSHBytes<'a> {
     pos: usize,
 
     parse_ctx: &'a ParseContext<'a>,
-    // Used for stateful parsing such as Userauth60. A bit of a hack
-    // around serde but is simpler than passing stateful Seed deserializers
-    // around.
-    override_enum: Option<&'a str>,
+
+    /// MapAccessDeSSH can capture the string value of a selected field
+    /// for use as an enum variant selector
     capture_next_str: bool,
     capture_str: Option<&'a str>,
+
+    /// A variant name to be used for the next enum deserialization
+    next_variant: Option<&'a str>,
 }
 
 impl<'de> DeSSHBytes<'de> {
     // XXX: rename to new() ?
     pub fn from_bytes(input: &'de [u8], ctx: &'de ParseContext) -> Self {
-        DeSSHBytes { input, pos: 0, parse_ctx: ctx, override_enum: None,
-            capture_next_str: false, capture_str: None}
+        DeSSHBytes {
+            input,
+            pos: 0,
+            parse_ctx: ctx,
+            capture_next_str: false,
+            capture_str: None,
+            next_variant: None,
+        }
     }
 
     // #[inline]
@@ -565,14 +574,6 @@ impl<'de, 'a> Deserializer<'de> for &'a mut DeSSHBytes<'de> {
     where
         V: Visitor<'de>,
     {
-        // let v = match self.override_enum {
-        //     Some("Userauth60") => visitor.visit_borrowed_str(
-        //         packets::Userauth60::variant(self.parse_ctx)?),
-        //     None => self.deserialize_str(visitor),
-        //     Some(_) => Err(Error::bug()), // a mystery enum
-        // };
-        // v
-        // TODO: check that it's one of the known types
         self.deserialize_str(visitor)
     }
 
@@ -602,47 +603,53 @@ impl<'de, 'a> Deserializer<'de> for &'a mut DeSSHBytes<'de> {
     }
 
     fn deserialize_struct<V>(
-        self, _name: &'static str, fields: &'static [&'static str], visitor: V,
+        self, name: &'static str, fields: &'static [&'static str], visitor: V,
     ) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        trace!("newtype struct {_name}");
-        let mut capture_value = None;
-        let ma = MapAccessDeSSH::new( self, fields, None, &mut capture_value);
-        let v = visitor.visit_map( ma )?;
-        if let Some(cap) = capture_value {
+        let variant_field = match name {
+            "ChannelOpen" => Some("channel_type"),
+            _ => None,
+        } ;
+
+        if variant_field.is_some() {
+            let ma = MapAccessDeSSH::new(self, fields, variant_field );
+            let v = visitor.visit_map(ma)?;
+            debug_assert!(self.next_variant.is_none());
+            Ok(v)
+        } else {
+            // A simple deserialize_tuple is smaller
+            self.deserialize_tuple(fields.len(), visitor)
         }
-        Ok(v)
-        // self.deserialize_tuple(fields.len(), visitor)
     }
 
     fn deserialize_enum<V>(
-        mut self, name: &'static str, _variants: &'static [&'static str], visitor: V,
+        self, name: &'static str, _variants: &'static [&'static str], visitor: V,
     ) -> Result<V::Value, Self::Error>
     where
         V: Visitor<'de>,
     {
         let known_variant_name = match name {
             "Userauth60" => {
-                trace!("setting override_enum for {name}");
                 Some(packets::Userauth60::variant(self.parse_ctx)?)
             }
-            "PubKey"
-            | "Signature"
-            | "AuthMethod"
-            => {
-                // variant is selected by the method name in the packet,
+            "ChannelType" => {
+                Some(self.next_variant.take().trap()?)
+            }
+            "PubKey" | "Signature" | "AuthMethod" => {
+                // The variant is selected by the method name in the packet,
                 // using `#[serde(rename)]` in `packets` enum definition.
                 None
-                // self.override_enum = None;
             }
             _ => {
                 // a mystery enum
-                return Err(Error::bug())
+                warn!("Mystery enum {name}");
+                return Err(Error::bug());
             }
         };
-        let v = visitor.visit_enum(StringEnum {ds: self, known_variant_name })?;
+        let v =
+            visitor.visit_enum(SSHStringEnum { ds: self, known_variant_name })?;
         Ok(v)
     }
 
@@ -718,23 +725,21 @@ struct MapAccessDeSSH<'de, 'a> {
     fields: &'static [&'static str],
     pos: usize,
 
-    capture_field: Option<&'a str>,
-    capture_value: &'a mut Option<&'de str>,
+    // We want to use a field in a parent struct to choose the
+    // variant of a child enum. We record the field here
+    // and use it in deserialize_enum().
+    // This assumes that no intervening enums are decoded before
+    // the desired one.
+    variant_field: Option<&'a str>,
 }
 
 impl<'de: 'a, 'a> MapAccessDeSSH<'de, 'a> {
-    fn new(ds: &'a mut DeSSHBytes<'de>,
-        fields: &'static [&'static str],
-        capture_field: Option<&'a str>,
-        capture_value: &'a mut Option<&'de str>
-        ) -> Self {
-        MapAccessDeSSH {
-            ds,
-            fields,
-            pos: 0,
-            capture_field,
-            capture_value,
-        }
+    fn new(
+        ds: &'a mut DeSSHBytes<'de>, fields: &'static [&'static str],
+        variant_field: Option<&'a str>,
+    ) -> Self {
+        debug_assert!(ds.next_variant.is_none());
+        MapAccessDeSSH { ds, fields, pos: 0, variant_field }
     }
 }
 
@@ -747,15 +752,18 @@ impl<'de: 'a, 'a> MapAccess<'de> for MapAccessDeSSH<'de, 'a> {
         &mut self, seed: S,
     ) -> Result<Option<S::Value>> {
         if self.pos < self.fields.len() {
-            // field name as the key
-            let dsfield: StrDeserializer<'de, Error> =
-                self.fields[self.pos].into_deserializer();
-
             debug_assert!(self.ds.capture_str.is_none());
             debug_assert!(!self.ds.capture_next_str);
-            if let Some(c) = self.capture_field {
-                self.ds.capture_next_str = c == self.fields[self.pos];
+            if let Some(cf) = self.variant_field {
+                // The subsequent next_value_seed() should
+                // capture the string value if this is our
+                // capture_field.
+                self.ds.capture_next_str = cf == self.fields[self.pos];
             };
+
+            // Return the field name as the key
+            let dsfield = BorrowedStrDeserializer::<Error>::new(
+                self.fields[self.pos]);
             self.pos += 1;
             Ok(Some(DeserializeSeed::deserialize(seed, dsfield)?))
         } else {
@@ -768,12 +776,14 @@ impl<'de: 'a, 'a> MapAccess<'de> for MapAccessDeSSH<'de, 'a> {
         &mut self, seed: S,
     ) -> Result<S::Value> {
         let v = DeserializeSeed::deserialize(seed, &mut *self.ds)?;
+
+        // Stash any captured value
+        let cap = self.ds.capture_str.take();
         debug_assert!(!self.ds.capture_next_str);
-        let l = self.ds.capture_str.take();
-        if l.is_some() {
-            debug_assert!(self.capture_value.is_none());
+        if cap.is_some() {
+            debug_assert!(self.ds.next_variant.is_none());
+            self.ds.next_variant = cap;
         }
-        *self.capture_value = l;
         Ok(v)
     }
 
@@ -782,14 +792,16 @@ impl<'de: 'a, 'a> MapAccess<'de> for MapAccessDeSSH<'de, 'a> {
     }
 }
 
-
-struct StringEnum<'a, 'de: 'a> {
+struct SSHStringEnum<'a, 'de: 'a> {
     ds: &'a mut DeSSHBytes<'de>,
+    /// Set to `Some` if the variant name is fixed (already parsed or
+    /// from [`ParseContext`]), `None` if it is to be parsed from the next
+    /// field in `ds`.
     known_variant_name: Option<&'de str>,
 }
 
-// figures which SSH string (eg "password") identifies the enum
-impl<'de, 'a> EnumAccess<'de> for StringEnum<'a, 'de> {
+// Figures which SSH string (eg "password") identifies the enum
+impl<'de, 'a> EnumAccess<'de> for SSHStringEnum<'a, 'de> {
     type Error = crate::error::Error;
     type Variant = Self;
 
@@ -797,23 +809,19 @@ impl<'de, 'a> EnumAccess<'de> for StringEnum<'a, 'de> {
     where
         V: DeserializeSeed<'de>,
     {
-        let variant_name = if let Some(n) = self.known_variant_name {
-            let n: StrDeserializer<'de, Error> =
-                n.into_deserializer();
+        let variant_name = if let Some(n) = &self.known_variant_name {
+            let n = BorrowedStrDeserializer::<Error>::new(n);
             seed.deserialize(n)?
-
         } else {
+            // Use the field before the enum as the variant idntifier
             seed.deserialize(&mut *self.ds)?
         };
-        // Override has been used, must be cleared quickly to avoid
-        // it applying to child enums in the struct
-        // self.ds.override_enum = None;
         Ok((variant_name, self))
     }
 }
 
-// decodes a variant from an enum
-impl<'de, 'a> VariantAccess<'de> for StringEnum<'a, 'de> {
+// Decodes a variant from an enum
+impl<'de, 'a> VariantAccess<'de> for SSHStringEnum<'a, 'de> {
     type Error = Error;
 
     // we only use newtype variants

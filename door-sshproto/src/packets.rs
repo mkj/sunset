@@ -14,8 +14,8 @@ use {
 };
 
 use serde::de;
-use serde::de::{DeserializeSeed, Expected, SeqAccess, Visitor};
-use serde::ser::{SerializeSeq, SerializeTuple, SerializeStruct, Serializer};
+use serde::de::{DeserializeSeed, Expected, MapAccess, SeqAccess, Visitor};
+use serde::ser::{SerializeSeq, SerializeStruct, SerializeTuple, Serializer};
 use serde::Deserializer;
 
 use serde::{Deserialize, Serialize};
@@ -23,6 +23,397 @@ use serde::{Deserialize, Serialize};
 use crate::namelist::NameList;
 use crate::wireformat::{BinString, Blob};
 use crate::*;
+
+// Each struct needs one #[borrow] tag before one of the struct fields with a lifetime
+// (eg `blob: BinString<'a>`). That avoids the cryptic error in derive:
+// error[E0495]: cannot infer an appropriate lifetime for lifetime parameter `'de` due to conflicting requirements
+
+// Any `enum` needs to have special handling to select a variant when deserializing.
+// This is done in conjunction with [`wireformat::deserialize_enum`].
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct KexInit<'a> {
+    pub cookie: [u8; 16],
+    #[serde(borrow)]
+    pub kex: NameList<'a>,
+    pub hostkey: NameList<'a>, // is actually a signature type, not a key type
+    pub cipher_c2s: NameList<'a>,
+    pub cipher_s2c: NameList<'a>,
+    pub mac_c2s: NameList<'a>,
+    pub mac_s2c: NameList<'a>,
+    pub comp_c2s: NameList<'a>,
+    pub comp_s2c: NameList<'a>,
+    pub lang_c2s: NameList<'a>,
+    pub lang_s2c: NameList<'a>,
+    pub first_follows: bool,
+    pub reserved: u32,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct NewKeys {}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Ignore {}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Debug<'a> {
+    pub always_display: bool,
+    pub message: &'a str,
+    pub lang: &'a str,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Disconnect<'a> {
+    pub reason: u32,
+    pub desc: &'a str,
+    pub lang: &'a str,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Unimplemented {
+    pub seq: u32,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct KexDHInit<'a> {
+    #[serde(borrow)]
+    pub q_c: BinString<'a>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct KexDHReply<'a> {
+    #[serde(borrow)]
+    pub k_s: Blob<PubKey<'a>>,
+    pub q_s: BinString<'a>,
+    pub sig: Blob<Signature<'a>>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ServiceRequest<'a> {
+    pub name: &'a str,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ServiceAccept<'a> {
+    pub name: &'a str,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct UserauthRequest<'a> {
+    pub username: &'a str,
+    pub service: &'a str,
+    pub method: AuthMethod<'a>,
+}
+
+/// The method-specific part of a [`UserauthRequest`].
+#[derive(Serialize, Deserialize, Debug)]
+pub enum AuthMethod<'a> {
+    #[serde(borrow)]
+    #[serde(rename = "password")]
+    Password(MethodPassword<'a>),
+    #[serde(rename = "publickey")]
+    Pubkey(MethodPubKey<'a>),
+    #[serde(rename = "none")]
+    None,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum Userauth60<'a> {
+    #[serde(borrow)]
+    PkOk(UserauthPkOk<'a>),
+    PwChangeReq(UserauthPwChangeReq<'a>),
+}
+
+impl<'a> Userauth60<'a> {
+    /// Special handling in [`wireformat`]
+    pub(crate) fn variant(ctx: &ParseContext) -> Result<&'static str> {
+        match ctx.cli_auth_type {
+            Some(cliauth::ReqType::Password) => Ok("PwChangeReq"),
+            Some(cliauth::ReqType::PubKey(..)) => Ok("PkOk"),
+            _ => return Err(Error::PacketWrong),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct UserauthPkOk<'a> {
+    pub algo: &'a str,
+    #[serde(borrow)]
+    pub key: Blob<PubKey<'a>>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct UserauthPwChangeReq<'a> {
+    pub prompt: &'a str,
+    pub lang: &'a str,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct MethodPassword<'a> {
+    pub change: bool,
+    pub password: &'a str,
+}
+
+#[derive(Debug)]
+pub struct MethodPubKey<'a> {
+    pub algo: &'a str,
+    pub pubkey: PubKey<'a>,
+    pub sig: Option<Blob<Signature<'a>>>,
+}
+
+impl<'a> Serialize for MethodPubKey<'a> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut seq = serializer.serialize_seq(None)?;
+        seq.serialize_element(&self.sig.is_some())?;
+        seq.serialize_element(&self.algo)?;
+        seq.serialize_element(&self.pubkey)?;
+        if let Some(s) = &self.sig {
+            seq.serialize_element(&s)?;
+        }
+        seq.end()
+    }
+}
+
+impl<'de: 'a, 'a> Deserialize<'de> for MethodPubKey<'a> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct Vis;
+
+        impl<'de> Visitor<'de> for Vis {
+            type Value = MethodPubKey<'de>;
+
+            fn expecting(
+                &self, formatter: &mut core::fmt::Formatter,
+            ) -> core::fmt::Result {
+                formatter.write_str("MethodPubKey")
+            }
+            fn visit_seq<V>(self, mut seq: V) -> Result<MethodPubKey<'de>, V::Error>
+            where
+                V: SeqAccess<'de>,
+            {
+                let actual_sig = seq
+                    .next_element()?
+                    .ok_or_else(|| de::Error::missing_field("actual_sig flag"))?;
+
+                let algo = seq
+                    .next_element()?
+                    .ok_or_else(|| de::Error::missing_field("algo"))?;
+
+                let pubkey = seq
+                    .next_element()?
+                    .ok_or_else(|| de::Error::missing_field("pubkey"))?;
+
+                let sig = if actual_sig {
+                    Some(
+                        seq.next_element()?
+                            .ok_or_else(|| de::Error::missing_field("sig"))?,
+                    )
+                } else {
+                    None
+                };
+
+                Ok(MethodPubKey { algo, pubkey, sig })
+            }
+        }
+        deserializer.deserialize_seq(Vis)
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct UserauthFailure<'a> {
+    #[serde(borrow)]
+    pub methods: NameList<'a>,
+    pub partial: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct UserauthSuccess {}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct UserauthBanner<'a> {
+    #[serde(borrow)]
+    pub message: &'a str,
+    pub lang: &'a str,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum PubKey<'a> {
+    #[serde(borrow)]
+    #[serde(rename = "ssh-ed25519")]
+    Ed25519(Ed25519PubKey<'a>),
+    #[serde(rename = "ssh-rsa")]
+    RSA(RSAPubKey<'a>),
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Ed25519PubKey<'a> {
+    #[serde(borrow)]
+    pub key: BinString<'a>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct RSAPubKey<'a> {
+    #[serde(borrow)]
+    pub e: BinString<'a>,
+    pub n: BinString<'a>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum Signature<'a> {
+    #[serde(borrow)]
+    #[serde(rename = "ssh-ed25519")]
+    Ed25519(Ed25519Sig<'a>),
+    #[serde(rename = "rsa-sha2-256")]
+    RSA(RSASig<'a>),
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Ed25519Sig<'a> {
+    #[serde(borrow)]
+    pub sig: BinString<'a>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct RSASig<'a> {
+    #[serde(borrow)]
+    pub sig: BinString<'a>,
+}
+
+// #[derive(Serialize, Deserialize, Debug)]
+// pub struct GlobalRequest<'a> {
+//     name: &'a str,
+//     want_reply: bool,
+//     request: GlobalRequestMethod<'a>,
+// }
+
+// enum GlobalRequestMethod<'a> {
+//     TcpipForward<'a>,
+//     CancelTcpipForward,
+// }
+
+#[derive(Debug)]
+pub struct ChannelOpen<'a> {
+    // channel_type is implicit in the type enum below
+    pub number: u32,
+    pub initial_window: u32,
+    pub max_packet: u32,
+    pub ch: ChannelType<'a>,
+}
+
+impl<'a> Serialize for ChannelOpen<'a> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut seq = serializer.serialize_struct("ChannelOpen", 5)?;
+        let channel_type = match self.ch {
+            ChannelType::ForwardedTcpip(_) => "forwarded-tcpip",
+            ChannelType::DirectTcpip(_) => "direct-tcpip",
+        };
+        seq.serialize_field("channel_type", channel_type)?;
+        seq.serialize_field("number", &self.number)?;
+        seq.serialize_field("initial_window", &self.initial_window)?;
+        seq.serialize_field("max_packet", &self.initial_window)?;
+        seq.serialize_field("ch", &self.ch)?;
+        seq.end()
+    }
+}
+
+impl<'de: 'a, 'a> Deserialize<'de> for ChannelOpen<'a> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct Vis;
+
+        impl<'de> Visitor<'de> for Vis {
+            type Value = ChannelOpen<'de>;
+
+            fn expecting(
+                &self, formatter: &mut core::fmt::Formatter,
+            ) -> core::fmt::Result {
+                formatter.write_str("ChannelOpen")
+            }
+
+            fn visit_map<V>(self, mut map: V) -> Result<ChannelOpen<'de>, V::Error>
+            where
+                V: MapAccess<'de>,
+            {
+                // a bit horrible
+                let mut _k: &'de str;
+                let _channel_type: &'de str;
+                let number;
+                let initial_window;
+                let max_packet;
+                let ch;
+                (_k, _channel_type) = map
+                    .next_entry()?
+                    .ok_or_else(|| de::Error::missing_field("channel_type"))?;
+                (_k, number) = map
+                    .next_entry()?
+                    .ok_or_else(|| de::Error::missing_field("number"))?;
+                (_k, initial_window) = map
+                    .next_entry()?
+                    .ok_or_else(|| de::Error::missing_field("initial_window"))?;
+                (_k, max_packet) = map
+                    .next_entry()?
+                    .ok_or_else(|| de::Error::missing_field("max_packet"))?;
+                (_k, ch) = map
+                    .next_entry()?
+                    .ok_or_else(|| de::Error::missing_field("ch"))?;
+
+                Ok(ChannelOpen {
+                    number,
+                    initial_window,
+                    max_packet,
+                    ch,
+                })
+
+            }
+        }
+        deserializer.deserialize_struct(
+            "ChannelOpen",
+            &["channel_type", "number", "initial_window", "max_packet", "ch"],
+            Vis,
+        )
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum ChannelType<'a> {
+    #[serde(borrow)]
+    #[serde(rename = "forwarded-tcpip")]
+    ForwardedTcpip(ForwardedTcpip<'a>),
+    #[serde(rename = "direct-tcpip")]
+    DirectTcpip(DirectTcpip<'a>),
+}
+
+// impl<'a> ChannelType<'a> {
+//     /// Special handling in [`wireformat`]
+//     pub(crate) fn variant(&self) -> Result<&'static str> {
+//     }
+// }
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ForwardedTcpip<'a> {
+    address: &'a str,
+    port: u32,
+    origin: &'a str,
+    origin_port: u32,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct DirectTcpip<'a> {
+    address: &'a str,
+    port: u32,
+    origin: &'a str,
+    origin_port: u32,
+}
 
 /// State to be passed to deserialisation.
 /// Use this so the parser can select the correct enum variant to deserialize.
@@ -194,6 +585,7 @@ messagetypes![
 (21, NewKeys, NewKeys, SSH_MSG_NEWKEYS),
 (30, KexDHInit, KexDHInit<'a>, SSH_MSG_KEXDH_INIT),
 (31, KexDHReply, KexDHReply<'a>, SSH_MSG_KEXDH_REPLY),
+
 (50, UserauthRequest, UserauthRequest<'a>, SSH_MSG_USERAUTH_REQUEST),
 (51, UserauthFailure, UserauthFailure<'a>, SSH_MSG_USERAUTH_FAILURE),
 (52, UserauthSuccess, UserauthSuccess, SSH_MSG_USERAUTH_SUCCESS),
@@ -201,286 +593,31 @@ messagetypes![
 // either SSH_MSG_USERAUTH_PASSWD_CHANGEREQ
 // or SSH_MSG_USERAUTH_PK_OK
 (60, Userauth60, Userauth60<'a>, SSH_MSG_USERAUTH_60),
+
+// (80            SSH_MSG_GLOBAL_REQUEST),
+// (81            SSH_MSG_REQUEST_SUCCESS),
+// (82            SSH_MSG_REQUEST_FAILURE),
+(90, ChannelOpen, ChannelOpen<'a>, SSH_MSG_CHANNEL_OPEN),
+// (91            SSH_MSG_CHANNEL_OPEN_CONFIRMATION),
+// (92            SSH_MSG_CHANNEL_OPEN_FAILURE),
+// (93            SSH_MSG_CHANNEL_WINDOW_ADJUST),
+// (94            SSH_MSG_CHANNEL_DATA),
+// (95            SSH_MSG_CHANNEL_EXTENDED_DATA),
+// (96            SSH_MSG_CHANNEL_EOF),
+// (97            SSH_MSG_CHANNEL_CLOSE),
+// (98            SSH_MSG_CHANNEL_REQUEST),
+// (99            SSH_MSG_CHANNEL_SUCCESS),
+// (100            SSH_MSG_CHANNEL_FAILURE),
 ];
-
-// Note:
-// Each struct needs one #[borrow] tag before one of the struct fields with a lifetime
-// (eg `blob: BinString<'a>`). That avoids the cryptic error in derive:
-// error[E0495]: cannot infer an appropriate lifetime for lifetime parameter `'de` due to conflicting requirements
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct KexInit<'a> {
-    pub cookie: [u8; 16],
-    #[serde(borrow)]
-    pub kex: NameList<'a>,
-    pub hostkey: NameList<'a>, // is actually a signature type, not a key type
-    pub cipher_c2s: NameList<'a>,
-    pub cipher_s2c: NameList<'a>,
-    pub mac_c2s: NameList<'a>,
-    pub mac_s2c: NameList<'a>,
-    pub comp_c2s: NameList<'a>,
-    pub comp_s2c: NameList<'a>,
-    pub lang_c2s: NameList<'a>,
-    pub lang_s2c: NameList<'a>,
-    pub first_follows: bool,
-    pub reserved: u32,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct NewKeys {}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct Ignore {}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct Debug<'a> {
-    pub always_display: bool,
-    pub message: &'a str,
-    pub lang: &'a str,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct Disconnect<'a> {
-    pub reason: u32,
-    pub desc: &'a str,
-    pub lang: &'a str,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct Unimplemented {
-    pub seq: u32,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct KexDHInit<'a> {
-    #[serde(borrow)]
-    pub q_c: BinString<'a>,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct KexDHReply<'a> {
-    #[serde(borrow)]
-    pub k_s: Blob<PubKey<'a>>,
-    pub q_s: BinString<'a>,
-    pub sig: Blob<Signature<'a>>,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct ServiceRequest<'a> {
-    pub name: &'a str,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct ServiceAccept<'a> {
-    pub name: &'a str,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct UserauthRequest<'a> {
-    pub username: &'a str,
-    pub service: &'a str,
-    pub method: AuthMethod<'a>,
-}
-
-/// The method-specific part of a [`UserauthRequest`].
-#[derive(Serialize, Deserialize, Debug)]
-pub enum AuthMethod<'a> {
-    #[serde(borrow)]
-    #[serde(rename = "password")]
-    Password(MethodPassword<'a>),
-    #[serde(rename = "publickey")]
-    Pubkey(MethodPubKey<'a>),
-    #[serde(rename = "none")]
-    None,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub enum Userauth60<'a> {
-    #[serde(borrow)]
-    PkOk(UserauthPkOk<'a>),
-    PwChangeReq(UserauthPwChangeReq<'a>)
-}
-
-impl<'a> Userauth60<'a> {
-    /// Special handling in [`wireformat`]
-    pub(crate) fn variant(ctx: &ParseContext) -> Result<&'static str> {
-        match ctx.cli_auth_type {
-            Some(cliauth::ReqType::Password) => Ok("PwChangeReq"),
-            Some(cliauth::ReqType::PubKey(..)) => Ok("PkOk"),
-            _ => return Err(Error::PacketWrong),
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct UserauthPkOk<'a> {
-    pub algo: &'a str,
-    #[serde(borrow)]
-    pub key: Blob<PubKey<'a>>,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct UserauthPwChangeReq<'a> {
-    pub prompt: &'a str,
-    pub lang: &'a str,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct MethodPassword<'a> {
-    pub change: bool,
-    pub password: &'a str,
-}
-
-#[derive(Debug)]
-pub struct MethodPubKey<'a> {
-    pub algo: &'a str,
-    pub pubkey: PubKey<'a>,
-    pub sig: Option<Blob<Signature<'a>>>,
-}
-
-impl<'a> Serialize for MethodPubKey<'a> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let mut seq = serializer.serialize_seq(None)?;
-        seq.serialize_element(&self.sig.is_some())?;
-        seq.serialize_element(&self.algo)?;
-        seq.serialize_element(&self.pubkey)?;
-        if let Some(s) = &self.sig {
-            seq.serialize_element(&s)?;
-        }
-        seq.end()
-    }
-}
-
-impl<'de: 'a, 'a> Deserialize<'de> for MethodPubKey<'a> {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        struct Vis;
-
-        impl<'de>  Visitor<'de> for Vis {
-            type Value = MethodPubKey<'de>;
-
-            fn expecting(
-                &self, formatter: &mut core::fmt::Formatter,
-            ) -> core::fmt::Result {
-                formatter.write_str("MethodPubKey")
-            }
-            fn visit_seq<V>(self, mut seq: V) -> Result<MethodPubKey<'de>, V::Error>
-            where
-                V: SeqAccess<'de>,
-            {
-                let actual_sig = seq
-                    .next_element()?
-                    .ok_or_else(|| de::Error::missing_field("actual_sig flag"))?;
-
-                let algo = seq
-                    .next_element()?
-                    .ok_or_else(|| de::Error::missing_field("algo"))?;
-
-                let pubkey = seq
-                    .next_element()?
-                    .ok_or_else(|| de::Error::missing_field("pubkey"))?;
-
-                let sig = if actual_sig {
-                    Some(seq
-                    .next_element()?
-                    .ok_or_else(|| de::Error::missing_field("sig"))?)
-                } else {
-                    None
-                };
-
-                Ok(MethodPubKey { algo, pubkey, sig })
-            }
-        }
-        deserializer.deserialize_seq(Vis)
-    }
-}
-
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct UserauthFailure<'a> {
-    #[serde(borrow)]
-    pub methods: NameList<'a>,
-    pub partial: bool,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct UserauthSuccess {}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct UserauthBanner<'a> {
-    #[serde(borrow)]
-    pub message: &'a str,
-    pub lang: &'a str,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub enum PubKey<'a> {
-    #[serde(borrow)]
-    #[serde(rename = "ssh-ed25519")]
-    Ed25519(Ed25519PubKey<'a>),
-    #[serde(rename = "ssh-rsa")]
-    RSA(RSAPubKey<'a>),
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct Ed25519PubKey<'a> {
-    #[serde(borrow)]
-    pub key: BinString<'a>
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct RSAPubKey<'a> {
-    #[serde(borrow)]
-    pub e: BinString<'a>,
-    pub n: BinString<'a>,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub enum Signature<'a> {
-    #[serde(borrow)]
-    #[serde(rename = "ssh-ed25519")]
-    Ed25519(Ed25519Sig<'a>),
-    #[serde(rename = "rsa-sha2-256")]
-    RSA(RSASig<'a>),
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct Ed25519Sig<'a> {
-    #[serde(borrow)]
-    pub sig: BinString<'a>,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct RSASig<'a> {
-    #[serde(borrow)]
-    pub sig: BinString<'a>,
-}
-
-// #[derive(Serialize, Deserialize, Debug)]
-// pub struct GlobalRequest<'a> {
-//     name: &'a str,
-//     want_reply: bool,
-//     request: GlobalRequestMethod<'a>,
-// }
-
-// enum GlobalRequestMethod<'a> {
-//     TcpipForward<'a>,
-//     CancelTcpipForward,
-// }
 
 #[cfg(test)]
 mod tests {
-    use crate::sshnames::SSH_NAME_ED25519;
-    use crate::{packets, wireformat};
-    use crate::packets::*;
-    use crate::wireformat::tests::assert_serialize_equal;
-    use serde::{Deserialize, Deserializer, Serialize, Serializer};
     use crate::doorlog::init_test_log;
+    use crate::packets::*;
+    use crate::sshnames::SSH_NAME_ED25519;
+    use crate::wireformat::tests::assert_serialize_equal;
+    use crate::{packets, wireformat};
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
     #[test]
     /// check round trip of packet enums is right
@@ -495,7 +632,7 @@ mod tests {
 
     fn json_roundtrip(p: &Packet) {
         let t = serde_json::to_string_pretty(p).unwrap();
-        trace!("{t}");
+        trace!("json {t}");
         let p2 = serde_json::from_str(&t).unwrap();
 
         assert_serialize_equal(p, &p2);
@@ -506,8 +643,6 @@ mod tests {
     fn roundtrip_authpubkey() {
         init_test_log();
         // with None sig
-        let t = serde_json::to_string_pretty("123".as_bytes()).unwrap();
-        trace!("{t}");
         let s = sign::tests::make_ed25519_signkey();
         let p = Packet::UserauthRequest(UserauthRequest {
             username: "matt",
@@ -516,11 +651,14 @@ mod tests {
                 algo: SSH_NAME_ED25519,
                 pubkey: s.pubkey(),
                 sig: None,
-            })});
+            }),
+        });
         wireformat::tests::test_roundtrip_context(&p, &ParseContext::default());
 
         // again with a near-genuine sig
-        let sig = Signature::Ed25519(Ed25519Sig { sig: BinString("something".as_bytes())});
+        let sig = Signature::Ed25519(Ed25519Sig {
+            sig: BinString("something".as_bytes()),
+        });
         let sig = Some(Blob(sig));
         let p = Packet::UserauthRequest(UserauthRequest {
             username: "matt",
@@ -529,8 +667,27 @@ mod tests {
                 algo: SSH_NAME_ED25519,
                 pubkey: s.pubkey(),
                 sig,
-            })});
+            }),
+        });
         wireformat::tests::test_roundtrip_context(&p, &ParseContext::default());
+    }
+
+    #[test]
+    fn roundtrip_tcpip() {
+        init_test_log();
+        let p = Packet::ChannelOpen(ChannelOpen {
+            number: 111,
+            initial_window: 50000,
+            max_packet: 20000,
+            ch: ChannelType::DirectTcpip(DirectTcpip {
+                address: "localhost",
+                port: 4444,
+                origin: "somewhere",
+                origin_port: 0,
+            }),
+        });
+        wireformat::tests::test_roundtrip_context(&p, &ParseContext::default());
+        json_roundtrip(&p);
     }
 
     #[test]
@@ -538,12 +695,16 @@ mod tests {
     /// Not required, but might make `packets` more reusable without `wireformat`.
     fn json() {
         init_test_log();
-        let p = Packet::Userauth60(Userauth60::PwChangeReq(UserauthPwChangeReq { prompt: "change the password", lang: "" }));
+        let p = Packet::Userauth60(Userauth60::PwChangeReq(UserauthPwChangeReq {
+            prompt: "change the password",
+            lang: "",
+        }));
         json_roundtrip(&p);
 
         // Fails, namelist string sections are serialized piecewise, serde
         // doesn't have any API to write strings in parts. It's fine for
         // SSH format since we have no sequence delimiters.
+
         // let cli_conf = kex::AlgoConfig::new(true);
         // let cli = kex::Kex::new().unwrap();
         // let p = cli.make_kexinit(&cli_conf);
@@ -551,8 +712,5 @@ mod tests {
 
         // It seems BinString also has problems, haven't figured where the
         // problem is.
-
-
-
     }
 }

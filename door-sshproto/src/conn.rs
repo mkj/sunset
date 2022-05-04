@@ -360,6 +360,9 @@ impl<'a> Conn<'a> {
                     return Err(Error::SSHProtoError)
                 }
             }
+            Packet::ChannelOpen(p) => {
+                todo!()
+            }
         };
         Ok(resp)
     }
