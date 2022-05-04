@@ -133,7 +133,7 @@ impl From<Utf8Error> for Error {
     }
 }
 
-impl serde::de::StdError for Error {}
+// impl serde::de::StdError for Error {}
 
 // TODO: need to figure how to return our own Error variants from serde
 // rather than using serde Error::custom().

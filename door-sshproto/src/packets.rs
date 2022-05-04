@@ -15,7 +15,7 @@ use {
 
 use serde::de;
 use serde::de::{DeserializeSeed, Expected, SeqAccess, Visitor};
-use serde::ser::{SerializeSeq, SerializeTuple, Serializer};
+use serde::ser::{SerializeSeq, SerializeTuple, SerializeStruct, Serializer};
 use serde::Deserializer;
 
 use serde::{Deserialize, Serialize};
@@ -79,21 +79,14 @@ impl TryFrom<u8> for MessageNumber {
     }
 }
 
-/// Some packets require context to parse, so we pass PacketState
-pub(crate) struct DeserPacket<'a>(pub(crate) &'a PacketState<'a>);
-
-impl<'de: 'a, 'a> DeserializeSeed<'de> for DeserPacket<'a> {
-    type Value = Packet<'de>;
-
-    fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+impl<'de: 'a, 'a> Deserialize<'de> for Packet<'a> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
-        struct Vis<'b> {
-            seed: &'b PacketState<'b>,
-        }
+        struct Vis;
 
-        impl<'de: 'b, 'b> Visitor<'de> for Vis<'b> {
+        impl<'de> Visitor<'de> for Vis {
             type Value = Packet<'de>;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
@@ -135,7 +128,7 @@ impl<'de: 'a, 'a> DeserializeSeed<'de> for DeserPacket<'a> {
                 Ok(p)
             }
         }
-        deserializer.deserialize_seq(Vis { seed: self.0 })
+        deserializer.deserialize_seq(Vis { })
     }
 }
 
@@ -144,7 +137,7 @@ impl<'a> Serialize for Packet<'a> {
     where
         S: Serializer,
     {
-        let mut seq = serializer.serialize_seq(None)?;
+        let mut seq = serializer.serialize_seq(Some(2))?;
 
         let t = self.message_num() as u8;
         seq.serialize_element(&t)?;
@@ -296,7 +289,7 @@ pub enum AuthMethod<'a> {
     #[serde(rename = "password")]
     Password(MethodPassword<'a>),
     #[serde(rename = "publickey")]
-    Pubkey(MethodPubkey<'a>),
+    Pubkey(MethodPubKey<'a>),
     #[serde(rename = "none")]
     None,
 }
@@ -338,14 +331,75 @@ pub struct MethodPassword<'a> {
     pub password: &'a str,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct MethodPubkey<'a> {
-    pub trial: bool,
+#[derive(Debug)]
+pub struct MethodPubKey<'a> {
     pub algo: &'a str,
     pub pubkey: PubKey<'a>,
-    // TODO: need to deserialize sig as an Option
-    pub sig: Option<&'a [u8]>,
+    pub sig: Option<Blob<Signature<'a>>>,
 }
+
+impl<'a> Serialize for MethodPubKey<'a> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut seq = serializer.serialize_seq(None)?;
+        seq.serialize_element(&self.sig.is_some())?;
+        seq.serialize_element(&self.algo)?;
+        seq.serialize_element(&self.pubkey)?;
+        if let Some(s) = &self.sig {
+            seq.serialize_element(&s)?;
+        }
+        seq.end()
+    }
+}
+
+impl<'de: 'a, 'a> Deserialize<'de> for MethodPubKey<'a> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct Vis;
+
+        impl<'de>  Visitor<'de> for Vis {
+            type Value = MethodPubKey<'de>;
+
+            fn expecting(
+                &self, formatter: &mut core::fmt::Formatter,
+            ) -> core::fmt::Result {
+                formatter.write_str("MethodPubKey")
+            }
+            fn visit_seq<V>(self, mut seq: V) -> Result<MethodPubKey<'de>, V::Error>
+            where
+                V: SeqAccess<'de>,
+            {
+                let actual_sig = seq
+                    .next_element()?
+                    .ok_or_else(|| de::Error::missing_field("actual_sig flag"))?;
+
+                let algo = seq
+                    .next_element()?
+                    .ok_or_else(|| de::Error::missing_field("algo"))?;
+
+                let pubkey = seq
+                    .next_element()?
+                    .ok_or_else(|| de::Error::missing_field("pubkey"))?;
+
+                let sig = if actual_sig {
+                    Some(seq
+                    .next_element()?
+                    .ok_or_else(|| de::Error::missing_field("sig"))?)
+                } else {
+                    None
+                };
+
+                Ok(MethodPubKey { algo, pubkey, sig })
+            }
+        }
+        deserializer.deserialize_seq(Vis)
+    }
+}
+
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct UserauthFailure<'a> {
@@ -372,7 +426,6 @@ pub enum PubKey<'a> {
     #[serde(rename = "ssh-rsa")]
     RSA(RSAPubKey<'a>),
 }
-
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Ed25519PubKey<'a> {
@@ -408,10 +461,26 @@ pub struct RSASig<'a> {
     pub sig: BinString<'a>,
 }
 
+// #[derive(Serialize, Deserialize, Debug)]
+// pub struct GlobalRequest<'a> {
+//     name: &'a str,
+//     want_reply: bool,
+//     request: GlobalRequestMethod<'a>,
+// }
+
+// enum GlobalRequestMethod<'a> {
+//     TcpipForward<'a>,
+//     CancelTcpipForward,
+// }
 
 #[cfg(test)]
 mod tests {
+    use crate::sshnames::SSH_NAME_ED25519;
     use crate::{packets, wireformat};
+    use crate::packets::*;
+    use crate::wireformat::tests::assert_serialize_equal;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use crate::doorlog::init_test_log;
 
     #[test]
     /// check round trip of packet enums is right
@@ -422,5 +491,68 @@ mod tests {
                 assert_eq!(i, ty as u8);
             }
         }
+    }
+
+    fn json_roundtrip(p: &Packet) {
+        let t = serde_json::to_string_pretty(p).unwrap();
+        trace!("{t}");
+        let p2 = serde_json::from_str(&t).unwrap();
+
+        assert_serialize_equal(p, &p2);
+    }
+
+    #[test]
+    /// Tests MethodPubKey custom serde
+    fn roundtrip_authpubkey() {
+        init_test_log();
+        // with None sig
+        let t = serde_json::to_string_pretty("123".as_bytes()).unwrap();
+        trace!("{t}");
+        let s = sign::tests::make_ed25519_signkey();
+        let p = Packet::UserauthRequest(UserauthRequest {
+            username: "matt",
+            service: "conn",
+            method: AuthMethod::Pubkey(MethodPubKey {
+                algo: SSH_NAME_ED25519,
+                pubkey: s.pubkey(),
+                sig: None,
+            })});
+        wireformat::tests::test_roundtrip_context(&p, &ParseContext::default());
+
+        // again with a near-genuine sig
+        let sig = Signature::Ed25519(Ed25519Sig { sig: BinString("something".as_bytes())});
+        let sig = Some(Blob(sig));
+        let p = Packet::UserauthRequest(UserauthRequest {
+            username: "matt",
+            service: "conn",
+            method: AuthMethod::Pubkey(MethodPubKey {
+                algo: SSH_NAME_ED25519,
+                pubkey: s.pubkey(),
+                sig,
+            })});
+        wireformat::tests::test_roundtrip_context(&p, &ParseContext::default());
+    }
+
+    #[test]
+    /// See whether we work with another `Serializer`/`Deserializer`.
+    /// Not required, but might make `packets` more reusable without `wireformat`.
+    fn json() {
+        init_test_log();
+        let p = Packet::Userauth60(Userauth60::PwChangeReq(UserauthPwChangeReq { prompt: "change the password", lang: "" }));
+        json_roundtrip(&p);
+
+        // Fails, namelist string sections are serialized piecewise, serde
+        // doesn't have any API to write strings in parts. It's fine for
+        // SSH format since we have no sequence delimiters.
+        // let cli_conf = kex::AlgoConfig::new(true);
+        // let cli = kex::Kex::new().unwrap();
+        // let p = cli.make_kexinit(&cli_conf);
+        // json_roundtrip(&p);
+
+        // It seems BinString also has problems, haven't figured where the
+        // problem is.
+
+
+
     }
 }

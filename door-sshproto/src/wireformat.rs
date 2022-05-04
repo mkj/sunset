@@ -4,37 +4,35 @@
 //! See [RFC4251](https://datatracker.ietf.org/doc/html/rfc4251) for encodings,
 //! [RFC4253](https://datatracker.ietf.org/doc/html/rfc4253) and others for packet structure
 use serde::{
-    de, ser,
-    de::{DeserializeSeed, SeqAccess, Visitor, EnumAccess, VariantAccess},
+    de::{self, MapAccess, value::MapAccessDeserializer, IntoDeserializer},
+    de::{DeserializeSeed, EnumAccess, SeqAccess, VariantAccess, Visitor},
+    ser,
     ser::SerializeSeq,
     Deserialize, Deserializer, Serialize, Serializer,
 };
+use serde::de::value::StrDeserializer;
 
+use pretty_hex::PrettyHex;
 #[allow(unused_imports)]
 use {
     crate::error::{Error, Result, TrapBug},
     log::{debug, error, info, log, trace, warn},
 };
-use pretty_hex::PrettyHex;
 
-use crate::{*, packets::UserauthPkOk};
-use crate::packets::{DeserPacket, Packet, PacketState, ParseContext};
+use crate::packets::{Packet, PacketState, ParseContext};
+use crate::{packets::UserauthPkOk, *};
 use core::cell::Cell;
-use core::slice;
 use core::convert::AsRef;
 use core::fmt::Debug;
+use core::slice;
 use std::marker::PhantomData;
 
 /// Parses a [`Packet`] from a borrowed `&[u8]` byte buffer.
-pub fn packet_from_bytes<'a>(b: &'a [u8], ctx: &'a ParseContext<'a>) -> Result<Packet<'a>> {
-
+pub fn packet_from_bytes<'a>(
+    b: &'a [u8], ctx: &'a ParseContext<'a>,
+) -> Result<Packet<'a>> {
     let mut ds = DeSSHBytes::from_bytes(b, ctx);
-    let seed = PacketState {
-        ctx,
-        // ty: Cell::new(None),
-    };
-    DeserPacket(&seed).deserialize(&mut ds)
-    .map_err(|e| {
+    Packet::deserialize(&mut ds).map_err(|e| {
         if let Error::InvalidDeserializeU8 { value } = e {
             // This assumes that the only deserialize that can hit
             // invalid_value() is an unknown packet type. Seems safe at present.
@@ -58,7 +56,6 @@ pub fn hash_mpint(hash_ctx: &mut ring::digest::Context, m: &[u8]) {
     hash_ctx.update(m);
 }
 
-
 /// Writes a SSH packet to a buffer. Returns the length written.
 pub fn write_ssh<T>(target: &mut [u8], value: &T) -> Result<usize>
 where
@@ -74,7 +71,9 @@ where
 
 /// Hashes the contents of a SSH packet, updating the provided context.
 /// Adds a `u32` length prefix.
-pub fn hash_ser_length<T>(hash_ctx: &mut ring::digest::Context, value: &T) -> Result<()>
+pub fn hash_ser_length<T>(
+    hash_ctx: &mut ring::digest::Context, value: &T,
+) -> Result<()>
 where
     T: Serialize,
 {
@@ -97,7 +96,6 @@ where
     value.serialize(&mut serializer)?;
     Ok(())
 }
-
 
 type Res = Result<()>;
 
@@ -123,11 +121,7 @@ impl<'a> Serialize for BinString<'a> {
     where
         S: Serializer,
     {
-        let mut seq = serializer.serialize_seq(None)?;
-        let l = self.0.len() as u32;
-        seq.serialize_element(&l)?;
-        seq.serialize_element(self.0)?;
-        seq.end()
+        serializer.serialize_bytes(self.0)
     }
 }
 
@@ -140,16 +134,18 @@ impl<'a, B> AsRef<B> for Blob<B> {
     }
 }
 
-impl<'a, B: Debug> Debug for Blob<B> {
+impl<'a, B: Serialize+Debug> Debug for Blob<B> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "Blob({:?})", self.0)
+        let len = SeSSHBytes::get_length(&self.0)
+            .map_err(|_| ser::Error::custom(Error::bug()))?;
+        write!(f, "Blob(len={len}, {:?})", self.0)
     }
 }
 
 impl<'a, B: Serialize> Serialize for Blob<B> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: Serializer
+        S: Serializer,
     {
         let mut seq = serializer.serialize_seq(None)?;
         let len = SeSSHBytes::get_length(&self.0)
@@ -160,41 +156,48 @@ impl<'a, B: Serialize> Serialize for Blob<B> {
     }
 }
 
-impl<'de, B: Deserialize<'de>+Serialize> Deserialize<'de> for Blob<B> {
+impl<'de, B: Deserialize<'de> + Serialize> Deserialize<'de> for Blob<B> {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
         struct Vis<'de, B> {
             ph: PhantomData<B>,
-            lifetime: PhantomData<&'de()>
+            lifetime: PhantomData<&'de ()>,
         }
 
-        impl<'de, B: Deserialize<'de>+Serialize> Visitor<'de> for Vis<'de, B> {
+        impl<'de, B: Deserialize<'de> + Serialize> Visitor<'de> for Vis<'de, B> {
             type Value = Blob<B>;
 
-            fn expecting(&self, formatter: &mut core::fmt::Formatter) -> core::fmt::Result {
+            fn expecting(
+                &self, formatter: &mut core::fmt::Formatter,
+            ) -> core::fmt::Result {
                 formatter.write_str("length prefixed blob")
             }
             fn visit_seq<V>(self, mut seq: V) -> Result<Blob<B>, V::Error>
             where
-                V: SeqAccess<'de>
+                V: SeqAccess<'de>,
             {
-                let bloblen: u32 = seq.next_element()?
+                let bloblen: u32 = seq
+                    .next_element()?
                     .ok_or_else(|| de::Error::missing_field("length"))?;
 
-                let inner: B = seq.next_element()?
-                .ok_or_else(|| de::Error::missing_field("rest of packet"))?;
+                let inner: B = seq
+                    .next_element()?
+                    .ok_or_else(|| de::Error::missing_field("rest of packet"))?;
 
                 // TODO: is there a better way to find the length consumed?
                 // If we could enforce that D is a DeSSHBytes we can look
                 // at the length...
                 let gotlen = SeSSHBytes::get_length(&inner)
-                .map_err(|_| de::Error::custom(Error::bug()))?;
+                    .map_err(|_| de::Error::custom(Error::bug()))?;
                 if bloblen as usize != gotlen {
-                    return Err(de::Error::custom(
-                        format_args!("Expected {} of length {}, got {}",
-                            core::any::type_name::<B>(), bloblen, gotlen)));
+                    return Err(de::Error::custom(format_args!(
+                        "Expected {} of length {}, got {}",
+                        core::any::type_name::<B>(),
+                        bloblen,
+                        gotlen
+                    )));
                 }
                 Ok(Blob(inner))
             }
@@ -202,7 +205,6 @@ impl<'de, B: Deserialize<'de>+Serialize> Deserialize<'de> for Blob<B> {
         deserializer.deserialize_seq(Vis { ph: PhantomData, lifetime: PhantomData })
     }
 }
-
 
 /// Serializer for the SSH wire protocol. Writes into a borrowed `&mut [u8]` buffer.
 /// Optionally compute the hash of the packet or the length required.
@@ -214,7 +216,10 @@ enum SeSSHBytes<'a> {
 
 impl SeSSHBytes<'_> {
     /// Returns the length required to serialize `value`
-    pub fn get_length<S>(value: S) -> Result<usize> where S: Serialize {
+    pub fn get_length<S>(value: S) -> Result<usize>
+    where
+        S: Serialize,
+    {
         let mut serializer = SeSSHBytes::Length { pos: 0 };
         value.serialize(&mut serializer)?;
         let len = match serializer {
@@ -272,10 +277,11 @@ impl Serializer for &mut SeSSHBytes<'_> {
     }
     /// Serialize raw bytes with no prefix
     fn serialize_bytes(self, v: &[u8]) -> Res {
-        self.push(v)?;
-        todo!(
-            "This is asymmetric with deserialize_bytes, but isn't currently being used."
-        )
+        self.serialize_u32(v.len() as u32)?;
+        self.push(v)
+        // todo!(
+        //     "This is asymmetric with deserialize_bytes, but isn't currently being used."
+        // )
     }
     fn serialize_str(self, v: &str) -> Res {
         let b = v.as_bytes();
@@ -300,8 +306,7 @@ impl Serializer for &mut SeSSHBytes<'_> {
         v.serialize(self)
     }
     fn serialize_newtype_variant<T>(
-        self, name: &'static str, _variant_index: u32, variant: &'static str,
-        v: &T,
+        self, name: &'static str, _variant_index: u32, variant: &'static str, v: &T,
     ) -> Res
     where
         T: ?Sized + Serialize,
@@ -311,7 +316,13 @@ impl Serializer for &mut SeSSHBytes<'_> {
             // Stateful enums don't have a name prefix
             => { }
             // Name based enums like methods have a string name prefix
-            _ => self.serialize_str(variant)?
+            "PubKey"
+            | "Signature"
+            | "AuthMethod"
+            => self.serialize_str(variant)?,
+
+            // a mystery Enum
+            _ => return Err(Error::bug())
         };
         v.serialize(self)
     }
@@ -323,9 +334,7 @@ impl Serializer for &mut SeSSHBytes<'_> {
         self.serialize_str(variant)
     }
 
-    fn serialize_seq(
-        self, _len: Option<usize>,
-    ) -> Result<Self::SerializeSeq> {
+    fn serialize_seq(self, _len: Option<usize>) -> Result<Self::SerializeSeq> {
         Ok(self)
     }
     fn serialize_struct(
@@ -336,7 +345,6 @@ impl Serializer for &mut SeSSHBytes<'_> {
     fn serialize_tuple(self, _len: usize) -> Result<Self::SerializeTuple> {
         Ok(self)
     }
-
 
     fn collect_str<T: ?Sized>(self, _: &T) -> Res {
         Err(Error::NoSerializer)
@@ -383,9 +391,7 @@ impl Serializer for &mut SeSSHBytes<'_> {
     ) -> Result<Self::SerializeTupleVariant> {
         Err(Error::NoSerializer)
     }
-    fn serialize_map(
-        self, _len: Option<usize>,
-    ) -> Result<Self::SerializeMap> {
+    fn serialize_map(self, _len: Option<usize>) -> Result<Self::SerializeMap> {
         Err(Error::NoSerializer)
     }
     fn serialize_struct_variant(
@@ -457,12 +463,15 @@ struct DeSSHBytes<'a> {
     // around serde but is simpler than passing stateful Seed deserializers
     // around.
     override_enum: Option<&'a str>,
+    capture_next_str: bool,
+    capture_str: Option<&'a str>,
 }
 
 impl<'de> DeSSHBytes<'de> {
     // XXX: rename to new() ?
     pub fn from_bytes(input: &'de [u8], ctx: &'de ParseContext) -> Self {
-        DeSSHBytes { input, pos: 0, parse_ctx: ctx, override_enum: None }
+        DeSSHBytes { input, pos: 0, parse_ctx: ctx, override_enum: None,
+            capture_next_str: false, capture_str: None}
     }
 
     // #[inline]
@@ -543,21 +552,28 @@ impl<'de, 'a> Deserializer<'de> for &'a mut DeSSHBytes<'de> {
     where
         V: Visitor<'de>,
     {
-        visitor.visit_borrowed_str(self.parse_str()?)
+        let s = self.parse_str()?;
+        if self.capture_next_str {
+            debug_assert!(self.capture_str.is_none());
+            self.capture_str = Some(s);
+            self.capture_next_str = false
+        }
+        visitor.visit_borrowed_str(s)
     }
 
     fn deserialize_identifier<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        let v = match self.override_enum {
-            Some("Userauth60") => {
-                visitor.visit_borrowed_str(
-                    packets::Userauth60::variant(self.parse_ctx)?)
-            }
-            _ => self.deserialize_str(visitor)
-        };
-        v
+        // let v = match self.override_enum {
+        //     Some("Userauth60") => visitor.visit_borrowed_str(
+        //         packets::Userauth60::variant(self.parse_ctx)?),
+        //     None => self.deserialize_str(visitor),
+        //     Some(_) => Err(Error::bug()), // a mystery enum
+        // };
+        // v
+        // TODO: check that it's one of the known types
+        self.deserialize_str(visitor)
     }
 
     /* deserialize_bytes() is like a string but with binary data. it has
@@ -591,7 +607,14 @@ impl<'de, 'a> Deserializer<'de> for &'a mut DeSSHBytes<'de> {
     where
         V: Visitor<'de>,
     {
-        self.deserialize_tuple(fields.len(), visitor)
+        trace!("newtype struct {_name}");
+        let mut capture_value = None;
+        let ma = MapAccessDeSSH::new( self, fields, None, &mut capture_value);
+        let v = visitor.visit_map( ma )?;
+        if let Some(cap) = capture_value {
+        }
+        Ok(v)
+        // self.deserialize_tuple(fields.len(), visitor)
     }
 
     fn deserialize_enum<V>(
@@ -600,16 +623,26 @@ impl<'de, 'a> Deserializer<'de> for &'a mut DeSSHBytes<'de> {
     where
         V: Visitor<'de>,
     {
-        match name {
-            "Userauth60"
-            => {
+        let known_variant_name = match name {
+            "Userauth60" => {
                 trace!("setting override_enum for {name}");
-                self.override_enum = Some(name);
+                Some(packets::Userauth60::variant(self.parse_ctx)?)
             }
-            _ => {}
+            "PubKey"
+            | "Signature"
+            | "AuthMethod"
+            => {
+                // variant is selected by the method name in the packet,
+                // using `#[serde(rename)]` in `packets` enum definition.
+                None
+                // self.override_enum = None;
+            }
+            _ => {
+                // a mystery enum
+                return Err(Error::bug())
+            }
         };
-        let v = visitor.visit_enum(StringEnum(self))?;
-        self.override_enum = None;
+        let v = visitor.visit_enum(StringEnum {ds: self, known_variant_name })?;
         Ok(v)
     }
 
@@ -680,7 +713,80 @@ impl<'a, 'b: 'a> SeqAccess<'b> for SeqAccessDeSSH<'a, 'b> {
     }
 }
 
-struct StringEnum<'a, 'de: 'a> (&'a mut DeSSHBytes<'de>);
+struct MapAccessDeSSH<'de, 'a> {
+    ds: &'a mut DeSSHBytes<'de>,
+    fields: &'static [&'static str],
+    pos: usize,
+
+    capture_field: Option<&'a str>,
+    capture_value: &'a mut Option<&'de str>,
+}
+
+impl<'de: 'a, 'a> MapAccessDeSSH<'de, 'a> {
+    fn new(ds: &'a mut DeSSHBytes<'de>,
+        fields: &'static [&'static str],
+        capture_field: Option<&'a str>,
+        capture_value: &'a mut Option<&'de str>
+        ) -> Self {
+        MapAccessDeSSH {
+            ds,
+            fields,
+            pos: 0,
+            capture_field,
+            capture_value,
+        }
+    }
+}
+
+impl<'de: 'a, 'a> MapAccess<'de> for MapAccessDeSSH<'de, 'a> {
+    type Error = Error;
+
+    // inline reduces code size
+    #[inline]
+    fn next_key_seed<S: DeserializeSeed<'de>>(
+        &mut self, seed: S,
+    ) -> Result<Option<S::Value>> {
+        if self.pos < self.fields.len() {
+            // field name as the key
+            let dsfield: StrDeserializer<'de, Error> =
+                self.fields[self.pos].into_deserializer();
+
+            debug_assert!(self.ds.capture_str.is_none());
+            debug_assert!(!self.ds.capture_next_str);
+            if let Some(c) = self.capture_field {
+                self.ds.capture_next_str = c == self.fields[self.pos];
+            };
+            self.pos += 1;
+            Ok(Some(DeserializeSeed::deserialize(seed, dsfield)?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    #[inline]
+    fn next_value_seed<S: DeserializeSeed<'de>>(
+        &mut self, seed: S,
+    ) -> Result<S::Value> {
+        let v = DeserializeSeed::deserialize(seed, &mut *self.ds)?;
+        debug_assert!(!self.ds.capture_next_str);
+        let l = self.ds.capture_str.take();
+        if l.is_some() {
+            debug_assert!(self.capture_value.is_none());
+        }
+        *self.capture_value = l;
+        Ok(v)
+    }
+
+    fn size_hint(&self) -> Option<usize> {
+        Some(self.fields.len())
+    }
+}
+
+
+struct StringEnum<'a, 'de: 'a> {
+    ds: &'a mut DeSSHBytes<'de>,
+    known_variant_name: Option<&'de str>,
+}
 
 // figures which SSH string (eg "password") identifies the enum
 impl<'de, 'a> EnumAccess<'de> for StringEnum<'a, 'de> {
@@ -691,10 +797,17 @@ impl<'de, 'a> EnumAccess<'de> for StringEnum<'a, 'de> {
     where
         V: DeserializeSeed<'de>,
     {
-        let variant_name = seed.deserialize(&mut *self.0)?;
+        let variant_name = if let Some(n) = self.known_variant_name {
+            let n: StrDeserializer<'de, Error> =
+                n.into_deserializer();
+            seed.deserialize(n)?
+
+        } else {
+            seed.deserialize(&mut *self.ds)?
+        };
         // Override has been used, must be cleared quickly to avoid
         // it applying to child enums in the struct
-        self.0.override_enum = None;
+        // self.ds.override_enum = None;
         Ok((variant_name, self))
     }
 }
@@ -705,11 +818,18 @@ impl<'de, 'a> VariantAccess<'de> for StringEnum<'a, 'de> {
 
     // we only use newtype variants
     fn newtype_variant_seed<T>(self, seed: T) -> Result<T::Value, Self::Error>
-            where T: DeserializeSeed<'de> {
-        seed.deserialize(self.0)
+    where
+        T: DeserializeSeed<'de>,
+    {
+        seed.deserialize(self.ds)
     }
 
-    fn tuple_variant<V>(self, _len: usize, _visitor: V ) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+    fn tuple_variant<V>(
+        self, _len: usize, _visitor: V,
+    ) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
         Err(Error::NoSerializer)
     }
 
@@ -717,19 +837,35 @@ impl<'de, 'a> VariantAccess<'de> for StringEnum<'a, 'de> {
         Err(Error::NoSerializer)
     }
 
-    fn struct_variant<V>(self, _fields: &'static [&'static str], _visitor: V ) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+    fn struct_variant<V>(
+        self, _fields: &'static [&'static str], _visitor: V,
+    ) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
         Err(Error::NoSerializer)
     }
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
+    use crate::doorlog::init_test_log;
     use crate::error::Error;
-    use crate::*;
     use crate::packets::*;
     use crate::wireformat::*;
-    use crate::doorlog::init_test_log;
+    use crate::*;
     // use pretty_hex::PrettyHex;
+
+    /// Checks that two items serialize the same
+    pub fn assert_serialize_equal<'de, T: Serialize>(p1: &T, p2: &T) {
+        let mut buf1 = vec![99; 2000];
+        let mut buf2 = vec![88; 1000];
+        let l1 = write_ssh(&mut buf1, &p1).unwrap();
+        let l2 = write_ssh(&mut buf2, &p2).unwrap();
+        buf1.truncate(l1);
+        buf2.truncate(l2);
+        assert_eq!(buf1, buf2);
+    }
 
     #[test]
     /// check that hash_ser_length() matches hashing a serialized message
@@ -760,18 +896,15 @@ mod tests {
         assert_eq!(digest3.as_ref(), digest2.as_ref());
     }
 
-    fn test_roundtrip_context(p: &Packet, ctx: &ParseContext) {
+    pub fn test_roundtrip_context(p: &Packet, ctx: &ParseContext) {
         let mut buf = vec![99; 200];
         let l = write_ssh(&mut buf, &p).unwrap();
         buf.truncate(l);
-        trace!("wrote pwchange {:?}", buf.hex_dump());
+        trace!("wrote packet {:?}", buf.hex_dump());
 
         let p2 = packet_from_bytes(&buf, &ctx).unwrap();
-        trace!("p2 {:?}", p2);
-        let mut buf2 = vec![99; 200];
-        let l = write_ssh(&mut buf2, &p2).unwrap();
-        buf2.truncate(l);
-        assert_eq!(buf, buf2);
+        trace!("returned packet {:#?}", p2);
+        assert_serialize_equal(p, &p2);
     }
 
     /// Tests parsing a packet with a ParseContext.
@@ -780,18 +913,22 @@ mod tests {
         init_test_log();
         let mut ctx = ParseContext::new();
 
-        let p = Packet::Userauth60(Userauth60::PwChangeReq(UserauthPwChangeReq { prompt: "change the password", lang: "" }));
+        let p = Packet::Userauth60(Userauth60::PwChangeReq(UserauthPwChangeReq {
+            prompt: "change the password",
+            lang: "",
+        }));
         ctx.cli_auth_type = Some(cliauth::ReqType::Password);
         test_roundtrip_context(&p, &ctx);
 
         // PkOk is a more interesting case because the PubKey inside it is also
         // an enum but that can identify its own enum variant.
-        let p = Packet::Userauth60(Userauth60::PkOk(UserauthPkOk{ algo: "ed25519",
-            key: Blob(PubKey::Ed25519(Ed25519PubKey { key: BinString(&[0x11, 0x22, 0x33])})) } ) );
-        let rng = ring::rand::SystemRandom::new();
-        let pkcs8_bytes = ring::signature::Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
-        let ed = ring::signature::Ed25519KeyPair::from_pkcs8(pkcs8_bytes.as_ref()).unwrap();
-        let s = sign::SignKey::Ed25519(ed);
+        let p = Packet::Userauth60(Userauth60::PkOk(UserauthPkOk {
+            algo: "ed25519",
+            key: Blob(PubKey::Ed25519(Ed25519PubKey {
+                key: BinString(&[0x11, 0x22, 0x33]),
+            })),
+        }));
+        let s = sign::tests::make_ed25519_signkey();
         ctx.cli_auth_type = Some(cliauth::ReqType::PubKey(&s));
         test_roundtrip_context(&p, &ctx);
     }

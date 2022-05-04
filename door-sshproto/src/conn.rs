@@ -20,12 +20,13 @@ use traffic::Traffic;
 
 // TODO a max value needs to be analysed
 const MAX_RESPONSES: usize = 4;
+
 pub(crate) type RespPackets<'a> = Vec<Packet<'a>, MAX_RESPONSES>;
 
 pub struct Runner<'a> {
     conn: Conn<'a>,
 
-    /// Binary packet handling
+    /// Binary packet handling to and from the network buffer
     traffic: Traffic<'a>,
 
     /// Current encryption/integrity keys
@@ -164,6 +165,7 @@ impl<'a> Conn<'a> {
             ConnState::SendIdent => {
                 traffic.send_version(ident::OUR_VERSION)?;
                 let p = self.kex.make_kexinit(&self.algo_conf);
+                // TODO: first_follows would have a second packet here
                 resp.push(p).trap()?;
                 self.state = ConnState::ReceiveIdent
             }

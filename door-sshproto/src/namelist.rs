@@ -52,6 +52,10 @@ impl<'a> Serialize for LocalNames<'a> {
     where
         S: Serializer,
     {
+        // This isn't quite right for a generic serde serializer
+        // but it's OK for our SSH serializer. Serde doesn't have
+        // an API to incrementally serialize string parts.
+        // See packets::tests::json() for a test.
         let mut seq = serializer.serialize_seq(None)?;
         let names = &self.0;
         let strlen = names.iter().map(|n| n.len()).sum::<usize>()

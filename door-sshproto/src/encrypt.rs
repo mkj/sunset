@@ -84,7 +84,6 @@ impl KeyState {
         &mut self, payload_len: usize, buf: &'b mut [u8],
     ) -> Result<usize, Error> {
         let e = self.keys.encrypt(payload_len, buf, self.seq_encrypt.0);
-        trace!("seq_encrypt {}", self.seq_encrypt);
         self.seq_encrypt += 1;
         e
     }
@@ -341,7 +340,6 @@ impl Keys {
             return Err(Error::SSHProtoError);
         }
 
-        // trace!("padlen {padlen} len {len} size_integ {}"
         let payload_len = buf
             .len()
             .checked_sub(SSH_LENGTH_SIZE + 1 + size_integ + padlen)
