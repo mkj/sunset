@@ -69,7 +69,7 @@ impl<'a> CliAuth<'a> {
                     { change: false, password: &self.last_pw } ) } )
     }
 
-    // TODO: not quite sure why the 'b lifetime is required
+    // mystery: not quite sure why the 'b lifetime is required
     pub fn failure<'b>(&'b mut self, failure: &packets::UserauthFailure,
         resp: &mut RespPackets<'b>) -> Result<()> {
         // match self.last_req {

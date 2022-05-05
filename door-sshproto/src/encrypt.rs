@@ -397,7 +397,7 @@ impl Keys {
 
         if len + size_integ > buf.len() {
             error!("Output buffer {} is too small for packet", buf.len());
-            return Err(Error::bug());
+            return Err(Error::NoRoom);
         }
 
         buf[SSH_LENGTH_SIZE] = padlen as u8;

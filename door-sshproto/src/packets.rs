@@ -13,9 +13,14 @@ use {
     log::{debug, error, info, log, trace, warn},
 };
 
+use heapless::String;
 use serde::de;
-use serde::de::{DeserializeSeed, Expected, MapAccess, SeqAccess, Visitor};
-use serde::ser::{SerializeSeq, SerializeStruct, SerializeTuple, Serializer};
+use serde::de::{
+    DeserializeSeed, Error as DeError, Expected, MapAccess, SeqAccess, Visitor,
+};
+use serde::ser::{
+    Error as SerError, SerializeSeq, SerializeStruct, SerializeTuple, Serializer,
+};
 use serde::Deserializer;
 
 use serde::{Deserialize, Serialize};
@@ -102,8 +107,19 @@ pub struct ServiceAccept<'a> {
 pub struct UserauthRequest<'a> {
     pub username: &'a str,
     pub service: &'a str,
+    // #[serde(deserialize_with = "wrap_unknown")]
     pub method: AuthMethod<'a>,
 }
+
+// fn wrap_unknown<'de, D: Deserializer<'de>, T: Deserialize<'de> >(d: &mut DeSSHBytes<'de>) -> Result<T, D::Error> {
+//     let t = Deserialize::deserialize(d);
+//     match t {
+//         Err(Error::UnknownMethod) => Err(T::Unknown(Unknown("bad"))),
+//         // Err(Error::UnknownMethod) => Err(T::Unknown(Unknown("bad"))),
+//         Err(_) => panic!(),
+//         Ok(t) => Ok(t),
+//     }
+// }
 
 /// The method-specific part of a [`UserauthRequest`].
 #[derive(Serialize, Deserialize, Debug)]
@@ -115,6 +131,8 @@ pub enum AuthMethod<'a> {
     Pubkey(MethodPubKey<'a>),
     #[serde(rename = "none")]
     None,
+    #[serde(skip_serializing)]
+    Unknown(Unknown<'a>),
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -248,6 +266,8 @@ pub enum PubKey<'a> {
     Ed25519(Ed25519PubKey<'a>),
     #[serde(rename = "ssh-rsa")]
     RSA(RSAPubKey<'a>),
+    #[serde(skip_serializing)]
+    Unknown(Unknown<'a>),
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -270,6 +290,8 @@ pub enum Signature<'a> {
     Ed25519(Ed25519Sig<'a>),
     #[serde(rename = "rsa-sha2-256")]
     RSA(RSASig<'a>),
+    #[serde(skip_serializing)]
+    Unknown(Unknown<'a>),
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -305,6 +327,23 @@ pub struct ChannelOpen<'a> {
     pub ch: ChannelType<'a>,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub enum ChannelType<'a> {
+    #[serde(borrow)]
+    #[serde(rename = "forwarded-tcpip")]
+    ForwardedTcpip(ForwardedTcpip<'a>),
+    #[serde(rename = "direct-tcpip")]
+    DirectTcpip(DirectTcpip<'a>),
+    #[serde(rename = "session")]
+    Session,
+    // #[serde(rename = "x11")]
+    // Session(X11<'a>),
+    // #[serde(rename = "auth-agent@openssh.com")]
+    // Session(Agent<'a>),
+    #[serde(skip_serializing)]
+    Unknown(Unknown<'a>),
+}
+
 impl<'a> Serialize for ChannelOpen<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -312,8 +351,10 @@ impl<'a> Serialize for ChannelOpen<'a> {
     {
         let mut seq = serializer.serialize_struct("ChannelOpen", 5)?;
         let channel_type = match self.ch {
+            ChannelType::Session => "session",
             ChannelType::ForwardedTcpip(_) => "forwarded-tcpip",
             ChannelType::DirectTcpip(_) => "direct-tcpip",
+            ChannelType::Unknown(_) => return Err(S::Error::custom("unknown")),
         };
         seq.serialize_field("channel_type", channel_type)?;
         seq.serialize_field("number", &self.number)?;
@@ -367,13 +408,7 @@ impl<'de: 'a, 'a> Deserialize<'de> for ChannelOpen<'a> {
                     .next_entry()?
                     .ok_or_else(|| de::Error::missing_field("ch"))?;
 
-                Ok(ChannelOpen {
-                    number,
-                    initial_window,
-                    max_packet,
-                    ch,
-                })
-
+                Ok(ChannelOpen { number, initial_window, max_packet, ch })
             }
         }
         deserializer.deserialize_struct(
@@ -384,14 +419,11 @@ impl<'de: 'a, 'a> Deserialize<'de> for ChannelOpen<'a> {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub enum ChannelType<'a> {
-    #[serde(borrow)]
-    #[serde(rename = "forwarded-tcpip")]
-    ForwardedTcpip(ForwardedTcpip<'a>),
-    #[serde(rename = "direct-tcpip")]
-    DirectTcpip(DirectTcpip<'a>),
-}
+// Placeholder for unknown method names. These are sometimes non-fatal and
+// need to be handled by the relevant code, for example newly invented pubkey types
+#[derive(Debug,Deserialize)]
+pub struct Unknown<'a>(pub &'a str);
+
 
 // impl<'a> ChannelType<'a> {
 //     /// Special handling in [`wireformat`]
@@ -490,7 +522,6 @@ impl<'de: 'a, 'a> Deserialize<'de> for Packet<'a> {
                 // First byte is always message number
                 let msg_num: u8 = seq
                     .next_element()?
-                    // .map_err(|_| Error::RanOut)?
                     .ok_or_else(|| de::Error::missing_field("message number"))?;
                 let ty = MessageNumber::try_from(msg_num);
                 let ty = match ty {
@@ -509,9 +540,7 @@ impl<'de: 'a, 'a> Deserialize<'de> for Packet<'a> {
                     $(
                     MessageNumber::$SSH_MESSAGE_NAME => Packet::$SpecificPacketVariant(
                         seq.next_element()?
-                        // .map_err(|_| Error::RanOut)?
                         .ok_or_else(|| de::Error::missing_field("rest of packet"))?
-                        // .ok_or_else(|| Error::RanOut)?
                     ),
                     )*
                 };
@@ -615,8 +644,10 @@ mod tests {
     use crate::doorlog::init_test_log;
     use crate::packets::*;
     use crate::sshnames::SSH_NAME_ED25519;
-    use crate::wireformat::tests::assert_serialize_equal;
+    use crate::wireformat::tests::{assert_serialize_equal, test_roundtrip};
+    use crate::wireformat::{packet_from_bytes, write_ssh};
     use crate::{packets, wireformat};
+    use pretty_hex::PrettyHex;
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
     #[test]
@@ -653,7 +684,7 @@ mod tests {
                 sig: None,
             }),
         });
-        wireformat::tests::test_roundtrip_context(&p, &ParseContext::default());
+        test_roundtrip(&p);
 
         // again with a near-genuine sig
         let sig = Signature::Ed25519(Ed25519Sig {
@@ -669,11 +700,11 @@ mod tests {
                 sig,
             }),
         });
-        wireformat::tests::test_roundtrip_context(&p, &ParseContext::default());
+        test_roundtrip(&p);
     }
 
     #[test]
-    fn roundtrip_tcpip() {
+    fn roundtrip_channel_open() {
         init_test_log();
         let p = Packet::ChannelOpen(ChannelOpen {
             number: 111,
@@ -686,8 +717,37 @@ mod tests {
                 origin_port: 0,
             }),
         });
-        wireformat::tests::test_roundtrip_context(&p, &ParseContext::default());
+        test_roundtrip(&p);
         json_roundtrip(&p);
+
+        let p = Packet::ChannelOpen(ChannelOpen {
+            number: 0,
+            initial_window: 899,
+            max_packet: 14,
+            ch: ChannelType::Session,
+        });
+        test_roundtrip(&p);
+        json_roundtrip(&p);
+    }
+
+    #[test]
+    fn unknown_method() {
+        init_test_log();
+        let p = Packet::ChannelOpen(ChannelOpen {
+            number: 0,
+            initial_window: 899,
+            max_packet: 14,
+            ch: ChannelType::Session,
+        });
+        let mut buf1 = vec![88; 1000];
+        let l = write_ssh(&mut buf1, &p).unwrap();
+        buf1.truncate(l);
+        // change a byte
+        buf1[8] = 'X' as u8;
+        trace!("broken: {:?}", buf1.hex_dump());
+        let ctx = ParseContext::default();
+        let p2 = packet_from_bytes(&buf1, &ctx).unwrap();
+        trace!("broken: {p2:#?}");
     }
 
     #[test]

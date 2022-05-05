@@ -86,9 +86,9 @@ impl<'a> From<&'a str> for NameList<'a> {
         NameList::String(s.into())
     }
 }
-impl<'a> Into<NameList<'a>> for &LocalNames<'a> {
-    fn into(self) -> NameList<'a> {
-        NameList::Local(LocalNames(self.0))
+impl<'a> From<&LocalNames<'a>> for NameList<'a> {
+    fn from(s: &LocalNames<'a>) -> Self {
+        NameList::Local(LocalNames(s.0))
     }
 }
 

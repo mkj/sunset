@@ -2,7 +2,7 @@ use crate::{sshnames::SSH_NAME_RSA_SHA256, packets::Ed25519PubKey};
 
 #[allow(unused_imports)]
 use {
-    crate::error::{Error, Result, TrapBug},
+    crate::error::*,
     log::{debug, error, info, log, trace, warn},
 };
 
@@ -39,15 +39,16 @@ impl SigType {
         match self {
             SigType::Ed25519 => {
                 let pubkey = if let PubKey::Ed25519(k) = pubkey {
-                    trace!(target: "hexdump", "pubkey {:?}", k.key.hex_dump());
                     UnparsedPublicKey::new(&ED25519, &k.key)
                 } else {
-                    return Err(Error::SignatureMismatch { key: "todo", sig: "ed25519todo" })
+                    return Err(Error::SignatureMismatch {
+                        // TODO
+                        key: "todo".into(), sig: "ed25519todo".into() })
                 };
                 let sig = if let Signature::Ed25519(sig) = sig {
                     sig.sig.0
                 } else {
-                    return Err(Error::SignatureMismatch { key: "todo", sig: "ed25519todo" })
+                    return Err(Error::SignatureMismatch { key: "todo".into(), sig: "ed25519todo".into() })
                 };
                 trace!(target: "hexdump", "verify message {:?}", message.hex_dump());
                 trace!(target: "hexdump", "sig {:?}", sig.hex_dump());
