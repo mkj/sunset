@@ -375,11 +375,6 @@ impl SharedSecret {
         Ok(Packet::KexDHInit(packets::KexDHInit { q_c }))
     }
 
-    // fn verify_sig(&self, h: &Digest, keyblob: &BinString, sigblob: &BinString) -> Result<()>
-    // {
-    //     self.algos.
-    // }
-
     // client only
     fn handle_kexdhreply<'a>(
         mut kex: Kex, p: &packets::KexDHReply, sess_id: &Option<Digest>,

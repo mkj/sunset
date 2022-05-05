@@ -13,46 +13,70 @@ use crate::packets::{PubKey,Signature};
 use crate::wireformat::{BinString};
 use pretty_hex::PrettyHex;
 
+use core::mem::discriminant;
+
 // RSA requires alloc.
 
 #[derive(Debug)]
-pub(crate) enum SigType {
+pub enum SigType {
     Ed25519,
-    #[cfg(alloc)]
     RSA256,
     // Ecdsa
 }
 
 impl SigType {
+    /// Must be a valid name
     pub fn from_name(name: &str) -> Result<Self> {
         match name {
             SSH_NAME_ED25519 => Ok(SigType::Ed25519),
-            #[cfg(alloc)]
             SSH_NAME_RSA_SHA256 => Ok(SigType::RSA256),
             _ => Err(Error::bug()),
+        }
+    }
+
+    /// Returns a valid name
+    pub fn algorithm_name(&self) -> &'static str {
+        match self {
+            Ed25519 => SSH_NAME_ED25519,
+            RSA256 => SSH_NAME_RSA_SHA256,
         }
     }
 
     pub fn verify(
         &self, pubkey: &PubKey, message: &[u8], sig: &Signature) -> Result<()> {
 
-        match self {
-            SigType::Ed25519 => {
-                let pubkey = if let PubKey::Ed25519(k) = pubkey {
-                    UnparsedPublicKey::new(&ED25519, &k.key)
-                } else {
-                    return Err(Error::SignatureMismatch {
-                        // TODO
-                        key: "todo".into(), sig: "ed25519todo".into() })
-                };
-                let sig = if let Signature::Ed25519(sig) = sig {
-                    sig.sig.0
-                } else {
-                    return Err(Error::SignatureMismatch { key: "todo".into(), sig: "ed25519todo".into() })
-                };
-                trace!(target: "hexdump", "verify message {:?}", message.hex_dump());
-                trace!(target: "hexdump", "sig {:?}", sig.hex_dump());
-                pubkey.verify(message, sig).map_err(|_| Error::BadSignature)
+        // Check that the signature type is known
+        let sig_type = sig.sig_type()?;
+
+        // `self` is the expected signature type from kex/auth packet
+        // This would also get caught by SignatureMismatch below
+        // but that error message is intended for mismatch key vs sig.
+        if discriminant(&sig_type) != discriminant(self) {
+            warn!("Received {} signature, expecting {}",
+                sig.algorithm_name(), self.algorithm_name());
+            return Err(Error::BadSignature)
+        }
+
+        match (self, pubkey, sig) {
+
+            (SigType::Ed25519, PubKey::Ed25519(k), Signature::Ed25519(s)) => {
+                let k = UnparsedPublicKey::new(&ED25519, &k.key);
+                let s = s.sig.0;
+                trace!(target: "hexdump", "sig {:?}", s.hex_dump());
+                k.verify(message, s).map_err(|_| Error::BadSignature)
+            }
+
+            (SigType::RSA256, ..) => {
+                // TODO
+                warn!("RSA256 is not implemented for no_std");
+                Err(Error::BadSignature)
+            }
+
+            _ => {
+                Err(Error::SignatureMismatch {
+                    key: pubkey.algorithm_name().into(),
+                    sig: "ed25519todo".into()
+                })
             }
         }
     }

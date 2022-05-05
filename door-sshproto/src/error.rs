@@ -3,6 +3,7 @@ use core::str::Utf8Error;
 use log::{debug, error, info, log, trace, warn};
 
 use core::fmt::Arguments;
+use core::fmt;
 
 use serde::de::{Expected, Unexpected};
 use snafu::{prelude::*, Location};
@@ -14,10 +15,17 @@ use heapless::String;
 #[derive(Debug)]
 pub struct UnknownName(pub String<35>);
 
+impl fmt::Display for UnknownName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
 impl From<&str> for UnknownName {
 
     /// Indicates truncation
     fn from(from: &str) -> Self {
+        // TODO: escape the output
         let mut s = String::<35>::new();
         let mut len = from.len();
         if len > s.capacity() {
@@ -57,7 +65,7 @@ pub enum Error {
     /// Signature is incorrect
     BadSignature,
 
-    /// Signature doesn't match key type
+    #[snafu(display("Signature \"{sig}\" doesn't match key type \"{key}\""))]
     SignatureMismatch { key: UnknownName, sig: UnknownName },
 
     /// Error in received SSH protocol
@@ -79,8 +87,8 @@ pub enum Error {
     /// Packet size too large (or bad decrypt)
     BigPacket { size: usize },
 
-    /// Packet had an unknown method
-    UnknownMethod,
+    #[snafu(display("Unknown {kind} method {name}"))]
+    UnknownMethod { kind: &'static str, name: UnknownName },
 
     /// Serde invalid value
     // internal

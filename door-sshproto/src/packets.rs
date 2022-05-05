@@ -25,9 +25,10 @@ use serde::Deserializer;
 
 use serde::{Deserialize, Serialize};
 
-use crate::namelist::NameList;
-use crate::wireformat::{BinString, Blob};
 use crate::*;
+use crate::{namelist::NameList, sshnames::*};
+use crate::wireformat::{BinString, Blob};
+use crate::sign::SigType;
 
 // Each struct needs one #[borrow] tag before one of the struct fields with a lifetime
 // (eg `blob: BinString<'a>`). That avoids the cryptic error in derive:
@@ -110,16 +111,6 @@ pub struct UserauthRequest<'a> {
     // #[serde(deserialize_with = "wrap_unknown")]
     pub method: AuthMethod<'a>,
 }
-
-// fn wrap_unknown<'de, D: Deserializer<'de>, T: Deserialize<'de> >(d: &mut DeSSHBytes<'de>) -> Result<T, D::Error> {
-//     let t = Deserialize::deserialize(d);
-//     match t {
-//         Err(Error::UnknownMethod) => Err(T::Unknown(Unknown("bad"))),
-//         // Err(Error::UnknownMethod) => Err(T::Unknown(Unknown("bad"))),
-//         Err(_) => panic!(),
-//         Ok(t) => Ok(t),
-//     }
-// }
 
 /// The method-specific part of a [`UserauthRequest`].
 #[derive(Serialize, Deserialize, Debug)]
@@ -270,6 +261,17 @@ pub enum PubKey<'a> {
     Unknown(Unknown<'a>),
 }
 
+impl<'a> PubKey<'a> {
+    /// The algorithm name presented. May be invalid.
+    pub fn algorithm_name(&self) -> &'a str {
+        match self {
+            PubKey::Ed25519(_) => SSH_NAME_ED25519,
+            PubKey::RSA(_) => SSH_NAME_RSA,
+            PubKey::Unknown(u) => u.0,
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Ed25519PubKey<'a> {
     #[serde(borrow)]
@@ -289,9 +291,31 @@ pub enum Signature<'a> {
     #[serde(rename = "ssh-ed25519")]
     Ed25519(Ed25519Sig<'a>),
     #[serde(rename = "rsa-sha2-256")]
-    RSA(RSASig<'a>),
+    RSA256(RSA256Sig<'a>),
     #[serde(skip_serializing)]
     Unknown(Unknown<'a>),
+}
+
+impl<'a> Signature<'a> {
+    /// The algorithm name presented. May be invalid.
+    pub fn algorithm_name(&self) -> &'a str {
+        match self {
+            Signature::Ed25519(_) => SSH_NAME_ED25519,
+            Signature::RSA256(_) => SSH_NAME_RSA_SHA256,
+            Signature::Unknown(u) => u.0,
+        }
+    }
+
+    pub fn sig_type(&self) -> Result<SigType> {
+        match self {
+            Signature::Ed25519(_) => Ok(SigType::Ed25519),
+            Signature::RSA256(_) => Ok(SigType::RSA256),
+            Signature::Unknown(u) => {
+                Err(Error::UnknownMethod {kind: "signature",
+                    name: u.0.into() })
+            }
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -301,7 +325,7 @@ pub struct Ed25519Sig<'a> {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct RSASig<'a> {
+pub struct RSA256Sig<'a> {
     #[serde(borrow)]
     pub sig: BinString<'a>,
 }
@@ -643,7 +667,7 @@ messagetypes![
 mod tests {
     use crate::doorlog::init_test_log;
     use crate::packets::*;
-    use crate::sshnames::SSH_NAME_ED25519;
+    use crate::sshnames::*;
     use crate::wireformat::tests::{assert_serialize_equal, test_roundtrip};
     use crate::wireformat::{packet_from_bytes, write_ssh};
     use crate::{packets, wireformat};
