@@ -96,6 +96,22 @@ impl SignKey {
     }
 }
 
+// TODO: this might go behind a feature?
+// TODO: should this be & or consuming?
+impl TryFrom<&ssh_key::PrivateKey> for SignKey {
+    type Error = Error;
+    fn try_from(k: &ssh_key::PrivateKey) -> Result<Self> {
+        match k.key_data() {
+            ssh_key::private::KeypairData::Ed25519(k) => {
+                let edk = Ed25519KeyPair::from_seed_unchecked(&k.private.to_bytes())
+                .map_err(|_| Error::BadKey)?;
+                Ok(SignKey::Ed25519(edk))
+            }
+            _ => Err(Error::NotAvailable { what: "this key format" })
+        }
+    }
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
     use crate::sshnames::SSH_NAME_ED25519;

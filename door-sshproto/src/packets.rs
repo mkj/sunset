@@ -61,8 +61,9 @@ pub struct NewKeys {}
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Ignore {}
 
+/// Named to avoid clashing with [`fmt::Debug`]
 #[derive(Serialize, Deserialize, Debug)]
-pub struct Debug<'a> {
+pub struct DebugPacket<'a> {
     pub always_display: bool,
     pub message: &'a str,
     pub lang: &'a str,
@@ -137,8 +138,8 @@ impl<'a> Userauth60<'a> {
     /// Special handling in [`wireformat`]
     pub(crate) fn variant(ctx: &ParseContext) -> Result<&'static str> {
         match ctx.cli_auth_type {
-            Some(cliauth::ReqType::Password) => Ok("PwChangeReq"),
-            Some(cliauth::ReqType::PubKey(..)) => Ok("PkOk"),
+            Some(cliauth::Req::Password(_)) => Ok("PwChangeReq"),
+            Some(cliauth::Req::PubKey(..)) => Ok("PkOk"),
             _ => return Err(Error::PacketWrong),
         }
     }
@@ -157,11 +158,18 @@ pub struct UserauthPwChangeReq<'a> {
     pub lang: &'a str,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize,Debug)]
 pub struct MethodPassword<'a> {
     pub change: bool,
     pub password: &'a str,
 }
+
+// // Don't print password
+// impl<'a> Debug for MethodPassword<'a> {
+//     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+
+//     }
+// }
 
 #[derive(Debug)]
 pub struct MethodPubKey<'a> {
@@ -475,7 +483,7 @@ pub struct DirectTcpip<'a> {
 /// Use this so the parser can select the correct enum variant to deserialize.
 #[derive(Default)]
 pub struct ParseContext<'a> {
-    pub cli_auth_type: Option<cliauth::ReqType<'a>>,
+    pub cli_auth_type: Option<cliauth::Req<'a>>,
 }
 
 impl<'a> ParseContext<'a> {
@@ -631,7 +639,7 @@ messagetypes![
 (1, Disconnect, Disconnect<'a>, SSH_MSG_DISCONNECT),
 (2, Ignore, Ignore, SSH_MSG_IGNORE),
 (3, Unimplemented, Unimplemented, SSH_MSG_UNIMPLEMENTED),
-(4, Debug, Debug<'a>, SSH_MSG_DEBUG),
+(4, DebugPacket, DebugPacket<'a>, SSH_MSG_DEBUG),
 (5, ServiceRequest, ServiceRequest<'a>, SSH_MSG_SERVICE_REQUEST),
 (6, ServiceAccept, ServiceAccept<'a>, SSH_MSG_SERVICE_ACCEPT),
 (20, KexInit, KexInit<'a>, SSH_MSG_KEXINIT),
@@ -772,6 +780,20 @@ mod tests {
         let ctx = ParseContext::default();
         let p2 = packet_from_bytes(&buf1, &ctx).unwrap();
         trace!("broken: {p2:#?}");
+    }
+
+    #[test]
+    #[should_panic]
+    fn unknown_method_ser() {
+        init_test_log();
+        let p = Packet::ChannelOpen(ChannelOpen {
+            number: 0,
+            initial_window: 200000,
+            max_packet: 88200,
+            ch: ChannelType::Unknown(Unknown("audio-stream"))
+        });
+        let mut buf1 = vec![88; 1000];
+        write_ssh(&mut buf1, &p).unwrap();
     }
 
     #[test]

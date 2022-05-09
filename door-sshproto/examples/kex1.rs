@@ -80,10 +80,11 @@ fn do_kexinit() -> Result<()> {
     let x: Packet = door_sshproto::wireformat::packet_from_bytes(&buf, &ctx)?;
     println!("fetched {x:?}");
 
-    let c = conn::Conn::new()?;
-    let mut work = vec![0; 2000];
-    let mut r = conn::Runner::new(c, work.as_mut_slice())?;
-    r.input(&buf)?;
+    // let cli= Client::new();
+    // let c = Conn::new_client(cli)?;
+    // let mut work = vec![0; 2000];
+    // let mut r = conn::Runner::new(c, work.as_mut_slice())?;
+    // r.input(&buf)?;
     Ok(())
 
 }

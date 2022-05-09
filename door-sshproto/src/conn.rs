@@ -1,12 +1,12 @@
 #[allow(unused_imports)]
 use {
-    crate::error::{Error, TrapBug},
+    crate::error::{Error, Result, TrapBug},
     log::{debug, error, info, log, trace, warn},
 };
 
-use std::char::MAX;
+use core::char::MAX;
+use core::task::Waker;
 
-use heapless::Vec;
 use ring::digest::Digest;
 use pretty_hex::PrettyHex;
 
@@ -21,7 +21,7 @@ use traffic::Traffic;
 // TODO a max value needs to be analysed
 const MAX_RESPONSES: usize = 4;
 
-pub(crate) type RespPackets<'a> = Vec<Packet<'a>, MAX_RESPONSES>;
+pub(crate) type RespPackets<'a> = heapless::Vec<Packet<'a>, MAX_RESPONSES>;
 
 pub struct Runner<'a> {
     conn: Conn<'a>,
@@ -31,6 +31,9 @@ pub struct Runner<'a> {
 
     /// Current encryption/integrity keys
     keys: KeyState,
+
+    output_waker: Option<Waker>,
+    input_waker: Option<Waker>,
 }
 
 impl<'a> Runner<'a> {
@@ -40,6 +43,8 @@ impl<'a> Runner<'a> {
             conn,
             traffic: traffic::Traffic::new(iobuf),
             keys: KeyState::new_cleartext(),
+            output_waker: None,
+            input_waker: None,
         };
 
         runner.conn.progress(&mut runner.traffic, &mut runner.keys)?;
@@ -66,21 +71,42 @@ impl<'a> Runner<'a> {
             }
             self.conn.progress(&mut self.traffic, &mut self.keys)?;
         }
+        // TODO: do we only need to wake once?
+        if let Some(w) = self.output_waker.take() {
+            if self.output_pending() {
+                w.wake()
+            }
+        }
         Ok(size)
     }
 
     /// Write any pending output, returning the size written
     pub fn output(&mut self, buf: &mut [u8]) -> Result<usize, Error> {
-        let l = self.traffic.output(buf)?;
-        Ok(l)
+        let r = self.traffic.output(buf);
+        if let Some(w) = self.input_waker.take() {
+            if self.ready_input() {
+                w.wake()
+            }
+        }
+        Ok(r)
+        // TODO: need some kind of progress() here which
+        // will return errors
     }
 
     pub fn ready_input(&self) -> bool {
         self.traffic.ready_input()
     }
 
+    pub fn set_input_waker(&mut self, waker: Waker) {
+        self.input_waker = Some(waker);
+    }
+
     pub fn output_pending(&self) -> bool {
         self.traffic.output_pending()
+    }
+
+    pub fn set_output_waker(&mut self, waker: Waker) {
+        self.output_waker = Some(waker);
     }
 }
 
@@ -143,8 +169,11 @@ enum ConnState {
 }
 
 impl<'a> Conn<'a> {
-    pub fn new() -> Result<Self, Error> {
-        let cliserv = ClientServer::Client(Client::new());
+    pub fn new_client(client: client::Client<'a>) -> Result<Self> {
+        Self::new(ClientServer::Client(client))
+
+    }
+    fn new(cliserv: ClientServer<'a>) -> Result<Self, Error> {
         Ok(Conn {
             kex: kex::Kex::new()?,
             sess_id: None,
@@ -156,7 +185,7 @@ impl<'a> Conn<'a> {
     }
 
     /// Updates `ConnState` and sends any packets required to progress the connection state.
-    fn progress<'b>(
+    fn progress(
         &mut self, traffic: &mut Traffic, keys: &mut KeyState,
     ) -> Result<(), Error> {
         trace!("conn state {:?}", self.state);
@@ -179,7 +208,7 @@ impl<'a> Conn<'a> {
                 // and backpressure.
                 if traffic.can_output() {
                     if let ClientServer::Client(cli) = &mut self.cliserv {
-                        cli.auth.start(&mut resp)?;
+                        cli.auth.start(cli.hooks, &mut resp)?;
                     }
                 }
                 // send userauth request
@@ -215,7 +244,7 @@ impl<'a> Conn<'a> {
     ) -> Result<RespPackets, Error> {
         // TODO: perhaps could consolidate packet allowed checks into a separate function
         // to run first?
-        let mut resp = Vec::new();
+        let mut resp = RespPackets::new();
         match packet {
             Packet::KexInit(_) => {
                 if matches!(self.state, ConnState::InKex { .. }) {
@@ -305,7 +334,7 @@ impl<'a> Conn<'a> {
             Packet::Unimplemented(_) => {
                 warn!("Received SSH unimplemented message");
             }
-            Packet::Debug(p) => {
+            Packet::DebugPacket(p) => {
                 warn!(
                     "SSH debug message from remote host: '{}'",
                     p.message.escape_default()
@@ -322,7 +351,7 @@ impl<'a> Conn<'a> {
             Packet::UserauthFailure(p) => {
                 // TODO: client only
                 if let ClientServer::Client(cli) = &mut self.cliserv {
-                    cli.auth.failure(p, &mut resp)?;
+                    cli.auth.failure(p, cli.hooks, &mut resp)?;
                 } else {
                     debug!("Received UserauthFailure as a server");
                     return Err(Error::SSHProtoError)

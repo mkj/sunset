@@ -6,7 +6,7 @@ use {
 };
 
 use serde::de;
-use serde::de::{DeserializeSeed, SeqAccess, Visitor};
+use serde::de::{DeserializeSeed, SeqAccess, Visitor, Unexpected, Expected};
 use serde::ser::{SerializeSeq, SerializeTuple, Serializer};
 use serde::Deserializer;
 
@@ -41,7 +41,7 @@ impl<'de: 'a, 'a> Deserialize<'de> for NameList<'a> {
         if s.0.is_ascii() {
             Ok(NameList::String(s))
         } else {
-            Err(de::Error::custom("algorithm isn't ascii"))
+            Err(de::Error::invalid_value(Unexpected::Str(s.0), &"ASCII"))
         }
     }
 }
@@ -182,6 +182,9 @@ mod tests {
     use crate::namelist::*;
     use crate::wireformat;
     use pretty_hex::PrettyHex;
+    use std::vec::Vec;
+    use crate::doorlog::init_test_log;
+    use proptest::prelude::*;
 
     #[test]
     fn test_match() {
@@ -242,7 +245,6 @@ mod tests {
                 assert_eq!(l.first(), t[0]);
             }
         }
-
     }
 
     #[test]

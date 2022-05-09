@@ -4,11 +4,10 @@ version = "0.1.0"
 edition = "2021"
 license = "MPL-2.0"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [workspace]
 members = [
     "door-sshproto",
+    "door-smol",
     "door-tokio",
 ]
 
@@ -18,5 +17,3 @@ lto = "fat"
 debug = 1
 
 [patch.crates-io]
-# serde_state = { version = "0.4", path = "../../3rd/serde_state/serde_state" }
-# serde_derive_state = { version = "0.4", path = "../../3rd/serde_state/serde_derive" }

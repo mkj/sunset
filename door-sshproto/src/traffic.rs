@@ -154,7 +154,7 @@ impl<'a> Traffic<'a> {
     }
 
     /// Write any pending output, returning the size written
-    pub fn output(&mut self, buf: &mut [u8]) -> Result<usize, Error> {
+    pub fn output(&mut self, buf: &mut [u8]) -> usize {
         trace!("output state {:?}", self.state);
 
         match self.state {
@@ -167,9 +167,9 @@ impl<'a> Traffic<'a> {
                     // all done, read the next packet
                     self.state = TrafState::Idle
                 }
-                Ok(wlen)
+                wlen
             }
-            _ => Ok(0),
+            _ => 0,
         }
     }
 

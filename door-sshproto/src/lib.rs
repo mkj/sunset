@@ -1,4 +1,4 @@
-// #![no_std]
+#![no_std]
 #![forbid(unsafe_code)]
 // XXX unused_imports only during dev churn
 #![allow(unused_imports)]
@@ -22,10 +22,18 @@ pub mod random;
 pub mod sshnames;
 pub mod sign;
 
-pub mod client;
-pub mod cliauth;
+mod client;
+mod cliauth;
 
-pub mod server;
-pub mod servauth;
+mod server;
+mod servauth;
 
 pub mod doorlog;
+
+pub use client::Client;
+pub use client::ResponseString;
+pub use client::{ClientHooks, HookError, HookResult};
+pub use conn::Runner;
+pub use conn::Conn;
+pub use packets::PubKey;
+pub use error::Error;

@@ -8,6 +8,7 @@ use std::error::Error;
 use pretty_hex::PrettyHex;
 use tokio::{io::AsyncWriteExt,io};
 use tokio::net::TcpStream;
+use pin_utils::*;
 
 use door_sshproto::*;
 
@@ -43,50 +44,57 @@ async fn run() -> Result<(), Box<dyn Error>> {
     // let mut stream = TcpStream::connect("130.95.13.18:22").await?;
 
     let mut work = vec![0; 3000];
-    let c = conn::Conn::new()?;
-    let mut r = conn::Runner::new(c, work.as_mut_slice())?;
+    let cli= Client::new();
+    let c = Conn::new_client(cli)?;
+    let runner = Runner::new(c, work.as_mut_slice())?;
 
-    let mut inbuf = vec![0; 3000];
-    let mut inpos = 0;
-    let mut inlen = 0;
-    let mut outbuf = vec![0; 3000];
+    let door = door_tokio::AsyncDoor { runner };
+    pin_mut!(door);
 
-    loop {
-        while r.output_pending() {
-            let b = outbuf.as_mut_slice();
-            let l = r.output(b)?;
-            let b = &b[..l];
-            stream.write_all(b).await.context("write_all")?;
-        }
+    io::copy_bidirectional(&mut stream, &mut door).await?;
 
-        if r.ready_input() {
-            trace!("ready in");
-            stream.readable().await.context("readable")?;
-            if inlen == inpos {
-                inlen = match stream.try_read(&mut inbuf) {
-                    Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                        trace!("wouldblock");
-                        Ok(0)
-                    },
-                    Ok(n) => {
-                        if n == 0 {
-                            Err(io::Error::from(io::ErrorKind::UnexpectedEof))
-                        } else {
-                            Ok(n)
-                        }
-                    }
+    // let mut inbuf = vec![0; 3000];
+    // let mut inpos = 0;
+    // let mut inlen = 0;
+    // let mut outbuf = vec![0; 3000];
 
-                    other_error => other_error,
-                }.context("read")?;
-                trace!("read new {inlen}");
-                inpos = 0;
-            }
 
-            trace!("nputting {inlen}..{inpos}");
-            let l = r.input(&inbuf[inpos..inlen])?;
-            inpos += l;
-        }
-    }
+    // loop {
+    //     while r.output_pending() {
+    //         let b = outbuf.as_mut_slice();
+    //         let l = r.output(b)?;
+    //         let b = &b[..l];
+    //         stream.write_all(b).await.context("write_all")?;
+    //     }
+
+    //     if r.ready_input() {
+    //         trace!("ready in");
+    //         stream.readable().await.context("readable")?;
+    //         if inlen == inpos {
+    //             inlen = match stream.try_read(&mut inbuf) {
+    //                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+    //                     trace!("wouldblock");
+    //                     Ok(0)
+    //                 },
+    //                 Ok(n) => {
+    //                     if n == 0 {
+    //                         Err(io::Error::from(io::ErrorKind::UnexpectedEof))
+    //                     } else {
+    //                         Ok(n)
+    //                     }
+    //                 }
+
+    //                 other_error => other_error,
+    //             }.context("read")?;
+    //             trace!("read new {inlen}");
+    //             inpos = 0;
+    //         }
+
+    //         trace!("nputting {inlen}..{inpos}");
+    //         let l = r.input(&inbuf[inpos..inlen])?;
+    //         inpos += l;
+    //     }
+    // }
 
 
     // let mut d = ident::RemoteVersion::new();

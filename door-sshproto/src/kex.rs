@@ -30,7 +30,7 @@ const fixed_options_kex: LocalNames =
     LocalNames(&[SSH_NAME_CURVE25519, SSH_NAME_CURVE25519_LIBSSH]);
 const fixed_options_hostsig: LocalNames = LocalNames(&[
     SSH_NAME_ED25519,
-    #[cfg(std)]
+    #[cfg(alloc)]
     SSH_NAME_RSA_SHA256,
 ]);
 

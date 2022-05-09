@@ -144,6 +144,8 @@ impl<'a> RemoteVersion {
 mod tests {
     use crate::ident;
     use crate::error::{Error,TrapBug};
+    use crate::doorlog::init_test_log;
+    use proptest::prelude::*;
 
     fn test_version(v: &str, split: usize, expect: &str) -> Result<usize, Error> {
         let mut r = ident::RemoteVersion::new();
@@ -194,4 +196,44 @@ mod tests {
         }
         Ok(())
     }
+
+    // // TODO: maybe fuzzing would work better.
+    // // also hits an ICE, perhaps
+    // // https://github.com/rust-lang/rust/pull/94391
+    // proptest! {
+    //     #[test]
+    //     fn version_pt(prepa: bool, prepb: bool,
+    //         mut a: [u8; 20],
+    //         mut b: &[u8; 20],
+    //         ) {
+    //         let mut r = ident::RemoteVersion::new();
+
+    //         // if prepa {
+    //         //     a = format!("SSH-2.0-{a}");
+    //         // }
+    //         // if prepb {
+    //         //     b = format!("SSH-2.0-{b}");
+    //         // }
+    //         // println!("a {a:?}");
+    //         // println!("b {b:?}");
+
+
+    //         let (taken1, done1) = r.consume(&a).unwrap();
+    //         let (taken2, done2) = r.consume(&b).unwrap();
+
+    //         if done1 {
+    //             assert!(done2);
+    //             assert!(taken2 == 0);
+    //         }
+    //         if taken2 > 0 {
+    //             assert_eq!(taken1, a.len());
+    //         }
+
+    //         // only allow UTF8 version strings
+    //         if let Some(v) = r.version() {
+    //             let v = core::str::from_utf8(v).unwrap();
+    //             println!("v {v}");
+    //         }
+    //     }
+    // }
 }

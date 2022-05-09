@@ -25,15 +25,20 @@ impl From<&str> for UnknownName {
 
     /// Indicates truncation
     fn from(from: &str) -> Self {
-        // TODO: escape the output
-        let mut s = String::<35>::new();
-        let mut len = from.len();
-        if len > s.capacity() {
-            len = (len-3).min(s.capacity() - 3)
+        let mut s = String::new();
+        // +10 to avoid wasteful iteration on untrusted input
+        let need = from.escape_default().take(s.capacity()+10).count();
+        let used = if need > s.capacity() {
+            s.capacity() - 4
+        } else {
+            need
+        };
+        for e in from.escape_default().take(used) {
+            s.push(e).unwrap()
         }
-        s.push_str(&from[..len]).unwrap();
-        if s.len() != from.len() {
-            s.push_str("...").unwrap();
+
+        if need > used {
+            s.push_str(" ...").unwrap()
         }
         UnknownName(s)
     }
@@ -74,6 +79,13 @@ pub enum Error {
     /// Remote peer isn't SSH
     NotSSH,
 
+    /// Bad key format
+    BadKey,
+
+    // Used for unknown key types etc.
+    #[snafu(display("{what} is not available"))]
+    NotAvailable { what: &'static str },
+
     /// Unknown packet type
     UnknownPacket { number: u8 },
 
@@ -81,7 +93,7 @@ pub enum Error {
     // TODO: this is kind of a subset of SSHProtoError, maybe not needed
     PacketWrong,
 
-    /// No matching algorithm
+    #[snafu(display("No matching {algo} algorithm"))]
     AlgoNoMatch { algo: &'static str },
 
     /// Packet size too large (or bad decrypt)
@@ -94,20 +106,20 @@ pub enum Error {
     // internal
     InvalidDeserializeU8 { value: u8 },
 
+    /// Implementation hook error
+    // todo
+    HookError { msg: &'static str },
+
     /// Other custom error
     // TODO: these could eventually get categorised
     Custom { msg: &'static str },
 
+    // This state should not be reached, previous logic should have prevented it.
+    // Don't create `Bug` directly, instead use [`Error::bug()`] or
+    // [`.trap()`](TrapBug::trap) to make finding the source easier.
     /// Program bug.
-    /// This state should not be reached, previous logic should have prevented it.
-    /// Don't create `Bug` directly, instead use [`Error::bug()`] or
-    /// [`.trap()`](TrapBug::trap) to make finding the source easier.
     Bug { location: snafu::Location },
 }
-
-trait SomeError {}
-
-impl SomeError for Error {}
 
 impl Error {
     pub fn msg(m: &'static str) -> Error {
@@ -124,7 +136,7 @@ impl Error {
         if cfg!(debug_assertions) {
             panic!("Hit a bug");
         } else {
-            let caller = std::panic::Location::caller();
+            let caller = core::panic::Location::caller();
             Error::Bug {
                 location: snafu::Location::new(
                     caller.file(),
@@ -140,14 +152,14 @@ impl Error {
     #[track_caller]
     #[cold]
     /// TODO: is the generic `T` going to make it bloat?
-    pub fn bug_msg<T>(args: Arguments) -> Result<T, Error> {
+    pub fn bug_args<T>(args: Arguments) -> Result<T, Error> {
         // Easier to track the source of errors in development,
         // but release builds shouldn't panic.
         if cfg!(debug_assertions) {
             panic!("Hit a bug: {args}");
         } else {
             debug!("Hit a bug: {args}");
-            let caller = std::panic::Location::caller();
+            let caller = core::panic::Location::caller();
             Err(Error::Bug {
                 location: snafu::Location::new(
                     caller.file(),
@@ -156,6 +168,13 @@ impl Error {
                 ),
             })
         }
+    }
+
+    #[track_caller]
+    #[cold]
+    /// TODO: is the generic `T` going to make it bloat?
+    pub fn bug_msg<T>(msg: &str) -> Result<T, Error> {
+        Self::bug_args(format_args!("{}", msg))
     }
 
 }
@@ -189,7 +208,7 @@ impl<T, E> TrapBug<T> for Result<T, E> {
         if let Ok(i) = self {
             Ok(i)
         } else {
-            Error::bug_msg(args)
+            Error::bug_args(args)
         }
     }
 }
@@ -208,7 +227,7 @@ impl<T> TrapBug<T> for Option<T> {
         if let Some(i) = self {
             Ok(i)
         } else {
-            Error::bug_msg(args)
+            Error::bug_args(args)
         }
     }
 }
@@ -228,9 +247,7 @@ impl serde::ser::Error for Error {
     where
         T: core::fmt::Display,
     {
-        let _ = msg;
-        #[cfg(feature = "std")]
-        println!("custom ser error: {}", msg);
+        trace!("custom ser error: {}", msg);
 
         Error::msg("ser error")
     }
@@ -241,10 +258,7 @@ impl serde::de::Error for Error {
     where
         T: core::fmt::Display,
     {
-        let _ = msg;
-        #[cfg(feature = "std")]
-        println!("custom de error: {}", msg);
-        panic!("{}", msg);
+        trace!("custom de error: {}", msg);
 
         Error::msg("de error")
     }
@@ -255,7 +269,10 @@ impl serde::de::Error for Error {
                 return Error::InvalidDeserializeU8 { value: val as u8 };
             }
         }
-        debug!("Invalid deserialize. Expected {} got {}", exp, unexp);
+        info!("Invalid input. Expected {} got {:?}", exp, unexp);
+        if let Unexpected::Str(s) = unexp {
+            return Error::BadString
+        }
         Error::bug()
     }
 
@@ -278,27 +295,18 @@ pub(crate) mod tests {
     use crate::error::*;
     use crate::doorlog::init_test_log;
     use crate::packets::Unknown;
+    use proptest::prelude::*;
 
-    #[test]
-    fn unknown_name_from() {
-        init_test_log();
-        // test the test
-        const LIM: usize = 44;
-        let s: UnknownName = "a".into();
-        let cap = s.0.capacity();
-        assert!(LIM > cap + 6);
-
-        for i in 0..LIM {
-            let mut s = "qwertyu".repeat(10);
-            s.truncate(i);
+    proptest! {
+        #[test]
+        fn unknown_name_from_pt(s: std::string::String) {
             let u: UnknownName = s.as_str().into();
-            if i <= cap {
-                assert!(&u.0 == s.as_str());
-            } else {
-                assert!(&u.0[cap-3..] == "...");
+            let cap = u.0.capacity();
+            if s.escape_default().count() > cap {
+                assert_eq!(&u.0[cap-4..], " ...");
             }
-
         }
+
     }
 
 }
