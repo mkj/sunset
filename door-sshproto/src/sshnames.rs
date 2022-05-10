@@ -1,5 +1,5 @@
-// Note these string literals are also copy+pasted to #[serde(rename)]
-// directives in packets.rs
+// Note that some of these string literals are also copy+pasted
+// to #[serde(rename)] directives in packets.rs
 
 // RFC8731
 pub const SSH_NAME_CURVE25519: &str = "curve25519-sha256";
@@ -41,4 +41,5 @@ pub const SSH_SERVICE_CONNECTION: &str = "ssh-connection";
 
 pub const SSH_AUTHMETHOD_PASSWORD: &str = "password";
 pub const SSH_AUTHMETHOD_PUBLICKEY: &str = "publickey";
+pub const SSH_AUTHMETHOD_INTERACTIVE: &str = "keyboard-interactive";
 

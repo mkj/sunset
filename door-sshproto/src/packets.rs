@@ -120,7 +120,7 @@ pub enum AuthMethod<'a> {
     #[serde(rename = "password")]
     Password(MethodPassword<'a>),
     #[serde(rename = "publickey")]
-    Pubkey(MethodPubKey<'a>),
+    PubKey(MethodPubKey<'a>),
     #[serde(rename = "none")]
     None,
     #[serde(skip_serializing)]
@@ -158,22 +158,24 @@ pub struct UserauthPwChangeReq<'a> {
     pub lang: &'a str,
 }
 
-#[derive(Serialize, Deserialize,Debug)]
+#[derive(Serialize, Deserialize)]
 pub struct MethodPassword<'a> {
     pub change: bool,
     pub password: &'a str,
 }
 
-// // Don't print password
-// impl<'a> Debug for MethodPassword<'a> {
-//     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-
-//     }
-// }
+// Don't print password
+impl<'a> fmt::Debug for MethodPassword<'a>{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "MethodPassword {{ changepw: {}, password: (hidden) }}",
+            self.change)
+    }
+}
 
 #[derive(Debug)]
 pub struct MethodPubKey<'a> {
-    pub algo: &'a str,
+    /// A signature algorithm name (not key algorithm name).
+    pub sig_algo: &'a str,
     pub pubkey: PubKey<'a>,
     pub sig: Option<Blob<Signature<'a>>>,
 }
@@ -185,7 +187,7 @@ impl<'a> Serialize for MethodPubKey<'a> {
     {
         let mut seq = serializer.serialize_seq(None)?;
         seq.serialize_element(&self.sig.is_some())?;
-        seq.serialize_element(&self.algo)?;
+        seq.serialize_element(&self.sig_algo)?;
         seq.serialize_element(&self.pubkey)?;
         if let Some(s) = &self.sig {
             seq.serialize_element(&s)?;
@@ -217,9 +219,9 @@ impl<'de: 'a, 'a> Deserialize<'de> for MethodPubKey<'a> {
                     .next_element()?
                     .ok_or_else(|| de::Error::missing_field("actual_sig flag"))?;
 
-                let algo = seq
+                let sig_algo = seq
                     .next_element()?
-                    .ok_or_else(|| de::Error::missing_field("algo"))?;
+                    .ok_or_else(|| de::Error::missing_field("sig_algo"))?;
 
                 let pubkey = seq
                     .next_element()?
@@ -234,7 +236,7 @@ impl<'de: 'a, 'a> Deserialize<'de> for MethodPubKey<'a> {
                     None
                 };
 
-                Ok(MethodPubKey { algo, pubkey, sig })
+                Ok(MethodPubKey { sig_algo, pubkey, sig })
             }
         }
         deserializer.deserialize_seq(Vis)
@@ -258,7 +260,7 @@ pub struct UserauthBanner<'a> {
     pub lang: &'a str,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum PubKey<'a> {
     #[serde(borrow)]
     #[serde(rename = "ssh-ed25519")]
@@ -280,13 +282,13 @@ impl<'a> PubKey<'a> {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Ed25519PubKey<'a> {
     #[serde(borrow)]
     pub key: BinString<'a>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RSAPubKey<'a> {
     #[serde(borrow)]
     pub e: BinString<'a>,
@@ -311,6 +313,19 @@ impl<'a> Signature<'a> {
             Signature::Ed25519(_) => SSH_NAME_ED25519,
             Signature::RSA256(_) => SSH_NAME_RSA_SHA256,
             Signature::Unknown(u) => u.0,
+        }
+    }
+
+    /// Returns the signature algorithm name for a public key.
+    /// Returns (`Error::UnknownMethod`) if the PubKey is unknown
+    /// Currently can return a unique signature name for a public key
+    /// since ssh-rsa isn't supported, only rsa-sha2-256 (as an example)
+    pub fn sig_algorithm_name_for_pubkey(pubkey: &PubKey) -> Result<&'static str> {
+        match pubkey {
+            PubKey::Ed25519(_) => Ok(SSH_NAME_ED25519),
+            PubKey::RSA(_) => Ok(SSH_NAME_RSA_SHA256),
+            PubKey::Unknown(u) => Err(Error::UnknownMethod {kind: "key",
+                    name: u.0.into() })
         }
     }
 
@@ -453,7 +468,7 @@ impl<'de: 'a, 'a> Deserialize<'de> for ChannelOpen<'a> {
 
 // Placeholder for unknown method names. These are sometimes non-fatal and
 // need to be handled by the relevant code, for example newly invented pubkey types
-#[derive(Debug,Deserialize)]
+#[derive(Debug,Deserialize,Clone)]
 pub struct Unknown<'a>(pub &'a str);
 
 
@@ -483,12 +498,13 @@ pub struct DirectTcpip<'a> {
 /// Use this so the parser can select the correct enum variant to deserialize.
 #[derive(Default)]
 pub struct ParseContext<'a> {
-    pub cli_auth_type: Option<cliauth::Req<'a>>,
+    pub cli_auth_type: Option<cliauth::Req>,
+    lifetime: PhantomData<&'a ()>, // TODO
 }
 
 impl<'a> ParseContext<'a> {
     pub fn new() -> Self {
-        ParseContext { cli_auth_type: None }
+        ParseContext { cli_auth_type: None, lifetime: PhantomData::default() }
     }
 }
 
@@ -710,8 +726,8 @@ mod tests {
         let p = Packet::UserauthRequest(UserauthRequest {
             username: "matt",
             service: "conn",
-            method: AuthMethod::Pubkey(MethodPubKey {
-                algo: SSH_NAME_ED25519,
+            method: AuthMethod::PubKey(MethodPubKey {
+                sig_algo: SSH_NAME_ED25519,
                 pubkey: s.pubkey(),
                 sig: None,
             }),
@@ -726,8 +742,8 @@ mod tests {
         let p = Packet::UserauthRequest(UserauthRequest {
             username: "matt",
             service: "conn",
-            method: AuthMethod::Pubkey(MethodPubKey {
-                algo: SSH_NAME_ED25519,
+            method: AuthMethod::PubKey(MethodPubKey {
+                sig_algo: SSH_NAME_ED25519,
                 pubkey: s.pubkey(),
                 sig,
             }),

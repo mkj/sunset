@@ -10,6 +10,7 @@ log = { version = "0.4" }
 futures-io = "0.3"
 pin-utils = "0.1"
 async-dup = "1.2"
+rpassword = "6.0"
 
 # TODO
 anyhow = { version = "1.0" }

@@ -102,9 +102,9 @@ where
 
 type Res = Result<()>;
 
-#[derive(Deserialize)]
 /// A SSH style binary string. Serialized as 32 bit length followed by the bytes
 /// of the slice.
+#[derive(Deserialize,Clone)]
 pub struct BinString<'a>(pub &'a [u8]);
 
 impl<'a> AsRef<[u8]> for BinString<'a> {
@@ -983,7 +983,7 @@ pub(crate) mod tests {
             })),
         }));
         let s = sign::tests::make_ed25519_signkey();
-        ctx.cli_auth_type = Some(cliauth::Req::PubKey(&s));
+        ctx.cli_auth_type = Some(cliauth::Req::PubKey(s));
         test_roundtrip_context(&p, &ctx);
     }
 }

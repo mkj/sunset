@@ -244,6 +244,7 @@ impl<'a> Conn<'a> {
     ) -> Result<RespPackets, Error> {
         // TODO: perhaps could consolidate packet allowed checks into a separate function
         // to run first?
+        trace!("dispatch {packet:#?}");
         let mut resp = RespPackets::new();
         match packet {
             Packet::KexInit(_) => {

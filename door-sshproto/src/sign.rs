@@ -82,6 +82,9 @@ impl SigType {
     }
 }
 
+/// A SSH signing key. This may hold the private part locally
+/// or could potentially send the signing requests to a SSH agent
+/// or other entitiy.
 pub enum SignKey {
     Ed25519(Ed25519KeyPair),
 }

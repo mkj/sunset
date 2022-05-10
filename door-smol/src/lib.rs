@@ -12,6 +12,7 @@ use anyhow::{Context as _, Result, Error};
 
 use door_sshproto as door;
 use door_sshproto::error::Error as DoorError;
+use door_sshproto::{HookResult,HookError};
 // use door_sshproto::client::*;
 
 pub struct DoorSession {
@@ -19,19 +20,31 @@ pub struct DoorSession {
 }
 
 impl<'a> door::ClientHooks<'a> for DoorSession {
-    fn username(&self) -> Result<door::ResponseString, DoorError> {
-        let mut p = door::ResponseString::new();
+    fn username(&mut self, p: &mut door::ResponseString) -> HookResult<()> {
         // TODO unwrap
         p.push_str("matt").unwrap();
-        Ok(p)
+        Ok(())
     }
 
-    fn valid_hostkey(&mut self, hostname: &str, key: &door::PubKey<'a>) -> Result<bool, door::Error> {
+    fn valid_hostkey(&mut self, hostname: &str, key: &door::PubKey<'a>) -> HookResult<bool> {
         return Ok(true)
     }
 
-    fn authenticated(&mut self) {
-        info!("Authentication succeeded")
+    fn auth_password(&mut self, pwbuf: &mut door::ResponseString) -> HookResult<bool> {
+        let pw = rpassword::prompt_password("password: ").map_err(|e| {
+            warn!("read_password failed {e:}");
+            HookError::Fail
+        })?;
+        if pwbuf.push_str(&pw).is_err() {
+            Err(HookError::Fail)
+        } else {
+            Ok(true)
+        }
+    }
+
+    fn authenticated(&mut self) -> HookResult<()> {
+        info!("Authentication succeeded");
+        Ok(())
     }
 
 }
