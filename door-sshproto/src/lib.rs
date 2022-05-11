@@ -29,10 +29,12 @@ mod server;
 mod servauth;
 
 pub mod doorlog;
+mod channel;
+mod config;
 
 pub use client::Client;
 pub use client::ResponseString;
-pub use client::{ClientHooks, HookError, HookResult};
+pub use client::{ClientHooks, HookError, HookResult, ClientHandle};
 pub use conn::Runner;
 pub use conn::Conn;
 pub use packets::PubKey;

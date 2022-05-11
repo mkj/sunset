@@ -10,6 +10,8 @@ use core::task::Waker;
 use ring::digest::Digest;
 use pretty_hex::PrettyHex;
 
+use heapless::Vec;
+
 use crate::sshnames::*;
 use crate::*;
 use client::Client;
@@ -17,6 +19,8 @@ use encrypt::KeyState;
 use packets::{Packet,ParseContext};
 use server::Server;
 use traffic::Traffic;
+use channel::Channel;
+use config::MAX_CHANNELS;
 
 // TODO a max value needs to be analysed
 const MAX_RESPONSES: usize = 4;
@@ -127,6 +131,9 @@ pub struct Conn<'a> {
 
     /// Remote version string. Kept for later kexinit rekeying
     remote_version: ident::RemoteVersion,
+
+    channels: Vec<Channel, MAX_CHANNELS>,
+    next_chan: u32,
 }
 
 // TODO: what tricks can we do to optimise away client or server code if we only
@@ -181,6 +188,8 @@ impl<'a> Conn<'a> {
             state: ConnState::SendIdent,
             algo_conf: kex::AlgoConfig::new(cliserv.is_client()),
             cliserv,
+            channels: Vec::new(),
+            next_chan: 0,
         })
     }
 
@@ -288,18 +297,19 @@ impl<'a> Conn<'a> {
             Packet::KexDHReply(p) => {
                 match self.state {
                     ConnState::InKex { done_auth: _, ref mut output } => {
-                        if !self.cliserv.is_client() {
+                        if let ClientServer::Client(cli) = &mut self.cliserv {
+                            if self.kex.maybe_discard_packet() {
+                                // ok
+                            } else {
+                                let kex =
+                                    core::mem::replace(&mut self.kex, kex::Kex::new()?);
+                                *output = Some(kex.handle_kexdhreply(p, &self.sess_id, cli.hooks)?);
+                                resp.push(Packet::NewKeys(packets::NewKeys {}))
+                                    .trap()?;
+                            }
+                        } else {
                             // TODO: client/server validity checks should move somewhere more general
                             return Err(Error::SSHProtoError);
-                        }
-                        if self.kex.maybe_discard_packet() {
-                            // ok
-                        } else {
-                            let kex =
-                                core::mem::replace(&mut self.kex, kex::Kex::new()?);
-                            *output = Some(kex.handle_kexdhreply(p, &self.sess_id)?);
-                            resp.push(Packet::NewKeys(packets::NewKeys {}))
-                                .trap()?;
                         }
                     }
                     _ => return Err(Error::PacketWrong),

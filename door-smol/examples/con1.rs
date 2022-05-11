@@ -19,9 +19,8 @@ use simplelog::*;
 
 fn main() -> Result<()> {
     smol::block_on(async {
-        run().await;
-    });
-    Ok(())
+        run().await
+    })
 }
 
 async fn run() -> Result<()> {

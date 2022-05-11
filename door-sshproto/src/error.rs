@@ -99,6 +99,8 @@ pub enum Error {
     /// Packet size too large (or bad decrypt)
     BigPacket { size: usize },
 
+    /// An unknown SSH name is provided, for a key type, signature type,
+    /// channel name etc.
     #[snafu(display("Unknown {kind} method {name}"))]
     UnknownMethod { kind: &'static str, name: UnknownName },
 
@@ -107,7 +109,7 @@ pub enum Error {
     InvalidDeserializeU8 { value: u8 },
 
     /// Implementation hook error
-    // todo
+    #[snafu(display("Failure from hook: {msg}"))]
     HookError { msg: &'static str },
 
     /// Other custom error

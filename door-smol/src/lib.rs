@@ -12,6 +12,7 @@ use anyhow::{Context as _, Result, Error};
 
 use door_sshproto as door;
 use door_sshproto::error::Error as DoorError;
+use door_sshproto::ClientHandle;
 use door_sshproto::{HookResult,HookError};
 // use door_sshproto::client::*;
 
@@ -26,8 +27,9 @@ impl<'a> door::ClientHooks<'a> for DoorSession {
         Ok(())
     }
 
-    fn valid_hostkey(&mut self, hostname: &str, key: &door::PubKey<'a>) -> HookResult<bool> {
-        return Ok(true)
+    fn valid_hostkey(&mut self, key: &door::PubKey) -> HookResult<bool> {
+        trace!("valid_hostkey for {key:?}");
+        Ok(true)
     }
 
     fn auth_password(&mut self, pwbuf: &mut door::ResponseString) -> HookResult<bool> {
@@ -42,8 +44,9 @@ impl<'a> door::ClientHooks<'a> for DoorSession {
         }
     }
 
-    fn authenticated(&mut self) -> HookResult<()> {
+    fn authenticated(&mut self, h: &mut ClientHandle) -> HookResult<()> {
         info!("Authentication succeeded");
+        h.open_session(true);
         Ok(())
     }
 

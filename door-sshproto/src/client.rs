@@ -6,7 +6,7 @@ use {
 
 use snafu::prelude::*;
 
-use crate::*;
+use crate::{*, packets::ChannelOpen};
 use crate::packets::{Packet, PubKey};
 use crate::sshnames::*;
 use crate::cliauth::CliAuth;
@@ -32,7 +32,13 @@ impl<'a> Client<'a> {
     pub fn auth_success(&mut self, resp: &mut RespPackets) -> Result<()> {
         resp.push(Packet::ServiceRequest(
             packets::ServiceRequest { name: SSH_SERVICE_CONNECTION } )).trap()?;
-        self.auth.success(self.hooks);
+        let h = self.auth.success(self.hooks)?;
+        if h.open_session {
+            // TODDO
+        //     resp.push(packets::Packet::ChannelOpen(ChannelOpen {
+        //         number: 
+        //     }
+        }
         Ok(())
     }
 
@@ -59,6 +65,30 @@ pub enum HookError {
 // Result, it can return an error or other options like Disconnect?
 pub type HookResult<T> = core::result::Result<T, HookError>;
 
+pub struct ClientHandle {
+    open_session: bool,
+    pty: bool,
+}
+
+impl ClientHandle {
+    pub(crate) fn new() -> Self {
+        Self {
+            open_session: false,
+            pty: false,
+        }
+    }
+
+    pub fn open_session(&mut self, pty: bool) -> Result<()> {
+        if self.open_session {
+            return Err(Error::Custom { msg: "Only one session can be opened per callback" })
+        }
+        self.open_session = true;
+        self.pty = pty;
+        Ok(())
+    }
+
+}
+
 ///
 /// # Examples
 ///
@@ -75,8 +105,9 @@ pub trait ClientHooks<'a> {
     ///
     fn username(&mut self, username: &mut ResponseString) -> HookResult<()>;
 
-    /// Whether to accept a hostkey for the server
-    fn valid_hostkey(&mut self, hostname: &str, key: &PubKey<'a>) -> HookResult<bool>;
+    /// Whether to accept a hostkey for the server. The implementation
+    /// should compare the key with the key expected for the hostname used.
+    fn valid_hostkey(&mut self, key: &PubKey) -> HookResult<bool>;
 
     /// Get a password to use for authentication returning `Ok(true)`.
     /// Return `Ok(false)` to skip password authentication
@@ -95,7 +126,7 @@ pub trait ClientHooks<'a> {
     }
 
     /// Called after authentication has succeeded
-    fn authenticated(&mut self) -> HookResult<()>;
+    fn authenticated(&mut self, client: &mut ClientHandle) -> HookResult<()>;
 
     /// Show a banner sent from a server. Arguments are provided
     /// by the server so could be hazardous, they should be escaped with

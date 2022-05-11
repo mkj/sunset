@@ -125,10 +125,11 @@ impl KexHash {
     /// Fill everything except K.
     /// q_c and q_s need to be padded as mpint (extra 0x00 if high bit set)
     /// for ecdsa and DH modes, but not for curve25519.
-    fn prefinish(&mut self, host_key: &PubKey, q_c: &[u8], q_s: &[u8]) {
-        hash_ser_length(&mut self.hash_ctx, host_key);
+    fn prefinish(&mut self, host_key: &PubKey, q_c: &[u8], q_s: &[u8]) -> Result<()> {
+        hash_ser_length(&mut self.hash_ctx, host_key)?;
         self.hash_slice(q_c);
         self.hash_slice(q_s);
+        Ok(())
     }
 
     /// Compute the remainder of the hash, consuming KexHash
@@ -245,11 +246,12 @@ impl Kex {
     // consumes self.
     pub fn handle_kexdhreply<'a>(
         self, p: &packets::KexDHReply, sess_id: &Option<Digest>,
+        hooks: &mut dyn ClientHooks
     ) -> Result<KexOutput> {
         if !self.algos.as_ref().trap()?.is_client {
             return Err(Error::bug());
         }
-        SharedSecret::handle_kexdhreply(self, p, sess_id)
+        SharedSecret::handle_kexdhreply(self, p, sess_id, hooks)
     }
 
     /// Perform SSH algorithm negotiation
@@ -378,6 +380,7 @@ impl SharedSecret {
     // client only
     fn handle_kexdhreply<'a>(
         mut kex: Kex, p: &packets::KexDHReply, sess_id: &Option<Digest>,
+        hooks: &mut dyn ClientHooks
     ) -> Result<KexOutput> {
         // let mut algos = kex.algos.take().trap()?;
         let mut algos = kex.algos.trap()?;
@@ -392,7 +395,11 @@ impl SharedSecret {
 
         algos.hostsig.verify(&p.k_s.0, kex_out.h.as_ref(), &p.sig.0)?;
         debug!("Hostkey signature is valid");
-        Ok(kex_out)
+        if matches!(hooks.valid_hostkey(&p.k_s.0), Ok(true)) {
+            Ok(kex_out)
+        } else {
+            Err(Error::HookError { msg: "Host key rejected" })
+        }
     }
 
     // server only. consumes kex.
@@ -432,11 +439,9 @@ pub(crate) struct KexOutput {
 
 impl fmt::Debug for KexOutput {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "KexOutput, shared secret {}",
-            self.shsec.is_some(),
-        )
+        f.debug_struct("KexOutput")
+            .field("shared secret", &self.shsec.is_some())
+            .finish_non_exhaustive()
     }
 }
 

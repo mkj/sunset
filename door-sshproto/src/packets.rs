@@ -167,8 +167,9 @@ pub struct MethodPassword<'a> {
 // Don't print password
 impl<'a> fmt::Debug for MethodPassword<'a>{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "MethodPassword {{ changepw: {}, password: (hidden) }}",
-            self.change)
+        f.debug_struct("MethodPassword")
+            .field("change", &self.change)
+            .finish_non_exhaustive()
     }
 }
 

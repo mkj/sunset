@@ -131,7 +131,7 @@ impl<'a> Serialize for BinString<'a> {
 // a wrapper for a u32 prefixed data structure `B`, such as a public key blob
 pub struct Blob<B>(pub B);
 
-impl<'a, B> AsRef<B> for Blob<B> {
+impl<B> AsRef<B> for Blob<B> {
     fn as_ref(&self) -> &B {
         &self.0
     }
