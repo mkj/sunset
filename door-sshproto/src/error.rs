@@ -15,7 +15,7 @@ use heapless::String;
 #[derive(Debug)]
 pub struct UnknownName(pub String<35>);
 
-impl fmt::Display for UnknownName {
+    impl fmt::Display for UnknownName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.0.fmt(f)
     }
@@ -82,11 +82,14 @@ pub enum Error {
     /// Bad key format
     BadKey,
 
+    /// Ran out of channels
+    NoChannels,
+
     // Used for unknown key types etc.
     #[snafu(display("{what} is not available"))]
     NotAvailable { what: &'static str },
 
-    /// Unknown packet type
+    #[snafu(display("Unknown packet type {number}"))]
     UnknownPacket { number: u8 },
 
     /// Received packet at a disallowed time.
@@ -96,7 +99,7 @@ pub enum Error {
     #[snafu(display("No matching {algo} algorithm"))]
     AlgoNoMatch { algo: &'static str },
 
-    /// Packet size too large (or bad decrypt)
+    #[snafu(display("Packet size {size} too large (or bad decrypt)"))]
     BigPacket { size: usize },
 
     /// An unknown SSH name is provided, for a key type, signature type,
@@ -112,14 +115,13 @@ pub enum Error {
     #[snafu(display("Failure from hook: {msg}"))]
     HookError { msg: &'static str },
 
-    /// Other custom error
+    #[snafu(display("{msg}"))]
     // TODO: these could eventually get categorised
     Custom { msg: &'static str },
 
     // This state should not be reached, previous logic should have prevented it.
-    // Don't create `Bug` directly, instead use [`Error::bug()`] or
-    // [`.trap()`](TrapBug::trap) to make finding the source easier.
-    /// Program bug.
+    // Create this using [`Error::bug()`] or [`.trap()`](TrapBug::trap).
+    #[snafu(display("Program bug {location}"))]
     Bug { location: snafu::Location },
 }
 
@@ -150,7 +152,7 @@ impl Error {
     }
 
     /// Like [`bug()`] but with a message
-    /// The message can be used instead of a comment, is logged at `debug` level.
+    /// The message can be used instead of a code comment, is logged at `debug` level.
     #[track_caller]
     #[cold]
     /// TODO: is the generic `T` going to make it bloat?
@@ -272,13 +274,13 @@ impl serde::de::Error for Error {
             }
         }
         info!("Invalid input. Expected {} got {:?}", exp, unexp);
-        if let Unexpected::Str(s) = unexp {
+        if let Unexpected::Str(_) = unexp {
             return Error::BadString
         }
         Error::bug()
     }
 
-    fn unknown_variant(variant: &str, expected: &'static [&'static str]) -> Self {
+    fn unknown_variant(variant: &str, _expected: &'static [&'static str]) -> Self {
         debug!("Unknown variant '{variant}' wasn't caught");
         Error::bug()
     }

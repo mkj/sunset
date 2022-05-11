@@ -31,11 +31,12 @@ mod servauth;
 pub mod doorlog;
 mod channel;
 mod config;
+mod runner;
 
 pub use client::Client;
 pub use client::ResponseString;
 pub use client::{ClientHooks, HookError, HookResult, ClientHandle};
-pub use conn::Runner;
+pub use runner::Runner;
 pub use conn::Conn;
 pub use packets::PubKey;
 pub use error::Error;

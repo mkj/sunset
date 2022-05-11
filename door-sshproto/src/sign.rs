@@ -37,8 +37,8 @@ impl SigType {
     /// Returns a valid name
     pub fn algorithm_name(&self) -> &'static str {
         match self {
-            Ed25519 => SSH_NAME_ED25519,
-            RSA256 => SSH_NAME_RSA_SHA256,
+            SigType::Ed25519 => SSH_NAME_ED25519,
+            SigType::RSA256 => SSH_NAME_RSA_SHA256,
         }
     }
 

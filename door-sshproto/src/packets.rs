@@ -377,13 +377,13 @@ pub struct ChannelOpen<'a> {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ChannelType<'a> {
-    #[serde(borrow)]
+    #[serde(rename = "session")]
+    Session,
     #[serde(rename = "forwarded-tcpip")]
+    #[serde(borrow)]
     ForwardedTcpip(ForwardedTcpip<'a>),
     #[serde(rename = "direct-tcpip")]
     DirectTcpip(DirectTcpip<'a>),
-    #[serde(rename = "session")]
-    Session,
     // #[serde(rename = "x11")]
     // Session(X11<'a>),
     // #[serde(rename = "auth-agent@openssh.com")]

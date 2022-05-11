@@ -61,11 +61,9 @@ impl<'a> AlgoConfig<'a> {
     }
 }
 
-#[allow(non_snake_case)]
 pub(crate) struct Kex {
-    // TODO: we could be tricky here and have an enum that saves memory
-    // by only keeping currently required fields. to be done once the structure
-    // stabilises
+    // TODO: we could enum only keeping currently required fields.
+    // To be done once the structure stabilises
 
     // Cookie sent in our KexInit packet. Kept so that we can reproduce the
     // KexInit packet when calculating the exchange hash.
@@ -330,14 +328,14 @@ impl Kex {
             .first_match(is_client, &conf.comps)?
             .ok_or(Error::AlgoNoMatch { algo: "compression" })?;
 
-        // Ignore language fields at present. unsure which implementations
+        // Ignore language fields at present. Unsure which implementations
         // use it, possibly SunSSH
 
         let discard_next = p.first_follows && !(goodguess_kex && goodguess_hostkey);
 
         Ok(Algos {
             kex,
-            hostsig: hostsig,
+            hostsig,
             cipher_enc,
             cipher_dec,
             integ_enc,
@@ -385,7 +383,7 @@ impl SharedSecret {
         // let mut algos = kex.algos.take().trap()?;
         let mut algos = kex.algos.trap()?;
         let mut kex_hash = kex.kex_hash.take().trap()?;
-        kex_hash.prefinish(&p.k_s.0, algos.kex.pubkey(), p.q_s.0);
+        kex_hash.prefinish(&p.k_s.0, algos.kex.pubkey(), p.q_s.0)?;
         // consumes the sharedsecret private key in algos
         let kex_out = match algos.kex {
             SharedSecret::KexCurve25519(_) => {
@@ -411,7 +409,7 @@ impl SharedSecret {
         let mut kex_hash = kex.kex_hash.take().trap()?;
         // TODO
         let fake_hostkey = PubKey::Ed25519(packets::Ed25519PubKey{ key: BinString(&[]) });
-        kex_hash.prefinish(&fake_hostkey, p.q_c.0, algos.kex.pubkey());
+        kex_hash.prefinish(&fake_hostkey, p.q_c.0, algos.kex.pubkey())?;
         let mut kex_out = match algos.kex {
             SharedSecret::KexCurve25519(_) => {
                 KexCurve25519::secret(&mut algos, p.q_c.0, kex_hash, sess_id)?

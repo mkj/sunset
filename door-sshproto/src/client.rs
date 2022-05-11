@@ -29,17 +29,18 @@ impl<'a> Client<'a> {
 
     // pub fn check_hostkey(hostkey: )
 
-    pub fn auth_success(&mut self, resp: &mut RespPackets) -> Result<()> {
+    pub fn auth_success(&mut self, resp: &mut RespPackets) -> Result<ClientHandle> {
         resp.push(Packet::ServiceRequest(
             packets::ServiceRequest { name: SSH_SERVICE_CONNECTION } )).trap()?;
         let h = self.auth.success(self.hooks)?;
-        if h.open_session {
-            // TODDO
+        // if h.open_session {
+        //     let (chan, p) = channel::Channel::open(channel::ChanType::Session)
+            // TODO
         //     resp.push(packets::Packet::ChannelOpen(ChannelOpen {
         //         number: 
         //     }
-        }
-        Ok(())
+        // }
+        Ok(h)
     }
 
     pub fn banner(&mut self, banner: &packets::UserauthBanner) {
@@ -66,8 +67,8 @@ pub enum HookError {
 pub type HookResult<T> = core::result::Result<T, HookError>;
 
 pub struct ClientHandle {
-    open_session: bool,
-    pty: bool,
+    pub(crate) open_session: bool,
+    pub(crate) pty: bool,
 }
 
 impl ClientHandle {

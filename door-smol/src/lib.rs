@@ -46,7 +46,8 @@ impl<'a> door::ClientHooks<'a> for DoorSession {
 
     fn authenticated(&mut self, h: &mut ClientHandle) -> HookResult<()> {
         info!("Authentication succeeded");
-        h.open_session(true);
+        // h.open_session(true);
+        h.open_session(false);
         Ok(())
     }
 
