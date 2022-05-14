@@ -163,7 +163,7 @@ impl<'a> Conn<'a> {
     ) -> Result<RespPackets, Error> {
         // TODO: perhaps could consolidate packet allowed checks into a separate function
         // to run first?
-        trace!("dispatch {packet:#?}");
+        trace!("Incoming {packet:#?}");
         let mut resp = RespPackets::new();
         match packet {
             Packet::KexInit(_) => {
@@ -283,14 +283,15 @@ impl<'a> Conn<'a> {
                 if let ClientServer::Client(cli) = &mut self.cliserv {
                     if matches!(self.state, ConnState::PreAuth) {
                         self.state = ConnState::Authed;
-                        let h = cli.auth_success(&mut resp)?;
-                        if h.open_session {
-                            let (chan, p) = self.channels.open(packets::ChannelType::Session)?;
-                            resp.push(p).trap()?;
-                            if h.pty {
-                                todo!();
-                            }
-                        }
+                        cli.auth_success(&mut resp)?;
+                        // if h.open_session {
+                        //     let (chan, p) = self.channels.open(
+                        //         packets::ChannelOpenType::Session)?;
+                        //     resp.push(p).trap()?;
+                        //     if h.pty {
+                        //         todo!();
+                        //     }
+                        // }
                     } else {
                         debug!("Received UserauthSuccess unrequested")
                     }
@@ -317,10 +318,19 @@ impl<'a> Conn<'a> {
                     return Err(Error::SSHProtoError)
                 }
             }
-            Packet::ChannelOpen(p) => {
-                todo!();
-                // self.channels.confirmation(p)?;
-            }
+            | Packet::ChannelOpen(_)
+            | Packet::ChannelOpenConfirmation(_)
+            | Packet::ChannelOpenFailure(_)
+            | Packet::ChannelWindowAdjust(_)
+            | Packet::ChannelData(_)
+            | Packet::ChannelDataExt(_)
+            | Packet::ChannelEof(_)
+            | Packet::ChannelClose(_)
+            | Packet::ChannelRequest(_)
+            | Packet::ChannelSuccess(_)
+            | Packet::ChannelFailure(_)
+            // TODO: probably needs a conn or cliserv argument.
+            => self.channels.dispatch(packet)?,
         };
         Ok(resp)
     }

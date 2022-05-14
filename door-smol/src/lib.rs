@@ -12,7 +12,6 @@ use anyhow::{Context as _, Result, Error};
 
 use door_sshproto as door;
 use door_sshproto::error::Error as DoorError;
-use door_sshproto::ClientHandle;
 use door_sshproto::{HookResult,HookError};
 // use door_sshproto::client::*;
 
@@ -44,10 +43,8 @@ impl<'a> door::ClientHooks<'a> for DoorSession {
         }
     }
 
-    fn authenticated(&mut self, h: &mut ClientHandle) -> HookResult<()> {
+    fn authenticated(&mut self) -> HookResult<()> {
         info!("Authentication succeeded");
-        // h.open_session(true);
-        h.open_session(false);
         Ok(())
     }
 

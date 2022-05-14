@@ -369,14 +369,14 @@ pub struct RSA256Sig<'a> {
 #[derive(Debug)]
 pub struct ChannelOpen<'a> {
     // channel_type is implicit in the type enum below
-    pub number: u32,
+    pub num: u32,
     pub initial_window: u32,
     pub max_packet: u32,
-    pub ch: ChannelType<'a>,
+    pub ch: ChannelOpenType<'a>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub enum ChannelType<'a> {
+pub enum ChannelOpenType<'a> {
     #[serde(rename = "session")]
     Session,
     #[serde(rename = "forwarded-tcpip")]
@@ -399,13 +399,13 @@ impl<'a> Serialize for ChannelOpen<'a> {
     {
         let mut seq = serializer.serialize_struct("ChannelOpen", 5)?;
         let channel_type = match self.ch {
-            ChannelType::Session => "session",
-            ChannelType::ForwardedTcpip(_) => "forwarded-tcpip",
-            ChannelType::DirectTcpip(_) => "direct-tcpip",
-            ChannelType::Unknown(_) => return Err(S::Error::custom("unknown")),
+            ChannelOpenType::Session => "session",
+            ChannelOpenType::ForwardedTcpip(_) => "forwarded-tcpip",
+            ChannelOpenType::DirectTcpip(_) => "direct-tcpip",
+            ChannelOpenType::Unknown(_) => return Err(S::Error::custom("unknown")),
         };
         seq.serialize_field("channel_type", channel_type)?;
-        seq.serialize_field("number", &self.number)?;
+        seq.serialize_field("num", &self.num)?;
         seq.serialize_field("initial_window", &self.initial_window)?;
         seq.serialize_field("max_packet", &self.initial_window)?;
         seq.serialize_field("ch", &self.ch)?;
@@ -436,16 +436,16 @@ impl<'de: 'a, 'a> Deserialize<'de> for ChannelOpen<'a> {
                 // a bit horrible
                 let mut _k: &'de str;
                 let _channel_type: &'de str;
-                let number;
+                let num;
                 let initial_window;
                 let max_packet;
                 let ch;
                 (_k, _channel_type) = map
                     .next_entry()?
                     .ok_or_else(|| de::Error::missing_field("channel_type"))?;
-                (_k, number) = map
+                (_k, num) = map
                     .next_entry()?
-                    .ok_or_else(|| de::Error::missing_field("number"))?;
+                    .ok_or_else(|| de::Error::missing_field("num"))?;
                 (_k, initial_window) = map
                     .next_entry()?
                     .ok_or_else(|| de::Error::missing_field("initial_window"))?;
@@ -456,28 +456,251 @@ impl<'de: 'a, 'a> Deserialize<'de> for ChannelOpen<'a> {
                     .next_entry()?
                     .ok_or_else(|| de::Error::missing_field("ch"))?;
 
-                Ok(ChannelOpen { number, initial_window, max_packet, ch })
+                Ok(ChannelOpen { num, initial_window, max_packet, ch })
             }
         }
+        // deserialize as a struct so wireformat can get the channel_type
+        // used to decode the ch enum.
         deserializer.deserialize_struct(
             "ChannelOpen",
-            &["channel_type", "number", "initial_window", "max_packet", "ch"],
+            &["channel_type", "num", "initial_window", "max_packet", "ch"],
             Vis,
         )
     }
 }
 
+#[derive(Debug,Serialize,Deserialize)]
+pub struct ChannelOpenConfirmation {
+    pub num: u32,
+    pub sender_num: u32,
+    pub initial_window: u32,
+    pub max_packet: u32,
+}
+
+#[derive(Debug,Serialize,Deserialize)]
+pub struct ChannelOpenFailure<'a> {
+    pub num: u32,
+    pub reason: u32,
+    pub desc: &'a str,
+    pub lang: &'a str,
+}
+
+#[derive(Debug,Serialize,Deserialize)]
+pub struct ChannelWindowAdjust {
+    pub num: u32,
+    pub adjust: u32,
+}
+
+#[derive(Debug,Serialize,Deserialize)]
+pub struct ChannelData<'a> {
+    pub num: u32,
+    #[serde(borrow)]
+    pub data: BinString<'a>,
+}
+
+#[derive(Debug,Serialize,Deserialize)]
+pub struct ChannelDataExt<'a> {
+    pub num: u32,
+    pub code: u32,
+    #[serde(borrow)]
+    pub data: BinString<'a>,
+}
+
+#[derive(Debug,Serialize,Deserialize)]
+pub struct ChannelEof {
+    pub num: u32,
+}
+
+#[derive(Debug,Serialize,Deserialize)]
+pub struct ChannelClose {
+    pub num: u32,
+}
+
+#[derive(Debug,Serialize,Deserialize)]
+pub struct ChannelSuccess {
+    pub num: u32,
+}
+
+#[derive(Debug,Serialize,Deserialize)]
+pub struct ChannelFailure {
+    pub num: u32,
+}
+
+#[derive(Debug)]
+pub struct ChannelRequest<'a> {
+    pub num: u32,
+    // channel_type is implicit in the type enum below
+    pub want_reply: bool,
+    pub ch: ChannelReqType<'a>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum ChannelReqType<'a> {
+    #[serde(rename = "shell")]
+    Shell,
+    #[serde(rename = "exec")]
+    #[serde(borrow)]
+    Exec(Exec<'a>),
+    #[serde(rename = "pty-req")]
+    Pty(Pty<'a>),
+    #[serde(rename = "subsystem")]
+    Subsystem(Subsystem<'a>),
+    #[serde(rename = "window-change")]
+    WinChange(WinChange),
+    #[serde(rename = "signal")]
+    Signal(Signal<'a>),
+    #[serde(rename = "exit-status")]
+    ExitStatus(ExitStatus),
+    #[serde(rename = "exit-signal")]
+    ExitSignal(ExitSignal<'a>),
+    // rfc4335
+    #[serde(rename = "break")]
+    Break(Break),
+    // Other requests that aren't implemented at present:
+    // auth-agent-req@openssh.com
+    // x11-req
+    // env
+    // xon-xoff
+    #[serde(skip_serializing)]
+    Unknown(Unknown<'a>),
+}
+
+impl<'a> Serialize for ChannelRequest<'a> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut seq = serializer.serialize_struct("ChannelRequest", 5)?;
+        let channel_type = match self.ch {
+            ChannelReqType::Shell => "shell",
+            ChannelReqType::Exec(_) => "exec",
+            ChannelReqType::Pty(_) => "pty-req",
+            ChannelReqType::Subsystem(_) => "subsystem",
+            ChannelReqType::WinChange(_) => "window-change",
+            ChannelReqType::Signal(_) => "signal",
+            ChannelReqType::ExitStatus(_) => "exit-status",
+            ChannelReqType::ExitSignal(_) => "exit-signal",
+            ChannelReqType::Break(_) => "break",
+            ChannelReqType::Unknown(_) => return Err(S::Error::custom("unknown")),
+        };
+        seq.serialize_field("num", &self.num)?;
+        seq.serialize_field("channel_type", channel_type)?;
+        seq.serialize_field("want_reply", &self.want_reply)?;
+        seq.serialize_field("ch", &self.ch)?;
+        seq.end()
+    }
+}
+
+impl<'de: 'a, 'a> Deserialize<'de> for ChannelRequest<'a> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct Vis;
+
+        impl<'de> Visitor<'de> for Vis {
+            type Value = ChannelRequest<'de>;
+
+            fn expecting(
+                &self, formatter: &mut core::fmt::Formatter,
+            ) -> core::fmt::Result {
+                formatter.write_str("ChannelRequest")
+            }
+
+            fn visit_map<V>(self, mut map: V) -> Result<ChannelRequest<'de>, V::Error>
+            where
+                V: MapAccess<'de>,
+            {
+                // a bit horrible
+                let mut _k: &'de str;
+                let _channel_type: &'de str;
+                let num;
+                let want_reply;
+                let ch;
+                (_k, num) = map
+                    .next_entry()?
+                    .ok_or_else(|| de::Error::missing_field("num"))?;
+                (_k, _channel_type) = map
+                    .next_entry()?
+                    .ok_or_else(|| de::Error::missing_field("channel_type"))?;
+                (_k, want_reply) = map
+                    .next_entry()?
+                    .ok_or_else(|| de::Error::missing_field("want_reply"))?;
+                (_k, ch) = map
+                    .next_entry()?
+                    .ok_or_else(|| de::Error::missing_field("ch"))?;
+
+                Ok(ChannelRequest { num, want_reply, ch })
+            }
+        }
+        // deserialize as a struct so wireformat can get the channel_type
+        // used to decode the ch enum.
+        deserializer.deserialize_struct(
+            "ChannelRequest",
+            &["num", "channel_type", "want_reply", "ch"],
+            Vis,
+        )
+    }
+}
+
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Exec<'a> {
+    command: &'a str,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Pty<'a> {
+    term: &'a str,
+    cols: u32,
+    rows: u32,
+    width: u32,
+    height: u32,
+    modes: BinString<'a>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Subsystem<'a> {
+    subsystem: &'a str,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct WinChange {
+    cols: u32,
+    rows: u32,
+    width: u32,
+    height: u32,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Signal<'a> {
+    sig: &'a str,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ExitStatus {
+    status: u32,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ExitSignal<'a> {
+    signal: &'a str,
+    core: bool,
+    error: &'a str,
+    lang: &'a str,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Break {
+    length: u32,
+}
+
 // Placeholder for unknown method names. These are sometimes non-fatal and
 // need to be handled by the relevant code, for example newly invented pubkey types
+// This is deliberately not Serializable, we only receive it.
 #[derive(Debug,Deserialize,Clone)]
 pub struct Unknown<'a>(pub &'a str);
 
-
-// impl<'a> ChannelType<'a> {
-//     /// Special handling in [`wireformat`]
-//     pub(crate) fn variant(&self) -> Result<&'static str> {
-//     }
-// }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ForwardedTcpip<'a> {
@@ -668,24 +891,27 @@ messagetypes![
 (51, UserauthFailure, UserauthFailure<'a>, SSH_MSG_USERAUTH_FAILURE),
 (52, UserauthSuccess, UserauthSuccess, SSH_MSG_USERAUTH_SUCCESS),
 (53, UserauthBanner, UserauthBanner<'a>, SSH_MSG_USERAUTH_BANNER),
-// either SSH_MSG_USERAUTH_PASSWD_CHANGEREQ
-// or SSH_MSG_USERAUTH_PK_OK
+// One of
+// SSH_MSG_USERAUTH_PASSWD_CHANGEREQ
+// SSH_MSG_USERAUTH_PK_OK
+// SSH_MSG_USERAUTH_INFO_REQUEST
 (60, Userauth60, Userauth60<'a>, SSH_MSG_USERAUTH_60),
+// (61, SSH_MSG_USERAUTH_INFO_RESPONSE),
 
 // (80            SSH_MSG_GLOBAL_REQUEST),
 // (81            SSH_MSG_REQUEST_SUCCESS),
 // (82            SSH_MSG_REQUEST_FAILURE),
 (90, ChannelOpen, ChannelOpen<'a>, SSH_MSG_CHANNEL_OPEN),
-// (91            SSH_MSG_CHANNEL_OPEN_CONFIRMATION),
-// (92            SSH_MSG_CHANNEL_OPEN_FAILURE),
-// (93            SSH_MSG_CHANNEL_WINDOW_ADJUST),
-// (94            SSH_MSG_CHANNEL_DATA),
-// (95            SSH_MSG_CHANNEL_EXTENDED_DATA),
-// (96            SSH_MSG_CHANNEL_EOF),
-// (97            SSH_MSG_CHANNEL_CLOSE),
-// (98            SSH_MSG_CHANNEL_REQUEST),
-// (99            SSH_MSG_CHANNEL_SUCCESS),
-// (100            SSH_MSG_CHANNEL_FAILURE),
+(91, ChannelOpenConfirmation, ChannelOpenConfirmation, SSH_MSG_CHANNEL_OPEN_CONFIRMATION),
+(92, ChannelOpenFailure, ChannelOpenFailure<'a>, SSH_MSG_CHANNEL_OPEN_FAILURE),
+(93, ChannelWindowAdjust, ChannelWindowAdjust, SSH_MSG_CHANNEL_WINDOW_ADJUST),
+(94, ChannelData, ChannelData<'a>, SSH_MSG_CHANNEL_DATA),
+(95, ChannelDataExt, ChannelDataExt<'a>, SSH_MSG_CHANNEL_EXTENDED_DATA),
+(96, ChannelEof, ChannelEof, SSH_MSG_CHANNEL_EOF),
+(97, ChannelClose, ChannelClose, SSH_MSG_CHANNEL_CLOSE),
+(98, ChannelRequest, ChannelRequest<'a>, SSH_MSG_CHANNEL_REQUEST),
+(99, ChannelSuccess, ChannelSuccess, SSH_MSG_CHANNEL_SUCCESS),
+(100, ChannelFailure, ChannelFailure, SSH_MSG_CHANNEL_FAILURE),
 ];
 
 #[cfg(test)]
@@ -756,10 +982,10 @@ mod tests {
     fn roundtrip_channel_open() {
         init_test_log();
         let p = Packet::ChannelOpen(ChannelOpen {
-            number: 111,
+            num: 111,
             initial_window: 50000,
             max_packet: 20000,
-            ch: ChannelType::DirectTcpip(DirectTcpip {
+            ch: ChannelOpenType::DirectTcpip(DirectTcpip {
                 address: "localhost",
                 port: 4444,
                 origin: "somewhere",
@@ -770,10 +996,10 @@ mod tests {
         json_roundtrip(&p);
 
         let p = Packet::ChannelOpen(ChannelOpen {
-            number: 0,
+            num: 0,
             initial_window: 899,
             max_packet: 14,
-            ch: ChannelType::Session,
+            ch: ChannelOpenType::Session,
         });
         test_roundtrip(&p);
         json_roundtrip(&p);
@@ -783,10 +1009,10 @@ mod tests {
     fn unknown_method() {
         init_test_log();
         let p = Packet::ChannelOpen(ChannelOpen {
-            number: 0,
+            num: 0,
             initial_window: 899,
             max_packet: 14,
-            ch: ChannelType::Session,
+            ch: ChannelOpenType::Session,
         });
         let mut buf1 = vec![88; 1000];
         let l = write_ssh(&mut buf1, &p).unwrap();
@@ -804,10 +1030,10 @@ mod tests {
     fn unknown_method_ser() {
         init_test_log();
         let p = Packet::ChannelOpen(ChannelOpen {
-            number: 0,
+            num: 0,
             initial_window: 200000,
             max_packet: 88200,
-            ch: ChannelType::Unknown(Unknown("audio-stream"))
+            ch: ChannelOpenType::Unknown(Unknown("audio-stream"))
         });
         let mut buf1 = vec![88; 1000];
         write_ssh(&mut buf1, &p).unwrap();

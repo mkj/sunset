@@ -85,6 +85,9 @@ pub enum Error {
     /// Ran out of channels
     NoChannels,
 
+    /// Bad channel number
+    BadChannel,
+
     // Used for unknown key types etc.
     #[snafu(display("{what} is not available"))]
     NotAvailable { what: &'static str },

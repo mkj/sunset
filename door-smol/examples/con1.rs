@@ -11,7 +11,7 @@ use pin_utils::*;
 use smol::{net, prelude::*};
 use smol::{future, io, Async, Unblock};
 
-use std::net::TcpStream;
+use std::net::{TcpStream, Ipv6Addr};
 
 use door_sshproto::*;
 
@@ -39,7 +39,8 @@ async fn run() -> Result<()> {
     trace!("tracing main");
 
     // Connect to a peer
-    let stream = Async::<TcpStream>::connect(([127, 0, 0, 1], 2244)).await?;
+    let addr: Ipv6Addr = "::1".parse()?;
+    let stream = Async::<TcpStream>::connect((addr, 2244)).await?;
     // let mut stream = net::TcpStream::connect("::1:2244").await?;
     // let mut stream = TcpStream::connect("130.95.13.18:22").await?;
 

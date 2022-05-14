@@ -179,12 +179,11 @@ impl CliAuth {
         Ok(())
     }
 
-    pub fn success(&mut self, hooks: &mut dyn ClientHooks) -> Result<ClientHandle> {
+    pub fn success(&mut self, hooks: &mut dyn ClientHooks) -> Result<()> {
         // TODO: check current state? Probably just informational
         self.state = AuthState::Idle;
-        let mut handle = client::ClientHandle::new();
-        let _ = hooks.authenticated(&mut handle);
+        let _ = hooks.authenticated();
         // TODO errors
-        Ok(handle)
+        Ok(())
     }
 }

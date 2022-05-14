@@ -13,6 +13,7 @@ use crate::cliauth::CliAuth;
 use crate::conn::RespPackets;
 use crate::sign::SignKey;
 use heapless::String;
+use crate::hooks::HookError;
 
 pub struct Client<'a> {
     pub(crate) auth: CliAuth,
@@ -29,10 +30,10 @@ impl<'a> Client<'a> {
 
     // pub fn check_hostkey(hostkey: )
 
-    pub fn auth_success(&mut self, resp: &mut RespPackets) -> Result<ClientHandle> {
+    pub fn auth_success(&mut self, resp: &mut RespPackets) -> Result<()> {
         resp.push(Packet::ServiceRequest(
             packets::ServiceRequest { name: SSH_SERVICE_CONNECTION } )).trap()?;
-        let h = self.auth.success(self.hooks)?;
+        self.auth.success(self.hooks)
         // if h.open_session {
         //     let (chan, p) = channel::Channel::open(channel::ChanType::Session)
             // TODO
@@ -40,7 +41,6 @@ impl<'a> Client<'a> {
         //         number: 
         //     }
         // }
-        Ok(h)
     }
 
     pub fn banner(&mut self, banner: &packets::UserauthBanner) {
@@ -54,17 +54,6 @@ pub(crate) type RefHooks<'a> = &'a mut dyn ClientHooks<'a>;
 /// A stack-allocated string to store responses for usernames or passwords.
 // 100 bytes is an arbitrary size.
 pub type ResponseString = heapless::String<100>;
-
-#[derive(Debug,Snafu)]
-pub enum HookError {
-    Fail,
-    #[doc(hidden)]
-    Unimplemented,
-}
-
-// TODO: probably want a special Result here. They probably all want
-// Result, it can return an error or other options like Disconnect?
-pub type HookResult<T> = core::result::Result<T, HookError>;
 
 pub struct ClientHandle {
     pub(crate) open_session: bool,
@@ -127,7 +116,7 @@ pub trait ClientHooks<'a> {
     }
 
     /// Called after authentication has succeeded
-    fn authenticated(&mut self, client: &mut ClientHandle) -> HookResult<()>;
+    fn authenticated(&mut self) -> HookResult<()>;
 
     /// Show a banner sent from a server. Arguments are provided
     /// by the server so could be hazardous, they should be escaped with

@@ -315,7 +315,7 @@ impl Serializer for &mut SeSSHBytes<'_> {
         T: ?Sized + Serialize,
     {
         match name {
-            "Userauth60" | "ChannelType" => {
+            "Userauth60" | "ChannelOpenType" | "ChannelReqType" => {
                 // Name is elsewhere, part of the parent struct or
                 // from ParseContext
             }
@@ -611,7 +611,9 @@ impl<'de, 'a> Deserializer<'de> for &'a mut DeSSHBytes<'de> {
         V: Visitor<'de>,
     {
         let variant_field = match name {
-            "ChannelOpen" => Some("channel_type"),
+            |"ChannelOpen"
+            |"ChannelRequest"
+            => Some("channel_type"),
             _ => None,
         };
 
@@ -635,7 +637,9 @@ impl<'de, 'a> Deserializer<'de> for &'a mut DeSSHBytes<'de> {
     {
         let variant_name = match name {
             "Userauth60" => packets::Userauth60::variant(self.parse_ctx)?,
-            "ChannelType" => self.next_variant.take().trap()?,
+            |"ChannelOpenType"
+            |"ChannelReqType"
+            => self.next_variant.take().trap()?,
             "PubKey" | "Signature" | "AuthMethod" => {
                 // The variant is selected by the method name in the packet,
                 // using `#[serde(rename)]` in `packets` enum definition.

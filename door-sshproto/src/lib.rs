@@ -32,10 +32,12 @@ pub mod doorlog;
 mod channel;
 mod config;
 mod runner;
+mod hooks;
 
 pub use client::Client;
 pub use client::ResponseString;
-pub use client::{ClientHooks, HookError, HookResult, ClientHandle};
+pub use client::ClientHooks;
+pub use hooks::{HookError, HookResult};
 pub use runner::Runner;
 pub use conn::Conn;
 pub use packets::PubKey;
