@@ -4,7 +4,7 @@ use {
     log::{debug, error, info, log, trace, warn},
 };
 
-use core::task::Waker;
+use core::task::{Waker,Poll};
 
 use crate::*;
 use encrypt::KeyState;
@@ -54,7 +54,7 @@ impl<'a> Runner<'a> {
 
             let resp = self.conn.handle_payload(payload, &mut self.keys)?;
             for r in resp {
-                self.traffic.send_packet(r, &mut self.keys)?;
+                r.send_packet(&mut self.traffic, &mut self.keys)?;
             }
             self.conn.progress(&mut self.traffic, &mut self.keys)?;
         }
@@ -78,6 +78,14 @@ impl<'a> Runner<'a> {
         Ok(r)
         // TODO: need some kind of progress() here which
         // will return errors
+    }
+
+    pub fn channel_input(&mut self, chan: u32, msg: channel::ChanMsg) -> Result<usize> {
+        todo!()
+    }
+
+    pub fn channel_output(&mut self, chan: u32, buf: &mut [u8]) -> Result<Poll<channel::ChanOut>> {
+        todo!()
     }
 
     pub fn ready_input(&self) -> bool {

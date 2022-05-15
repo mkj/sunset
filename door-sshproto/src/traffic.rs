@@ -1,6 +1,6 @@
 #[allow(unused_imports)]
 use {
-    crate::error::Error,
+    crate::error::{Error,Result},
     log::{debug, error, info, log, trace, warn},
 };
 
@@ -8,6 +8,7 @@ use crate::encrypt::KeyState;
 use crate::encrypt::{SSH_LENGTH_SIZE, SSH_PAYLOAD_START};
 use crate::ident::RemoteVersion;
 use crate::*;
+use crate::packets::Packet;
 use pretty_hex::PrettyHex;
 
 pub(crate) struct Traffic<'a> {
@@ -47,6 +48,27 @@ enum TrafState {
         idx: usize,
         len: usize,
     },
+}
+
+#[derive(Debug)]
+pub(crate) enum PacketMaker<'a> {
+    Packet(Packet<'a>),
+    ChanReq(channel::Req),
+}
+
+impl<'a> From<Packet<'a>> for PacketMaker<'a> {
+    fn from(p: Packet<'a>) -> Self {
+        PacketMaker::Packet(p)
+    }
+}
+
+impl<'a> PacketMaker<'a> {
+    pub fn send_packet(self, traffic: &mut Traffic, keys: &mut KeyState) -> Result<()> {
+        match self {
+            Self::Packet(p) => traffic.send_packet(p, keys),
+            Self::ChanReq(r) => traffic.send_packet(r.packet()?, keys),
+        }
+    }
 }
 
 impl<'a> Traffic<'a> {
@@ -126,7 +148,7 @@ impl<'a> Traffic<'a> {
     }
 
     /// Serializes and and encrypts a packet to send
-    pub fn send_packet(&mut self, p: packets::Packet, keys: &mut KeyState) -> Result<(), Error> {
+    pub fn send_packet(&mut self, p: packets::Packet, keys: &mut KeyState) -> Result<()> {
         trace!("send_packet {:?}", p.message_num());
 
         // Either a fresh buffer or appending to write

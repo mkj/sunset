@@ -1,5 +1,7 @@
-// Note that some of these string literals are also copy+pasted
-// to #[serde(rename)] directives and Serialize impls in packets.rs
+// Note that some names are listed as string literals in packets.rs instead,
+// for #[serde(rename)].  Those could be moved here if this is resolved
+// https://github.com/serde-rs/serde/issues/1964
+// "Rename With Expressions"
 
 // RFC8731
 pub const SSH_NAME_CURVE25519: &str = "curve25519-sha256";
@@ -44,3 +46,5 @@ pub const SSH_AUTHMETHOD_PUBLICKEY: &str = "publickey";
 // RFC4256
 pub const SSH_AUTHMETHOD_INTERACTIVE: &str = "keyboard-interactive";
 
+// rfc4335
+pub const SSH_CHAN_REQ_BREAK: &str = "break";

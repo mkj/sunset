@@ -33,6 +33,7 @@ mod channel;
 mod config;
 mod runner;
 mod hooks;
+mod termmodes;
 
 pub use client::Client;
 pub use client::ResponseString;

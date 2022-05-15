@@ -646,77 +646,77 @@ impl<'de: 'a, 'a> Deserialize<'de> for ChannelRequest<'a> {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Exec<'a> {
-    command: &'a str,
+    pub command: &'a str,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Pty<'a> {
-    term: &'a str,
-    cols: u32,
-    rows: u32,
-    width: u32,
-    height: u32,
-    modes: BinString<'a>,
+    pub term: &'a str,
+    pub cols: u32,
+    pub rows: u32,
+    pub width: u32,
+    pub height: u32,
+    pub modes: BinString<'a>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Subsystem<'a> {
-    subsystem: &'a str,
+    pub subsystem: &'a str,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct WinChange {
-    cols: u32,
-    rows: u32,
-    width: u32,
-    height: u32,
+    pub cols: u32,
+    pub rows: u32,
+    pub width: u32,
+    pub height: u32,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Signal<'a> {
-    sig: &'a str,
+    pub sig: &'a str,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ExitStatus {
-    status: u32,
+    pub status: u32,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ExitSignal<'a> {
-    signal: &'a str,
-    core: bool,
-    error: &'a str,
-    lang: &'a str,
+    pub signal: &'a str,
+    pub core: bool,
+    pub error: &'a str,
+    pub lang: &'a str,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Break {
+    pub length: u32,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct Break {
-    length: u32,
+pub struct ForwardedTcpip<'a> {
+    pub address: &'a str,
+    pub port: u32,
+    pub origin: &'a str,
+    pub origin_port: u32,
 }
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct DirectTcpip<'a> {
+    pub address: &'a str,
+    pub port: u32,
+    pub origin: &'a str,
+    pub origin_port: u32,
+}
+
 
 // Placeholder for unknown method names. These are sometimes non-fatal and
 // need to be handled by the relevant code, for example newly invented pubkey types
 // This is deliberately not Serializable, we only receive it.
 #[derive(Debug,Deserialize,Clone)]
 pub struct Unknown<'a>(pub &'a str);
-
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct ForwardedTcpip<'a> {
-    address: &'a str,
-    port: u32,
-    origin: &'a str,
-    origin_port: u32,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct DirectTcpip<'a> {
-    address: &'a str,
-    port: u32,
-    origin: &'a str,
-    origin_port: u32,
-}
 
 /// State to be passed to deserialisation.
 /// Use this so the parser can select the correct enum variant to deserialize.

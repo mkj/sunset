@@ -86,13 +86,13 @@ impl<'a> AsyncWrite for AsyncDoor<'a> {
 
     }
 
-    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>)
+    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>)
     -> Poll<Result<(), futures_io::Error>>
     {
         Poll::Ready(Ok(()))
     }
 
-    fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>)
+    fn poll_close(self: Pin<&mut Self>, _cx: &mut Context<'_>)
     -> Poll<Result<(), futures_io::Error>>
     {
         todo!("poll_close")

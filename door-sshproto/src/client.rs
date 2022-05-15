@@ -30,20 +30,13 @@ impl<'a> Client<'a> {
 
     // pub fn check_hostkey(hostkey: )
 
-    pub fn auth_success(&mut self, resp: &mut RespPackets) -> Result<()> {
+    pub(crate) fn auth_success(&mut self, resp: &mut RespPackets) -> Result<()> {
         resp.push(Packet::ServiceRequest(
-            packets::ServiceRequest { name: SSH_SERVICE_CONNECTION } )).trap()?;
+            packets::ServiceRequest { name: SSH_SERVICE_CONNECTION } ).into()).trap()?;
         self.auth.success(self.hooks)
-        // if h.open_session {
-        //     let (chan, p) = channel::Channel::open(channel::ChanType::Session)
-            // TODO
-        //     resp.push(packets::Packet::ChannelOpen(ChannelOpen {
-        //         number: 
-        //     }
-        // }
     }
 
-    pub fn banner(&mut self, banner: &packets::UserauthBanner) {
+    pub(crate) fn banner(&mut self, banner: &packets::UserauthBanner) {
         self.hooks.show_banner(banner.message, banner.lang);
     }
 }

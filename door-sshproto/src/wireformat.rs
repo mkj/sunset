@@ -137,7 +137,7 @@ impl<B> AsRef<B> for Blob<B> {
     }
 }
 
-impl<'a, B: Serialize + Debug> Debug for Blob<B> {
+impl<B: Serialize + Debug> Debug for Blob<B> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let len = SeSSHBytes::get_length(&self.0)
             .map_err(|_| ser::Error::custom(Error::bug()))?;
@@ -145,7 +145,7 @@ impl<'a, B: Serialize + Debug> Debug for Blob<B> {
     }
 }
 
-impl<'a, B: Serialize> Serialize for Blob<B> {
+impl<B: Serialize> Serialize for Blob<B> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,

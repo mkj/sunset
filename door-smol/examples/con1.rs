@@ -46,7 +46,7 @@ async fn run() -> Result<()> {
 
     let mut work = vec![0; 3000];
     let mut sess = door_smol::DoorSession {};
-    let cli= Client::new(&mut sess)?;
+    let cli = Client::new(&mut sess)?;
     let conn = Conn::new_client(cli)?;
     let runner = Runner::new(conn, work.as_mut_slice())?;
 

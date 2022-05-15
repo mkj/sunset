@@ -6,6 +6,8 @@ use {
 
 use snafu::prelude::*;
 
+use crate::packets::{self,Packet};
+
 // TODO: probably want a special Result here. They probably all want
 // Result, it can return an error or other options like Disconnect?
 pub type HookResult<T> = core::result::Result<T, HookError>;
@@ -16,4 +18,5 @@ pub enum HookError {
     #[doc(hidden)]
     Unimplemented,
 }
+
 

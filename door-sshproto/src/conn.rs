@@ -17,14 +17,14 @@ use client::Client;
 use encrypt::KeyState;
 use packets::{Packet,ParseContext};
 use server::Server;
-use traffic::Traffic;
+use traffic::{Traffic,PacketMaker};
 use channel::{Channel, Channels};
 use config::MAX_CHANNELS;
 
 // TODO a max value needs to be analysed
 const MAX_RESPONSES: usize = 4;
 
-pub(crate) type RespPackets<'a> = heapless::Vec<Packet<'a>, MAX_RESPONSES>;
+pub(crate) type RespPackets<'a> = heapless::Vec<PacketMaker<'a>, MAX_RESPONSES>;
 
 /// The core state of a SSH instance.
 pub struct Conn<'a> {
@@ -89,8 +89,8 @@ enum ConnState {
 impl<'a> Conn<'a> {
     pub fn new_client(client: client::Client<'a>) -> Result<Self> {
         Self::new(ClientServer::Client(client))
-
     }
+
     fn new(cliserv: ClientServer<'a>) -> Result<Self, Error> {
         Ok(Conn {
             kex: kex::Kex::new()?,
@@ -114,7 +114,7 @@ impl<'a> Conn<'a> {
                 traffic.send_version(ident::OUR_VERSION)?;
                 let p = self.kex.make_kexinit(&self.algo_conf);
                 // TODO: first_follows would have a second packet here
-                resp.push(p).trap()?;
+                resp.push(p.into()).trap()?;
                 self.state = ConnState::ReceiveIdent
             }
             ConnState::ReceiveIdent => {
@@ -138,7 +138,7 @@ impl<'a> Conn<'a> {
             }
         }
         for r in resp {
-            traffic.send_packet(r, keys)?;
+            r.send_packet(traffic, keys)?;
         }
 
         // TODO: if keys.seq > MAX_REKEY then we must rekey for security.
@@ -181,7 +181,7 @@ impl<'a> Conn<'a> {
                     packet,
                 )?;
                 if let Some(r) = r {
-                    resp.push(r).trap()?;
+                    resp.push(r.into()).trap()?;
                 }
             }
             Packet::KexDHInit(p) => {
@@ -198,7 +198,7 @@ impl<'a> Conn<'a> {
                                 core::mem::replace(&mut self.kex, kex::Kex::new()?);
                             *output = Some(kex.handle_kexdhinit(p, &self.sess_id)?);
                             let reply = output.as_ref().trap()?.make_kexdhreply()?;
-                            resp.push(reply).trap()?;
+                            resp.push(reply.into()).trap()?;
                         }
                     }
                     _ => return Err(Error::PacketWrong),
@@ -214,7 +214,7 @@ impl<'a> Conn<'a> {
                                 let kex =
                                     core::mem::replace(&mut self.kex, kex::Kex::new()?);
                                 *output = Some(kex.handle_kexdhreply(p, &self.sess_id, cli.hooks)?);
-                                resp.push(Packet::NewKeys(packets::NewKeys {}))
+                                resp.push(Packet::NewKeys(packets::NewKeys {}).into())
                                     .trap()?;
                             }
                         } else {

@@ -28,7 +28,7 @@ pub enum AuthState {
     Idle,
 }
 
-pub struct CliAuth {
+pub(crate) struct CliAuth {
     state: AuthState,
 
     username: ResponseString,
@@ -64,13 +64,13 @@ impl CliAuth {
             self.state = AuthState::MethodQuery;
             resp.push(Packet::ServiceRequest(packets::ServiceRequest {
                 name: SSH_SERVICE_USERAUTH,
-            }))
+            }).into())
             .trap()?;
             resp.push(Packet::UserauthRequest(packets::UserauthRequest {
                 username: &self.username,
                 service: SSH_SERVICE_CONNECTION,
                 method: packets::AuthMethod::None,
-            }))
+            }).into())
             .trap()?;
             trace!("{resp:#?}");
         }
@@ -174,7 +174,7 @@ impl CliAuth {
 
         if let AuthState::Request { last_req: req } = &self.state {
             let p = self.req_packet()?;
-            resp.push(p).trap()?;
+            resp.push(p.into()).trap()?;
         }
         Ok(())
     }
