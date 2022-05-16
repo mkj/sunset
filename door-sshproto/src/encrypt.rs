@@ -239,6 +239,7 @@ impl Keys {
             w.copy_from_slice(&k2[..l]);
         }
         debug_assert_eq!(rest.len(), 0);
+        // trace!("letter {letter} {}", (&out[..len]).hex_dump());
         Ok(&out[..len])
     }
 

@@ -44,10 +44,6 @@ impl<'a> Client<'a> {
 // A bit of a mouthful.
 pub(crate) type RefHooks<'a> = &'a mut dyn ClientHooks<'a>;
 
-/// A stack-allocated string to store responses for usernames or passwords.
-// 100 bytes is an arbitrary size.
-pub type ResponseString = heapless::String<100>;
-
 pub struct ClientHandle {
     pub(crate) open_session: bool,
     pub(crate) pty: bool,
@@ -72,14 +68,6 @@ impl ClientHandle {
 
 }
 
-///
-/// # Examples
-///
-/// ` ``
-/// fn auth_password(&mut self) -> Option<ResponseString> {
-/// // TODO
-/// }
-/// ` ``
 pub trait ClientHooks<'a> {
     /// Provide the username to use for authentication. Will only be called once
     /// per session.

@@ -6,6 +6,8 @@ use {
 use futures_io::{AsyncRead, AsyncWrite};
 use core::pin::Pin;
 use core::task::{Context,Poll};
+use pin_utils::pin_mut;
+use core::future::Future;
 
 // TODO
 use anyhow::{Context as _, Result, Error};
@@ -74,11 +76,15 @@ impl<'a> AsyncWrite for AsyncDoor<'a> {
     fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context<'_>,
         buf: &[u8]) -> Poll<Result<usize, futures_io::Error>>
     {
+        trace!("write size {}", buf.len());
         // TODO: should runner just have poll_write/poll_read?
         if self.runner.ready_input() {
-            let r = self.runner.input(buf)
-            .map_err(|e| futures_io::Error::new(std::io::ErrorKind::Other, e));
-            Poll::Ready(r)
+            let f = self.runner.input(buf);
+            pin_mut!(f);
+            let r = f.poll(cx)
+            .map(|r| r.map_err(|e| futures_io::Error::new(std::io::ErrorKind::Other, e)));
+            trace!("write {r:?}");
+            r
         } else {
             self.runner.set_input_waker(cx.waker().clone());
             Poll::Pending

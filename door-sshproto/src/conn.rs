@@ -5,6 +5,7 @@ use {
 };
 
 use core::char::MAX;
+use core::task::Waker;
 
 use ring::digest::Digest;
 use pretty_hex::PrettyHex;
@@ -45,6 +46,8 @@ pub struct Conn<'a> {
     pub(crate) remote_version: ident::RemoteVersion,
 
     channels: Channels,
+
+    hook_mbox: hooks::HookMailbox,
 }
 
 // TODO: what tricks can we do to optimise away client or server code if we only
@@ -100,12 +103,13 @@ impl<'a> Conn<'a> {
             algo_conf: kex::AlgoConfig::new(cliserv.is_client()),
             cliserv,
             channels: Channels::new(),
+            hook_mbox: hooks::HookMailbox::new(),
         })
     }
 
     /// Updates `ConnState` and sends any packets required to progress the connection state.
-    pub(crate) fn progress(
-        &mut self, traffic: &mut Traffic, keys: &mut KeyState,
+    pub(crate) async fn progress<'b>(
+        &mut self, traffic: &mut Traffic<'b>, keys: &mut KeyState,
     ) -> Result<(), Error> {
         trace!("conn state {:?}", self.state);
         let mut resp = RespPackets::new();
@@ -127,7 +131,7 @@ impl<'a> Conn<'a> {
                 // and backpressure.
                 if traffic.can_output() {
                     if let ClientServer::Client(cli) = &mut self.cliserv {
-                        cli.auth.start(cli.hooks, &mut resp)?;
+                        cli.auth.start(&mut resp, &mut self.hook_mbox).await?;
                     }
                 }
                 // send userauth request

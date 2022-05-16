@@ -226,6 +226,7 @@ impl<'a> Traffic<'a> {
                 if total_len > self.buf.len() {
                     // TODO: Or just BadDecrypt could make more sense if
                     // it were packet corruption/decryption failure
+                    panic!("xxx");
                     return Err(Error::BigPacket { size: total_len });
                 }
                 self.state = TrafState::Read { idx, expect: total_len }

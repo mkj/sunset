@@ -5,6 +5,7 @@ use {
 };
 
 use core::task::{Waker,Poll};
+use pretty_hex::PrettyHex;
 
 use crate::*;
 use encrypt::KeyState;
@@ -25,7 +26,7 @@ pub struct Runner<'a> {
 
 impl<'a> Runner<'a> {
     /// `iobuf` must be sized to fit the largest SSH packet allowed.
-    pub fn new(conn: Conn<'a>, iobuf: &'a mut [u8]) -> Result<Self, Error> {
+    pub async fn new(conn: Conn<'a>, iobuf: &'a mut [u8]) -> Result<Runner<'a>, Error> {
         let mut runner = Runner {
             conn,
             traffic: traffic::Traffic::new(iobuf),
@@ -34,12 +35,13 @@ impl<'a> Runner<'a> {
             input_waker: None,
         };
 
-        runner.conn.progress(&mut runner.traffic, &mut runner.keys)?;
+        runner.conn.progress(&mut runner.traffic, &mut runner.keys).await?;
         let runner = runner;
         Ok(runner)
     }
 
-    pub fn input(&mut self, buf: &[u8]) -> Result<usize, Error> {
+    pub async fn input(&mut self, buf: &[u8]) -> Result<usize, Error> {
+        trace!("in size {} {}", buf.len(), buf.hex_dump());
         let (size, payload) = self.traffic.input(
             &mut self.keys,
             &mut self.conn.remote_version,
@@ -56,7 +58,7 @@ impl<'a> Runner<'a> {
             for r in resp {
                 r.send_packet(&mut self.traffic, &mut self.keys)?;
             }
-            self.conn.progress(&mut self.traffic, &mut self.keys)?;
+            self.conn.progress(&mut self.traffic, &mut self.keys).await?;
         }
         // TODO: do we only need to wake once?
         if let Some(w) = self.output_waker.take() {
@@ -64,6 +66,7 @@ impl<'a> Runner<'a> {
                 w.wake()
             }
         }
+        trace!("ret size {size}");
         Ok(size)
     }
 

@@ -973,7 +973,7 @@ pub(crate) mod tests {
             prompt: "change the password",
             lang: "",
         }));
-        let mut pw = client::ResponseString::new();
+        let mut pw = ResponseString::new();
         pw.push_str("123").unwrap();
         ctx.cli_auth_type = Some(cliauth::Req::Password(pw ));
         test_roundtrip_context(&p, &ctx);

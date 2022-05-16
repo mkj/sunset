@@ -1,5 +1,5 @@
 #![no_std]
-#![forbid(unsafe_code)]
+// #![forbid(unsafe_code)]
 // XXX unused_imports only during dev churn
 #![allow(unused_imports)]
 
@@ -36,9 +36,8 @@ mod hooks;
 mod termmodes;
 
 pub use client::Client;
-pub use client::ResponseString;
 pub use client::ClientHooks;
-pub use hooks::{HookError, HookResult};
+pub use hooks::{HookError, HookResult, ResponseString};
 pub use runner::Runner;
 pub use conn::Conn;
 pub use packets::PubKey;

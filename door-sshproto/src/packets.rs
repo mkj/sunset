@@ -553,7 +553,6 @@ pub enum ChannelReqType<'a> {
     ExitStatus(ExitStatus),
     #[serde(rename = "exit-signal")]
     ExitSignal(ExitSignal<'a>),
-    // rfc4335
     #[serde(rename = "break")]
     Break(Break),
     // Other requests that aren't implemented at present:

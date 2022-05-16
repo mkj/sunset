@@ -6,12 +6,14 @@ use {
 
 use heapless::{String, Vec};
 use no_panic::no_panic;
+use core::task::{Poll,Waker};
 
 use crate::client::*;
 use crate::conn::RespPackets;
 use crate::packets::{Packet, Signature};
 use crate::sign::SignKey;
 use crate::sshnames::*;
+use crate::hooks::HookMailbox;
 use crate::*;
 
 // pub for packets::ParseContext
@@ -41,6 +43,24 @@ pub(crate) struct CliAuth {
     try_pubkey: bool,
 }
 
+pub(crate) struct Mailbox<'a> {
+    waker: &'a mut Option<Waker>,
+    val: Option<u32>,
+
+}
+
+impl<'a> core::future::Future for Mailbox<'a> {
+    type Output = u32;
+    fn poll(self: core::pin::Pin<&mut Self>, cx: &mut core::task::Context<'_>) -> core::task::Poll<Self::Output> {
+        if let Some(val) = self.val {
+            Poll::Ready(val)
+        } else {
+            *self.get_mut().waker = Some(cx.waker().clone());
+            Poll::Pending
+        }
+    }
+}
+
 impl CliAuth {
     // TODO: take preferred/ordered authmethods
     pub fn new() -> Self {
@@ -53,14 +73,24 @@ impl CliAuth {
     }
 
     // May be called multiple times
-    pub fn start<'b>(
-        &'b mut self, hooks: &mut dyn ClientHooks, resp: &mut RespPackets<'b>,
+    pub async fn start<'b>(
+        &'b mut self, resp: &mut RespPackets<'b>,
+        hook_mbox: &mut hooks::HookMailbox,
     ) -> Result<()> {
         if let AuthState::Unstarted = self.state {
-            hooks
-                .username(&mut self.username)
-                .map_err(|_| Error::HookError { msg: "no username provided" })?;
 
+            // let m = Mailbox{ waker };
+            // m.await;
+
+            trace!("start top");
+            hook_mbox.set(hooks::Query::Username(String::new()))?;
+            let r = hook_mbox.await;
+            self.username = match r {
+                hooks::Query::Username(u) => Ok(u),
+                _ => Err(Error::HookError { msg: "no username provided" }),
+            }?;
+
+            trace!("username {}", self.username);
             self.state = AuthState::MethodQuery;
             resp.push(Packet::ServiceRequest(packets::ServiceRequest {
                 name: SSH_SERVICE_USERAUTH,

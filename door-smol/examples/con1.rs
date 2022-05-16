@@ -48,7 +48,7 @@ async fn run() -> Result<()> {
     let mut sess = door_smol::DoorSession {};
     let cli = Client::new(&mut sess)?;
     let conn = Conn::new_client(cli)?;
-    let runner = Runner::new(conn, work.as_mut_slice())?;
+    let runner = Runner::new(conn, work.as_mut_slice()).await?;
 
     let door = async_dup::Mutex::new(door_smol::AsyncDoor { runner });
 

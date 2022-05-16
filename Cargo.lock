@@ -436,6 +436,7 @@ dependencies = [
  "hmac",
  "log",
  "no-panic",
+ "pin-utils",
  "pretty-hex",
  "proptest",
  "rand",
