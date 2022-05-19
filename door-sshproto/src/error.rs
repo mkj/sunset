@@ -245,6 +245,8 @@ impl From<Utf8Error> for Error {
     }
 }
 
+// needed for docs. TODO cfg for doc?
+// #[cfg(feature = "std")]
 // impl serde::de::StdError for Error {}
 
 // TODO: need to figure how to return our own Error variants from serde

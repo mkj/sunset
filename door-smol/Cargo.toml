@@ -4,13 +4,19 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-smol = { version = "1.2" }
 door-sshproto = { path = "../door-sshproto", features = ["std"] }
 log = { version = "0.4" }
-futures-io = "0.3"
-pin-utils = "0.1"
-async-dup = "1.2"
 rpassword = "6.0"
+
+# smol = { version = "1.2" }
+# futures = "0.3"
+# futures-io = "0.3"
+# futures-micro = "0.5"
+# async-dup = "1.2"
+
+pin-utils = "0.1"
+tokio = { version = "1.17", features = ["full"] }
+parking_lot = { version = "0.12", features = ["arc_lock", "send_guard"] }
 
 # TODO
 anyhow = { version = "1.0" }

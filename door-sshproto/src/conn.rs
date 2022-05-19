@@ -5,7 +5,7 @@ use {
 };
 
 use core::char::MAX;
-use core::task::Waker;
+use core::task::{Waker,Poll};
 
 use ring::digest::Digest;
 use pretty_hex::PrettyHex;
@@ -21,9 +21,11 @@ use server::Server;
 use traffic::{Traffic,PacketMaker};
 use channel::{Channel, Channels};
 use config::MAX_CHANNELS;
+use mailbox::Mailbox;
+use behaviour::Behaviour;
 
 // TODO a max value needs to be analysed
-const MAX_RESPONSES: usize = 4;
+pub(crate) const MAX_RESPONSES: usize = 4;
 
 pub(crate) type RespPackets<'a> = heapless::Vec<PacketMaker<'a>, MAX_RESPONSES>;
 
@@ -46,8 +48,6 @@ pub struct Conn<'a> {
     pub(crate) remote_version: ident::RemoteVersion,
 
     channels: Channels,
-
-    hook_mbox: hooks::HookMailbox,
 }
 
 // TODO: what tricks can we do to optimise away client or server code if we only
@@ -103,15 +103,15 @@ impl<'a> Conn<'a> {
             algo_conf: kex::AlgoConfig::new(cliserv.is_client()),
             cliserv,
             channels: Channels::new(),
-            hook_mbox: hooks::HookMailbox::new(),
         })
     }
 
     /// Updates `ConnState` and sends any packets required to progress the connection state.
     pub(crate) async fn progress<'b>(
         &mut self, traffic: &mut Traffic<'b>, keys: &mut KeyState,
+        behaviour: &mut Behaviour,
     ) -> Result<(), Error> {
-        trace!("conn state {:?}", self.state);
+        trace!("progress conn state {:?}", self.state);
         let mut resp = RespPackets::new();
         match self.state {
             ConnState::SendIdent => {
@@ -131,7 +131,7 @@ impl<'a> Conn<'a> {
                 // and backpressure.
                 if traffic.can_output() {
                     if let ClientServer::Client(cli) = &mut self.cliserv {
-                        cli.auth.start(&mut resp, &mut self.hook_mbox).await?;
+                        cli.auth.start(&mut resp, &mut self.hook_query, &mut self.hook_reply).await?;
                     }
                 }
                 // send userauth request

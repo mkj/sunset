@@ -4,12 +4,14 @@ use {
     log::{debug, error, info, log, trace, warn},
 };
 
-use core::task::{Waker,Poll};
+use core::task::{Poll, Waker};
+
 use pretty_hex::PrettyHex;
 
 use crate::*;
 use encrypt::KeyState;
 use traffic::Traffic;
+use mailbox::Mailbox;
 
 pub struct Runner<'a> {
     conn: Conn<'a>,
@@ -26,7 +28,10 @@ pub struct Runner<'a> {
 
 impl<'a> Runner<'a> {
     /// `iobuf` must be sized to fit the largest SSH packet allowed.
-    pub async fn new(conn: Conn<'a>, iobuf: &'a mut [u8]) -> Result<Runner<'a>, Error> {
+    pub async fn new(
+        conn: Conn<'a>,
+        iobuf: &'a mut [u8],
+    ) -> Result<Runner<'a>, Error> {
         let mut runner = Runner {
             conn,
             traffic: traffic::Traffic::new(iobuf),
@@ -40,41 +45,51 @@ impl<'a> Runner<'a> {
         Ok(runner)
     }
 
-    pub async fn input(&mut self, buf: &[u8]) -> Result<usize, Error> {
+    pub fn input(&mut self, buf: &[u8]) -> Result<usize, Error> {
         trace!("in size {} {}", buf.len(), buf.hex_dump());
-        let (size, payload) = self.traffic.input(
+        let size = self.traffic.input(
             &mut self.keys,
             &mut self.conn.remote_version,
             buf,
         )?;
-        if let Some(payload) = payload {
+        // payload is dispatched by out_progress() on the output side
+        if self.traffic.payload().is_some() {
+            trace!("payload some, waker {:?}", self.output_waker);
+            if let Some(w) = self.output_waker.take() {
+                trace!("woke");
+                w.wake()
+            }
+        }
+        Ok(size)
+    }
+
+    pub async fn out_progress(&mut self) -> Result<(), Error> {
+        if let Some(payload) = self.traffic.payload() {
+            trace!("payload");
             // Lifetimes here are a bit subtle.
-            // `payload` has self.traffic lifetime, used until `handle_payload` completes.
+            // `payload` has self.traffic lifetime, used until `handle_payload`
+            // completes.
             // The `resp` from handle_payload() references self.conn, consumed
             // by the send_packet().
             // After that progress() can perform more send_packet() itself.
 
             let resp = self.conn.handle_payload(payload, &mut self.keys)?;
+            debug!("done_payload");
+            self.traffic.done_payload()?;
             for r in resp {
                 r.send_packet(&mut self.traffic, &mut self.keys)?;
             }
             self.conn.progress(&mut self.traffic, &mut self.keys).await?;
         }
-        // TODO: do we only need to wake once?
-        if let Some(w) = self.output_waker.take() {
-            if self.output_pending() {
-                w.wake()
-            }
-        }
-        trace!("ret size {size}");
-        Ok(size)
+        trace!("out_progress done");
+        Ok(())
     }
 
     /// Write any pending output, returning the size written
     pub fn output(&mut self, buf: &mut [u8]) -> Result<usize, Error> {
         let r = self.traffic.output(buf);
-        if let Some(w) = self.input_waker.take() {
-            if self.ready_input() {
+        if self.ready_input() {
+            if let Some(w) = self.input_waker.take() {
                 w.wake()
             }
         }
@@ -83,11 +98,19 @@ impl<'a> Runner<'a> {
         // will return errors
     }
 
-    pub fn channel_input(&mut self, chan: u32, msg: channel::ChanMsg) -> Result<usize> {
+    pub fn channel_input(
+        &mut self,
+        chan: u32,
+        msg: channel::ChanMsg,
+    ) -> Result<usize> {
         todo!()
     }
 
-    pub fn channel_output(&mut self, chan: u32, buf: &mut [u8]) -> Result<Poll<channel::ChanOut>> {
+    pub fn channel_output(
+        &mut self,
+        chan: u32,
+        buf: &mut [u8],
+    ) -> Result<Poll<channel::ChanOut>> {
         todo!()
     }
 
@@ -106,5 +129,12 @@ impl<'a> Runner<'a> {
     pub fn set_output_waker(&mut self, waker: Waker) {
         self.output_waker = Some(waker);
     }
-}
 
+    pub fn hook_query(&mut self) -> &mut Mailbox<HookQuery> {
+        &mut self.conn.hook_query
+    }
+
+    pub fn hook_reply(&mut self) -> &mut Mailbox<HookResult<HookQuery>> {
+        &mut self.conn.hook_reply
+    }
+}

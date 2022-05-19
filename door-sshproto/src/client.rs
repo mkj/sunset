@@ -68,7 +68,7 @@ impl ClientHandle {
 
 }
 
-pub trait ClientHooks<'a> {
+pub trait ClientHooks<'a>: Send {
     /// Provide the username to use for authentication. Will only be called once
     /// per session.
     /// If the username needs to change a new connection should be made

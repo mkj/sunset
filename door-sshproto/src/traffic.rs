@@ -18,8 +18,12 @@ pub(crate) struct Traffic<'a> {
 
     // TODO: decompression will need another buffer
     /// Accumulated input or output buffer.
-    /// Should be sized to fit the largest packet allowed.
+    /// Should be sized to fit the largest packet allowed for input, or
+    /// sequence of packets to be sent at once (see [`conn::MAX_RESPONSES`]).
     /// Contains ciphertext or cleartext, encrypted/decrypted in-place.
+    /// When reading only contains a single SSH packet at a time.
+    /// Writing may contain multiple SSH packets to write out, encrypted
+    /// in-place as they are written to `buf`.
     buf: &'a mut [u8],
     state: TrafState,
     // set to true once we have read a version
@@ -30,13 +34,13 @@ pub(crate) struct Traffic<'a> {
 #[derive(Debug)]
 enum TrafState {
 
-    /// Reading input, buffer is unused
+    /// Awaiting read or write, buffer is unused
     Idle,
-    /// Reading initial block for packet length. idx > 0.
+    /// Reading initial encrypted block for packet length. idx > 0.
     ReadInitial { idx: usize },
     /// Reading remainder of encrypted packet
     Read { idx: usize, expect: usize },
-    /// Whole encryped packet has been read
+    /// Whole encrypted packet has been read
     ReadComplete { len: usize },
     /// Decrypted complete input payload
     InPayload { len: usize },
@@ -45,7 +49,9 @@ enum TrafState {
     /// Should never be left in idx==len state,
     /// instead should transition to Idle
     Write {
+        /// Cursor position in the buffer
         idx: usize,
+        /// Buffer available to write
         len: usize,
     },
 }
@@ -102,12 +108,11 @@ impl<'a> Traffic<'a> {
         }
     }
 
-    /// Returns the number of bytes consumed, and optionally
-    /// a complete packet payload.
+    /// Returns the number of bytes consumed.
     pub fn input(
         &mut self, keys: &mut KeyState, remote_version: &mut RemoteVersion,
         buf: &[u8],
-    ) -> Result<(usize, Option<&[u8]>), Error> {
+    ) -> Result<usize, Error> {
         let mut inlen = 0;
         trace!("state {:?} input {}", self.state, buf.len());
         if !self.done_version && matches!(self.state, TrafState::Idle) {
@@ -119,16 +124,29 @@ impl<'a> Traffic<'a> {
         let buf = &buf[inlen..];
 
         inlen += self.fill_input(keys, buf)?;
+        trace!("after inlen {inlen} state {:?}", self.state);
+        Ok(inlen)
+    }
 
-        let payload = if let TrafState::InPayload { len } = self.state {
+    /// Returns a reference to the decrypted payload buffer if ready
+    pub(crate) fn payload(&mut self) -> Option<&[u8]> {
+        trace!("traf payload {:?}", self.state);
+        if let TrafState::InPayload { len } = self.state {
             let payload = &self.buf[SSH_PAYLOAD_START..SSH_PAYLOAD_START + len];
-            self.state = TrafState::Idle;
             Some(payload)
         } else {
             None
-        };
+        }
+    }
 
-        Ok((inlen, payload))
+    pub(crate) fn done_payload(&mut self) -> Result<(), Error> {
+        match self.state {
+            TrafState::InPayload { .. } => {
+                self.state = TrafState::Idle;
+                Ok(())
+            }
+            _ => Err(Error::bug())
+        }
     }
 
     pub fn send_version(&mut self, buf: &[u8]) -> Result<(), Error> {
@@ -165,7 +183,7 @@ impl<'a> Traffic<'a> {
             return Err(Error::NoRoom)
         }
         let plen = wireformat::write_ssh(&mut wbuf[SSH_PAYLOAD_START..], &p)?;
-        trace!("Sending {p:#?}");
+        trace!("Sending {p:?}");
         // trace!("{:?}", (&wbuf[SSH_PAYLOAD_START..SSH_PAYLOAD_START+plen]).hex_dump());
 
         // Encrypt in place

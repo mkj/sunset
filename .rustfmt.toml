@@ -1,6 +1,7 @@
 max_width = 85
 use_small_heuristics = "Max"
-fn_args_layout = "Compressed"
+# fn_args_layout = "Compressed"
+edition = "2021"
 # unstable
 # trailing_semicolon = false
 # overflow_delimited_expr  = true

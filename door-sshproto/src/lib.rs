@@ -27,18 +27,20 @@ mod cliauth;
 
 mod server;
 mod servauth;
+mod mailbox;
 
 pub mod doorlog;
 mod channel;
 mod config;
 mod runner;
-mod hooks;
+mod behaviour;
 mod termmodes;
 
 pub use client::Client;
 pub use client::ClientHooks;
-pub use hooks::{HookError, HookResult, ResponseString};
+pub use behaviour::{Behaviour, BhError, BhResult, ResponseString, BhQuery};
 pub use runner::Runner;
 pub use conn::Conn;
 pub use packets::PubKey;
 pub use error::Error;
+pub use mailbox::{Mailbox,MailboxFut};
