@@ -29,6 +29,9 @@ mod server;
 mod servauth;
 mod mailbox;
 
+mod bhtokio;
+mod bhnostd;
+
 pub mod doorlog;
 mod channel;
 mod config;
@@ -36,9 +39,10 @@ mod runner;
 mod behaviour;
 mod termmodes;
 
+pub(crate) use behaviour::Behaviour;
+
 pub use client::Client;
-pub use client::ClientHooks;
-pub use behaviour::{Behaviour, BhError, BhResult, ResponseString, BhQuery};
+pub use behaviour::{BhError, BhResult, ResponseString, BhQuery};
 pub use runner::Runner;
 pub use conn::Conn;
 pub use packets::PubKey;

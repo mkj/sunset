@@ -31,6 +31,7 @@ impl<'a> Runner<'a> {
     pub async fn new(
         conn: Conn<'a>,
         iobuf: &'a mut [u8],
+        behaviour: &mut Behaviour,
     ) -> Result<Runner<'a>, Error> {
         let mut runner = Runner {
             conn,
@@ -40,7 +41,7 @@ impl<'a> Runner<'a> {
             input_waker: None,
         };
 
-        runner.conn.progress(&mut runner.traffic, &mut runner.keys).await?;
+        runner.conn.progress(&mut runner.traffic, &mut runner.keys, behaviour).await?;
         let runner = runner;
         Ok(runner)
     }
@@ -128,13 +129,5 @@ impl<'a> Runner<'a> {
 
     pub fn set_output_waker(&mut self, waker: Waker) {
         self.output_waker = Some(waker);
-    }
-
-    pub fn hook_query(&mut self) -> &mut Mailbox<HookQuery> {
-        &mut self.conn.hook_query
-    }
-
-    pub fn hook_reply(&mut self) -> &mut Mailbox<HookResult<HookQuery>> {
-        &mut self.conn.hook_reply
     }
 }

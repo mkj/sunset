@@ -71,6 +71,15 @@ struct LockFut<'a> {
     locked_inner: Option<ArcMutexGuard<parking_lot::RawMutex, Inner<'a>>>,
 }
 
+struct AsyncBehaviour {
+    pub async fn username() -> ResponseString {
+        let s = ResponseString::new();
+        s.push_str("matt");
+        s
+    }
+
+}
+
 pub struct AsyncDoor<'a> {
     inner: Arc<ParkingLotMutex<Inner<'a>>>,
     out_progress_fut: Option<Pin<Box<dyn Future<Output = Result<(), DoorError>> + Send + 'a>>>,

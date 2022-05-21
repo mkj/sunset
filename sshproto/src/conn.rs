@@ -22,7 +22,6 @@ use traffic::{Traffic,PacketMaker};
 use channel::{Channel, Channels};
 use config::MAX_CHANNELS;
 use mailbox::Mailbox;
-use behaviour::Behaviour;
 
 // TODO a max value needs to be analysed
 pub(crate) const MAX_RESPONSES: usize = 4;
@@ -40,7 +39,7 @@ pub struct Conn<'a> {
     /// Perhaps we could put it into a [u8: 256] newtype.
     sess_id: Option<Digest>,
 
-    cliserv: ClientServer<'a>,
+    cliserv: ClientServer,
 
     algo_conf: kex::AlgoConfig<'a>,
 
@@ -52,12 +51,12 @@ pub struct Conn<'a> {
 
 // TODO: what tricks can we do to optimise away client or server code if we only
 // want one of them?
-enum ClientServer<'a> {
-    Client(client::Client<'a>),
+enum ClientServer {
+    Client(client::Client),
     Server(server::Server),
 }
 
-impl<'a> ClientServer<'a> {
+impl ClientServer {
     pub fn is_client(&self) -> bool {
         matches!(self, ClientServer::Client(_))
     }
@@ -90,11 +89,11 @@ enum ConnState {
 }
 
 impl<'a> Conn<'a> {
-    pub fn new_client(client: client::Client<'a>) -> Result<Self> {
+    pub fn new_client(client: client::Client) -> Result<Self> {
         Self::new(ClientServer::Client(client))
     }
 
-    fn new(cliserv: ClientServer<'a>) -> Result<Self, Error> {
+    fn new(cliserv: ClientServer) -> Result<Self, Error> {
         Ok(Conn {
             kex: kex::Kex::new()?,
             sess_id: None,
@@ -131,7 +130,7 @@ impl<'a> Conn<'a> {
                 // and backpressure.
                 if traffic.can_output() {
                     if let ClientServer::Client(cli) = &mut self.cliserv {
-                        cli.auth.start(&mut resp, &mut self.hook_query, &mut self.hook_reply).await?;
+                        cli.auth.start(&mut resp, behaviour).await?;
                     }
                 }
                 // send userauth request

@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-door-sshproto = { path = "../door-sshproto", features = ["std"] }
+door-sshproto = { path = "../sshproto", features = ["std"] }
 log = { version = "0.4" }
 rpassword = "6.0"
 

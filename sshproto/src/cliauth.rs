@@ -13,8 +13,8 @@ use crate::conn::RespPackets;
 use crate::packets::{Packet, Signature};
 use crate::sign::SignKey;
 use crate::sshnames::*;
-use crate::hooks::HookQuery;
 use crate::mailbox::Mailbox;
+use crate::behaviour::Behaviour;
 use crate::*;
 
 // pub for packets::ParseContext
@@ -58,24 +58,14 @@ impl CliAuth {
     // May be called multiple times
     pub async fn start<'b>(
         &'b mut self, resp: &mut RespPackets<'b>,
-        req: &mut Mailbox<HookQuery>, reply: &mut Mailbox<HookResult<HookQuery>>,
+        behaviour: &mut Behaviour,
     ) -> Result<()> {
         if let AuthState::Unstarted = self.state {
 
             // let m = Mailbox{ waker };
             // m.await;
 
-            req.set(HookQuery::Username(String::new()));
-            let fut = reply.get();
-            info!("fut {:p}", &fut);
-            let r = fut.await;
-            info!("r {r:?}");
-            panic!();
-            let r = r.map_err(|_| Error::HookError { msg: "Error from hook"})?;
-            self.username = match r {
-                HookQuery::Username(u) => Ok(u),
-                _ => { Err(Error::HookError { msg: "Wrong hook response" }) }
-            }?;
+            self.username = behaviour.username().await;
 
             debug!("username {}", self.username);
             self.state = AuthState::MethodQuery;
@@ -94,17 +84,17 @@ impl CliAuth {
         Ok(())
     }
 
-    fn make_password_req(&mut self, hooks: &mut dyn ClientHooks) -> Result<Option<Req>> {
+    fn make_password_req(&mut self, behaviour: &mut Behaviour) -> Result<Option<Req>> {
         let mut pw = ResponseString::new();
-        match hooks.auth_password(&mut pw) {
+        match behaviour.auth_password(&mut pw) {
             Err(_) => Err(Error::HookError { msg: "No password returned" }),
             Ok(r) if r => Ok(Some(Req::Password(pw))),
             Ok(_) => Ok(None),
         }
     }
 
-    fn make_pubkey_req(&mut self, hooks: &mut dyn ClientHooks) -> Result<Option<Req>> {
-        let pk = hooks.next_authkey().map_err(|_| {
+    fn make_pubkey_req(&mut self, behaviour: &mut Behaviour) -> Result<Option<Req>> {
+        let pk = behaviour.next_authkey().map_err(|_| {
             self.try_pubkey = false;
             Error::HookError { msg: "next_pubkey failed TODO" }
         })?;
@@ -161,14 +151,14 @@ impl CliAuth {
     // mystery: not quite sure why the 'b lifetime is required
     pub fn failure<'b>(
         &'b mut self, failure: &packets::UserauthFailure,
-        hooks: &mut dyn ClientHooks, resp: &mut RespPackets<'b>,
+        behaviour: &mut Behaviour, resp: &mut RespPackets<'b>,
     ) -> Result<()> {
         // TODO: look at existing self.state, handle the failure.
         self.state = AuthState::Idle;
 
         if failure.methods.has_algo(SSH_AUTHMETHOD_PUBLICKEY)? {
             while self.try_pubkey {
-                let req = self.make_pubkey_req(hooks)?;
+                let req = self.make_pubkey_req(behaviour)?;
                 if let Some(req) = req {
                     self.state = AuthState::Request { last_req: req };
                     break;
@@ -179,7 +169,7 @@ impl CliAuth {
         if matches!(self.state, AuthState::Idle)
             && self.try_password
             && failure.methods.has_algo(SSH_AUTHMETHOD_PASSWORD)? {
-            let req = self.make_password_req(hooks)?;
+            let req = self.make_password_req(behaviour)?;
             if let Some(req) = req {
                 self.state = AuthState::Request { last_req: req };
             }
@@ -196,10 +186,10 @@ impl CliAuth {
         Ok(())
     }
 
-    pub fn success(&mut self, hooks: &mut dyn ClientHooks) -> Result<()> {
+    pub fn success(&mut self, b: &mut Behaviour) -> Result<()> {
         // TODO: check current state? Probably just informational
         self.state = AuthState::Idle;
-        let _ = hooks.authenticated();
+        let _ = b.authenticated();
         // TODO errors
         Ok(())
     }

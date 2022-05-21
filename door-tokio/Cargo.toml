@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 tokio = { version = "1.17", features = ["full"] }
-door-sshproto = { path = "../door-sshproto", features = ["std"] }
+door-sshproto = { path = "../sshproto", features = ["std"] }
 log = { version = "0.4" }
 pin-utils = "0.1"
 

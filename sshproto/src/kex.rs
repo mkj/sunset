@@ -244,12 +244,12 @@ impl Kex {
     // consumes self.
     pub fn handle_kexdhreply<'a>(
         self, p: &packets::KexDHReply, sess_id: &Option<Digest>,
-        hooks: &mut dyn ClientHooks
+        behaviour: &mut Behaviour,
     ) -> Result<KexOutput> {
         if !self.algos.as_ref().trap()?.is_client {
             return Err(Error::bug());
         }
-        SharedSecret::handle_kexdhreply(self, p, sess_id, hooks)
+        SharedSecret::handle_kexdhreply(self, p, sess_id, behaviour)
     }
 
     /// Perform SSH algorithm negotiation
@@ -376,9 +376,9 @@ impl SharedSecret {
     }
 
     // client only
-    fn handle_kexdhreply<'a>(
+    async fn handle_kexdhreply<'a>(
         mut kex: Kex, p: &packets::KexDHReply, sess_id: &Option<Digest>,
-        hooks: &mut dyn ClientHooks
+        behaviour: &mut Behaviour
     ) -> Result<KexOutput> {
         // let mut algos = kex.algos.take().trap()?;
         let mut algos = kex.algos.trap()?;
@@ -393,7 +393,7 @@ impl SharedSecret {
 
         algos.hostsig.verify(&p.k_s.0, kex_out.h.as_ref(), &p.sig.0)?;
         debug!("Hostkey signature is valid");
-        if matches!(hooks.valid_hostkey(&p.k_s.0), Ok(true)) {
+        if matches!(behaviour.valid_hostkey(&p.k_s.0).await, Ok(true)) {
             Ok(kex_out)
         } else {
             Err(Error::HookError { msg: "Host key rejected" })
