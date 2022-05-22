@@ -22,7 +22,7 @@ hmac = "0.12"
 ssh-key = { version = "0.4", default-features = false, features = ["ed25519", "ecdsa", "sha2"] }
 
 # for debugging
-pretty-hex = "0.2"
+pretty-hex = "0.3"
 
 pin-utils = "0.1"
 
@@ -40,7 +40,7 @@ tokio-queue = ["dep:tokio"]
 # examples want std::error
 snafu = { version = "0.7", default-features = true }
 anyhow = { version = "1.0" }
-pretty-hex = "0.2"
+pretty-hex = "0.3"
 simplelog = { version = "0.12", features = ["test"] }
 proptest = "1.0"
 
