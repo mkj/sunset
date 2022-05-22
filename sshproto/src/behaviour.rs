@@ -16,6 +16,11 @@ use crate::*;
 use crate::packets::{self,Packet};
 use crate::runner::{self,Runner};
 
+trait thing {
+    fn zz();
+}
+
+type tt = impl thing;
 
 use mailbox::Mailbox;
 
@@ -74,9 +79,32 @@ pub(crate) struct ClientBehaviour<'a> {
     pub b: &'a Behaviour,
 }
 
-impl ClientBehaviour {
-    // TODO async?
-    fn show_banner(&
+impl<'a> ClientBehaviour<'a> {
+    async fn username(&self, username: &mut ResponseString) -> BhResult<()> {
+        todo!();
+    }
+
+    // TODO PubKey lifetime is a hassle
+    async fn valid_hostkey<'b>(&mut self, key: PubKey<'b>) -> BhResult<bool> {
+        todo!()
+    }
+
+    async fn auth_password(&mut self, pwbuf: &mut ResponseString) -> BhResult<bool> {
+        Ok(false)
+    }
+
+    async fn next_authkey(&mut self) -> BhResult<Option<SignKey>> {
+        Ok(None)
+    }
+
+    async fn authenticated(&mut self) -> BhResult<()> {
+
+    }
+
+    fn show_banner(&self, banner: &str, language: &str) -> BhResult<()> {
+        info!("Got banner:\n{}", banner.escape_default());
+        Ok(())
+    }
 
 }
 
@@ -84,26 +112,11 @@ impl ClientBehaviour {
 // 100 bytes is an arbitrary size.
 pub type ResponseString = heapless::String<100>;
 
-// pub struct HookQuery {
-//     pub query: Query,
-//     responded: bool,
-
-//     resp_q: Queue<Query, 2>,
-
-//     // waker for the library. The app gets awoken from runner.
-//     waker: Option<Waker>,
-// }
-
-// pub struct HookMailbox {
-//     pub query: Option<HookQuery>,
-//     pub(crate) query_waker: Option<Waker>,
-//     pub(crate) reply: Option<HookQuery>,
-//     pub(crate) reply_waker: Option<Waker>,
-// }
-
-// TODO sketchy api. maybe the var shouldn't be pub.
-pub enum BhQuery {
+// TODO sketchy api
+pub enum BhQuery<'a> {
     Username(ResponseString),
+    ValidHostkey(PubKey<'a>),
+    Password(PubKey<'a>),
 }
 
 pub enum BhCommand {
@@ -111,15 +124,9 @@ pub enum BhCommand {
 }
 
 // not derived since it can hold passwords etc
-impl fmt::Debug for BhQuery {
+impl fmt::Debug for BhQuery<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Username(u) => {
-                f.debug_struct("HookQuery::Username")
-                .field("username", u)
-                .finish()
-            }
-        }
+        write!(f, "Query ...todo...")
     }
 }
 
