@@ -26,11 +26,12 @@ pretty-hex = "0.3"
 
 pin-utils = "0.1"
 
-tokio = { version = "1.18", features = ["sync"], optional = true }
+# tokio = { version = "1.18", features = ["sync"], optional = true }
+async-trait = { version = "0.1", optional = true }
 
 [features]
-std = ["tokio-queue"]
-tokio-queue = ["dep:tokio"]
+std = ["async-trait"]
+# tokio-queue = ["dep:tokio"]
 
 # serde_state = { version = "0.4", default-features = false, features = ["derive"]}
 # serde_derive_state = { version = "0.4" }

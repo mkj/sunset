@@ -31,9 +31,8 @@ impl<'a> Runner<'a> {
     pub async fn new(
         conn: Conn<'a>,
         iobuf: &'a mut [u8],
-        behaviour: &mut Behaviour,
     ) -> Result<Runner<'a>, Error> {
-        let mut runner = Runner {
+        let runner = Runner {
             conn,
             traffic: traffic::Traffic::new(iobuf),
             keys: KeyState::new_cleartext(),
@@ -41,8 +40,7 @@ impl<'a> Runner<'a> {
             input_waker: None,
         };
 
-        runner.conn.progress(&mut runner.traffic, &mut runner.keys, behaviour).await?;
-        let runner = runner;
+        // runner.conn.progress(&mut runner.traffic, &mut runner.keys, behaviour).await?;
         Ok(runner)
     }
 
@@ -64,7 +62,7 @@ impl<'a> Runner<'a> {
         Ok(size)
     }
 
-    pub async fn out_progress(&mut self) -> Result<(), Error> {
+    pub async fn out_progress(&mut self, b: &mut Behaviour) -> Result<(), Error> {
         if let Some(payload) = self.traffic.payload() {
             trace!("payload");
             // Lifetimes here are a bit subtle.
@@ -74,13 +72,13 @@ impl<'a> Runner<'a> {
             // by the send_packet().
             // After that progress() can perform more send_packet() itself.
 
-            let resp = self.conn.handle_payload(payload, &mut self.keys)?;
+            let resp = self.conn.handle_payload(payload, &mut self.keys, b).await?;
             debug!("done_payload");
             self.traffic.done_payload()?;
             for r in resp {
                 r.send_packet(&mut self.traffic, &mut self.keys)?;
             }
-            self.conn.progress(&mut self.traffic, &mut self.keys).await?;
+            self.conn.progress(&mut self.traffic, &mut self.keys, b).await?;
         }
         trace!("out_progress done");
         Ok(())

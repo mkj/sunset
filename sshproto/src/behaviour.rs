@@ -16,14 +16,6 @@ use crate::*;
 use crate::packets::{self,Packet};
 use crate::runner::{self,Runner};
 
-trait thing {
-    fn zz();
-}
-
-type tt = impl thing;
-
-use mailbox::Mailbox;
-
 // TODO: "Bh" is an ugly abbreviation. Naming is hard.
 
 // TODO: probably want a special Result here. They probably all want
@@ -33,102 +25,117 @@ pub type BhResult<T> = core::result::Result<T, BhError>;
 #[derive(Debug,Snafu)]
 pub enum BhError {
     Fail,
-    #[doc(hidden)]
-    Unimplemented,
 }
 
 #[cfg(feature = "tokio-queue")]
 pub type ReplyChannel = bhtokio::ReplyChannel;
 
 // TODO: once async functions in traits work with no_std, this can all be reworked
-// to have Queryer and Responder traits. For now we use #[cfg] for dispatch.
+// to probably have Behaviour as a trait not a struct.
+//  Tracking Issue for static async fn in traits
+// https://github.com/rust-lang/rust/issues/91611
 
-// TODO: should have client or server specific BhQuerys
-pub struct Requests {
-    #[cfg(feature = "tokio-queue")]
-    req: crate::bhtokio::Responder,
-}
+// Even without no_std async functions in traits we could probably make Behaviour
+// a type alias to 'impl AsyncBehaviour" on std, and a wrapper struct on no_std.
+// That will require
+// Permit impl Trait in type aliases
+// https://github.com/rust-lang/rust/issues/63063
 
-impl Requests {
-    pub async fn next_query(&self) -> BhResult<ReplyChannel> {
-        self.req.next_query().await
-    }
-}
-
-pub(crate) struct Behaviour {
-    #[cfg(feature = "tokio-queue")]
-    req: crate::bhtokio::Queryer,
-    is_client: bool,
+pub struct Behaviour {
+    #[cfg(feature = "std")]
+    inner: crate::async_behaviour::AsyncCliServ,
 }
 
 impl Behaviour {
-    async fn query(&self, q: BhQuery) -> BhResult<BhQuery> {
-        self.req.query(q).await
-    }
-
-    fn client(&self) -> Result<ClientBehaviour> {
-        if self.is_client {
-            Ok(ClientBehaviour { b: self })
-        } else {
-            Err(Error::bug())
+    #[cfg(feature = "std")]
+    pub fn new_async_client(b: std::boxed::Box<dyn async_behaviour::AsyncCliBehaviour + Send>) -> Self {
+        Self {
+            inner: async_behaviour::AsyncCliServ::Client(b)
         }
     }
+
+    #[cfg(feature = "std")]
+    pub fn new_async_server(b: std::boxed::Box<dyn async_behaviour::AsyncServBehaviour + Send>) -> Self {
+        Self {
+            inner: async_behaviour::AsyncCliServ::Server(b)
+        }
+    }
+
+    // TODO: or should we just pass CliBehaviour and ServBehaviour through runner,
+    // don't switch here at all
+    pub(crate) fn client(&mut self) -> Result<CliBehaviour> {
+        self.inner.client()
+    }
+    pub(crate) fn server(&mut self) -> Result<ServBehaviour> {
+        self.inner.server()
+    }
 }
 
-pub(crate) struct ClientBehaviour<'a> {
-    pub b: &'a Behaviour,
+pub struct CliBehaviour<'a> {
+    #[cfg(feature = "std")]
+    pub inner: &'a mut dyn async_behaviour::AsyncCliBehaviour,
+    pub phantom: core::marker::PhantomData<&'a ()>,
 }
 
-impl<'a> ClientBehaviour<'a> {
-    async fn username(&self, username: &mut ResponseString) -> BhResult<()> {
-        todo!();
+// wraps everything in AsyncCliBehaviour
+impl<'a> CliBehaviour<'a> {
+    pub(crate) async fn username(&mut self) -> BhResult<ResponseString>{
+        self.inner.username().await
     }
 
-    // TODO PubKey lifetime is a hassle
-    async fn valid_hostkey<'b>(&mut self, key: PubKey<'b>) -> BhResult<bool> {
-        todo!()
+    pub(crate) async fn valid_hostkey<'f>(&mut self, key: &PubKey<'f>) -> BhResult<bool> {
+        self.inner.valid_hostkey(key).await
     }
 
-    async fn auth_password(&mut self, pwbuf: &mut ResponseString) -> BhResult<bool> {
-        Ok(false)
+    #[allow(unused)]
+    pub(crate) async fn auth_password(&mut self, pwbuf: &mut ResponseString) -> BhResult<bool> {
+        self.inner.auth_password(pwbuf).await
     }
 
-    async fn next_authkey(&mut self) -> BhResult<Option<SignKey>> {
-        Ok(None)
+    pub(crate) async fn next_authkey(&mut self) -> BhResult<Option<sign::SignKey>> {
+        self.inner.next_authkey().await
     }
 
-    async fn authenticated(&mut self) -> BhResult<()> {
-
+    pub(crate) async fn authenticated(&mut self) -> BhResult<()> {
+        self.inner.authenticated().await
     }
 
-    fn show_banner(&self, banner: &str, language: &str) -> BhResult<()> {
-        info!("Got banner:\n{}", banner.escape_default());
-        Ok(())
+    pub(crate) async fn show_banner(&self, banner: &str, language: &str) -> BhResult<()> {
+        self.inner.show_banner(banner, language).await
     }
 
 }
 
+pub struct ServBehaviour<'a> {
+    #[cfg(feature = "std")]
+    pub inner: &'a mut dyn async_behaviour::AsyncServBehaviour,
+    pub phantom: core::marker::PhantomData<&'a ()>,
+}
+
+impl<'a> ServBehaviour<'a> {
+
+}
 /// A stack-allocated string to store responses for usernames or passwords.
 // 100 bytes is an arbitrary size.
 pub type ResponseString = heapless::String<100>;
 
-// TODO sketchy api
-pub enum BhQuery<'a> {
-    Username(ResponseString),
-    ValidHostkey(PubKey<'a>),
-    Password(PubKey<'a>),
-}
+// // TODO sketchy api
+// pub enum BhQuery<'a> {
+//     Username(ResponseString),
+//     ValidHostkey(PubKey<'a>),
+//     Password(PubKey<'a>),
+// }
 
-pub enum BhCommand {
-    Session(),
-}
+// pub enum BhCommand {
+//     Session(),
+// }
 
-// not derived since it can hold passwords etc
-impl fmt::Debug for BhQuery<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Query ...todo...")
-    }
-}
+// // not derived since it can hold passwords etc
+// impl fmt::Debug for BhQuery<'_> {
+//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         write!(f, "Query ...todo...")
+//     }
+// }
 
 // pub struct HookAskFut<'a> {
 //     mbox: &'a mut HookMailbox,

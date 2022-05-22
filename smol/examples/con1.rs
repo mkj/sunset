@@ -20,15 +20,15 @@ async fn main() -> Result<()> {
     run().await
 }
 
-async fn handle_request(door: &door_smol::AsyncDoor<'_>, query: HookQuery) {
-    match query {
-        HookQuery::Username(_) => {
-            let mut s = ResponseString::new();
-            s.push_str("matt").unwrap();
-            door.reply_request(Ok(HookQuery::Username(s))).unwrap();
-        }
-    }
-}
+// async fn handle_request(door: &door_smol::AsyncDoor<'_>, query: HookQuery) {
+//     match query {
+//         HookQuery::Username(_) => {
+//             let mut s = ResponseString::new();
+//             s.push_str("matt").unwrap();
+//             door.reply_request(Ok(HookQuery::Username(s))).unwrap();
+//         }
+//     }
+// }
 
 async fn run() -> Result<()> {
 
@@ -54,11 +54,12 @@ async fn run() -> Result<()> {
 
     let mut work = vec![0; 3000];
     let mut sess = door_smol::DoorSession {};
-    let cli = Client::new(&mut sess)?;
+    let cli = Client::new()?;
     let conn = Conn::new_client(cli)?;
     let runner = Runner::new(conn, work.as_mut_slice()).await?;
 
-    let mut door = door_smol::AsyncDoor::new(runner);
+    let b = Behaviour::new_async_client(Box::new(sess));
+    let mut door = door_smol::AsyncDoor::new(runner, b);
 
     // let door = async_dup::Mutex::new(door_smol::AsyncDoor { runner });
 
@@ -71,9 +72,9 @@ async fn run() -> Result<()> {
     loop {
         tokio::select! {
             _ = &mut netio => break,
-            q = door.next_request() => {
-                handle_request(&door, q).await
-            }
+            // q = door.next_request() => {
+            //     handle_request(&door, q).await
+            // }
         }
     }
 

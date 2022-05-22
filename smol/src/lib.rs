@@ -20,42 +20,46 @@ use parking_lot::Mutex as ParkingLotMutex;
 
 // TODO
 use anyhow::{Context as _, Result, Error, anyhow};
+use core::ops::DerefMut;
 
 use door_sshproto as door;
 use door_sshproto::error::Error as DoorError;
-use door_sshproto::{HookResult,HookError,HookQuery};
+use door_sshproto::{BhResult,BhError};
 use door::{Runner, Behaviour};
 // use door_sshproto::client::*;
+use async_trait::async_trait;
 
 pub struct DoorSession {
 
 }
 
-impl<'a> door::ClientHooks<'a> for DoorSession {
-    fn username(&mut self, p: &mut door::ResponseString) -> HookResult<()> {
+#[async_trait(?Send)]
+impl door::AsyncCliBehaviour for DoorSession {
+    async fn username(&mut self) -> BhResult<door::ResponseString> {
         // TODO unwrap
+        let mut p = door::ResponseString::new();
         p.push_str("matt").unwrap();
-        Ok(())
+        Ok(p)
     }
 
-    fn valid_hostkey(&mut self, key: &door::PubKey) -> HookResult<bool> {
+    async fn valid_hostkey(&mut self, key: &door::PubKey) -> BhResult<bool> {
         trace!("valid_hostkey for {key:?}");
         Ok(true)
     }
 
-    fn auth_password(&mut self, pwbuf: &mut door::ResponseString) -> HookResult<bool> {
+    async fn auth_password(&mut self, pwbuf: &mut door::ResponseString) -> BhResult<bool> {
         let pw = rpassword::prompt_password("password: ").map_err(|e| {
             warn!("read_password failed {e:}");
-            HookError::Fail
+            BhError::Fail
         })?;
         if pwbuf.push_str(&pw).is_err() {
-            Err(HookError::Fail)
+            Err(BhError::Fail)
         } else {
             Ok(true)
         }
     }
 
-    fn authenticated(&mut self) -> HookResult<()> {
+    async fn authenticated(&mut self) -> BhResult<()> {
         info!("Authentication succeeded");
         Ok(())
     }
@@ -64,6 +68,8 @@ impl<'a> door::ClientHooks<'a> for DoorSession {
 
 pub struct Inner<'a> {
     runner: Runner<'a>,
+    // TODO: perhaps behaviour can move to runner? unsure of lifetimes.
+    behaviour: Behaviour,
 
 }
 
@@ -71,54 +77,43 @@ struct LockFut<'a> {
     locked_inner: Option<ArcMutexGuard<parking_lot::RawMutex, Inner<'a>>>,
 }
 
-struct AsyncBehaviour {
-    pub async fn username() -> ResponseString {
-        let s = ResponseString::new();
-        s.push_str("matt");
-        s
-    }
-
-}
-
 pub struct AsyncDoor<'a> {
     inner: Arc<ParkingLotMutex<Inner<'a>>>,
-    out_progress_fut: Option<Pin<Box<dyn Future<Output = Result<(), DoorError>> + Send + 'a>>>,
-    behaviour: door::Behaviour,
+    out_progress_fut: Option<Pin<Box<dyn Future<Output = Result<(), DoorError>> + 'a>>>,
 }
 
 impl Clone for AsyncDoor<'_> {
     fn clone(&self) -> Self {
         Self {
             inner: self.inner.clone(),
-            behaviour: Behaviour::default(),
             out_progress_fut: None,
         }
     }
 }
 
 impl<'a> AsyncDoor<'a> {
-    pub fn new(runner: Runner<'a>) -> Self {
+    pub fn new(runner: Runner<'a>, behaviour: Behaviour) -> Self {
         let inner = Inner {
             runner,
+            behaviour,
         };
         Self {
             inner: Arc::new(ParkingLotMutex::new(inner)),
-            behaviour: Behaviour::default(),
             out_progress_fut: None,
         }
     }
 
-    pub fn next_request(&'a self) -> MailboxMutexFut<'a> {
-        trace!("next_req");
-        MailboxMutexFut { mbox: &self.inner }
-    }
+    // pub fn next_request(&'a self) -> MailboxMutexFut<'a> {
+    //     trace!("next_req");
+    //     MailboxMutexFut { mbox: &self.inner }
+    // }
 
-    pub fn reply_request(&self, reply: HookResult<HookQuery>) -> Result<(), DoorError> {
-        debug!("reply {reply:?}");
-        let runner = &mut self.lock()?.runner;
-        runner.hook_reply().set(reply);
-        Ok(())
-    }
+    // pub fn reply_request(&self, reply: BhResult<HookQuery>) -> Result<(), DoorError> {
+    //     debug!("reply {reply:?}");
+    //     let runner = &mut self.lock()?.runner;
+    //     runner.hook_reply().set(reply);
+    //     Ok(())
+    // }
 
     fn lock(&self) -> Result<parking_lot::MutexGuard<Inner<'a>>, DoorError> {
         // trace!("lock");
@@ -127,21 +122,21 @@ impl<'a> AsyncDoor<'a> {
     }
 }
 
-pub struct MailboxMutexFut<'a> {
-    mbox: &'a ParkingLotMutex<Inner<'a>>,
-}
+// pub struct MailboxMutexFut<'a> {
+//     mbox: &'a ParkingLotMutex<Inner<'a>>,
+// }
 
-impl<'a> Future for MailboxMutexFut<'a> {
-    type Output = HookQuery;
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        // trace!("mailmutex top");
-        let mut m = self.get_mut().mbox.lock();
-        let r = m.runner.hook_query().poll_get(cx.waker().clone());
-        // trace!("mailmutex done {r:?}");
-        // trace!("mailmutex q {:?}", m.hook_query());
-        r
-    }
-}
+// impl<'a> Future for MailboxMutexFut<'a> {
+//     type Output = HookQuery;
+//     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+//         // trace!("mailmutex top");
+//         let mut m = self.get_mut().mbox.lock();
+//         let r = m.runner.hook_query().poll_get(cx.waker().clone());
+//         // trace!("mailmutex done {r:?}");
+//         // trace!("mailmutex q {:?}", m.hook_query());
+//         r
+//     }
+// }
 
 // struct RequestStream {
 // }
@@ -170,7 +165,8 @@ impl<'a> AsyncRead for AsyncDoor<'a> {
             inner.runner.set_output_waker(cx.waker().clone());
             // async move block to capture `inner`
             let mut b = Box::pin(async move {
-                inner.runner.out_progress().await
+                let inner = inner.deref_mut();
+                inner.runner.out_progress(&mut inner.behaviour).await
             });
             // let mut b = Box::pin(guard_wait(inner));
             let r = b.as_mut().poll(cx);

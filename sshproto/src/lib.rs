@@ -1,11 +1,13 @@
-#![no_std]
-// #![forbid(unsafe_code)]
+// Tests use std as it's easier
+// The "std" feature at present uses Box for async fn in traits,
+// though that may change later and the 'feature = "std" predicate
+// won't be needed.
+#![cfg_attr(not(any(feature = "std", test)), no_std)]
+
+#![forbid(unsafe_code)]
+
 // XXX unused_imports only during dev churn
 #![allow(unused_imports)]
-
-#[cfg(test)]
-#[macro_use]
-extern crate std;
 
 pub mod packets;
 // XXX decide what is public
@@ -29,20 +31,21 @@ mod server;
 mod servauth;
 mod mailbox;
 
-mod bhtokio;
-mod bhnostd;
+// mod bhtokio;
+// mod bhnostd;
 
 pub mod doorlog;
 mod channel;
 mod config;
 mod runner;
 mod behaviour;
+mod async_behaviour;
 mod termmodes;
 
-pub(crate) use behaviour::Behaviour;
+pub use behaviour::{Behaviour, BhError, BhResult, ResponseString};
+pub use async_behaviour::{AsyncCliBehaviour,AsyncServBehaviour};
 
 pub use client::Client;
-pub use behaviour::{BhError, BhResult, ResponseString, BhQuery};
 pub use runner::Runner;
 pub use conn::Conn;
 pub use packets::PubKey;

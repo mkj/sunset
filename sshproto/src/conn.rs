@@ -108,7 +108,7 @@ impl<'a> Conn<'a> {
     /// Updates `ConnState` and sends any packets required to progress the connection state.
     pub(crate) async fn progress<'b>(
         &mut self, traffic: &mut Traffic<'b>, keys: &mut KeyState,
-        behaviour: &mut Behaviour,
+        b: &mut Behaviour,
     ) -> Result<(), Error> {
         trace!("progress conn state {:?}", self.state);
         let mut resp = RespPackets::new();
@@ -130,7 +130,7 @@ impl<'a> Conn<'a> {
                 // and backpressure.
                 if traffic.can_output() {
                     if let ClientServer::Client(cli) = &mut self.cliserv {
-                        cli.auth.start(&mut resp, behaviour).await?;
+                        cli.auth.start(&mut resp, b.client()?).await?;
                     }
                 }
                 // send userauth request
@@ -152,18 +152,18 @@ impl<'a> Conn<'a> {
     /// Consumes an input payload which is a view into [`traffic::Traffic::buf`].
     /// We queue response packets that can be sent (written into the same buffer)
     /// after `handle_payload()` runs.
-    pub(crate) fn handle_payload(
-        &mut self, payload: &[u8], keys: &mut KeyState,
-    ) -> Result<RespPackets, Error> {
+    pub(crate) async fn handle_payload(
+        &mut self, payload: &[u8], keys: &mut KeyState, b: &mut Behaviour
+    ) -> Result<RespPackets<'_>, Error> {
         trace!("conn state {:?}", self.state);
         let ctx = ParseContext::new();
         let p = wireformat::packet_from_bytes(payload, &ctx)?;
-        self.dispatch_packet(&p, keys)
+        self.dispatch_packet(&p, keys, b).await
     }
 
-    fn dispatch_packet(
-        &mut self, packet: &Packet, keys: &mut KeyState,
-    ) -> Result<RespPackets, Error> {
+    async fn dispatch_packet(
+        &mut self, packet: &Packet<'_>, keys: &mut KeyState, b: &mut Behaviour
+    ) -> Result<RespPackets<'_>, Error> {
         // TODO: perhaps could consolidate packet allowed checks into a separate function
         // to run first?
         trace!("Incoming {packet:#?}");
@@ -216,7 +216,7 @@ impl<'a> Conn<'a> {
                             } else {
                                 let kex =
                                     core::mem::replace(&mut self.kex, kex::Kex::new()?);
-                                *output = Some(kex.handle_kexdhreply(p, &self.sess_id, cli.hooks)?);
+                                *output = Some(kex.handle_kexdhreply(p, &self.sess_id, &mut b.client()?).await?);
                                 resp.push(Packet::NewKeys(packets::NewKeys {}).into())
                                     .trap()?;
                             }
@@ -275,7 +275,7 @@ impl<'a> Conn<'a> {
             Packet::UserauthFailure(p) => {
                 // TODO: client only
                 if let ClientServer::Client(cli) = &mut self.cliserv {
-                    cli.auth.failure(p, cli.hooks, &mut resp)?;
+                    cli.auth.failure(p, &mut b.client()?, &mut resp).await?;
                 } else {
                     debug!("Received UserauthFailure as a server");
                     return Err(Error::SSHProtoError)
@@ -286,7 +286,7 @@ impl<'a> Conn<'a> {
                 if let ClientServer::Client(cli) = &mut self.cliserv {
                     if matches!(self.state, ConnState::PreAuth) {
                         self.state = ConnState::Authed;
-                        cli.auth_success(&mut resp)?;
+                        cli.auth_success(&mut resp, &mut b.client()?).await?;
                         // if h.open_session {
                         //     let (chan, p) = self.channels.open(
                         //         packets::ChannelOpenType::Session)?;
@@ -306,7 +306,7 @@ impl<'a> Conn<'a> {
             Packet::UserauthBanner(p) => {
                 // TODO: client only
                 if let ClientServer::Client(cli) = &mut self.cliserv {
-                    cli.banner(p);
+                    cli.banner(p, &mut b.client()?).await;
                 } else {
                     debug!("Received banner as a server");
                     return Err(Error::SSHProtoError)

@@ -14,7 +14,7 @@ use crate::packets::{Packet, Signature};
 use crate::sign::SignKey;
 use crate::sshnames::*;
 use crate::mailbox::Mailbox;
-use crate::behaviour::Behaviour;
+use crate::behaviour::CliBehaviour;
 use crate::*;
 
 // pub for packets::ParseContext
@@ -58,14 +58,14 @@ impl CliAuth {
     // May be called multiple times
     pub async fn start<'b>(
         &'b mut self, resp: &mut RespPackets<'b>,
-        behaviour: &mut Behaviour,
+        mut b: CliBehaviour<'_>,
     ) -> Result<()> {
         if let AuthState::Unstarted = self.state {
 
             // let m = Mailbox{ waker };
             // m.await;
 
-            self.username = behaviour.username().await;
+            self.username = b.username().await?;
 
             debug!("username {}", self.username);
             self.state = AuthState::MethodQuery;
@@ -84,19 +84,19 @@ impl CliAuth {
         Ok(())
     }
 
-    fn make_password_req(&mut self, behaviour: &mut Behaviour) -> Result<Option<Req>> {
+    async fn make_password_req(&mut self, b: &mut CliBehaviour<'_>) -> Result<Option<Req>> {
         let mut pw = ResponseString::new();
-        match behaviour.auth_password(&mut pw) {
-            Err(_) => Err(Error::HookError { msg: "No password returned" }),
+        match b.auth_password(&mut pw).await {
+            Err(_) => Err(Error::BehaviourError { msg: "No password returned" }),
             Ok(r) if r => Ok(Some(Req::Password(pw))),
             Ok(_) => Ok(None),
         }
     }
 
-    fn make_pubkey_req(&mut self, behaviour: &mut Behaviour) -> Result<Option<Req>> {
-        let pk = behaviour.next_authkey().map_err(|_| {
+    async fn make_pubkey_req(&mut self, b: &mut CliBehaviour<'_>) -> Result<Option<Req>> {
+        let pk = b.next_authkey().await.map_err(|_| {
             self.try_pubkey = false;
-            Error::HookError { msg: "next_pubkey failed TODO" }
+            Error::BehaviourError { msg: "next_pubkey failed TODO" }
         })?;
         let pk = pk.map(|pk| Req::PubKey(pk));
         if pk.is_none() {
@@ -149,16 +149,16 @@ impl CliAuth {
     }
 
     // mystery: not quite sure why the 'b lifetime is required
-    pub fn failure<'b>(
-        &'b mut self, failure: &packets::UserauthFailure,
-        behaviour: &mut Behaviour, resp: &mut RespPackets<'b>,
+    pub async fn failure<'b>(
+        &'b mut self, failure: &packets::UserauthFailure<'_>,
+        b: &mut CliBehaviour<'_>, resp: &mut RespPackets<'b>,
     ) -> Result<()> {
         // TODO: look at existing self.state, handle the failure.
         self.state = AuthState::Idle;
 
         if failure.methods.has_algo(SSH_AUTHMETHOD_PUBLICKEY)? {
             while self.try_pubkey {
-                let req = self.make_pubkey_req(behaviour)?;
+                let req = self.make_pubkey_req(b).await?;
                 if let Some(req) = req {
                     self.state = AuthState::Request { last_req: req };
                     break;
@@ -169,14 +169,14 @@ impl CliAuth {
         if matches!(self.state, AuthState::Idle)
             && self.try_password
             && failure.methods.has_algo(SSH_AUTHMETHOD_PASSWORD)? {
-            let req = self.make_password_req(behaviour)?;
+            let req = self.make_password_req(b).await?;
             if let Some(req) = req {
                 self.state = AuthState::Request { last_req: req };
             }
         }
 
         if !(self.try_pubkey || self.try_password) {
-            return Err(Error::HookError { msg: "No authentication methods left" })
+            return Err(Error::BehaviourError { msg: "No authentication methods left" })
         }
 
         if let AuthState::Request { last_req: req } = &self.state {
@@ -186,10 +186,10 @@ impl CliAuth {
         Ok(())
     }
 
-    pub fn success(&mut self, b: &mut Behaviour) -> Result<()> {
+    pub async fn success(&mut self, b: &mut CliBehaviour<'_>) -> Result<()> {
         // TODO: check current state? Probably just informational
         self.state = AuthState::Idle;
-        let _ = b.authenticated();
+        let _ = b.authenticated().await;
         // TODO errors
         Ok(())
     }

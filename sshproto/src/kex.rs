@@ -12,6 +12,7 @@ use crate::sign::SigType;
 use crate::sshnames::*;
 use crate::wireformat::{hash_mpint, hash_ser, hash_ser_length, BinString, Blob};
 use crate::*;
+use crate::behaviour::{CliBehaviour, Behaviour, ServBehaviour};
 use ring::agreement;
 use ring::digest::{self, Context as DigestCtx, Digest};
 #[allow(unused_imports)]
@@ -242,14 +243,14 @@ impl Kex {
 
     // returns packet to send, and H exchange hash.
     // consumes self.
-    pub fn handle_kexdhreply<'a>(
-        self, p: &packets::KexDHReply, sess_id: &Option<Digest>,
-        behaviour: &mut Behaviour,
+    pub async fn handle_kexdhreply<'f>(
+        self, p: &packets::KexDHReply<'f>, sess_id: &Option<Digest>,
+        b: &mut CliBehaviour<'_>,
     ) -> Result<KexOutput> {
         if !self.algos.as_ref().trap()?.is_client {
             return Err(Error::bug());
         }
-        SharedSecret::handle_kexdhreply(self, p, sess_id, behaviour)
+        SharedSecret::handle_kexdhreply(self, p, sess_id, b).await
     }
 
     /// Perform SSH algorithm negotiation
@@ -376,9 +377,9 @@ impl SharedSecret {
     }
 
     // client only
-    async fn handle_kexdhreply<'a>(
-        mut kex: Kex, p: &packets::KexDHReply, sess_id: &Option<Digest>,
-        behaviour: &mut Behaviour
+    async fn handle_kexdhreply<'f>(
+        mut kex: Kex, p: &packets::KexDHReply<'f>, sess_id: &Option<Digest>,
+        b: &mut CliBehaviour<'_>
     ) -> Result<KexOutput> {
         // let mut algos = kex.algos.take().trap()?;
         let mut algos = kex.algos.trap()?;
@@ -393,10 +394,10 @@ impl SharedSecret {
 
         algos.hostsig.verify(&p.k_s.0, kex_out.h.as_ref(), &p.sig.0)?;
         debug!("Hostkey signature is valid");
-        if matches!(behaviour.valid_hostkey(&p.k_s.0).await, Ok(true)) {
+        if matches!(b.valid_hostkey(&p.k_s.0).await, Ok(true)) {
             Ok(kex_out)
         } else {
-            Err(Error::HookError { msg: "Host key rejected" })
+            Err(Error::BehaviourError { msg: "Host key rejected" })
         }
     }
 

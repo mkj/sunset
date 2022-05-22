@@ -10,6 +10,8 @@ use snafu::{prelude::*, Location};
 
 use heapless::String;
 
+use crate::behaviour::BhError;
+
 // RFC4251 defines a maximum of 64, but 35 is probably enough to identify
 // a problem.
 #[derive(Debug)]
@@ -114,9 +116,9 @@ pub enum Error {
     // internal
     InvalidDeserializeU8 { value: u8 },
 
-    /// Implementation hook error
-    #[snafu(display("Failure from hook: {msg}"))]
-    HookError { msg: &'static str },
+    /// Implementation behaviour error
+    #[snafu(display("Failure from application: {msg}"))]
+    BehaviourError { msg: &'static str },
 
     #[snafu(display("{msg}"))]
     // TODO: these could eventually get categorised
@@ -242,6 +244,14 @@ impl<T> TrapBug<T> for Option<T> {
 impl From<Utf8Error> for Error {
     fn from(_e: Utf8Error) -> Error {
         Error::BadString
+    }
+}
+
+impl From<BhError> for Error {
+    fn from(e: BhError) -> Error {
+        match e {
+            BhError::Fail => Error::BehaviourError { msg: "Unknown" }
+        }
     }
 }
 
