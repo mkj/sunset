@@ -22,6 +22,7 @@ async-trait = "0.1"
 
 # TODO
 anyhow = { version = "1.0" }
+pretty-hex = "0.3"
 
 [dev-dependencies]
 snafu = { version = "0.7", default-features = true }

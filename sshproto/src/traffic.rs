@@ -26,8 +26,6 @@ pub(crate) struct Traffic<'a> {
     /// in-place as they are written to `buf`.
     buf: &'a mut [u8],
     state: TrafState,
-    // set to true once we have read a version
-    done_version: bool,
 }
 
 /// State machine for reads/writes sharing [`Traffic::buf`]
@@ -79,7 +77,7 @@ impl<'a> PacketMaker<'a> {
 
 impl<'a> Traffic<'a> {
     pub fn new(buf: &'a mut [u8]) -> Self {
-        Traffic { buf, state: TrafState::Idle, done_version: false }
+        Traffic { buf, state: TrafState::Idle }
     }
 
     pub fn ready_input(&self) -> bool {
@@ -115,10 +113,10 @@ impl<'a> Traffic<'a> {
     ) -> Result<usize, Error> {
         let mut inlen = 0;
         trace!("state {:?} input {}", self.state, buf.len());
-        if !self.done_version && matches!(self.state, TrafState::Idle) {
+        if remote_version.version().is_none() && matches!(self.state, TrafState::Idle) {
             // Handle initial version string
             let l;
-            (l, self.done_version) = remote_version.consume(buf)?;
+            l = remote_version.consume(buf)?;
             inlen += l;
         }
         let buf = &buf[inlen..];

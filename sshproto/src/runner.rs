@@ -40,12 +40,11 @@ impl<'a> Runner<'a> {
             input_waker: None,
         };
 
-        // runner.conn.progress(&mut runner.traffic, &mut runner.keys, behaviour).await?;
         Ok(runner)
     }
 
     pub fn input(&mut self, buf: &[u8]) -> Result<usize, Error> {
-        trace!("in size {} {}", buf.len(), buf.hex_dump());
+        trace!("in size {} {:?}", buf.len(), buf.hex_dump());
         let size = self.traffic.input(
             &mut self.keys,
             &mut self.conn.remote_version,
@@ -78,8 +77,8 @@ impl<'a> Runner<'a> {
             for r in resp {
                 r.send_packet(&mut self.traffic, &mut self.keys)?;
             }
-            self.conn.progress(&mut self.traffic, &mut self.keys, b).await?;
         }
+        self.conn.progress(&mut self.traffic, &mut self.keys, b).await?;
         trace!("out_progress done");
         Ok(())
     }
@@ -114,7 +113,7 @@ impl<'a> Runner<'a> {
     }
 
     pub fn ready_input(&self) -> bool {
-        self.traffic.ready_input()
+        self.conn.initial_sent() && self.traffic.ready_input()
     }
 
     pub fn set_input_waker(&mut self, waker: Waker) {
@@ -122,7 +121,7 @@ impl<'a> Runner<'a> {
     }
 
     pub fn output_pending(&self) -> bool {
-        self.traffic.output_pending()
+        !self.conn.initial_sent() || self.traffic.output_pending()
     }
 
     pub fn set_output_waker(&mut self, waker: Waker) {

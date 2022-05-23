@@ -15,9 +15,20 @@ use door_sshproto::*;
 
 use simplelog::*;
 
-#[tokio::main]
-async fn main() -> Result<()> {
-    run().await
+fn main() -> Result<()> {
+    // time crate won't read TZ if we're threaded, in case someone
+    // tries to mutate shared state with setenv.
+    // https://github.com/rust-lang/rust/issues/90308 etc
+    // So we can't use async main.
+    setup_log();
+
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(async {
+            run().await
+        })
 }
 
 // async fn handle_request(door: &door_smol::AsyncDoor<'_>, query: HookQuery) {
@@ -30,11 +41,12 @@ async fn main() -> Result<()> {
 //     }
 // }
 
-async fn run() -> Result<()> {
-
-    let conf = simplelog::ConfigBuilder::new()
+fn setup_log() {
+    let mut conf = simplelog::ConfigBuilder::new();
+    let conf = conf
     .add_filter_allow_str("door")
     .add_filter_allow_str("con1")
+    .set_time_offset_to_local().expect("Couldn't get local timezone")
     .build();
 
     CombinedLogger::init(
@@ -42,6 +54,9 @@ async fn run() -> Result<()> {
         TermLogger::new(LevelFilter::Trace, conf, TerminalMode::Mixed, ColorChoice::Auto),
     ]
     ).unwrap();
+}
+
+async fn run() -> Result<()> {
 
     info!("running main");
     trace!("tracing main");

@@ -110,7 +110,7 @@ impl<'a> Conn<'a> {
         &mut self, traffic: &mut Traffic<'b>, keys: &mut KeyState,
         b: &mut Behaviour,
     ) -> Result<(), Error> {
-        trace!("progress conn state {:?}", self.state);
+        debug!("progress conn state {:?}", self.state);
         let mut resp = RespPackets::new();
         match self.state {
             ConnState::SendIdent => {
@@ -147,6 +147,15 @@ impl<'a> Conn<'a> {
         // TODO: if keys.seq > MAX_REKEY then we must rekey for security.
 
         Ok(())
+    }
+
+    pub(crate) fn initial_sent(&self) -> bool {
+        match self.state {
+            | ConnState::SendIdent
+            | ConnState::SendFirstKexInit
+            => false,
+            _ => true,
+        }
     }
 
     /// Consumes an input payload which is a view into [`traffic::Traffic::buf`].

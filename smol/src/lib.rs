@@ -29,6 +29,8 @@ use door::{Runner, Behaviour};
 // use door_sshproto::client::*;
 use async_trait::async_trait;
 
+use pretty_hex::PrettyHex;
+
 pub struct DoorSession {
 
 }
@@ -180,6 +182,8 @@ impl<'a> AsyncRead for AsyncDoor<'a> {
         };
         if let Poll::Pending = r {
             return Poll::Pending
+        } else {
+            self.out_progress_fut = None
         }
 
         let runner = &mut self.inner.lock().runner;
@@ -188,10 +192,12 @@ impl<'a> AsyncRead for AsyncDoor<'a> {
         let r = runner.output(b)
         .map_err(|e| IoError::new(ErrorKind::Other, e));
 
+        trace!("runner output {r:?}");
         let r = match r {
             // sz=0 means EOF
             Ok(0) => Poll::Pending,
             Ok(sz) => {
+                trace!("{:?}", (&b[..sz]).hex_dump());
                 buf.advance(sz);
                 Poll::Ready(Ok(()))
             }
@@ -206,7 +212,7 @@ impl<'a> AsyncWrite for AsyncDoor<'a> {
     fn poll_write(self: Pin<&mut Self>, cx: &mut Context<'_>,
         buf: &[u8]) -> Poll<Result<usize, IoError>>
     {
-        // trace!("poll_write");
+        trace!("poll_write");
         let runner = &mut self.lock()
             .map_err(|e| IoError::new(ErrorKind::Other, e))?
             .runner;
@@ -223,7 +229,7 @@ impl<'a> AsyncWrite for AsyncDoor<'a> {
         } else {
             Poll::Pending
         };
-        // trace!("poll_write {r:?}");
+        trace!("poll_write {r:?}");
         r
     }
 

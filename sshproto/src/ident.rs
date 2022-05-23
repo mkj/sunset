@@ -64,9 +64,9 @@ impl<'a> RemoteVersion {
     }
 
     /// Reads the initial SSH stream to find the version string and returns
-    /// the number of bytes consumed, with bool set if complete.
+    /// the number of bytes consumed.
     /// Behaviour is undefined if called later after an error.
-    pub fn consume(&mut self, buf: &[u8]) -> Result<(usize, bool), Error> {
+    pub fn consume(&mut self, buf: &[u8]) -> Result<usize, Error> {
         // consume input byte by byte, feeding through the states
         let mut taken = 0;
         for &b in buf {
@@ -134,8 +134,7 @@ impl<'a> RemoteVersion {
             }
         }
         // Ran out of input
-        let done = matches!(self.st, VersPars::Done(_));
-        Ok((taken, done))
+        Ok(taken)
     }
 }
 
