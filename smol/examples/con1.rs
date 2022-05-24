@@ -68,9 +68,8 @@ async fn run() -> Result<()> {
     // let mut stream = TcpStream::connect("130.95.13.18:22").await?;
 
     let mut work = vec![0; 3000];
-    let mut sess = door_smol::DoorSession {};
-    let cli = Client::new()?;
-    let conn = Conn::new_client(cli)?;
+    let mut sess = door_smol::SimpleClient::new();
+    let conn = Conn::new_client()?;
     let runner = Runner::new(conn, work.as_mut_slice()).await?;
 
     let b = Behaviour::new_async_client(Box::new(sess));

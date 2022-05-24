@@ -61,6 +61,14 @@ impl Behaviour {
         }
     }
 
+    pub(crate) fn progress(&mut self, runner: &mut Runner) -> Result<()> {
+        self.inner.progress(runner)
+    }
+
+    pub(crate) fn chan_handler(&mut self, runner: &mut Runner) -> Result<()> {
+        self.inner.progress(runner)
+    }
+
     // TODO: or should we just pass CliBehaviour and ServBehaviour through runner,
     // don't switch here at all
     pub(crate) fn client(&mut self) -> Result<CliBehaviour> {
@@ -96,11 +104,11 @@ impl<'a> CliBehaviour<'a> {
         self.inner.next_authkey().await
     }
 
-    pub(crate) async fn authenticated(&mut self) -> BhResult<()> {
+    pub(crate) async fn authenticated(&mut self) {
         self.inner.authenticated().await
     }
 
-    pub(crate) async fn show_banner(&self, banner: &str, language: &str) -> BhResult<()> {
+    pub(crate) async fn show_banner(&self, banner: &str, language: &str) {
         self.inner.show_banner(banner, language).await
     }
 

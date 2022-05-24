@@ -4,6 +4,8 @@ use {
     log::{debug, error, info, log, trace, warn},
 };
 
+use core::mem;
+
 use heapless::{String,Deque,Vec};
 
 use crate::{*, conn::RespPackets};
@@ -14,6 +16,8 @@ pub(crate) struct Channels {
     ch: [Option<Channel>; config::MAX_CHANNELS],
 }
 
+pub(crate) type InitReqs = Vec<ReqDetails, MAX_INIT_REQS>;
+
 impl Channels {
     pub fn new() -> Self {
         Channels { ch: Default::default() }
@@ -21,7 +25,7 @@ impl Channels {
 
     pub fn open<'b>(
         &mut self, ty: packets::ChannelOpenType<'b>,
-        then: ReqDetails) -> Result<(&Channel, Packet<'b>)> {
+        init_req: InitReqs) -> Result<(&Channel, Packet<'b>)> {
         // first available channel
         let num = self
             .ch
@@ -33,7 +37,7 @@ impl Channels {
             .ok_or(Error::NoChannels)?;
 
         let chan = Channel {
-            state: ChanState::Normal,
+            state: ChanState::Opening { init_req },
             ty: (&ty).into(),
             last_req: Deque::new(),
             recv: ChanDir {
@@ -71,23 +75,32 @@ impl Channels {
     }
 
     // incoming packet handling
-    pub fn dispatch(&mut self, packet: &Packet) -> Result<()> {
+    pub fn dispatch(&mut self, packet: &Packet, resp: &mut RespPackets) -> Result<()> {
         let r = match packet {
             Packet::ChannelOpen(_p) => {
                 todo!();
             }
             Packet::ChannelOpenConfirmation(p) => {
                 let ch = self.get_chan(p.num)?;
-                if ch.send.is_none() {
-                    ch.send = Some(ChanDir {
-                        num: p.sender_num,
-                        max_packet: p.max_packet as usize,
-                        window: p.initial_window as usize,
-                    });
-                    Ok(())
-                } else {
-                    debug!("Duplicate open confirmation");
-                    Err(Error::SSHProtoError)
+                match ch.state {
+                    ChanState::Opening {..} => {
+                        let init_state = mem::replace(&mut ch.state, ChanState::Normal);
+                        if let ChanState::Opening { init_req } = init_state {
+                            debug_assert!(ch.send.is_none());
+                            ch.send = Some(ChanDir {
+                                num: p.sender_num,
+                                max_packet: p.max_packet as usize,
+                                window: p.initial_window as usize,
+                            });
+                            for r in init_req {
+                                ch.request(r, resp)?
+                            }
+                            ch.state = ChanState::Normal;
+                        }
+                        Ok(())
+
+                    }
+                    _ => Err(Error::SSHProtoError),
                 }
             }
             Packet::ChannelOpenFailure(p) => {
@@ -117,7 +130,8 @@ impl Channels {
                 todo!();
             }
             Packet::ChannelSuccess(_p) => {
-                todo!();
+                trace!("channel success, TODO");
+                Ok(())
             }
             Packet::ChannelFailure(_p) => {
                 todo!();
@@ -129,6 +143,7 @@ impl Channels {
                 warn!("Ignoring bad channel number");
                 Ok(())
             }
+            // TODO: close channel on error? or on SSHProtoError?
             any => any,
         }
     }
@@ -167,13 +182,15 @@ pub struct Pty {
     modes: Vec<ModePair, {termmodes::NUM_MODES}>,
 }
 
+pub(crate) type ExecString = heapless::String<MAX_EXEC>;
+
 /// Like a `packets::ChannelReqType` but with storage.
 /// Lifetime-free variants have the packet part directly.
 #[derive(Debug)]
 pub enum ReqDetails {
     // TODO let hook impls provide a string type?
     Shell,
-    Exec(heapless::String<MAX_EXEC>),
+    Exec(ExecString),
     Pty(Pty),
     // Subsytem { subsystem: heapless::String<MAX_EXEC> },
     WinChange(packets::WinChange),
@@ -181,49 +198,46 @@ pub enum ReqDetails {
 }
 
 #[derive(Debug)]
-pub struct Req {
+pub(crate) struct Req {
     num: u32,
     details: ReqDetails,
 }
 
+impl ReqDetails {
+    fn want_reply(&self) -> bool {
+        match self {
+            Self::WinChange(_) => false,
+            _ => true,
+        }
+    }
+}
+
 impl Req {
     pub(crate) fn packet<'a>(&'a self) -> Result<Packet<'a>> {
-        let p = match &self.details {
+        let num = self.num;
+        let want_reply = self.details.want_reply();
+        let ty = match &self.details {
             ReqDetails::Shell => {
-                // let np = if pty.is_some() { 2 } else { 1 };
-                // if self.last_req
-                // TODO put it in last_req, validating space free
-                Packet::ChannelRequest(ChannelRequest {
-                    num: self.num,
-                    want_reply: true,
-                    ch: ChannelReqType::Shell,
-                })
+                ChannelReqType::Shell
             }
             ReqDetails::Pty(_pty) => {
                 todo!("serialize modes")
             }
             ReqDetails::Exec(cmd) => {
-                Packet::ChannelRequest(ChannelRequest {
-                    num: self.num,
-                    want_reply: true,
-                    ch: ChannelReqType::Exec(packets::Exec {command: &cmd}),
-                })
+                ChannelReqType::Exec(packets::Exec {command: &cmd})
             }
             ReqDetails::WinChange(rt) => {
-                Packet::ChannelRequest(ChannelRequest {
-                    num: self.num,
-                    want_reply: false,
-                    ch: ChannelReqType::WinChange(rt.clone()),
-                })
+                ChannelReqType::WinChange(rt.clone())
             }
             ReqDetails::Break(rt) => {
-                Packet::ChannelRequest(ChannelRequest {
-                    num: self.num,
-                    want_reply: true,
-                    ch: ChannelReqType::Break(rt.clone()),
-                })
+                ChannelReqType::Break(rt.clone())
             }
         };
+        let p = Packet::ChannelRequest(ChannelRequest {
+            num,
+            want_reply,
+            ch: ty,
+        });
         Ok(p)
     }
 
@@ -245,6 +259,7 @@ enum ReqKind {
 // shell+pty. or perhaps this should match the hook queue size and then
 // we can stop servicing the hook queue if this limit is reached.
 const MAX_OUTSTANDING_REQS: usize = 2;
+const MAX_INIT_REQS: usize = 2;
 
 pub struct ChanDir {
     num: u32,
@@ -253,6 +268,8 @@ pub struct ChanDir {
 }
 
 pub enum ChanState {
+    // TODO: this is wasting half a kB. where else could we store it?
+    Opening { init_req: InitReqs },
     Normal,
     DrainRead,
     DrainWrite,
@@ -272,17 +289,13 @@ pub struct Channel {
 impl Channel {
     fn request(&mut self, req: ReqDetails, resp: &mut RespPackets) -> Result<()> {
         let num = self.send.as_ref().trap()?.num;
-        // if self.last_req.is_some() {
-        //     return Err(Error::bug());
-        // }
-        // let p = match req {
-        //     Pty => {
-        //         todo!()
-        //         // packets::Packet(packets::Chan
-        //     }
-        // };
-        // Ok(p)
-        todo!()
+        let r = Req {num, details: req };
+        resp.push(r.into()).trap()?;
+        Ok(())
+    }
+
+    pub(crate) fn number(&self) -> u32 {
+        self.recv.num
     }
 }
 
@@ -305,5 +318,8 @@ pub enum ChanOut {
     // TODO: perhaps we don't need the storaged ReqDetails, just have the reqtype packet?
     Req(ReqDetails),
     // TODO closein/closeout/eof, etc. Should also return the exit status etc
+
+    // TODO: responses to a previous ChanMsg
+
     Close,
 }

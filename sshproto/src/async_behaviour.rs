@@ -43,10 +43,20 @@ impl AsyncCliServ {
         };
         Ok(c)
     }
+
+    pub(crate) fn progress(&mut self, runner: &mut Runner) -> Result<()> {
+        match self {
+            Self::Client(i) => i.progress(runner),
+            Self::Server(i) => i.progress(runner),
+        }
+    }
 }
 
 #[async_trait(?Send)]
 pub trait AsyncCliBehaviour {
+    /// Should not block
+    fn progress(&mut self, runner: &mut Runner) -> Result<()> { Ok(()) }
+
     /// Provide the username to use for authentication. Will only be called once
     /// per session.
     /// If the username needs to change a new connection should be made
@@ -76,20 +86,20 @@ pub trait AsyncCliBehaviour {
 
     /// Called after authentication has succeeded
     // TODO: perhaps this should be an eventstream not a behaviour?
-    async fn authenticated(&mut self) -> BhResult<()>;
+    async fn authenticated(&mut self);
 
     /// Show a banner sent from a server. Arguments are provided
     /// by the server so could be hazardous, they should be escaped with
     /// [`banner.escape_default()`](core::str::escape_default) or similar.
     /// Language may be empty, is provided by the server.
     #[allow(unused)]
-    async fn show_banner(&self, banner: &str, language: &str) -> BhResult<()> {
+    async fn show_banner(&self, banner: &str, language: &str) {
         info!("Got banner:\n{}", banner.escape_default());
-        Ok(())
     }
     // TODO: postauth channel callbacks
 }
 
 #[async_trait(?Send)]
 pub trait AsyncServBehaviour {
+    fn progress(&mut self, runner: &mut Runner) -> Result<()> { Ok(()) }
 }

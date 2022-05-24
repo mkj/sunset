@@ -66,6 +66,12 @@ impl<'a> From<Packet<'a>> for PacketMaker<'a> {
     }
 }
 
+impl From<channel::Req> for PacketMaker<'_> {
+    fn from(r: channel::Req) -> Self {
+        PacketMaker::ChanReq(r)
+    }
+}
+
 impl<'a> PacketMaker<'a> {
     pub fn send_packet(self, traffic: &mut Traffic, keys: &mut KeyState) -> Result<()> {
         match self {

@@ -46,7 +46,7 @@ pub struct Conn<'a> {
     /// Remote version string. Kept for later kexinit rekeying
     pub(crate) remote_version: ident::RemoteVersion,
 
-    channels: Channels,
+    pub(crate) channels: Channels,
 }
 
 // TODO: what tricks can we do to optimise away client or server code if we only
@@ -89,8 +89,8 @@ enum ConnState {
 }
 
 impl<'a> Conn<'a> {
-    pub fn new_client(client: client::Client) -> Result<Self> {
-        Self::new(ClientServer::Client(client))
+    pub fn new_client() -> Result<Self> {
+        Self::new(ClientServer::Client(client::Client::new()))
     }
 
     fn new(cliserv: ClientServer) -> Result<Self, Error> {
@@ -342,7 +342,7 @@ impl<'a> Conn<'a> {
             | Packet::ChannelSuccess(_)
             | Packet::ChannelFailure(_)
             // TODO: probably needs a conn or cliserv argument.
-            => self.channels.dispatch(packet)?,
+            => self.channels.dispatch(packet, &mut resp)?,
         };
         Ok(resp)
     }

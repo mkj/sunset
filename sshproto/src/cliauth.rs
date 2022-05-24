@@ -61,25 +61,18 @@ impl CliAuth {
         mut b: CliBehaviour<'_>,
     ) -> Result<()> {
         if let AuthState::Unstarted = self.state {
-
-            // let m = Mailbox{ waker };
-            // m.await;
-
+            self.state = AuthState::MethodQuery;
             self.username = b.username().await?;
 
-            debug!("username {}", self.username);
-            self.state = AuthState::MethodQuery;
-            resp.push(Packet::ServiceRequest(packets::ServiceRequest {
-                name: SSH_SERVICE_USERAUTH,
-            }).into())
-            .trap()?;
-            resp.push(Packet::UserauthRequest(packets::UserauthRequest {
+            let p = Packet::ServiceRequest(packets::ServiceRequest { name: SSH_SERVICE_USERAUTH });
+            resp.push(p.into()).trap()?;
+
+            let p = Packet::UserauthRequest(packets::UserauthRequest {
                 username: &self.username,
                 service: SSH_SERVICE_CONNECTION,
                 method: packets::AuthMethod::None,
-            }).into())
-            .trap()?;
-            trace!("{resp:#?}");
+            });
+            resp.push(p.into()).trap()?;
         }
         Ok(())
     }

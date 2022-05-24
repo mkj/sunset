@@ -61,6 +61,8 @@ impl<'a> Runner<'a> {
         Ok(size)
     }
 
+    // Drives connection progress, handling received payload and sending sending
+    // other packets as required
     pub async fn out_progress(&mut self, b: &mut Behaviour) -> Result<(), Error> {
         if let Some(payload) = self.traffic.payload() {
             trace!("payload");
@@ -79,6 +81,9 @@ impl<'a> Runner<'a> {
             }
         }
         self.conn.progress(&mut self.traffic, &mut self.keys, b).await?;
+
+        b.progress(self)?;
+
         trace!("out_progress done");
         Ok(())
     }
@@ -94,6 +99,24 @@ impl<'a> Runner<'a> {
         Ok(r)
         // TODO: need some kind of progress() here which
         // will return errors
+    }
+
+    pub fn open_client_session(&mut self, exec: Option<&str>, pty: bool) -> Result<u32> {
+        trace!("open_client_session");
+        let mut init_req = channel::InitReqs::new();
+        if pty {
+            todo!("pty needs modes and that");
+        }
+        if let Some(cmd) = exec {
+            let mut s = channel::ExecString::new();
+            s.push_str(cmd).trap()?;
+            init_req.push(channel::ReqDetails::Exec(s)).trap()?;
+        } else {
+            init_req.push(channel::ReqDetails::Shell).trap()?;
+        }
+        let (ch, p) = self.conn.channels.open(packets::ChannelOpenType::Session, init_req)?;
+        self.traffic.send_packet(p, &mut self.keys)?;
+        Ok(ch.number())
     }
 
     pub fn channel_input(
@@ -127,4 +150,12 @@ impl<'a> Runner<'a> {
     pub fn set_output_waker(&mut self, waker: Waker) {
         self.output_waker = Some(waker);
     }
+
+    // pub fn chan_pending(&self) -> bool {
+    //     self.conn.chan_pending()
+    // }
+
+    // pub fn set_chan_waker(&mut self, waker: Waker) {
+    //     self.chan_waker = Some(waker);
+    // }
 }

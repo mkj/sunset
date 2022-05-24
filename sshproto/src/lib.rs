@@ -45,9 +45,8 @@ mod termmodes;
 pub use behaviour::{Behaviour, BhError, BhResult, ResponseString};
 pub use async_behaviour::{AsyncCliBehaviour,AsyncServBehaviour};
 
-pub use client::Client;
 pub use runner::Runner;
 pub use conn::Conn;
 pub use packets::PubKey;
-pub use error::Error;
+pub use error::{Error,Result};
 pub use mailbox::{Mailbox,MailboxFut};
