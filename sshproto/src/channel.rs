@@ -75,7 +75,8 @@ impl Channels {
     }
 
     // incoming packet handling
-    pub fn dispatch(&mut self, packet: &Packet, resp: &mut RespPackets) -> Result<()> {
+    pub async fn dispatch<'a>(&mut self, packet: &Packet<'a>, resp: &mut RespPackets<'_>, b: &mut Behaviour<'_>) -> Result<()> {
+        trace!("chan dispatchh");
         let r = match packet {
             Packet::ChannelOpen(_p) => {
                 todo!();
@@ -111,11 +112,13 @@ impl Channels {
                     self.remove(p.num)
                 }
             }
-            Packet::ChannelWindowAdjust(_p) => {
+            Packet::ChannelWindowAdjust(p) => {
                 todo!();
             }
-            Packet::ChannelData(_p) => {
-                todo!();
+            Packet::ChannelData(p) => {
+                let ch = self.get_chan(p.num)?;
+                // return Ok(Some(ChanMsg { num: p.num, msg: ChanMsgDetails::Data(p.data.0) }));
+                b.chan_handler(resp, ChanMsg { num: p.num, msg: ChanMsgDetails::Data(p.data.0) }).await
             }
             Packet::ChannelDataExt(_p) => {
                 todo!();
@@ -143,22 +146,24 @@ impl Channels {
                 warn!("Ignoring bad channel number");
                 Ok(())
             }
+            Ok(()) => Ok(()),
             // TODO: close channel on error? or on SSHProtoError?
-            any => any,
+            Err(any) => Err(any),
         }
     }
 }
 
 pub enum ChanType {
     Session,
+    Tcp,
 }
 
 impl From<&packets::ChannelOpenType<'_>> for ChanType {
     fn from(c: &packets::ChannelOpenType<'_>) -> Self {
         match c {
             packets::ChannelOpenType::Session => ChanType::Session,
-            packets::ChannelOpenType::DirectTcpip(_) => todo!(),
-            packets::ChannelOpenType::ForwardedTcpip(_) => todo!(),
+            packets::ChannelOpenType::DirectTcpip(_) => ChanType::Tcp,
+            packets::ChannelOpenType::ForwardedTcpip(_) => ChanType::Tcp,
             packets::ChannelOpenType::Unknown(_) => unreachable!(),
         }
     }
@@ -198,7 +203,7 @@ pub enum ReqDetails {
 }
 
 #[derive(Debug)]
-pub(crate) struct Req {
+pub struct Req {
     num: u32,
     details: ReqDetails,
 }
@@ -299,7 +304,12 @@ impl Channel {
     }
 }
 
-pub enum ChanMsg<'a> {
+pub struct ChanMsg<'a> {
+    pub num: u32,
+    pub msg: ChanMsgDetails<'a>,
+}
+
+pub enum ChanMsgDetails<'a> {
     Data(&'a [u8]),
     ExtData { ext: u32, data: &'a [u8] },
     // TODO: perhaps we don't need the storaged ReqDetails, just have the reqtype packet?

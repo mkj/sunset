@@ -9,12 +9,15 @@ use core::task::{Waker,Poll};
 use core::future::Future;
 use core::mem;
 use core::fmt;
+use core::marker::PhantomData;
 
 use heapless::spsc::{Queue,Producer,Consumer};
 
 use crate::*;
-use crate::packets::{self,Packet};
-use crate::runner::{self,Runner};
+use packets::{self,Packet};
+use runner::{self,Runner};
+use channel::ChanMsg;
+use conn::RespPackets;
 
 // TODO: "Bh" is an ugly abbreviation. Naming is hard.
 
@@ -41,23 +44,28 @@ pub type ReplyChannel = bhtokio::ReplyChannel;
 // Permit impl Trait in type aliases
 // https://github.com/rust-lang/rust/issues/63063
 
-pub struct Behaviour {
+pub struct Behaviour<'a> {
     #[cfg(feature = "std")]
     inner: crate::async_behaviour::AsyncCliServ,
+    #[cfg(not(feature = "std"))]
+    inner: crate::block_behaviour::BlockCliServ<'a>,
+
+    pub phantom: PhantomData<&'a ()>,
 }
 
-impl Behaviour {
-    #[cfg(feature = "std")]
+#[cfg(feature = "std")]
+impl Behaviour<'_> {
     pub fn new_async_client(b: std::boxed::Box<dyn async_behaviour::AsyncCliBehaviour + Send>) -> Self {
         Self {
-            inner: async_behaviour::AsyncCliServ::Client(b)
+            inner: async_behaviour::AsyncCliServ::Client(b),
+            phantom: PhantomData::default(),
         }
     }
 
-    #[cfg(feature = "std")]
     pub fn new_async_server(b: std::boxed::Box<dyn async_behaviour::AsyncServBehaviour + Send>) -> Self {
         Self {
-            inner: async_behaviour::AsyncCliServ::Server(b)
+            inner: async_behaviour::AsyncCliServ::Server(b),
+            phantom: PhantomData::default(),
         }
     }
 
@@ -65,8 +73,42 @@ impl Behaviour {
         self.inner.progress(runner)
     }
 
-    pub(crate) fn chan_handler(&mut self, runner: &mut Runner) -> Result<()> {
+    pub(crate) async fn chan_handler<'f>(&mut self, resp: &mut RespPackets<'_>, chan_msg: ChanMsg<'f>) -> Result<()> {
+        self.inner.chan_handler(resp, chan_msg).await
+    }
+
+    // TODO: or should we just pass CliBehaviour and ServBehaviour through runner,
+    // don't switch here at all
+    pub(crate) fn client(&mut self) -> Result<CliBehaviour> {
+        self.inner.client()
+    }
+    pub(crate) fn server(&mut self) -> Result<ServBehaviour> {
+        self.inner.server()
+    }
+}
+
+#[cfg(not(feature = "std"))]
+impl<'a> Behaviour<'a>
+{
+    pub fn new_blocking_client(b: &'a mut dyn BlockCliBehaviour) -> Self {
+        Self {
+            inner: block_behaviour::BlockCliServ::Client(b),
+            phantom: PhantomData::default(),
+        }
+    }
+
+    pub fn new_blocking_server(b: &'a mut dyn BlockServBehaviour) -> Self {
+        Self {
+            inner: block_behaviour::BlockCliServ::Server(b),
+            phantom: PhantomData::default(),
+        }
+    }
+    pub(crate) fn progress(&mut self, runner: &mut Runner) -> Result<()> {
         self.inner.progress(runner)
+    }
+
+    pub(crate) async fn chan_handler<'f>(&mut self, resp: &mut RespPackets<'_>, chan_msg: ChanMsg<'f>) -> Result<()> {
+        self.inner.chan_handler(resp, chan_msg)
     }
 
     // TODO: or should we just pass CliBehaviour and ServBehaviour through runner,
@@ -82,10 +124,13 @@ impl Behaviour {
 pub struct CliBehaviour<'a> {
     #[cfg(feature = "std")]
     pub inner: &'a mut dyn async_behaviour::AsyncCliBehaviour,
-    pub phantom: core::marker::PhantomData<&'a ()>,
+    #[cfg(not(feature = "std"))]
+    pub inner: &'a mut dyn block_behaviour::BlockCliBehaviour,
+    // pub phantom: core::marker::PhantomData<&'a ()>,
 }
 
 // wraps everything in AsyncCliBehaviour
+#[cfg(feature = "std")]
 impl<'a> CliBehaviour<'a> {
     pub(crate) async fn username(&mut self) -> BhResult<ResponseString>{
         self.inner.username().await
@@ -111,15 +156,45 @@ impl<'a> CliBehaviour<'a> {
     pub(crate) async fn show_banner(&self, banner: &str, language: &str) {
         self.inner.show_banner(banner, language).await
     }
+}
 
+#[cfg(not(feature = "std"))]
+impl<'a> CliBehaviour<'a> {
+    pub(crate) async fn username(&mut self) -> BhResult<ResponseString>{
+        self.inner.username()
+    }
+
+    pub(crate) async fn valid_hostkey<'f>(&mut self, key: &PubKey<'f>) -> BhResult<bool> {
+        self.inner.valid_hostkey(key)
+    }
+
+    #[allow(unused)]
+    pub(crate) async fn auth_password(&mut self, pwbuf: &mut ResponseString) -> BhResult<bool> {
+        self.inner.auth_password(pwbuf)
+    }
+
+    pub(crate) async fn next_authkey(&mut self) -> BhResult<Option<sign::SignKey>> {
+        self.inner.next_authkey()
+    }
+
+    pub(crate) async fn authenticated(&mut self) {
+        self.inner.authenticated()
+    }
+
+    pub(crate) async fn show_banner(&self, banner: &str, language: &str) {
+        self.inner.show_banner(banner, language)
+    }
 }
 
 pub struct ServBehaviour<'a> {
     #[cfg(feature = "std")]
     pub inner: &'a mut dyn async_behaviour::AsyncServBehaviour,
+    #[cfg(not(feature = "std"))]
+    pub inner: &'a mut dyn block_behaviour::BlockServBehaviour,
     pub phantom: core::marker::PhantomData<&'a ()>,
 }
 
+#[cfg(feature = "std")]
 impl<'a> ServBehaviour<'a> {
 
 }

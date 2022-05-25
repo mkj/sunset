@@ -138,8 +138,8 @@ impl<'a> Userauth60<'a> {
     /// Special handling in [`wireformat`]
     pub(crate) fn variant(ctx: &ParseContext) -> Result<&'static str> {
         match ctx.cli_auth_type {
-            Some(cliauth::Req::Password(_)) => Ok("PwChangeReq"),
-            Some(cliauth::Req::PubKey(..)) => Ok("PkOk"),
+            Some(cliauth::AuthType::Password) => Ok("PwChangeReq"),
+            Some(cliauth::AuthType::PubKey) => Ok("PkOk"),
             _ => return Err(Error::PacketWrong),
         }
     }
@@ -719,21 +719,20 @@ pub struct Unknown<'a>(pub &'a str);
 
 /// State to be passed to deserialisation.
 /// Use this so the parser can select the correct enum variant to deserialize.
-#[derive(Default)]
-pub struct ParseContext<'a> {
-    pub cli_auth_type: Option<cliauth::Req>,
-    lifetime: PhantomData<&'a ()>, // TODO
+#[derive(Default,Clone)]
+pub struct ParseContext {
+    pub cli_auth_type: Option<cliauth::AuthType>,
 }
 
-impl<'a> ParseContext<'a> {
+impl ParseContext {
     pub fn new() -> Self {
-        ParseContext { cli_auth_type: None, lifetime: PhantomData::default() }
+        ParseContext { cli_auth_type: None }
     }
 }
 
 /// State passed as the Deserializer seed.
-pub(crate) struct PacketState<'a> {
-    pub ctx: &'a ParseContext<'a>,
+pub(crate) struct PacketState {
+    pub ctx: ParseContext,
     // Private fields that keep state during parsing.
     // TODO Perhaps not actually necessary, could be removed and just pass ParseContext?
     // pub(crate) ty: Cell<Option<MessageNumber>>,

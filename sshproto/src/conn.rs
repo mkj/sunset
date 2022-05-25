@@ -26,7 +26,7 @@ use mailbox::Mailbox;
 // TODO a max value needs to be analysed
 pub(crate) const MAX_RESPONSES: usize = 4;
 
-pub(crate) type RespPackets<'a> = heapless::Vec<PacketMaker<'a>, MAX_RESPONSES>;
+pub type RespPackets<'a> = heapless::Vec<PacketMaker<'a>, MAX_RESPONSES>;
 
 /// The core state of a SSH instance.
 pub struct Conn<'a> {
@@ -42,6 +42,8 @@ pub struct Conn<'a> {
     cliserv: ClientServer,
 
     algo_conf: kex::AlgoConfig<'a>,
+
+    parse_ctx: ParseContext,
 
     /// Remote version string. Kept for later kexinit rekeying
     pub(crate) remote_version: ident::RemoteVersion,
@@ -102,13 +104,14 @@ impl<'a> Conn<'a> {
             algo_conf: kex::AlgoConfig::new(cliserv.is_client()),
             cliserv,
             channels: Channels::new(),
+            parse_ctx: ParseContext::new(),
         })
     }
 
     /// Updates `ConnState` and sends any packets required to progress the connection state.
     pub(crate) async fn progress<'b>(
         &mut self, traffic: &mut Traffic<'b>, keys: &mut KeyState,
-        b: &mut Behaviour,
+        b: &mut Behaviour<'_>,
     ) -> Result<(), Error> {
         debug!("progress conn state {:?}", self.state);
         let mut resp = RespPackets::new();
@@ -162,16 +165,15 @@ impl<'a> Conn<'a> {
     /// We queue response packets that can be sent (written into the same buffer)
     /// after `handle_payload()` runs.
     pub(crate) async fn handle_payload(
-        &mut self, payload: &[u8], keys: &mut KeyState, b: &mut Behaviour
+        &mut self, payload: &[u8], keys: &mut KeyState, b: &mut Behaviour<'_>,
     ) -> Result<RespPackets<'_>, Error> {
         trace!("conn state {:?}", self.state);
-        let ctx = ParseContext::new();
-        let p = wireformat::packet_from_bytes(payload, &ctx)?;
+        let p = wireformat::packet_from_bytes(payload, &self.parse_ctx)?;
         self.dispatch_packet(&p, keys, b).await
     }
 
     async fn dispatch_packet(
-        &mut self, packet: &Packet<'_>, keys: &mut KeyState, b: &mut Behaviour
+        &mut self, packet: &Packet<'_>, keys: &mut KeyState, b: &mut Behaviour<'_>,
     ) -> Result<RespPackets<'_>, Error> {
         // TODO: perhaps could consolidate packet allowed checks into a separate function
         // to run first?
@@ -326,7 +328,7 @@ impl<'a> Conn<'a> {
                 if let ClientServer::Client(cli) = &mut self.cliserv {
                     todo!();
                 } else {
-                    debug!("Received banner as a server");
+                    debug!("Received userauth60 as a server");
                     return Err(Error::SSHProtoError)
                 }
             }
@@ -342,7 +344,7 @@ impl<'a> Conn<'a> {
             | Packet::ChannelSuccess(_)
             | Packet::ChannelFailure(_)
             // TODO: probably needs a conn or cliserv argument.
-            => self.channels.dispatch(packet, &mut resp)?,
+            => self.channels.dispatch(packet, &mut resp, b).await?,
         };
         Ok(resp)
     }

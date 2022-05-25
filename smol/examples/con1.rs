@@ -9,7 +9,7 @@ use pretty_hex::PrettyHex;
 use pin_utils::*;
 use tokio::net::TcpStream;
 
-use std::net::Ipv6Addr;
+use std::{net::Ipv6Addr, io::Read};
 
 use door_sshproto::*;
 
@@ -56,6 +56,14 @@ fn setup_log() {
     ).unwrap();
 }
 
+fn read_key(p: &str) -> Result<SignKey> {
+    let mut f = std::fs::File::open("id_authkey")?;
+    let mut v = vec![];
+    f.read_to_end(&mut v)?;
+    trace!("v {:?}", v.hex_dump());
+    SignKey::from_openssh(v).context("reading openssh key")
+}
+
 async fn run() -> Result<()> {
 
     info!("running main");
@@ -69,10 +77,12 @@ async fn run() -> Result<()> {
 
     let mut work = vec![0; 3000];
     let mut sess = door_smol::SimpleClient::new();
+    sess.add_authkey(read_key("id_authkey")?);
     let conn = Conn::new_client()?;
     let runner = Runner::new(conn, work.as_mut_slice()).await?;
 
     let b = Behaviour::new_async_client(Box::new(sess));
+    // let b = Behaviour::new_blocking_client(&mut sess);
     let mut door = door_smol::AsyncDoor::new(runner, b);
 
     // let door = async_dup::Mutex::new(door_smol::AsyncDoor { runner });

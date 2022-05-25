@@ -97,6 +97,16 @@ impl SignKey {
             }
         }
     }
+
+    pub fn from_openssh(k: impl AsRef<[u8]>) -> Result<Self> {
+        let k = ssh_key::PrivateKey::from_openssh(k)
+            .map_err(|e| {
+                trace!("Bad key: {e:?}");
+                Error::msg("todo openssh key error")
+            })?;
+
+        (&k).try_into()
+    }
 }
 
 // TODO: this might go behind a feature?
@@ -107,7 +117,7 @@ impl TryFrom<&ssh_key::PrivateKey> for SignKey {
         match k.key_data() {
             ssh_key::private::KeypairData::Ed25519(k) => {
                 let edk = Ed25519KeyPair::from_seed_unchecked(&k.private.to_bytes())
-                .map_err(|_| Error::BadKey)?;
+                .trap()?;
                 Ok(SignKey::Ed25519(edk))
             }
             _ => Err(Error::NotAvailable { what: "this key format" })

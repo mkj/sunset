@@ -29,9 +29,9 @@ use core::marker::PhantomData;
 
 /// Parses a [`Packet`] from a borrowed `&[u8]` byte buffer.
 pub fn packet_from_bytes<'a>(
-    b: &'a [u8], ctx: &'a ParseContext<'a>,
+    b: &'a [u8], ctx: &ParseContext,
 ) -> Result<Packet<'a>> {
-    let mut ds = DeSSHBytes::from_bytes(b, ctx);
+    let mut ds = DeSSHBytes::from_bytes(b, ctx.clone());
     Packet::deserialize(&mut ds).map_err(|e| {
         // TODO better handling of this. Stuff it in PacketState.
         // Also should return which MessageNumber failed in later parsing
@@ -462,7 +462,7 @@ pub(crate) struct DeSSHBytes<'a> {
     input: &'a [u8],
     pos: usize,
 
-    parse_ctx: &'a ParseContext<'a>,
+    parse_ctx: ParseContext,
 
     /// MapAccessDeSSH can capture the string value of a selected field
     /// for use as an enum variant selector
@@ -475,7 +475,7 @@ pub(crate) struct DeSSHBytes<'a> {
 
 impl<'de> DeSSHBytes<'de> {
     // XXX: rename to new() ?
-    pub fn from_bytes(input: &'de [u8], ctx: &'de ParseContext) -> Self {
+    pub fn from_bytes(input: &'de [u8], ctx: ParseContext) -> Self {
         DeSSHBytes {
             input,
             pos: 0,
@@ -636,7 +636,7 @@ impl<'de, 'a> Deserializer<'de> for &'a mut DeSSHBytes<'de> {
         V: Visitor<'de>,
     {
         let variant_name = match name {
-            "Userauth60" => packets::Userauth60::variant(self.parse_ctx)?,
+            "Userauth60" => packets::Userauth60::variant(&self.parse_ctx)?,
             |"ChannelOpenType"
             |"ChannelReqType"
             => self.next_variant.take().trap()?,
@@ -975,7 +975,7 @@ pub(crate) mod tests {
         }));
         let mut pw = ResponseString::new();
         pw.push_str("123").unwrap();
-        ctx.cli_auth_type = Some(cliauth::Req::Password(pw ));
+        ctx.cli_auth_type = Some(cliauth::AuthType::Password);
         test_roundtrip_context(&p, &ctx);
 
         // PkOk is a more interesting case because the PubKey inside it is also
@@ -987,7 +987,7 @@ pub(crate) mod tests {
             })),
         }));
         let s = sign::tests::make_ed25519_signkey();
-        ctx.cli_auth_type = Some(cliauth::Req::PubKey(s));
+        ctx.cli_auth_type = Some(cliauth::AuthType::PubKey);
         test_roundtrip_context(&p, &ctx);
     }
 }

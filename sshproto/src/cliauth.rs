@@ -24,6 +24,12 @@ pub enum Req {
     PubKey(SignKey),
 }
 
+#[derive(Clone)]
+pub enum AuthType {
+    Password,
+    PubKey,
+}
+
 pub enum AuthState {
     Unstarted,
     MethodQuery,

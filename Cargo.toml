@@ -13,7 +13,8 @@ members = [
 
 [profile.release]
 opt-level = 's'
-lto = "fat"
+# lto = "fat"
 debug = 1
 
 [patch.crates-io]
+ssh-key = { path = "/home/matt/3rd/rs/rustcrypto-formats/ssh-key" }

@@ -61,9 +61,9 @@ impl<'a> Runner<'a> {
         Ok(size)
     }
 
-    // Drives connection progress, handling received payload and sending sending
+    // Drives connection progress, handling received payload and sending
     // other packets as required
-    pub async fn out_progress(&mut self, b: &mut Behaviour) -> Result<(), Error> {
+    pub async fn out_progress(&mut self, b: &mut Behaviour<'_>) -> Result<(), Error> {
         if let Some(payload) = self.traffic.payload() {
             trace!("payload");
             // Lifetimes here are a bit subtle.

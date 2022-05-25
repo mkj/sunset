@@ -55,7 +55,7 @@ enum TrafState {
 }
 
 #[derive(Debug)]
-pub(crate) enum PacketMaker<'a> {
+pub enum PacketMaker<'a> {
     Packet(Packet<'a>),
     ChanReq(channel::Req),
 }
@@ -73,7 +73,7 @@ impl From<channel::Req> for PacketMaker<'_> {
 }
 
 impl<'a> PacketMaker<'a> {
-    pub fn send_packet(self, traffic: &mut Traffic, keys: &mut KeyState) -> Result<()> {
+    pub(crate) fn send_packet(self, traffic: &mut Traffic, keys: &mut KeyState) -> Result<()> {
         match self {
             Self::Packet(p) => traffic.send_packet(p, keys),
             Self::ChanReq(r) => traffic.send_packet(r.packet()?, keys),

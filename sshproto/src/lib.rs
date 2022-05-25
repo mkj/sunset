@@ -39,14 +39,20 @@ mod channel;
 mod config;
 mod runner;
 mod behaviour;
-mod async_behaviour;
 mod termmodes;
+mod async_behaviour;
+mod block_behaviour;
 
 pub use behaviour::{Behaviour, BhError, BhResult, ResponseString};
+#[cfg(feature = "std")]
 pub use async_behaviour::{AsyncCliBehaviour,AsyncServBehaviour};
+#[cfg(not(feature = "std"))]
+pub use block_behaviour::{BlockCliBehaviour,BlockServBehaviour};
 
 pub use runner::Runner;
-pub use conn::Conn;
+pub use conn::{Conn,RespPackets};
+pub use sign::SignKey;
 pub use packets::PubKey;
 pub use error::{Error,Result};
 pub use mailbox::{Mailbox,MailboxFut};
+pub use channel::{ChanMsg,ChanMsgDetails};

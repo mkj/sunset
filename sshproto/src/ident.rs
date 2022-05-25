@@ -152,8 +152,10 @@ mod tests {
         let split = split.min(v.len());
         let (a, b) = v.as_bytes().split_at(split);
 
-        let (taken1, done1) = r.consume(a)?;
-        let (taken2, done2) = r.consume(b)?;
+        let taken1 = r.consume(a)?;
+        let done1 = r.version().is_some();
+        let taken2 = r.consume(b)?;
+        let done2 = r.version().is_some();
 
         if done1 {
             assert!(done2);

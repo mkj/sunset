@@ -565,7 +565,7 @@ mod tests {
     }
 
     /// Round trip a `Packet`
-    fn reserialize<'a>(out_buf: &'a mut [u8], p: Packet, ctx: &'a ParseContext) -> Packet<'a> {
+    fn reserialize<'a>(out_buf: &'a mut [u8], p: Packet, ctx: &ParseContext) -> Packet<'a> {
         wireformat::write_ssh(out_buf, &p).unwrap();
         wireformat::packet_from_bytes(out_buf, &ctx).unwrap()
     }
