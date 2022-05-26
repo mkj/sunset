@@ -52,6 +52,7 @@ impl<'a> AsyncDoor<'a> {
         Self { inner: Arc::new(ParkingLotMutex::new(inner)), out_progress_fut: None }
     }
 
+    // TODO this should go away, or perhaps pass the function down to the Behaviour
     pub fn with_behaviour<F, R>(&self, f: F) -> R
     where
         F: FnOnce(&mut Behaviour<'a>) -> R,
@@ -76,7 +77,9 @@ impl<'a> AsyncRead for AsyncDoor<'a> {
             f.as_mut().poll(cx)
             .map_err(|e| IoError::new(ErrorKind::Other, e))
         } else {
+            // TODO this blocks
             let mut inner = ParkingLotMutex::lock_arc(&self.inner);
+
             // TODO: should this be conditional on the result of the poll?
             inner.runner.set_output_waker(cx.waker().clone());
             // async move block to capture `inner`
@@ -125,11 +128,10 @@ impl<'a> AsyncWrite for AsyncDoor<'a> {
         buf: &[u8],
     ) -> Poll<Result<usize, IoError>> {
         trace!("poll_write");
-        let runner =
-            &mut self.lock().runner;
-        // trace!("poll_write got lock");
-        // trace!("write size {}", buf.len());
+        // TODO: this lock is blocking
+        let runner = &mut self.lock().runner;
         runner.set_input_waker(cx.waker().clone());
+
         // TODO: should runner just have poll_write/poll_read?
         // TODO: is ready_input necessary? .input() should return size=0
         // if nothing is consumed. Or .input() could return a Poll<Result<usize>>

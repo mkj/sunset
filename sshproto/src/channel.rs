@@ -6,11 +6,11 @@ use {
 
 use core::mem;
 
-use heapless::{String,Deque,Vec};
+use heapless::{Deque, String, Vec};
 
-use crate::{*, conn::RespPackets};
-use packets::{Packet,ChannelRequest,ChannelReqType};
+use crate::{conn::RespPackets, *};
 use config::*;
+use packets::{ChannelReqType, ChannelRequest, Packet, ChannelOpenType};
 
 pub(crate) struct Channels {
     ch: [Option<Channel>; config::MAX_CHANNELS],
@@ -24,8 +24,10 @@ impl Channels {
     }
 
     pub fn open<'b>(
-        &mut self, ty: packets::ChannelOpenType<'b>,
-        init_req: InitReqs) -> Result<(&Channel, Packet<'b>)> {
+        &mut self,
+        ty: packets::ChannelOpenType<'b>,
+        init_req: InitReqs,
+    ) -> Result<(&Channel, Packet<'b>)> {
         // first available channel
         let num = self
             .ch
@@ -52,7 +54,8 @@ impl Channels {
             initial_window: chan.recv.window as u32,
             max_packet: chan.recv.max_packet as u32,
             ch: ty,
-        }.into();
+        }
+        .into();
         let ch = &mut self.ch[num as usize];
         *ch = Some(chan);
         Ok((ch.as_ref().unwrap(), p))
@@ -70,12 +73,17 @@ impl Channels {
 
     fn remove(&mut self, num: u32) -> Result<()> {
         // TODO any checks?
-        *self.ch .get_mut(num as usize).ok_or(Error::BadChannel)? = None;
+        *self.ch.get_mut(num as usize).ok_or(Error::BadChannel)? = None;
         Ok(())
     }
 
     // incoming packet handling
-    pub async fn dispatch<'a>(&mut self, packet: &Packet<'a>, resp: &mut RespPackets<'_>, b: &mut Behaviour<'_>) -> Result<()> {
+    pub async fn dispatch<'a>(
+        &mut self,
+        packet: &Packet<'a>,
+        resp: &mut RespPackets<'_>,
+        b: &mut Behaviour<'_>,
+    ) -> Result<()> {
         trace!("chan dispatchh");
         let r = match packet {
             Packet::ChannelOpen(_p) => {
@@ -84,8 +92,9 @@ impl Channels {
             Packet::ChannelOpenConfirmation(p) => {
                 let ch = self.get_chan(p.num)?;
                 match ch.state {
-                    ChanState::Opening {..} => {
-                        let init_state = mem::replace(&mut ch.state, ChanState::Normal);
+                    ChanState::Opening { .. } => {
+                        let init_state =
+                            mem::replace(&mut ch.state, ChanState::Normal);
                         if let ChanState::Opening { init_req } = init_state {
                             debug_assert!(ch.send.is_none());
                             ch.send = Some(ChanDir {
@@ -99,7 +108,6 @@ impl Channels {
                             ch.state = ChanState::Normal;
                         }
                         Ok(())
-
                     }
                     _ => Err(Error::SSHProtoError),
                 }
@@ -116,9 +124,11 @@ impl Channels {
                 todo!();
             }
             Packet::ChannelData(p) => {
-                let ch = self.get_chan(p.num)?;
-                // return Ok(Some(ChanMsg { num: p.num, msg: ChanMsgDetails::Data(p.data.0) }));
-                b.chan_handler(resp, ChanMsg { num: p.num, msg: ChanMsgDetails::Data(p.data.0) }).await
+                b.chan_handler(
+                    resp,
+                    ChanMsg { num: p.num, msg: ChanMsgDetails::Data(p.data.0) },
+                )
+                .await
             }
             Packet::ChannelDataExt(_p) => {
                 todo!();
@@ -158,13 +168,13 @@ pub enum ChanType {
     Tcp,
 }
 
-impl From<&packets::ChannelOpenType<'_>> for ChanType {
-    fn from(c: &packets::ChannelOpenType<'_>) -> Self {
+impl From<&ChannelOpenType<'_>> for ChanType {
+    fn from(c: &ChannelOpenType<'_>) -> Self {
         match c {
-            packets::ChannelOpenType::Session => ChanType::Session,
-            packets::ChannelOpenType::DirectTcpip(_) => ChanType::Tcp,
-            packets::ChannelOpenType::ForwardedTcpip(_) => ChanType::Tcp,
-            packets::ChannelOpenType::Unknown(_) => unreachable!(),
+            ChannelOpenType::Session => ChanType::Session,
+            ChannelOpenType::DirectTcpip(_) => ChanType::Tcp,
+            ChannelOpenType::ForwardedTcpip(_) => ChanType::Tcp,
+            ChannelOpenType::Unknown(_) => unreachable!(),
         }
     }
 }
@@ -184,7 +194,7 @@ pub struct Pty {
     width: u32,
     height: u32,
     // TODO: perhaps we need something serializable here
-    modes: Vec<ModePair, {termmodes::NUM_MODES}>,
+    modes: Vec<ModePair, { termmodes::NUM_MODES }>,
 }
 
 pub(crate) type ExecString = heapless::String<MAX_EXEC>;
@@ -222,30 +232,19 @@ impl Req {
         let num = self.num;
         let want_reply = self.details.want_reply();
         let ty = match &self.details {
-            ReqDetails::Shell => {
-                ChannelReqType::Shell
-            }
+            ReqDetails::Shell => ChannelReqType::Shell,
             ReqDetails::Pty(_pty) => {
                 todo!("serialize modes")
             }
             ReqDetails::Exec(cmd) => {
-                ChannelReqType::Exec(packets::Exec {command: &cmd})
+                ChannelReqType::Exec(packets::Exec { command: &cmd })
             }
-            ReqDetails::WinChange(rt) => {
-                ChannelReqType::WinChange(rt.clone())
-            }
-            ReqDetails::Break(rt) => {
-                ChannelReqType::Break(rt.clone())
-            }
+            ReqDetails::WinChange(rt) => ChannelReqType::WinChange(rt.clone()),
+            ReqDetails::Break(rt) => ChannelReqType::Break(rt.clone()),
         };
-        let p = ChannelRequest {
-            num,
-            want_reply,
-            ch: ty,
-        }.into();
+        let p = ChannelRequest { num, want_reply, ch: ty }.into();
         Ok(p)
     }
-
 }
 
 // Variants match packets::ChannelReqType, without data
@@ -266,6 +265,7 @@ enum ReqKind {
 const MAX_OUTSTANDING_REQS: usize = 2;
 const MAX_INIT_REQS: usize = 2;
 
+/// Per-direction channel variables
 pub struct ChanDir {
     num: u32,
     max_packet: usize,
@@ -294,7 +294,7 @@ pub struct Channel {
 impl Channel {
     fn request(&mut self, req: ReqDetails, resp: &mut RespPackets) -> Result<()> {
         let num = self.send.as_ref().trap()?.num;
-        let r = Req {num, details: req };
+        let r = Req { num, details: req };
         resp.push(r.into()).trap()?;
         Ok(())
     }
@@ -330,6 +330,5 @@ pub enum ChanOut {
     // TODO closein/closeout/eof, etc. Should also return the exit status etc
 
     // TODO: responses to a previous ChanMsg
-
     Close,
 }
