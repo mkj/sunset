@@ -17,5 +17,4 @@ opt-level = 's'
 debug = 1
 
 [patch.crates-io]
-ssh-key = { path = "/home/matt/3rd/rs/rustcrypto-formats/ssh-key" }
-ring = { path = "/home/matt/3rd/rs/ring" }
+# ring = { path = "/home/matt/3rd/rs/ring" }

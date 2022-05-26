@@ -7,25 +7,25 @@ use {
 use core::task::{Poll, Waker};
 use heapless::{String, Vec};
 use no_panic::no_panic;
-use ring::digest::Digest;
 use pretty_hex::PrettyHex;
+use ring::digest::Digest;
 
 use ring::signature::Signature as RingSig;
 
-use crate::*;
+use crate::{packets::UserauthPkOk, *};
 use behaviour::CliBehaviour;
 use client::*;
 use conn::RespPackets;
-use packets::{ParseContext, UserauthRequest, AuthMethod, MethodPubKey};
-use wireformat::{BinString, Blob};
+use packets::{AuthMethod, MethodPubKey, ParseContext, UserauthRequest};
 use packets::{Packet, Signature, Userauth60};
 use sign::SignKey;
 use sshnames::*;
+use wireformat::{BinString, Blob};
 
 // pub for packets::ParseContext
 pub enum Req {
     Password(ResponseString),
-    PubKey { key: SignKey, sig: Option<RingSig> },
+    PubKey { key: SignKey },
 }
 
 #[derive(Clone, Debug)]
@@ -37,7 +37,7 @@ pub enum AuthType {
 pub enum AuthState {
     Unstarted,
     MethodQuery,
-    Request { last_req: Req, sig2: Option<RingSig> },
+    Request { last_req: Req, sig: Option<RingSig> },
     Idle,
 }
 
@@ -49,38 +49,29 @@ impl Req {
         parse_ctx: &mut ParseContext,
     ) -> Result<Packet<'b>> {
         let p = match self {
-            Req::PubKey { key, sig } => {
+            Req::PubKey { key, .. } => {
                 // already checked by make_pubkey_req()
-                let sig_algo = Signature::sig_name_for_pubkey(
-                    &key.pubkey()).trap()?;
-                let pubmethod = packets::MethodPubKey {
-                    sig_algo,
-                    pubkey: Blob(key.pubkey()),
-                    sig: None,
-                    signing_now: false,
-                };
                 parse_ctx.cli_auth_type = Some(AuthType::PubKey);
                 Packet::UserauthRequest(packets::UserauthRequest {
                     username,
                     service: SSH_SERVICE_CONNECTION,
-                    method: packets::AuthMethod::PubKey(pubmethod),
+                    method: key.pubkey().try_into()?,
                 })
             }
             Req::Password(pw) => {
                 parse_ctx.cli_auth_type = Some(AuthType::Password);
                 Packet::UserauthRequest(packets::UserauthRequest {
-                    username    ,
+                    username,
                     service: SSH_SERVICE_CONNECTION,
-                    method: packets::AuthMethod::Password(
-                        packets::MethodPassword { change: false, password: pw },
-                    ),
+                    method: packets::AuthMethod::Password(packets::MethodPassword {
+                        change: false,
+                        password: pw,
+                    }),
                 })
             }
         };
-        trace!("parse_ctx => {:?}", parse_ctx);
         Ok(p)
     }
-
 }
 
 pub(crate) struct CliAuth {
@@ -152,28 +143,40 @@ impl CliAuth {
             self.try_pubkey = false;
             Error::BehaviourError { msg: "next_pubkey failed TODO" }
         })?;
-        let pk = pk.map(|pk| Req::PubKey { key: pk, sig: None });
+        let pk = pk.map(|pk| Req::PubKey { key: pk });
         if pk.is_none() {
             self.try_pubkey = false;
         }
         Ok(pk)
     }
 
-    pub fn auth_sig_msg(key: &SignKey, sess_id: &Digest, p: &Packet) -> Result<RingSig> {
-        if let Packet::UserauthRequest(
-            UserauthRequest{username, service,
-                method: AuthMethod::PubKey(MethodPubKey{sig_algo, pubkey, ..})}) = p {
-
-            let sig_packet = Packet::UserauthRequest(
-                    UserauthRequest{username, service,
-                method: AuthMethod::PubKey(MethodPubKey{
-                    sig_algo, pubkey: pubkey.clone(), sig: None, signing_now: true})});
+    pub fn auth_sig_msg(
+        key: &SignKey,
+        sess_id: &Digest,
+        p: &Packet,
+    ) -> Result<RingSig> {
+        if let Packet::UserauthRequest(UserauthRequest {
+            username,
+            service,
+            method: AuthMethod::PubKey(MethodPubKey { sig_algo, pubkey, .. }),
+        }) = p
+        {
+            let sig_packet = Packet::UserauthRequest(UserauthRequest {
+                username,
+                service,
+                method: AuthMethod::PubKey(MethodPubKey {
+                    sig_algo,
+                    pubkey: pubkey.clone(),
+                    sig: None,
+                    signing_now: true,
+                }),
+            });
 
             let msg = auth::AuthSigMsg {
                 sess_id: BinString(sess_id.as_ref()),
                 p: sig_packet,
             };
-            let mut b = [0u8;1000];
+            let mut b = [0u8; 1000];
             let l = wireformat::write_ssh(&mut b, &msg)?;
             let b = &b[..l];
             trace!("msg {:?}", b.hex_dump());
@@ -185,50 +188,6 @@ impl CliAuth {
         }
     }
 
-    // Creates a packet from the current request
-    fn req_packet<'b>(
-        &'b self,
-        username: &'b str,
-        parse_ctx: &mut ParseContext,
-    ) -> Result<Packet<'b>> {
-        if let AuthState::Request { last_req: req, .. } = &self.state {
-            let p = match req {
-                Req::PubKey { key, .. } => {
-                    // already checked by make_pubkey_req()
-                    let sig_algo = Signature::sig_name_for_pubkey(
-                        &key.pubkey()).trap()?;
-                    let pubmethod = packets::MethodPubKey {
-                        sig_algo,
-                        pubkey: Blob(key.pubkey()),
-                        sig: None,
-                        signing_now: false,
-                    };
-                    parse_ctx.cli_auth_type = Some(AuthType::PubKey);
-                    Packet::UserauthRequest(packets::UserauthRequest {
-                        username,
-                        service: SSH_SERVICE_CONNECTION,
-                        method: packets::AuthMethod::PubKey(pubmethod),
-                    })
-                }
-                Req::Password(pw) => {
-                    parse_ctx.cli_auth_type = Some(AuthType::Password);
-                    Packet::UserauthRequest(packets::UserauthRequest {
-                        username    ,
-                        service: SSH_SERVICE_CONNECTION,
-                        method: packets::AuthMethod::Password(
-                            packets::MethodPassword { change: false, password: pw },
-                        ),
-                    })
-                }
-            };
-            trace!("parse_ctx => {:?}", parse_ctx);
-            Ok(p)
-        } else {
-            Err(Error::bug())
-        }
-    }
-
-    // mystery: not quite sure why the 'b lifetime is required
     pub async fn auth60<'b>(
         &'b mut self,
         auth60: &packets::Userauth60<'_>,
@@ -237,48 +196,60 @@ impl CliAuth {
         parse_ctx: &mut ParseContext,
     ) -> Result<()> {
         parse_ctx.cli_auth_type = None;
-        trace!("parse_ctx => {:?}", parse_ctx);
+
+        match auth60 {
+            Userauth60::PkOk(pkok) => self.auth_pkok(pkok, resp, sess_id, parse_ctx),
+            _ => todo!(),
+        }
+    }
+
+    fn auth_pkok<'b>(
+        &'b mut self,
+        pkok: &UserauthPkOk<'_>,
+        resp: &mut RespPackets<'b>,
+        sess_id: &Digest,
+        parse_ctx: &mut ParseContext,
+    ) -> Result<()> {
         // We are only sending keys one at a time so they shouldn't
         // get out of sync. In future we could change it to send
         // multiple requests pipelined, though unsure of server
         // acceptance of that.
-        match (auth60, &mut self.state) {
-            (
-                Userauth60::PkOk(pkok),
-                AuthState::Request {
-                    last_req,
-                    ref mut sig2,
-                },
-            ) => {
-                let mut p;
+        match &mut self.state {
+            // Some tricky logistics to create the signature in self.state
+            // using a packet borrowed from other parts of self.state
+            AuthState::Request { last_req, ref mut sig } => {
+                if sig.is_some() {
+                    return Err(Error::SSHProtoError);
+                }
                 if let Req::PubKey { key, .. } = last_req {
                     if key.pubkey() != pkok.key.0 {
-                        trace!("Mismatch userauth60");
                         return Err(Error::SSHProtoError);
                     }
                 }
-                // TODO check sig2
-                p = last_req.req_packet(&self.username, parse_ctx)?;
+
+                let mut p = last_req.req_packet(&self.username, parse_ctx)?;
                 let last_req = &last_req;
                 if let Req::PubKey { key, .. } = last_req {
+                    // Create the signature
                     let new_sig = Self::auth_sig_msg(&key, sess_id, &p)?;
-                    let rsig = sig2.insert(new_sig);
-                // self.state = AuthState::Request { last_req: Req::PubKey { key, sig: Some(sig) }};
-                // let rsig = if let AuthState::Request { last_req: Req::PubKey { sig: ref mut sig, .. }} = self.state {
-                //     sig.insert(new_sig)
-                // } else {
-                //     unreachable!();
-                // };
+                    let rsig = sig.insert(new_sig);
 
-                    if let Packet::UserauthRequest(UserauthRequest{
-                            method: AuthMethod::PubKey(MethodPubKey{sig: ref mut psig, ..}), ..}) = p {
+                    // Put it in the packet
+                    if let Packet::UserauthRequest(UserauthRequest {
+                        method:
+                            AuthMethod::PubKey(MethodPubKey {
+                                sig: ref mut psig, ..
+                            }),
+                        ..
+                    }) = p
+                    {
                         *psig = Some(Blob(Signature::from_ring(key, rsig)?))
                     }
                     resp.push(p.into()).trap()?;
-                    return Ok(())
+                    return Ok(());
                 }
             }
-            _ => ()
+            _ => (),
         }
         trace!("Unexpected userauth60");
         Err(Error::SSHProtoError)
@@ -292,9 +263,7 @@ impl CliAuth {
         resp: &mut RespPackets<'b>,
         parse_ctx: &mut ParseContext,
     ) -> Result<()> {
-
         parse_ctx.cli_auth_type = None;
-        trace!("parse_ctx => {:?}", parse_ctx);
         // TODO: look at existing self.state, handle the failure.
         self.state = AuthState::Idle;
 
@@ -302,7 +271,7 @@ impl CliAuth {
             while self.try_pubkey {
                 let req = self.make_pubkey_req(b).await?;
                 if let Some(req) = req {
-                    self.state = AuthState::Request { last_req: req, sig2: None };
+                    self.state = AuthState::Request { last_req: req, sig: None };
                     break;
                 }
             }
@@ -314,8 +283,7 @@ impl CliAuth {
         {
             let req = self.make_password_req(b).await?;
             if let Some(req) = req {
-                self.state = AuthState::Request { last_req: req, sig2: None };
-                trace!("parse_ctx => {:?}", parse_ctx);
+                self.state = AuthState::Request { last_req: req, sig: None };
             }
         }
 
@@ -325,8 +293,8 @@ impl CliAuth {
             });
         }
 
-        if let AuthState::Request { last_req: req, .. } = &self.state {
-            let p = self.req_packet(&self.username, parse_ctx)?;
+        if let AuthState::Request { last_req, .. } = &self.state {
+            let p = last_req.req_packet(&self.username, parse_ctx)?;
             resp.push(p.into()).trap()?;
         }
         Ok(())

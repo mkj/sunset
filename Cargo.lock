@@ -72,6 +72,8 @@ checksum = "f8fe8f5a8a398345e52358e18ff07cc17a568fbca5c6f73873d3a62056309603"
 [[package]]
 name = "base64ct"
 version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dea908e7347a8c64e378c17e30ef880ad73e3b4498346b055c2c00ea342f3179"
 
 [[package]]
 name = "bit-set"
@@ -602,6 +604,8 @@ dependencies = [
 [[package]]
 name = "pem-rfc7468"
 version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "24d159833a9105500e0398934e205e0773f0b27529557134ecfc51c27646adac"
 dependencies = [
  "base64ct",
 ]
@@ -769,6 +773,7 @@ dependencies = [
 [[package]]
 name = "ring"
 version = "0.17.0-not-released-yet"
+source = "git+https://github.com/mkj/ring?branch=ed25519-piecewise#6768688e796f0cb7cb8dcb586044bf8be52f0ecf"
 dependencies = [
  "cc",
  "libc",
@@ -1015,6 +1020,8 @@ dependencies = [
 [[package]]
 name = "ssh-key"
 version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9e09d8b0ff2fca365c89ad535055c17adbd9fb0a5daf338299049882e95b6931"
 dependencies = [
  "base64ct",
  "ed25519-dalek",

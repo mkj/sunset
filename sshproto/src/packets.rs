@@ -129,11 +129,27 @@ pub enum AuthMethod<'a> {
     Unknown(Unknown<'a>),
 }
 
+impl<'a> TryFrom<PubKey<'a>> for AuthMethod<'a> {
+    type Error = Error;
+    fn try_from(pubkey: PubKey<'a>) -> Result<Self> {
+        let sig_algo =
+            Signature::sig_name_for_pubkey(&pubkey).trap()?;
+        Ok(AuthMethod::PubKey(MethodPubKey {
+            sig_algo,
+            pubkey: Blob(pubkey),
+            sig: None,
+            signing_now: false,
+        }))
+    }
+}
+
+
 #[derive(Serialize, Deserialize, Debug)]
 pub enum Userauth60<'a> {
     #[serde(borrow)]
     PkOk(UserauthPkOk<'a>),
     PwChangeReq(UserauthPwChangeReq<'a>),
+    // TODO keyboard interactive
 }
 
 impl<'a> Userauth60<'a> {
@@ -184,9 +200,11 @@ pub struct MethodPubKey<'a> {
     pub sig_algo: &'a str,
     pub pubkey: Blob<PubKey<'a>>,
     pub sig: Option<Blob<Signature<'a>>>,
+
     // Set internally when serializing for to create a signature,
-    // see cli_auth::auth_sig_msg(). The wire format has TRUE
-    // for the have_signature bool, but no actual signature.
+    // the wire format has true for the have_signature bool
+    // but no actual signature.
+    // Should only be used by cli_auth::auth_sig_msg().
     pub(crate) signing_now: bool,
 
 }
@@ -970,11 +988,7 @@ mod tests {
         let p = Packet::UserauthRequest(UserauthRequest {
             username: "matt",
             service: "conn",
-            method: AuthMethod::PubKey(MethodPubKey {
-                sig_algo: SSH_NAME_ED25519,
-                pubkey: Blob(s.pubkey()),
-                sig: None,
-            }),
+            method: s.pubkey().try_into().unwrap(),
         });
         test_roundtrip(&p);
 
@@ -986,11 +1000,7 @@ mod tests {
         let p = Packet::UserauthRequest(UserauthRequest {
             username: "matt",
             service: "conn",
-            method: AuthMethod::PubKey(MethodPubKey {
-                sig_algo: SSH_NAME_ED25519,
-                pubkey: Blob(s.pubkey()),
-                sig,
-            }),
+            method: s.pubkey().try_into().unwrap(),
         });
         test_roundtrip(&p);
     }

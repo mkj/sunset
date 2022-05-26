@@ -14,7 +14,8 @@ heapless = "0.7.10"
 no-panic = "0.1"
 
 # ring = { version = "0.16", default-features = false }
-ring = { version = "0.17.0-not-released-yet", default-features = false }
+ring = { version = "0.17.0-not-released-yet", git = "https://github.com/mkj/ring", branch = "ed25519-piecewise", default-features = false }
+
 # for aes-ctr mode
 ctr = "0.9"
 aes = "0.8"
