@@ -184,6 +184,11 @@ pub struct MethodPubKey<'a> {
     pub sig_algo: &'a str,
     pub pubkey: Blob<PubKey<'a>>,
     pub sig: Option<Blob<Signature<'a>>>,
+    // Set internally when serializing for to create a signature,
+    // see cli_auth::auth_sig_msg(). The wire format has TRUE
+    // for the have_signature bool, but no actual signature.
+    pub(crate) signing_now: bool,
+
 }
 
 impl<'a> Serialize for MethodPubKey<'a> {
@@ -192,7 +197,7 @@ impl<'a> Serialize for MethodPubKey<'a> {
         S: Serializer,
     {
         let mut seq = serializer.serialize_seq(None)?;
-        seq.serialize_element(&self.sig.is_some())?;
+        seq.serialize_element(&(self.sig.is_some() || self.signing_now))?;
         seq.serialize_element(&self.sig_algo)?;
         seq.serialize_element(&self.pubkey)?;
         if let Some(s) = &self.sig {
@@ -242,7 +247,7 @@ impl<'de: 'a, 'a> Deserialize<'de> for MethodPubKey<'a> {
                     None
                 };
 
-                Ok(MethodPubKey { sig_algo, pubkey, sig })
+                Ok(MethodPubKey { sig_algo, pubkey, sig, signing_now: false })
             }
         }
         deserializer.deserialize_seq(Vis)

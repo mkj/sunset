@@ -114,7 +114,7 @@ impl SignKey {
         match self {
             SignKey::Ed25519(k) => {
                 k.sign_piecewise(|ctx| {
-                    wireformat::hash_ser_length(ctx, msg).map_err(|_| ring::error::Unspecified)
+                    wireformat::hash_ser(ctx, msg).map_err(|_| ring::error::Unspecified)
                 }).trap()
             }
         }

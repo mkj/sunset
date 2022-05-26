@@ -8,6 +8,7 @@ use core::task::{Poll, Waker};
 use heapless::{String, Vec};
 use no_panic::no_panic;
 use ring::digest::Digest;
+use pretty_hex::PrettyHex;
 
 use ring::signature::Signature as RingSig;
 
@@ -55,7 +56,8 @@ impl Req {
                 let pubmethod = packets::MethodPubKey {
                     sig_algo,
                     pubkey: Blob(key.pubkey()),
-                    sig: None
+                    sig: None,
+                    signing_now: false,
                 };
                 parse_ctx.cli_auth_type = Some(AuthType::PubKey);
                 Packet::UserauthRequest(packets::UserauthRequest {
@@ -165,13 +167,19 @@ impl CliAuth {
             let sig_packet = Packet::UserauthRequest(
                     UserauthRequest{username, service,
                 method: AuthMethod::PubKey(MethodPubKey{
-                    sig_algo, pubkey: pubkey.clone(), sig: None})});
+                    sig_algo, pubkey: pubkey.clone(), sig: None, signing_now: true})});
 
             let msg = auth::AuthSigMsg {
                 sess_id: BinString(sess_id.as_ref()),
                 p: sig_packet,
             };
-            key.sign_serialize(&msg)
+            let mut b = [0u8;1000];
+            let l = wireformat::write_ssh(&mut b, &msg)?;
+            let b = &b[..l];
+            trace!("msg {:?}", b.hex_dump());
+            let s = key.sign_serialize(&msg)?;
+            trace!("sig {:?}", s.hex_dump());
+            Ok(s)
         } else {
             Err(Error::bug())
         }
@@ -192,7 +200,8 @@ impl CliAuth {
                     let pubmethod = packets::MethodPubKey {
                         sig_algo,
                         pubkey: Blob(key.pubkey()),
-                        sig: None
+                        sig: None,
+                        signing_now: false,
                     };
                     parse_ctx.cli_auth_type = Some(AuthType::PubKey);
                     Packet::UserauthRequest(packets::UserauthRequest {
@@ -251,25 +260,23 @@ impl CliAuth {
                 // TODO check sig2
                 p = last_req.req_packet(&self.username, parse_ctx)?;
                 let last_req = &last_req;
-                let new_sig = if let Req::PubKey { key, .. } = last_req {
-                    Self::auth_sig_msg(&key, sess_id, &p)?
-                } else {
-                    unreachable!();
-                };
-                let rsig = sig2.insert(new_sig);
-            // self.state = AuthState::Request { last_req: Req::PubKey { key, sig: Some(sig) }};
-            // let rsig = if let AuthState::Request { last_req: Req::PubKey { sig: ref mut sig, .. }} = self.state {
-            //     sig.insert(new_sig)
-            // } else {
-            //     unreachable!();
-            // };
+                if let Req::PubKey { key, .. } = last_req {
+                    let new_sig = Self::auth_sig_msg(&key, sess_id, &p)?;
+                    let rsig = sig2.insert(new_sig);
+                // self.state = AuthState::Request { last_req: Req::PubKey { key, sig: Some(sig) }};
+                // let rsig = if let AuthState::Request { last_req: Req::PubKey { sig: ref mut sig, .. }} = self.state {
+                //     sig.insert(new_sig)
+                // } else {
+                //     unreachable!();
+                // };
 
-                if let Packet::UserauthRequest(UserauthRequest{
-                        method: AuthMethod::PubKey(MethodPubKey{sig: ref mut psig, ..}), ..}) = p {
-                    *psig = Some(Blob(Signature::from_ring(key, rsig)?))
+                    if let Packet::UserauthRequest(UserauthRequest{
+                            method: AuthMethod::PubKey(MethodPubKey{sig: ref mut psig, ..}), ..}) = p {
+                        *psig = Some(Blob(Signature::from_ring(key, rsig)?))
+                    }
+                    resp.push(p.into()).trap()?;
+                    return Ok(())
                 }
-                resp.push(p.into()).trap()?;
-                return Ok(())
             }
             _ => ()
         }
