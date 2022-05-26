@@ -21,7 +21,6 @@ use server::Server;
 use traffic::{Traffic,PacketMaker};
 use channel::{Channel, Channels};
 use config::MAX_CHANNELS;
-use mailbox::Mailbox;
 
 // TODO a max value needs to be analysed
 pub(crate) const MAX_RESPONSES: usize = 4;
@@ -167,9 +166,9 @@ impl<'a> Conn<'a> {
     pub(crate) async fn handle_payload(
         &mut self, payload: &[u8], keys: &mut KeyState, b: &mut Behaviour<'_>,
     ) -> Result<RespPackets<'_>, Error> {
-        trace!("conn state {:?}", self.state);
         let p = wireformat::packet_from_bytes(payload, &self.parse_ctx)?;
-        self.dispatch_packet(&p, keys, b).await
+        let r = self.dispatch_packet(&p, keys, b).await;
+        r
     }
 
     async fn dispatch_packet(
@@ -286,7 +285,7 @@ impl<'a> Conn<'a> {
             Packet::UserauthFailure(p) => {
                 // TODO: client only
                 if let ClientServer::Client(cli) = &mut self.cliserv {
-                    cli.auth.failure(p, &mut b.client()?, &mut resp).await?;
+                    cli.auth.failure(p, &mut b.client()?, &mut resp, &mut self.parse_ctx).await?;
                 } else {
                     debug!("Received UserauthFailure as a server");
                     return Err(Error::SSHProtoError)
@@ -297,7 +296,7 @@ impl<'a> Conn<'a> {
                 if let ClientServer::Client(cli) = &mut self.cliserv {
                     if matches!(self.state, ConnState::PreAuth) {
                         self.state = ConnState::Authed;
-                        cli.auth_success(&mut resp, &mut b.client()?).await?;
+                        cli.auth_success(&mut resp, &mut self.parse_ctx, &mut b.client()?).await?;
                         // if h.open_session {
                         //     let (chan, p) = self.channels.open(
                         //         packets::ChannelOpenType::Session)?;
@@ -326,7 +325,7 @@ impl<'a> Conn<'a> {
             Packet::Userauth60(p) => {
                 // TODO: client only
                 if let ClientServer::Client(cli) = &mut self.cliserv {
-                    todo!();
+                    cli.auth.auth60(p, &mut resp, &self.sess_id.trap()?, &mut self.parse_ctx).await?;
                 } else {
                     debug!("Received userauth60 as a server");
                     return Err(Error::SSHProtoError)

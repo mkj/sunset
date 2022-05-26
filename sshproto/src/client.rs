@@ -7,7 +7,7 @@ use {
 use snafu::prelude::*;
 
 use crate::{*, packets::ChannelOpen};
-use packets::{Packet, PubKey};
+use packets::{Packet, PubKey, ParseContext};
 use sshnames::*;
 use cliauth::CliAuth;
 use conn::RespPackets;
@@ -28,7 +28,11 @@ impl Client {
 
     // pub fn check_hostkey(hostkey: )
 
-    pub(crate) async fn auth_success(&mut self, resp: &mut RespPackets<'_>, b: &mut CliBehaviour<'_>) -> Result<()> {
+    pub(crate) async fn auth_success(&mut self, resp: &mut RespPackets<'_>,
+        parse_ctx: &mut ParseContext,
+        b: &mut CliBehaviour<'_>) -> Result<()> {
+        parse_ctx.cli_auth_type = None;
+        trace!("parse_ctx => {:?}", parse_ctx);
         resp.push(Packet::ServiceRequest(
             packets::ServiceRequest { name: SSH_SERVICE_CONNECTION } ).into()).trap()?;
         self.auth.success(b).await

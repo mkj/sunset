@@ -29,6 +29,10 @@ fn main() -> Result<()> {
         .block_on(async {
             run().await
         })
+        .map_err(|e| {
+            error!("Exit with error: {e:?}");
+            e
+        })
 }
 
 // async fn handle_request(door: &door_smol::AsyncDoor<'_>, query: HookQuery) {
@@ -46,6 +50,10 @@ fn setup_log() {
     let conf = conf
     .add_filter_allow_str("door")
     .add_filter_allow_str("con1")
+    // not debugging these bits of the stack at present
+    .add_filter_ignore_str("door_sshproto::traffic")
+    .add_filter_ignore_str("door_sshproto::runner")
+    .add_filter_ignore_str("door_smol::async_door")
     .set_time_offset_to_local().expect("Couldn't get local timezone")
     .build();
 
@@ -95,7 +103,7 @@ async fn run() -> Result<()> {
 
     loop {
         tokio::select! {
-            _ = &mut netio => break,
+            e = &mut netio => break e.map(|_| ()).context("net loop"),
             // q = door.next_request() => {
             //     handle_request(&door, q).await
             // }
@@ -124,7 +132,4 @@ async fn run() -> Result<()> {
     //     // };
     //     // trace!("result {r:?}");
     // }
-
-
-    Ok(())
 }

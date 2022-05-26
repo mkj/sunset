@@ -13,6 +13,8 @@ use {
     log::{debug, error, info, log, trace, warn},
 };
 
+use ring::signature::Signature as RingSig;
+
 use heapless::String;
 use serde::de;
 use serde::de::{
@@ -140,7 +142,10 @@ impl<'a> Userauth60<'a> {
         match ctx.cli_auth_type {
             Some(cliauth::AuthType::Password) => Ok("PwChangeReq"),
             Some(cliauth::AuthType::PubKey) => Ok("PkOk"),
-            _ => return Err(Error::PacketWrong),
+            _ => {
+                trace!("Wrong packet state for userauth60");
+                return Err(Error::PacketWrong)
+            }
         }
     }
 }
@@ -177,7 +182,7 @@ impl<'a> fmt::Debug for MethodPassword<'a>{
 pub struct MethodPubKey<'a> {
     /// A signature algorithm name (not key algorithm name).
     pub sig_algo: &'a str,
-    pub pubkey: PubKey<'a>,
+    pub pubkey: Blob<PubKey<'a>>,
     pub sig: Option<Blob<Signature<'a>>>,
 }
 
@@ -261,7 +266,7 @@ pub struct UserauthBanner<'a> {
     pub lang: &'a str,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum PubKey<'a> {
     #[serde(borrow)]
     #[serde(rename = "ssh-ed25519")]
@@ -283,13 +288,13 @@ impl<'a> PubKey<'a> {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Ed25519PubKey<'a> {
     #[serde(borrow)]
     pub key: BinString<'a>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct RSAPubKey<'a> {
     #[serde(borrow)]
     pub e: BinString<'a>,
@@ -308,6 +313,15 @@ pub enum Signature<'a> {
 }
 
 impl<'a> Signature<'a> {
+    /// Is passed our own [`SignKey`] since a Ring signature doesn't
+    /// identify the algorithm.
+    pub(crate) fn from_ring(k: &SignKey, r: &'a RingSig) -> Result<Self> {
+        match k {
+            SignKey::Ed25519(_) => Ok(Signature::Ed25519(Ed25519Sig { sig: BinString(r.as_ref()) })),
+        }
+
+    }
+
     /// The algorithm name presented. May be invalid.
     pub fn algorithm_name(&self) -> &'a str {
         match self {
@@ -321,7 +335,7 @@ impl<'a> Signature<'a> {
     /// Returns (`Error::UnknownMethod`) if the PubKey is unknown
     /// Currently can return a unique signature name for a public key
     /// since ssh-rsa isn't supported, only rsa-sha2-256 (as an example)
-    pub fn sig_algorithm_name_for_pubkey(pubkey: &PubKey) -> Result<&'static str> {
+    pub fn sig_name_for_pubkey(pubkey: &PubKey) -> Result<&'static str> {
         match pubkey {
             PubKey::Ed25519(_) => Ok(SSH_NAME_ED25519),
             PubKey::RSA(_) => Ok(SSH_NAME_RSA_SHA256),
@@ -714,12 +728,12 @@ pub struct DirectTcpip<'a> {
 // Placeholder for unknown method names. These are sometimes non-fatal and
 // need to be handled by the relevant code, for example newly invented pubkey types
 // This is deliberately not Serializable, we only receive it.
-#[derive(Debug,Deserialize,Clone)]
+#[derive(Debug, Deserialize, Clone, PartialEq)]
 pub struct Unknown<'a>(pub &'a str);
 
 /// State to be passed to deserialisation.
 /// Use this so the parser can select the correct enum variant to deserialize.
-#[derive(Default,Clone)]
+#[derive(Default, Clone, Debug)]
 pub struct ParseContext {
     pub cli_auth_type: Option<cliauth::AuthType>,
 }
@@ -953,7 +967,7 @@ mod tests {
             service: "conn",
             method: AuthMethod::PubKey(MethodPubKey {
                 sig_algo: SSH_NAME_ED25519,
-                pubkey: s.pubkey(),
+                pubkey: Blob(s.pubkey()),
                 sig: None,
             }),
         });
@@ -969,7 +983,7 @@ mod tests {
             service: "conn",
             method: AuthMethod::PubKey(MethodPubKey {
                 sig_algo: SSH_NAME_ED25519,
-                pubkey: s.pubkey(),
+                pubkey: Blob(s.pubkey()),
                 sig,
             }),
         });

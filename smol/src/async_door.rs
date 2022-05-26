@@ -74,6 +74,7 @@ impl<'a> AsyncRead for AsyncDoor<'a> {
 
         let r = if let Some(f) = self.out_progress_fut.as_mut() {
             f.as_mut().poll(cx)
+            .map_err(|e| IoError::new(ErrorKind::Other, e))
         } else {
             let mut inner = ParkingLotMutex::lock_arc(&self.inner);
             // TODO: should this be conditional on the result of the poll?
@@ -88,10 +89,8 @@ impl<'a> AsyncRead for AsyncDoor<'a> {
             if let Poll::Pending = r {
                 self.out_progress_fut = Some(b);
             }
-            r
-            // self.out_progress_fut = Some(
-            // self.out_progress_fut.as_mut().as_mut().unwrap()
-        };
+            r.map_err(|e| IoError::new(ErrorKind::Other, e))
+        }?;
         if let Poll::Pending = r {
             return Poll::Pending;
         } else {

@@ -188,7 +188,7 @@ impl<'a> Traffic<'a> {
         }
         let plen = wireformat::write_ssh(&mut wbuf[SSH_PAYLOAD_START..], &p)?;
         trace!("Sending {p:?}");
-        // trace!("{:?}", (&wbuf[SSH_PAYLOAD_START..SSH_PAYLOAD_START+plen]).hex_dump());
+        trace!("{:?}", (&wbuf[SSH_PAYLOAD_START..SSH_PAYLOAD_START+plen]).hex_dump());
 
         // Encrypt in place
         let elen = keys.encrypt(plen, wbuf)?;

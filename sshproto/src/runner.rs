@@ -11,7 +11,6 @@ use pretty_hex::PrettyHex;
 use crate::*;
 use encrypt::KeyState;
 use traffic::Traffic;
-use mailbox::Mailbox;
 
 pub struct Runner<'a> {
     conn: Conn<'a>,
@@ -64,8 +63,9 @@ impl<'a> Runner<'a> {
     // Drives connection progress, handling received payload and sending
     // other packets as required
     pub async fn out_progress(&mut self, b: &mut Behaviour<'_>) -> Result<(), Error> {
+        trace!("out_progress top");
         if let Some(payload) = self.traffic.payload() {
-            trace!("payload");
+            trace!("out_progress payload");
             // Lifetimes here are a bit subtle.
             // `payload` has self.traffic lifetime, used until `handle_payload`
             // completes.

@@ -29,12 +29,12 @@ mod cliauth;
 
 mod server;
 mod servauth;
-mod mailbox;
 
 // mod bhtokio;
 // mod bhnostd;
 
 pub mod doorlog;
+mod auth;
 mod channel;
 mod config;
 mod runner;
@@ -54,5 +54,4 @@ pub use conn::{Conn,RespPackets};
 pub use sign::SignKey;
 pub use packets::PubKey;
 pub use error::{Error,Result};
-pub use mailbox::{Mailbox,MailboxFut};
 pub use channel::{ChanMsg,ChanMsgDetails};

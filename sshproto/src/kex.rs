@@ -504,11 +504,10 @@ impl KexCurve25519 {
         agreement::agree_ephemeral(
             ours,
             &theirs,
-            Error::Custom { msg: "x25519 agree failed" },
             |k| {
                 KexOutput::make(k, algos, kex_hash, sess_id)
             },
-        )
+        ).map_err(|_| Error::Custom { msg: "x25519 agree failed" })?
     }
 }
 

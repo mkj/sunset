@@ -35,7 +35,6 @@ pub fn packet_from_bytes<'a>(
     Packet::deserialize(&mut ds).map_err(|e| {
         // TODO better handling of this. Stuff it in PacketState.
         // Also should return which MessageNumber failed in later parsing
-
         if let Error::InvalidDeserializeU8 { value } = e {
             // This assumes that the only deserialize that can hit
             // invalid_value() is an unknown packet type. Seems safe at present.
@@ -104,7 +103,7 @@ type Res = Result<()>;
 
 /// A SSH style binary string. Serialized as 32 bit length followed by the bytes
 /// of the slice.
-#[derive(Deserialize,Clone)]
+#[derive(Deserialize,Clone,PartialEq)]
 pub struct BinString<'a>(pub &'a [u8]);
 
 impl<'a> AsRef<[u8]> for BinString<'a> {
@@ -137,6 +136,12 @@ impl<B> AsRef<B> for Blob<B> {
     }
 }
 
+impl<B: Clone> Clone for Blob<B> {
+    fn clone(&self) -> Self {
+        Blob(self.0.clone())
+    }
+}
+
 impl<B: Serialize + Debug> Debug for Blob<B> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let len = SeSSHBytes::get_length(&self.0)
@@ -153,6 +158,7 @@ impl<B: Serialize> Serialize for Blob<B> {
         let mut seq = serializer.serialize_seq(None)?;
         let len = SeSSHBytes::get_length(&self.0)
             .map_err(|_| ser::Error::custom(Error::bug()))? as u32;
+        trace!("blob len {} {:x}", len, len);
         seq.serialize_element(&len)?;
         seq.serialize_element(&self.0)?;
         seq.end()

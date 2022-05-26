@@ -6,6 +6,8 @@ use {
     log::{debug, error, info, log, trace, warn},
 };
 
+use ring::signature::Signature as RingSig;
+
 use crate::*;
 use crate::sshnames::*;
 use ring::signature::{KeyPair, Ed25519KeyPair, UnparsedPublicKey, ED25519};
@@ -106,6 +108,16 @@ impl SignKey {
             })?;
 
         (&k).try_into()
+    }
+
+    pub fn sign_serialize<'s>(&self, msg: &'s impl serde::Serialize) -> Result<RingSig> {
+        match self {
+            SignKey::Ed25519(k) => {
+                k.sign_piecewise(|ctx| {
+                    wireformat::hash_ser_length(ctx, msg).map_err(|_| ring::error::Unspecified)
+                }).trap()
+            }
+        }
     }
 }
 

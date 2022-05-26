@@ -209,7 +209,7 @@ impl Keys {
             return Err(Error::bug());
         }
         // two rounds is sufficient with sha256 and current max key
-        debug_assert!(2 * hash.output_len >= out.len());
+        debug_assert!(2 * hash.output_len() >= out.len());
 
         let mut hash_ctx = DigestCtx::new(hash);
         hash_mpint(&mut hash_ctx, k);
