@@ -908,6 +908,14 @@ impl<'a> Packet<'a> {
     }
 }
 
+$(
+impl<'a> From<$SpecificPacketType> for Packet<'a> {
+    fn from(s: $SpecificPacketType) -> Packet<'a> {
+        Packet::$SpecificPacketVariant(s)
+    }
+}
+)*
+
 } } // macro
 
 messagetypes![
@@ -985,11 +993,11 @@ mod tests {
         init_test_log();
         // with None sig
         let s = sign::tests::make_ed25519_signkey();
-        let p = Packet::UserauthRequest(UserauthRequest {
+        let p = UserauthRequest {
             username: "matt",
             service: "conn",
             method: s.pubkey().try_into().unwrap(),
-        });
+        }.into();
         test_roundtrip(&p);
 
         // again with a near-genuine sig
@@ -997,11 +1005,11 @@ mod tests {
             sig: BinString("something".as_bytes()),
         });
         let sig = Some(Blob(sig));
-        let p = Packet::UserauthRequest(UserauthRequest {
+        let p = UserauthRequest {
             username: "matt",
             service: "conn",
             method: s.pubkey().try_into().unwrap(),
-        });
+        }.into();
         test_roundtrip(&p);
     }
 

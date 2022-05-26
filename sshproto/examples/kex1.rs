@@ -17,11 +17,11 @@ fn main() -> Result<()> {
 }
 
 fn do_userauth() -> Result<()> {
-    let p = packets::Packet::UserauthRequest(packets::UserauthRequest {
+    let p: Packet = packets::UserauthRequest {
         username: "matt",
         service: "con",
         method: AuthMethod::Password(packets::MethodPassword { change: false, password: "123" }),
-    });
+    }.into();
 
     let mut buf = vec![0; 2000];
     let written = door_sshproto::wireformat::write_ssh(&mut buf, &p)?;
@@ -59,8 +59,7 @@ fn do_kexinit() -> Result<()> {
     println!("p {p:?}");
 
     let bs = BinString(&[0x11, 0x22, 0x33]);
-    let dhc =
-        Packet::KexDHInit(KexDHInit { q_c: bs });
+    let dhc: Packet = KexDHInit { q_c: bs }.into();
     println!("dhc1 {dhc:?}");
 
     // if let SpecificPacket::KexInit(ref k2) = p.p {

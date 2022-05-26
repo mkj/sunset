@@ -227,8 +227,7 @@ impl<'a> Conn<'a> {
                                 let kex =
                                     core::mem::replace(&mut self.kex, kex::Kex::new()?);
                                 *output = Some(kex.handle_kexdhreply(p, &self.sess_id, &mut b.client()?).await?);
-                                resp.push(Packet::NewKeys(packets::NewKeys {}).into())
-                                    .trap()?;
+                                resp.push(Packet::NewKeys(packets::NewKeys {}).into()).trap()?;
                             }
                         } else {
                             // TODO: client/server validity checks should move somewhere more general

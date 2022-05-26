@@ -52,22 +52,22 @@ impl Req {
             Req::PubKey { key, .. } => {
                 // already checked by make_pubkey_req()
                 parse_ctx.cli_auth_type = Some(AuthType::PubKey);
-                Packet::UserauthRequest(packets::UserauthRequest {
+                packets::UserauthRequest {
                     username,
                     service: SSH_SERVICE_CONNECTION,
                     method: key.pubkey().try_into()?,
-                })
+                }.into()
             }
             Req::Password(pw) => {
                 parse_ctx.cli_auth_type = Some(AuthType::Password);
-                Packet::UserauthRequest(packets::UserauthRequest {
+                packets::UserauthRequest {
                     username,
                     service: SSH_SERVICE_CONNECTION,
                     method: packets::AuthMethod::Password(packets::MethodPassword {
                         change: false,
                         password: pw,
                     }),
-                })
+                }.into()
             }
         };
         Ok(p)
@@ -108,16 +108,16 @@ impl CliAuth {
             self.state = AuthState::MethodQuery;
             self.username = b.username().await?;
 
-            let p = Packet::ServiceRequest(packets::ServiceRequest {
+            let p: Packet = packets::ServiceRequest {
                 name: SSH_SERVICE_USERAUTH,
-            });
+            }.into();
             resp.push(p.into()).trap()?;
 
-            let p = Packet::UserauthRequest(packets::UserauthRequest {
+            let p: Packet = packets::UserauthRequest {
                 username: &self.username,
                 service: SSH_SERVICE_CONNECTION,
                 method: packets::AuthMethod::None,
-            });
+            }.into();
             resp.push(p.into()).trap()?;
         }
         Ok(())
@@ -161,7 +161,7 @@ impl CliAuth {
             method: AuthMethod::PubKey(MethodPubKey { sig_algo, pubkey, .. }),
         }) = p
         {
-            let sig_packet = Packet::UserauthRequest(UserauthRequest {
+            let sig_packet = UserauthRequest {
                 username,
                 service,
                 method: AuthMethod::PubKey(MethodPubKey {
@@ -170,7 +170,7 @@ impl CliAuth {
                     sig: None,
                     signing_now: true,
                 }),
-            });
+            }.into();
 
             let msg = auth::AuthSigMsg {
                 sess_id: BinString(sess_id.as_ref()),

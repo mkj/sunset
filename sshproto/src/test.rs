@@ -58,8 +58,7 @@ mod tests {
     fn roundtrip_packet_kexdh() {
         // XXX: this should break later if the q_c length is
         let bs = BinString(&[0x11, 0x22, 0x33]);
-        let p =
-            Packet::KexDHInit(KexDHInit{ q_c: bs });
+        let p = KexDHInit{ q_c: bs }.into();
 
         test_roundtrip_packet(&p).unwrap();
         // packet format needs to be consistent

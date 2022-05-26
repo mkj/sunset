@@ -204,7 +204,7 @@ impl Kex {
     }
 
     pub fn make_kexinit<'a>(&self, conf: &'a AlgoConfig) -> packets::Packet<'a> {
-        let k = packets::KexInit {
+        packets::KexInit {
             cookie: self.our_cookie,
             kex: (&conf.kexs).into(),
             hostkey: (&conf.hostsig).into(),
@@ -218,8 +218,7 @@ impl Kex {
             lang_s2c: (&EMPTY_LOCALNAMES).into(),
             first_follows: false,
             reserved: 0,
-        };
-        packets::Packet::KexInit(k)
+        }.into()
     }
 
     fn make_kexdhinit(&self) -> Result<Packet> {
@@ -373,7 +372,7 @@ impl SharedSecret {
         let q_c = self.pubkey();
         trace!("pubkey ours {:?}", self.pubkey().hex_dump());
         let q_c = BinString(q_c);
-        Ok(Packet::KexDHInit(packets::KexDHInit { q_c }))
+        Ok(packets::KexDHInit { q_c }.into())
     }
 
     // client only
@@ -463,7 +462,7 @@ impl<'a> KexOutput {
         // TODO
         let k_s = Blob(PubKey::Ed25519(packets::Ed25519PubKey{ key: BinString(&[]) }));
         let sig = Blob(Signature::Ed25519(packets::Ed25519Sig{ sig: BinString(&[]) }));
-        Ok(Packet::KexDHReply(packets::KexDHReply { k_s, q_s, sig }))
+        Ok(packets::KexDHReply { k_s, q_s, sig }.into())
         // then sign it.
     }
 }

@@ -47,12 +47,12 @@ impl Channels {
             },
             send: None,
         };
-        let p = packets::Packet::ChannelOpen(packets::ChannelOpen {
+        let p = packets::ChannelOpen {
             num,
             initial_window: chan.recv.window as u32,
             max_packet: chan.recv.max_packet as u32,
             ch: ty,
-        });
+        }.into();
         let ch = &mut self.ch[num as usize];
         *ch = Some(chan);
         Ok((ch.as_ref().unwrap(), p))
@@ -238,11 +238,11 @@ impl Req {
                 ChannelReqType::Break(rt.clone())
             }
         };
-        let p = Packet::ChannelRequest(ChannelRequest {
+        let p = ChannelRequest {
             num,
             want_reply,
             ch: ty,
-        });
+        }.into();
         Ok(p)
     }
 

@@ -33,8 +33,8 @@ impl Client {
         b: &mut CliBehaviour<'_>) -> Result<()> {
 
         parse_ctx.cli_auth_type = None;
-        resp.push(Packet::ServiceRequest(
-            packets::ServiceRequest { name: SSH_SERVICE_CONNECTION } ).into()).trap()?;
+        let p: Packet = packets::ServiceRequest { name: SSH_SERVICE_CONNECTION }.into();
+        resp.push(p.into()).trap()?;
         self.auth.success(b).await
     }
 

@@ -975,10 +975,10 @@ pub(crate) mod tests {
         init_test_log();
         let mut ctx = ParseContext::new();
 
-        let p = Packet::Userauth60(Userauth60::PwChangeReq(UserauthPwChangeReq {
+        let p = Userauth60::PwChangeReq(UserauthPwChangeReq {
             prompt: "change the password",
             lang: "",
-        }));
+        }).into();
         let mut pw = ResponseString::new();
         pw.push_str("123").unwrap();
         ctx.cli_auth_type = Some(cliauth::AuthType::Password);
@@ -986,12 +986,12 @@ pub(crate) mod tests {
 
         // PkOk is a more interesting case because the PubKey inside it is also
         // an enum but that can identify its own enum variant.
-        let p = Packet::Userauth60(Userauth60::PkOk(UserauthPkOk {
+        let p = Userauth60::PkOk(UserauthPkOk {
             algo: "ed25519",
             key: Blob(PubKey::Ed25519(Ed25519PubKey {
                 key: BinString(&[0x11, 0x22, 0x33]),
             })),
-        }));
+        }).into();
         let s = sign::tests::make_ed25519_signkey();
         ctx.cli_auth_type = Some(cliauth::AuthType::PubKey);
         test_roundtrip_context(&p, &ctx);
