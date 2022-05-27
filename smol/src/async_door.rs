@@ -63,7 +63,17 @@ impl<'a> AsyncDoor<'a> {
     fn lock(&self) -> parking_lot::MutexGuard<Inner<'a>> {
         self.inner.lock()
     }
+
+    // fn poll_write_channel(
+    //     self: Pin<&mut Self>,
+    //     channel: u32,
+    //     cx: &mut Context<'_>,
+    //     buf: &[u8],
+    // ) -> Poll<Result<usize, IoError>> {
+    // }
+
 }
+
 
 impl<'a> AsyncRead for AsyncDoor<'a> {
     fn poll_read(

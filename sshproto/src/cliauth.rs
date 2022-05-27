@@ -176,13 +176,7 @@ impl CliAuth {
                 sess_id: BinString(sess_id.as_ref()),
                 p: sig_packet,
             };
-            let mut b = [0u8; 1000];
-            let l = wireformat::write_ssh(&mut b, &msg)?;
-            let b = &b[..l];
-            trace!("msg {:?}", b.hex_dump());
-            let s = key.sign_serialize(&msg)?;
-            trace!("sig {:?}", s.hex_dump());
-            Ok(s)
+            key.sign_serialize(&msg)
         } else {
             Err(Error::bug())
         }

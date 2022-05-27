@@ -63,9 +63,7 @@ impl SigType {
 
             (SigType::Ed25519, PubKey::Ed25519(k), Signature::Ed25519(s)) => {
                 let k = UnparsedPublicKey::new(&ED25519, &k.key);
-                let s = s.sig.0;
-                trace!(target: "hexdump", "sig {:?}", s.hex_dump());
-                k.verify(message, s).map_err(|_| Error::BadSignature)
+                k.verify(message, s.sig.0).map_err(|_| Error::BadSignature)
             }
 
             (SigType::RSA256, ..) => {
@@ -77,7 +75,7 @@ impl SigType {
             _ => {
                 Err(Error::SignatureMismatch {
                     key: pubkey.algorithm_name().into(),
-                    sig: "ed25519todo".into()
+                    sig: sig.algorithm_name().into(),
                 })
             }
         }
@@ -103,11 +101,10 @@ impl SignKey {
     pub fn from_openssh(k: impl AsRef<[u8]>) -> Result<Self> {
         let k = ssh_key::PrivateKey::from_openssh(k)
             .map_err(|e| {
-                trace!("Bad key: {e:?}");
-                Error::msg("todo openssh key error")
+                Error::msg("Unsupported OpenSSH key")
             })?;
 
-        (&k).try_into()
+        k.try_into()
     }
 
     pub fn sign_serialize<'s>(&self, msg: &'s impl serde::Serialize) -> Result<RingSig> {
@@ -122,17 +119,16 @@ impl SignKey {
 }
 
 // TODO: this might go behind a feature?
-// TODO: should this be & or consuming?
-impl TryFrom<&ssh_key::PrivateKey> for SignKey {
+impl TryFrom<ssh_key::PrivateKey> for SignKey {
     type Error = Error;
-    fn try_from(k: &ssh_key::PrivateKey) -> Result<Self> {
+    fn try_from(k: ssh_key::PrivateKey) -> Result<Self> {
         match k.key_data() {
             ssh_key::private::KeypairData::Ed25519(k) => {
                 let edk = Ed25519KeyPair::from_seed_unchecked(&k.private.to_bytes())
                 .trap()?;
                 Ok(SignKey::Ed25519(edk))
             }
-            _ => Err(Error::NotAvailable { what: "this key format" })
+            _ => Err(Error::NotAvailable { what: k.algorithm().as_str() })
         }
     }
 }

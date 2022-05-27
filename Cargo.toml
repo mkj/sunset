@@ -16,5 +16,5 @@ opt-level = 's'
 # lto = "fat"
 debug = 1
 
-[patch.crates-io]
-# ring = { path = "/home/matt/3rd/rs/ring" }
+[patch."https://github.com/mkj/ring"]
+ring = { path = "/home/matt/3rd/rs/ring" }

@@ -19,7 +19,7 @@ ring = { version = "0.17.0-not-released-yet", git = "https://github.com/mkj/ring
 # for aes-ctr mode
 ctr = "0.9"
 aes = "0.8"
-sha2 = "0.10"
+sha2 = { version = "0.10", default-features = false }
 hmac = "0.12"
 ssh-key = { version = "0.4", default-features = false, features = ["ed25519", "ecdsa", "sha2"] }
 

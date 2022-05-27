@@ -8,6 +8,7 @@ door-sshproto = { path = "../sshproto", features = ["std"] }
 # door-sshproto = { path = "../sshproto", features = []}
 log = { version = "0.4", features = ["release_max_level_info"] }
 rpassword = "6.0"
+argh = "0.1"
 
 # smol = { version = "1.2" }
 # futures = "0.3"

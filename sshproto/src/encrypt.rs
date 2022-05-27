@@ -200,7 +200,7 @@ impl Keys {
         o
     }
 
-    /// RFC4253 7.2. K1 = HASH(K || H || "A" || session_id) etc
+    /// RFC4253 7.2. `K1 = HASH(K || H || "A" || session_id)` etc
     fn compute_key<'a>(
         letter: char, len: usize, out: &'a mut [u8],
         hash: &'static digest::Algorithm, k: &[u8], h: &Digest, sess_id: &Digest,
