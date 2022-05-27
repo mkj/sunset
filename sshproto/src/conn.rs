@@ -7,13 +7,12 @@ use {
 use core::char::MAX;
 use core::task::{Waker,Poll};
 
-use ring::digest::Digest;
 use pretty_hex::PrettyHex;
 
 use heapless::Vec;
 
-use crate::sshnames::*;
 use crate::*;
+use sshnames::*;
 use client::Client;
 use encrypt::KeyState;
 use packets::{Packet,ParseContext};
@@ -21,6 +20,7 @@ use server::Server;
 use traffic::{Traffic,PacketMaker};
 use channel::{Channel, Channels};
 use config::MAX_CHANNELS;
+use kex::SessId;
 
 // TODO a max value needs to be analysed
 pub(crate) const MAX_RESPONSES: usize = 4;
@@ -34,9 +34,7 @@ pub struct Conn<'a> {
     /// Next kex to run
     kex: kex::Kex,
 
-    /// TODO: Digest is sized to fit 512 bits, we only need 256 for sha256.
-    /// Perhaps we could put it into a [u8: 256] newtype.
-    sess_id: Option<Digest>,
+    sess_id: Option<SessId>,
 
     cliserv: ClientServer,
 
@@ -324,7 +322,7 @@ impl<'a> Conn<'a> {
             Packet::Userauth60(p) => {
                 // TODO: client only
                 if let ClientServer::Client(cli) = &mut self.cliserv {
-                    cli.auth.auth60(p, &mut resp, &self.sess_id.trap()?, &mut self.parse_ctx).await?;
+                    cli.auth.auth60(p, &mut resp, self.sess_id.as_ref().trap()?, &mut self.parse_ctx).await?;
                 } else {
                     debug!("Received userauth60 as a server");
                     return Err(Error::SSHProtoError)

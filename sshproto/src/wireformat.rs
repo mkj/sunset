@@ -3,6 +3,12 @@
 
 //! See [RFC4251](https://datatracker.ietf.org/doc/html/rfc4251) for encodings,
 //! [RFC4253](https://datatracker.ietf.org/doc/html/rfc4253) and others for packet structure
+#[allow(unused_imports)]
+use {
+    crate::error::{Error, Result, TrapBug},
+    log::{debug, error, info, log, trace, warn},
+};
+
 use serde::de::value::{BorrowedStrDeserializer, SeqAccessDeserializer};
 use serde::{
     de::{self, value::MapAccessDeserializer, IntoDeserializer, MapAccess},
@@ -13,11 +19,6 @@ use serde::{
 };
 
 use pretty_hex::PrettyHex;
-#[allow(unused_imports)]
-use {
-    crate::error::{Error, Result, TrapBug},
-    log::{debug, error, info, log, trace, warn},
-};
 
 use crate::packets::{Packet, PacketState, ParseContext};
 use crate::{packets::UserauthPkOk, *};
@@ -48,7 +49,7 @@ pub fn packet_from_bytes<'a>(
 
 // Hashes a slice to be treated as a mpint. Has u32 length prefix
 // and an extra 0x00 byte if the MSB is set.
-pub fn hash_mpint(hash_ctx: &mut ring::digest::Context, m: &[u8]) {
+pub fn hash_mpint(hash_ctx: &mut dyn digest::DynDigest, m: &[u8]) {
     let pad = m.len() > 0 && (m[0] & 0x80) != 0;
     let l = m.len() as u32 + pad as u32;
     hash_ctx.update(&l.to_be_bytes());
@@ -74,7 +75,7 @@ where
 /// Hashes the contents of a SSH packet, updating the provided context.
 /// Adds a `u32` length prefix.
 pub fn hash_ser_length<T>(
-    hash_ctx: &mut ring::digest::Context, value: &T,
+    hash_ctx: &mut impl digest::DynDigest, value: &T,
 ) -> Result<()>
 where
     T: Serialize,
@@ -90,7 +91,7 @@ where
 
 /// Hashes the contents of a `Serialize` item such as a public key.
 /// No length prefix is added.
-pub fn hash_ser<T>(hash_ctx: &mut ring::digest::Context, value: &T) -> Result<()>
+pub fn hash_ser<T>(hash_ctx: &mut impl digest::DynDigest, value: &T) -> Result<()>
 where
     T: Serialize,
 {
@@ -219,7 +220,7 @@ impl<'de, B: Deserialize<'de> + Serialize> Deserialize<'de> for Blob<B> {
 /// Optionally compute the hash of the packet or the length required.
 enum SeSSHBytes<'a> {
     WriteBytes { target: &'a mut [u8], pos: usize },
-    WriteHash { hash_ctx: &'a mut ring::digest::Context },
+    WriteHash { hash_ctx: &'a mut dyn digest::DynDigest },
     Length { pos: usize },
 }
 
@@ -927,30 +928,31 @@ pub(crate) mod tests {
     #[test]
     /// check that hash_ser_length() matches hashing a serialized message
     fn test_hash_packet() {
-        use ring::digest;
+        use sha2::Sha256;
+        use digest::Digest;
         let input = "hello";
         let mut buf = vec![99; 20];
         let w1 = wireformat::write_ssh(&mut buf, &input).unwrap();
         buf.truncate(w1);
 
         // hash_ser_length
-        let mut hash_ctx = digest::Context::new(&digest::SHA256);
+        let mut hash_ctx = Sha256::new();
         wireformat::hash_ser_length(&mut hash_ctx, &input).unwrap();
-        let digest1 = hash_ctx.finish();
+        let digest1 = hash_ctx.finalize();
 
-        let mut hash_ctx = digest::Context::new(&digest::SHA256);
+        let mut hash_ctx = Sha256::new();
         hash_ctx.update(&(w1 as u32).to_be_bytes());
         hash_ctx.update(&buf);
-        let digest2 = hash_ctx.finish();
+        let digest2 = hash_ctx.finalize();
 
-        assert_eq!(digest1.as_ref(), digest2.as_ref());
+        assert_eq!(digest1, digest2);
 
         // hash_ser
-        let mut hash_ctx = digest::Context::new(&digest::SHA256);
+        let mut hash_ctx = Sha256::new();
         hash_ctx.update(&(w1 as u32).to_be_bytes());
         wireformat::hash_ser(&mut hash_ctx, &input).unwrap();
-        let digest3 = hash_ctx.finish();
-        assert_eq!(digest3.as_ref(), digest2.as_ref());
+        let digest3 = hash_ctx.finalize();
+        assert_eq!(digest3, digest2);
     }
 
     pub fn test_roundtrip_context(p: &Packet, ctx: &ParseContext) {

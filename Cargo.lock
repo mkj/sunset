@@ -261,6 +261,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "curve25519-dalek"
+version = "4.0.0-pre.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "12dc3116fe595d7847c701796ac1b189bd86b81f4f593c6f775f9d80fb2e29f4"
+dependencies = [
+ "byteorder",
+ "digest 0.10.3",
+ "rand_core 0.6.3",
+ "subtle",
+ "zeroize",
+]
+
+[[package]]
 name = "der"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -325,6 +338,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "ctr",
+ "digest 0.10.3",
  "heapless",
  "hmac",
  "log",
@@ -340,6 +354,7 @@ dependencies = [
  "simplelog",
  "snafu",
  "ssh-key",
+ "x25519-dalek",
 ]
 
 [[package]]
@@ -371,7 +386,7 @@ version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c762bae6dcaf24c4c84667b8579785430908723d5c889f469d76a41d59cc7a9d"
 dependencies = [
- "curve25519-dalek",
+ "curve25519-dalek 3.2.1",
  "ed25519",
  "sha2 0.9.9",
  "zeroize",
@@ -1328,6 +1343,16 @@ name = "windows_x86_64_msvc"
 version = "0.36.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c811ca4a8c853ef420abd8592ba53ddbbac90410fab6903b3e79972a631f7680"
+
+[[package]]
+name = "x25519-dalek"
+version = "2.0.0-pre.2"
+source = "git+https://github.com/mobilecoinfoundation/x25519-dalek?branch=mobilecoin#c1966b8743d320cd07a54191475e5c0f94b2ea30"
+dependencies = [
+ "curve25519-dalek 4.0.0-pre.2",
+ "rand_core 0.6.3",
+ "zeroize",
+]
 
 [[package]]
 name = "zeroize"

@@ -110,9 +110,10 @@ impl SignKey {
     pub fn sign_serialize<'s>(&self, msg: &'s impl serde::Serialize) -> Result<RingSig> {
         match self {
             SignKey::Ed25519(k) => {
-                k.sign_piecewise(|ctx| {
-                    wireformat::hash_ser(ctx, msg).map_err(|_| ring::error::Unspecified)
-                }).trap()
+                todo!()
+                // k.sign_piecewise(|ctx| {
+                //     wireformat::hash_ser(ctx, msg).map_err(|_| ring::error::Unspecified)
+                // }).trap()
             }
         }
     }

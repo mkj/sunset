@@ -7,21 +7,16 @@ use {
 use aes::cipher::{BlockSizeUser, KeyIvInit, KeySizeUser, StreamCipher};
 use core::num::Wrapping;
 use pretty_hex::PrettyHex;
-use ring::aead::chacha20_poly1305_openssh as chapoly;
-use ring::digest::{self, Context as DigestCtx, Digest};
 
-// We are using hmac/sha2 crates rather than ring for hmac
-// because ring doesn't have multi-part verification
-// https://github.com/briansmith/ring/pull/825
-// If needed we probably could write the sequence into buf[0..4]
-// which has already been decrypted and read, but that's a mess.
+use ring::aead::chacha20_poly1305_openssh as chapoly;
+
 use hmac::{Hmac, Mac};
 use sha2::Digest as Sha2DigestForTrait;
 
-use crate::kex;
-use crate::sshnames::*;
-use crate::wireformat::hash_mpint;
 use crate::*;
+use kex::{self, SessId};
+use sshnames::*;
+use wireformat::hash_mpint;
 
 // TODO: check that Ctr32 is sufficient. Should be OK with SSH rekeying.
 type Aes256Ctr32BE = ctr::Ctr32BE<aes::Aes256>;
@@ -114,11 +109,11 @@ impl Keys {
     }
 
     pub fn new_from(
-        k: &[u8], h: &Digest, sess_id: &Digest, algos: &kex::Algos,
+        k: &[u8], h: &SessId, sess_id: &SessId, algos: &kex::Algos,
     ) -> Result<Self, Error> {
         let mut key = [0u8; MAX_KEY_LEN];
         let mut iv = [0u8; MAX_IV_LEN];
-        let hash = algos.kex.hash();
+        let mut hash = algos.kex.hash();
 
         let (iv_e, iv_d, k_e, k_d, i_e, i_d) = if algos.is_client {
             ('A', 'B', 'C', 'D', 'E', 'F')
@@ -131,7 +126,7 @@ impl Keys {
                 iv_e,
                 algos.cipher_enc.iv_len(),
                 &mut iv,
-                hash,
+                &mut hash,
                 k,
                 h,
                 sess_id,
@@ -140,7 +135,7 @@ impl Keys {
                 k_e,
                 algos.cipher_enc.key_len(),
                 &mut key,
-                hash,
+                &mut hash,
                 k,
                 h,
                 sess_id,
@@ -153,7 +148,7 @@ impl Keys {
                 iv_d,
                 algos.cipher_dec.iv_len(),
                 &mut iv,
-                hash,
+                &mut hash,
                 k,
                 h,
                 sess_id,
@@ -162,7 +157,7 @@ impl Keys {
                 k_d,
                 algos.cipher_dec.key_len(),
                 &mut key,
-                hash,
+                &mut hash,
                 k,
                 h,
                 sess_id,
@@ -175,7 +170,7 @@ impl Keys {
                 i_e,
                 algos.integ_enc.key_len(),
                 &mut key,
-                hash,
+                &mut hash,
                 k,
                 h,
                 sess_id,
@@ -188,7 +183,7 @@ impl Keys {
                 i_d,
                 algos.integ_enc.key_len(),
                 &mut key,
-                hash,
+                &mut hash,
                 k,
                 h,
                 sess_id,
@@ -203,43 +198,39 @@ impl Keys {
     /// RFC4253 7.2. `K1 = HASH(K || H || "A" || session_id)` etc
     fn compute_key<'a>(
         letter: char, len: usize, out: &'a mut [u8],
-        hash: &'static digest::Algorithm, k: &[u8], h: &Digest, sess_id: &Digest,
+        hash_ctx: &mut dyn digest::DynDigest, k: &[u8], h: &SessId, sess_id: &SessId,
     ) -> Result<&'a [u8], Error> {
         if len > out.len() {
             return Err(Error::bug());
         }
+        let w = &mut [0u8; 32];
+        debug_assert!(w.len() >= hash_ctx.output_size());
         // two rounds is sufficient with sha256 and current max key
-        debug_assert!(2 * hash.output_len() >= out.len());
+        debug_assert!(2 * hash_ctx.output_size() >= out.len());
 
-        let mut hash_ctx = DigestCtx::new(hash);
-        hash_mpint(&mut hash_ctx, k);
+        let l = len.min(hash_ctx.output_size());
+        let rest = &mut out[..];
+        let (k1, rest) = rest.split_at_mut(l);
+        let (k2, _) = rest.split_at_mut(len - l);
+
+        hash_ctx.reset();
+        hash_mpint(hash_ctx, k);
         hash_ctx.update(h.as_ref());
         hash_ctx.update(&[letter as u8]);
         hash_ctx.update(sess_id.as_ref());
+        hash_ctx.finalize_into_reset(w).trap()?;
 
-        let mut rest = &mut out[..];
-        let mut w;
         // fill first part
-        let k1 = hash_ctx.finish();
-        let k1 = k1.as_ref();
-        let l = rest.len().min(k1.len());
-        (w, rest) = rest.split_at_mut(l);
-        w.copy_from_slice(&k1[..l]);
+        k1.copy_from_slice(&w[..k1.len()]);
 
-        if rest.len() > 0 {
+        if k2.len() > 0 {
             // generate next block K2 = HASH(K || H || K1)
-            let mut hash_ctx = DigestCtx::new(hash);
-            hash_mpint(&mut hash_ctx, k);
+            hash_mpint(hash_ctx, k);
             hash_ctx.update(h.as_ref());
             hash_ctx.update(k1);
-            let k2 = hash_ctx.finish();
-            let k2 = k2.as_ref();
-            let l = rest.len().min(k2.len());
-            (w, rest) = rest.split_at_mut(l);
-            w.copy_from_slice(&k2[..l]);
+            hash_ctx.finalize_into_reset(w).trap()?;
+            k2.copy_from_slice(&w[..k2.len()]);
         }
-        debug_assert_eq!(rest.len(), 0);
-        // trace!("letter {letter} {}", (&out[..len]).hex_dump());
         Ok(&out[..len])
     }
 
@@ -672,6 +663,7 @@ mod tests {
 
     #[test]
     fn algo_roundtrips() {
+        use sha2::Sha256;
         init_test_log();
 
         let combos = [
@@ -695,8 +687,8 @@ mod tests {
 
             // arbitrary keys
             let hash = algos.kex.hash();
-            let h = digest::digest(hash, "some exchange hash".as_bytes());
-            let sess_id = digest::digest(hash, "some sessid".as_bytes());
+            let h = SessId::from_slice(&Sha256::digest("some exchange hash".as_bytes())).unwrap();
+            let sess_id = SessId::from_slice(&Sha256::digest("some sessid".as_bytes())).unwrap();
             let sharedkey = "hello".as_bytes();
             let mut newkeys =
                 Keys::new_from(sharedkey, &h, &sess_id, &algos).unwrap();

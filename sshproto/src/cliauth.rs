@@ -8,7 +8,6 @@ use core::task::{Poll, Waker};
 use heapless::{String, Vec};
 use no_panic::no_panic;
 use pretty_hex::PrettyHex;
-use ring::digest::Digest;
 
 use ring::signature::Signature as RingSig;
 
@@ -21,6 +20,7 @@ use packets::{Packet, Signature, Userauth60};
 use sign::SignKey;
 use sshnames::*;
 use wireformat::{BinString, Blob};
+use kex::SessId;
 
 // pub for packets::ParseContext
 pub enum Req {
@@ -152,7 +152,7 @@ impl CliAuth {
 
     pub fn auth_sig_msg(
         key: &SignKey,
-        sess_id: &Digest,
+        sess_id: &SessId,
         p: &Packet,
     ) -> Result<RingSig> {
         if let Packet::UserauthRequest(UserauthRequest {
@@ -186,7 +186,7 @@ impl CliAuth {
         &'b mut self,
         auth60: &packets::Userauth60<'_>,
         resp: &mut RespPackets<'b>,
-        sess_id: &Digest,
+        sess_id: &SessId,
         parse_ctx: &mut ParseContext,
     ) -> Result<()> {
         parse_ctx.cli_auth_type = None;
@@ -201,7 +201,7 @@ impl CliAuth {
         &'b mut self,
         pkok: &UserauthPkOk<'_>,
         resp: &mut RespPackets<'b>,
-        sess_id: &Digest,
+        sess_id: &SessId,
         parse_ctx: &mut ParseContext,
     ) -> Result<()> {
         // We are only sending keys one at a time so they shouldn't

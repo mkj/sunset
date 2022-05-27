@@ -72,6 +72,9 @@ pub enum Error {
     /// Signature is incorrect
     BadSignature,
 
+    /// Key exchange incorrect
+    BadKex,
+
     #[snafu(display("Signature \"{sig}\" doesn't match key type \"{key}\""))]
     SignatureMismatch { key: UnknownName, sig: UnknownName },
 
