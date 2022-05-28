@@ -14,7 +14,7 @@ use pretty_hex::PrettyHex;
 pub(crate) struct Traffic<'a> {
     // TODO: if smoltcp exposed both ends of a CircularBuffer to recv()
     // we could perhaps just work directly in smoltcp's provided buffer?
-    // Would need changes to ring chapoly_openssh and block ciphers.
+    // Would need changes to ciphers with block boundaries
 
     // TODO: decompression will need another buffer
     /// Accumulated input or output buffer.

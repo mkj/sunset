@@ -9,7 +9,6 @@ use heapless::{String, Vec};
 use no_panic::no_panic;
 use pretty_hex::PrettyHex;
 
-use ring::signature::Signature as RingSig;
 
 use crate::{packets::UserauthPkOk, *};
 use behaviour::CliBehaviour;
@@ -17,7 +16,7 @@ use client::*;
 use conn::RespPackets;
 use packets::{AuthMethod, MethodPubKey, ParseContext, UserauthRequest};
 use packets::{Packet, Signature, Userauth60};
-use sign::SignKey;
+use sign::{SignKey, OwnedSig};
 use sshnames::*;
 use wireformat::{BinString, Blob};
 use kex::SessId;
@@ -34,10 +33,10 @@ pub enum AuthType {
     PubKey,
 }
 
-pub enum AuthState {
+pub(crate) enum AuthState {
     Unstarted,
     MethodQuery,
-    Request { last_req: Req, sig: Option<RingSig> },
+    Request { last_req: Req, sig: Option<OwnedSig> },
     Idle,
 }
 
@@ -154,7 +153,7 @@ impl CliAuth {
         key: &SignKey,
         sess_id: &SessId,
         p: &Packet,
-    ) -> Result<RingSig> {
+    ) -> Result<OwnedSig> {
         if let Packet::UserauthRequest(UserauthRequest {
             username,
             service,
@@ -237,7 +236,8 @@ impl CliAuth {
                         ..
                     }) = p
                     {
-                        *psig = Some(Blob(Signature::from_ring(key, rsig)?))
+                        let rsig = &*rsig;
+                        *psig = Some(Blob(rsig.into()))
                     }
                     resp.push(p.into()).trap()?;
                     return Ok(());

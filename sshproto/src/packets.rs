@@ -13,8 +13,6 @@ use {
     log::{debug, error, info, log, trace, warn},
 };
 
-use ring::signature::Signature as RingSig;
-
 use heapless::String;
 use serde::de;
 use serde::de::{
@@ -28,9 +26,10 @@ use serde::Deserializer;
 use serde::{Deserialize, Serialize};
 
 use crate::*;
-use crate::{namelist::NameList, sshnames::*};
-use crate::wireformat::{BinString, Blob};
-use crate::sign::SigType;
+use namelist::NameList;
+use sshnames::*;
+use wireformat::{BinString, Blob};
+use sign::{SigType, OwnedSig};
 
 // Each struct needs one #[borrow] tag before one of the struct fields with a lifetime
 // (eg `blob: BinString<'a>`). That avoids the cryptic error in derive:
@@ -336,15 +335,6 @@ pub enum Signature<'a> {
 }
 
 impl<'a> Signature<'a> {
-    /// Is passed our own [`SignKey`] since a Ring signature doesn't
-    /// identify the algorithm.
-    pub(crate) fn from_ring(k: &SignKey, r: &'a RingSig) -> Result<Self> {
-        match k {
-            SignKey::Ed25519(_) => Ok(Signature::Ed25519(Ed25519Sig { sig: BinString(r.as_ref()) })),
-        }
-
-    }
-
     /// The algorithm name presented. May be invalid.
     pub fn algorithm_name(&self) -> &'a str {
         match self {
@@ -378,6 +368,16 @@ impl<'a> Signature<'a> {
         }
     }
 }
+
+impl <'a> From<&'a OwnedSig> for Signature<'a> {
+    fn from(s: &'a OwnedSig) -> Self {
+        match s {
+            OwnedSig::Ed25519(e) => Signature::Ed25519(Ed25519Sig { sig: BinString(e) }),
+            OwnedSig::RSA256 => todo!(),
+        }
+    }
+}
+
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Ed25519Sig<'a> {

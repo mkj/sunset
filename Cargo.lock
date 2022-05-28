@@ -339,6 +339,7 @@ dependencies = [
  "async-trait",
  "ctr",
  "digest 0.10.3",
+ "ed25519-dalek 2.0.0-pre.1",
  "heapless",
  "hmac",
  "log",
@@ -389,6 +390,17 @@ dependencies = [
  "curve25519-dalek 3.2.1",
  "ed25519",
  "sha2 0.9.9",
+ "zeroize",
+]
+
+[[package]]
+name = "ed25519-dalek"
+version = "2.0.0-pre.1"
+dependencies = [
+ "curve25519-dalek 4.0.0-pre.2",
+ "ed25519",
+ "rand",
+ "sha2 0.10.2",
  "zeroize",
 ]
 
@@ -1077,7 +1089,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9e09d8b0ff2fca365c89ad535055c17adbd9fb0a5daf338299049882e95b6931"
 dependencies = [
  "base64ct",
- "ed25519-dalek",
+ "ed25519-dalek 1.0.1",
  "pem-rfc7468",
  "rand_core 0.6.3",
  "sec1",

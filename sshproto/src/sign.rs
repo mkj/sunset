@@ -6,11 +6,12 @@ use {
     log::{debug, error, info, log, trace, warn},
 };
 
-use ring::signature::Signature as RingSig;
+use rand::rngs::OsRng;
+use ed25519_dalek as dalek;
+use ed25519_dalek::{Verifier, Signer};
 
 use crate::*;
 use crate::sshnames::*;
-use ring::signature::{KeyPair, Ed25519KeyPair, UnparsedPublicKey, ED25519};
 use crate::packets::{PubKey,Signature};
 use crate::wireformat::{BinString};
 use pretty_hex::PrettyHex;
@@ -62,8 +63,9 @@ impl SigType {
         match (self, pubkey, sig) {
 
             (SigType::Ed25519, PubKey::Ed25519(k), Signature::Ed25519(s)) => {
-                let k = UnparsedPublicKey::new(&ED25519, &k.key);
-                k.verify(message, s.sig.0).map_err(|_| Error::BadSignature)
+                let k = dalek::PublicKey::from_bytes(k.key.0).map_err(|_| Error::BadKey)?;
+                let s = dalek::Signature::from_bytes(s.sig.0).map_err(|_| Error::BadSignature)?;
+                k.verify(message, &s).map_err(|_| Error::BadSignature)
             }
 
             (SigType::RSA256, ..) => {
@@ -82,38 +84,54 @@ impl SigType {
     }
 }
 
+pub(crate) enum OwnedSig {
+    // dalek::Signature doesn't let us borrow the inner bytes,
+    // so we just store raw bytes here.
+    Ed25519([u8; 64]),
+    RSA256, // TODO
+}
+
+impl From<dalek::Signature> for OwnedSig {
+    fn from(s: dalek::Signature) -> Self {
+        OwnedSig::Ed25519(s.to_bytes())
+    }
+
+}
+
 /// A SSH signing key. This may hold the private part locally
 /// or could potentially send the signing requests to a SSH agent
 /// or other entitiy.
 pub enum SignKey {
-    Ed25519(Ed25519KeyPair),
+    Ed25519(dalek::Keypair),
 }
 
 impl SignKey {
     pub fn pubkey(&self) -> PubKey {
         match self {
             SignKey::Ed25519(k) => {PubKey::Ed25519(Ed25519PubKey
-                { key: BinString(k.public_key().as_ref()) } )
+                { key: BinString(k.public.as_bytes()) } )
             }
         }
     }
 
     pub fn from_openssh(k: impl AsRef<[u8]>) -> Result<Self> {
         let k = ssh_key::PrivateKey::from_openssh(k)
-            .map_err(|e| {
+            .map_err(|_| {
                 Error::msg("Unsupported OpenSSH key")
             })?;
 
         k.try_into()
     }
 
-    pub fn sign_serialize<'s>(&self, msg: &'s impl serde::Serialize) -> Result<RingSig> {
+    pub(crate) fn sign_serialize<'s>(&self, msg: &'s impl serde::Serialize) -> Result<OwnedSig> {
         match self {
             SignKey::Ed25519(k) => {
-                todo!()
-                // k.sign_piecewise(|ctx| {
-                //     wireformat::hash_ser(ctx, msg).map_err(|_| ring::error::Unspecified)
-                // }).trap()
+                let exk: dalek::ExpandedSecretKey = (&k.secret).into();
+                exk.sign_parts(|h| {
+                    wireformat::hash_ser(h, msg).map_err(|_| dalek::SignatureError::new())
+                }, &k.public)
+                .trap()
+                .map(|s| s.into())
             }
         }
     }
@@ -125,8 +143,12 @@ impl TryFrom<ssh_key::PrivateKey> for SignKey {
     fn try_from(k: ssh_key::PrivateKey) -> Result<Self> {
         match k.key_data() {
             ssh_key::private::KeypairData::Ed25519(k) => {
-                let edk = Ed25519KeyPair::from_seed_unchecked(&k.private.to_bytes())
-                .trap()?;
+                let edk = dalek::Keypair {
+                    secret: dalek::SecretKey::from_bytes(&k.private.to_bytes())
+                        .map_err(|_| Error::BadKey)?,
+                    public: dalek::PublicKey::from_bytes(&k.public.0)
+                        .map_err(|_| Error::BadKey)?,
+                };
                 Ok(SignKey::Ed25519(edk))
             }
             _ => Err(Error::NotAvailable { what: k.algorithm().as_str() })
@@ -136,6 +158,9 @@ impl TryFrom<ssh_key::PrivateKey> for SignKey {
 
 #[cfg(test)]
 pub(crate) mod tests {
+    use rand::rngs::OsRng;
+    use ed25519_dalek::Signer;
+
     use crate::sshnames::SSH_NAME_ED25519;
     use crate::{packets, wireformat};
     use crate::sign::*;
@@ -144,11 +169,8 @@ pub(crate) mod tests {
     use crate::doorlog::init_test_log;
 
     pub(crate) fn make_ed25519_signkey() -> SignKey {
-        let rng = ring::rand::SystemRandom::new();
-        let pkcs8_bytes =
-            ring::signature::Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
-        let ed = ring::signature::Ed25519KeyPair::from_pkcs8(pkcs8_bytes.as_ref())
-            .unwrap();
+        let mut rng = OsRng{};
+        let ed = dalek::Keypair::generate(&mut rng);
         sign::SignKey::Ed25519(ed)
     }
 
