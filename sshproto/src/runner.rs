@@ -27,7 +27,7 @@ pub struct Runner<'a> {
 
 impl<'a> Runner<'a> {
     /// `iobuf` must be sized to fit the largest SSH packet allowed.
-    pub async fn new(
+    pub fn new(
         conn: Conn<'a>,
         iobuf: &'a mut [u8],
     ) -> Result<Runner<'a>, Error> {

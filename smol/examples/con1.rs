@@ -147,7 +147,7 @@ async fn run(args: &Args) -> Result<()> {
             .with_context(|| format!("loading key {i}"))?);
     }
     let conn = Conn::new_client()?;
-    let runner = Runner::new(conn, work.as_mut_slice()).await?;
+    let runner = Runner::new(conn, work.as_mut_slice())?;
 
     let b = Behaviour::new_async_client(Box::new(sess));
     // let b = Behaviour::new_blocking_client(&mut sess);
