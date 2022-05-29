@@ -1,4 +1,3 @@
-use crate::{sshnames::SSH_NAME_RSA_SHA256, packets::Ed25519PubKey};
 
 #[allow(unused_imports)]
 use {
@@ -11,9 +10,10 @@ use ed25519_dalek as dalek;
 use ed25519_dalek::{Verifier, Signer};
 
 use crate::*;
-use crate::sshnames::*;
-use crate::packets::{PubKey,Signature};
-use crate::wireformat::{BinString};
+use sshnames::*;
+use packets::{PubKey, Signature, Ed25519PubKey};
+use wireformat::BinString;
+
 use pretty_hex::PrettyHex;
 
 use core::mem::discriminant;

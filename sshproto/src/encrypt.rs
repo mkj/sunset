@@ -7,8 +7,7 @@ use {
 use aes::cipher::{BlockSizeUser, KeyIvInit, KeySizeUser, StreamCipher};
 use core::num::Wrapping;
 use pretty_hex::PrettyHex;
-
-use ring::aead::chacha20_poly1305_openssh as chapoly;
+use core::fmt;
 
 use hmac::{Hmac, Mac};
 use sha2::Digest as Sha2DigestForTrait;
@@ -17,6 +16,7 @@ use crate::*;
 use kex::{self, SessId};
 use sshnames::*;
 use wireformat::hash_mpint;
+use ssh_chapoly::SSHChaPoly;
 
 // TODO: check that Ctr32 is sufficient. Should be OK with SSH rekeying.
 type Aes256Ctr32BE = ctr::Ctr32BE<aes::Aes256>;
@@ -78,6 +78,7 @@ impl KeyState {
     pub fn encrypt<'b>(
         &mut self, payload_len: usize, buf: &'b mut [u8],
     ) -> Result<usize, Error> {
+        trace!("encrypt p len {}", payload_len);
         let e = self.keys.encrypt(payload_len, buf, self.seq_encrypt.0);
         self.seq_encrypt += 1;
         e
@@ -245,18 +246,19 @@ impl Keys {
         if buf.len() < self.dec.size_block() {
             return Err(Error::bug());
         }
-        let buf4: [u8; 4] = buf[0..4].try_into().unwrap();
 
-        let d4 = match &mut self.dec {
-            DecKey::ChaPoly(openkey) => openkey.decrypt_packet_length(seq, buf4),
+        let len = match &mut self.dec {
+            DecKey::ChaPoly(k) => k.packet_length(seq, buf).trap()?,
             DecKey::Aes256Ctr(a) => {
                 a.apply_keystream(&mut buf[..16]);
-                buf[..4].try_into().unwrap()
+                u32::from_be_bytes(buf[..SSH_LENGTH_SIZE].try_into().unwrap())
             }
-            DecKey::NoCipher => buf4,
+            DecKey::NoCipher => {
+                u32::from_be_bytes(buf[..SSH_LENGTH_SIZE].try_into().unwrap())
+            }
         };
+        trace!("len {len}");
 
-        let len = u32::from_be_bytes(d4);
         let total_len = len
             .checked_add((SSH_LENGTH_SIZE + self.integ_dec.size_out()) as u32)
             .ok_or(Error::BadDecrypt)?;
@@ -296,10 +298,8 @@ impl Keys {
         // TODO: ETM modes would check integrity here.
 
         match &mut self.dec {
-            DecKey::ChaPoly(openkey) => {
-                let mac: &mut [u8; chapoly::TAG_LEN] = mac.try_into().trap()?;
-
-                openkey.open_in_place(seq, data, mac).map_err(|_| {
+            DecKey::ChaPoly(k) => {
+                k.decrypt(seq, data, mac).map_err(|_| {
                     info!("Packet integrity failed");
                     Error::BadDecrypt
                 })?;
@@ -417,9 +417,8 @@ impl Keys {
         }
 
         match &mut self.enc {
-            EncKey::ChaPoly(sealkey) => {
-                let mac: &mut [u8; chapoly::TAG_LEN] = mac.try_into().trap()?;
-                sealkey.seal_in_place(seq, enc, mac);
+            EncKey::ChaPoly(k) => {
+                k.encrypt(seq, enc, mac).trap()?
             }
             EncKey::Aes256Ctr(a) => {
                 a.apply_keystream(enc);
@@ -442,6 +441,16 @@ pub(crate) enum Cipher {
     // TODO Aes gcm etc
 }
 
+impl fmt::Display for Cipher {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let n = match self {
+            Self::ChaPoly => SSH_NAME_CHAPOLY,
+            Self::Aes256Ctr => SSH_NAME_AES256_CTR,
+        };
+        write!(f, "{n}")
+    }
+}
+
 impl Cipher {
     /// Creates a cipher key by algorithm name. Must be passed a known name.
     pub fn from_name(name: &str) -> Result<Self, Error> {
@@ -455,7 +464,7 @@ impl Cipher {
     /// length in bytes
     pub fn key_len(&self) -> usize {
         match self {
-            Cipher::ChaPoly => chapoly::KEY_LEN,
+            Cipher::ChaPoly => SSHChaPoly::key_len(),
             Cipher::Aes256Ctr => aes::Aes256::key_size(),
         }
     }
@@ -478,7 +487,7 @@ impl Cipher {
 }
 
 pub(crate) enum EncKey {
-    ChaPoly(chapoly::SealingKey),
+    ChaPoly(SSHChaPoly),
     Aes256Ctr(Aes256Ctr32BE),
     // AesGcm(Todo?)
     NoCipher,
@@ -491,8 +500,7 @@ impl EncKey {
     ) -> Result<Self, Error> {
         match cipher {
             Cipher::ChaPoly => {
-                let key: &[u8; 64] = key.try_into().trap()?;
-                Ok(EncKey::ChaPoly(chapoly::SealingKey::new(key)))
+                Ok(EncKey::ChaPoly(SSHChaPoly::new(key).trap()?))
             }
             Cipher::Aes256Ctr => Ok(EncKey::Aes256Ctr(
                 Aes256Ctr32BE::new_from_slices(key, iv).trap()?,
@@ -516,7 +524,7 @@ impl EncKey {
 }
 
 pub(crate) enum DecKey {
-    ChaPoly(chapoly::OpeningKey),
+    ChaPoly(SSHChaPoly),
     Aes256Ctr(Aes256Ctr32BE),
     // AesGcm256
     // AesCtr256
@@ -530,8 +538,7 @@ impl DecKey {
     ) -> Result<Self, Error> {
         match cipher {
             Cipher::ChaPoly => {
-                let key: &[u8; 64] = key.try_into().trap()?;
-                Ok(DecKey::ChaPoly(chapoly::OpeningKey::new(key)))
+                Ok(DecKey::ChaPoly(SSHChaPoly::new(key).trap()?))
             }
             Cipher::Aes256Ctr => Ok(DecKey::Aes256Ctr(
                 Aes256Ctr32BE::new_from_slices(key, iv).trap()?,
@@ -579,6 +586,16 @@ impl Integ {
     }
 }
 
+impl fmt::Display for Integ {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let n = match self {
+            Self::ChaPoly => SSH_NAME_CHAPOLY,
+            Self::HmacSha256 => SSH_NAME_HMAC_SHA256,
+        };
+        write!(f, "{n}")
+    }
+}
+
 pub(crate) enum IntegKey {
     ChaPoly,
     HmacSha256([u8; 32]),
@@ -598,7 +615,7 @@ impl IntegKey {
     }
     pub fn size_out(&self) -> usize {
         match self {
-            IntegKey::ChaPoly => chapoly::TAG_LEN,
+            IntegKey::ChaPoly => SSHChaPoly::tag_len(),
             IntegKey::HmacSha256(_) => sha2::Sha256::output_size(),
             IntegKey::NoInteg => 0,
         }

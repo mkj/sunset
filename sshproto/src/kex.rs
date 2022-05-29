@@ -10,8 +10,8 @@ use core::fmt;
 use core::marker::PhantomData;
 
 use rand::rngs::OsRng;
-use digest::Digest;
 use sha2::Sha256;
+use digest::Digest;
 
 use crate::*;
 use encrypt::{Cipher, Integ, Keys};
@@ -176,6 +176,19 @@ pub(crate) struct Algos {
     pub is_client: bool,
 }
 
+impl fmt::Display for Algos {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let (cc, cs, mc, ms) = if self.is_client {
+            (&self.cipher_enc, &self.cipher_dec, &self.integ_enc, &self.integ_dec)
+        } else {
+            (&self.cipher_dec, &self.cipher_enc, &self.integ_dec, &self.integ_enc)
+        };
+
+        write!(f, "Negotiated algorithms\nkex {}\nhostkey {}\ncipher c->s {}\ncipher s->c {}\nmac c->s {}\nmac s->c {}",
+            self.kex, self.hostsig.algorithm_name(), cc, cs, mc, ms)
+    }
+}
+
 impl Kex {
     pub fn new() -> Result<Self> {
         let mut our_cookie = [0u8; 16];
@@ -191,6 +204,7 @@ impl Kex {
         let remote_kexinit =
             if let Packet::KexInit(k) = p { k } else { return Err(Error::bug()) };
         let algos = Self::algo_negotiation(is_client, remote_kexinit, algo_conf)?;
+        debug!("Negotiated algorithms {algos}");
         self.kex_hash =
             Some(KexHash::new(self, &algos, algo_conf, remote_version, p)?);
         self.algos = Some(algos);
@@ -357,6 +371,15 @@ impl Kex {
 pub(crate) enum SharedSecret {
     KexCurve25519(KexCurve25519),
     // ECDH?
+}
+
+impl fmt::Display for SharedSecret {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let n = match self {
+            Self::KexCurve25519(_) => SSH_NAME_CURVE25519
+        };
+        write!(f, "{n}")
+    }
 }
 
 impl SharedSecret {
