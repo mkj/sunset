@@ -5,6 +5,8 @@ use {
     log::{debug, error, info, log, trace, warn},
 };
 
+use sshwire_derive::SSHEncode;
+
 use serde::de;
 use serde::de::{DeserializeSeed, SeqAccess, Visitor, Unexpected, Expected};
 use serde::ser::{SerializeSeq, SerializeTuple, Serializer};
@@ -12,9 +14,12 @@ use serde::Deserializer;
 
 use serde::{Deserialize, Serialize};
 
+use crate::*;
+use sshwire::SSHEncode;
+
 /// A comma separated string, can be deserialized or serialized.
 /// Used for remote name lists.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, SSHEncode, Debug)]
 pub struct StringNames<'a>(pub &'a str);
 
 /// A list of names, can only be serialized. Used for local name lists, comes
@@ -25,7 +30,7 @@ pub struct StringNames<'a>(pub &'a str);
 pub struct LocalNames<'a>(pub &'a [&'static str]);
 
 /// The general form that can store either representation
-#[derive(Serialize, Debug)]
+#[derive(Serialize, SSHEncode, Debug)]
 #[serde(untagged)]
 pub enum NameList<'a> {
     String(StringNames<'a>),
@@ -68,6 +73,25 @@ impl<'a> Serialize for LocalNames<'a> {
             }
         }
         seq.end()
+    }
+}
+
+/// Serialize the list of names with comma separators
+impl SSHEncode for LocalNames<'_> {
+    fn enc<S>(&self, e: &mut S) -> Result<()>
+    where S: sshwire::SSHSink {
+        let names = &self.0;
+        // space for names and commas
+        let strlen = names.iter().map(|n| n.len()).sum::<usize>()
+            + names.len().saturating_sub(1);
+        (strlen as u32).enc(e)?;
+        for i in 0..names.len() {
+            names[i].enc(e)?;
+            if i < names.len() - 1 {
+                b','.enc(e)?;
+            }
+        }
+        Ok(())
     }
 }
 

@@ -171,6 +171,8 @@ impl Error {
             panic!("Hit a bug: {args}");
         } else {
             debug!("Hit a bug: {args}");
+            // TODO: this bloats binaries with full paths
+            // https://github.com/rust-lang/rust/issues/95529 is having function
             let caller = core::panic::Location::caller();
             Err(Error::Bug {
                 location: snafu::Location::new(

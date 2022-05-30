@@ -361,6 +361,7 @@ dependencies = [
  "simplelog",
  "snafu",
  "ssh-key",
+ "sshwire_derive",
  "x25519-dalek",
 ]
 
@@ -1103,6 +1104,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "sshwire_derive"
+version = "0.1.0"
+dependencies = [
+ "virtue",
+]
+
+[[package]]
 name = "stable_deref_trait"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1256,6 +1264,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
 
 [[package]]
+name = "virtue"
+version = "0.0.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7b60dcd6a64dd45abf9bd426970c9843726da7fc08f44cd6fcebf68c21220a63"
+
+[[package]]
 name = "void"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1395,7 +1409,3 @@ dependencies = [
  "syn",
  "synstructure",
 ]
-
-[[patch.unused]]
-name = "ring"
-version = "0.17.0-not-released-yet"

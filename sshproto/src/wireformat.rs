@@ -199,16 +199,16 @@ impl<'de, B: Deserialize<'de> + Serialize> Deserialize<'de> for Blob<B> {
                 // TODO: is there a better way to find the length consumed?
                 // If we could enforce that D is a DeSSHBytes we can look
                 // at the length...
-                let gotlen = SeSSHBytes::get_length(&inner)
-                    .map_err(|_| de::Error::custom(Error::bug()))?;
-                if bloblen as usize != gotlen {
-                    return Err(de::Error::custom(format_args!(
-                        "Expected {} of length {}, got {}",
-                        core::any::type_name::<B>(),
-                        bloblen,
-                        gotlen
-                    )));
-                }
+                // let gotlen = SeSSHBytes::get_length(&inner)
+                //     .map_err(|_| de::Error::custom(Error::bug()))?;
+                // if bloblen as usize != gotlen {
+                //     return Err(de::Error::custom(format_args!(
+                //         "Expected {} of length {}, got {}",
+                //         core::any::type_name::<B>(),
+                //         bloblen,
+                //         gotlen
+                //     )));
+                // }
                 Ok(Blob(inner))
             }
         }
@@ -331,7 +331,7 @@ impl Serializer for &mut SeSSHBytes<'_> {
                 self.serialize_str(variant)?;
             }
             _ => {
-                return Error::bug_args(format_args!("Mystery enum {name}"))
+                return Error::bug_args(format_args!("Mystery enum"))
             }
         };
         v.serialize(self)
@@ -342,7 +342,7 @@ impl Serializer for &mut SeSSHBytes<'_> {
         self, name: &'static str, _variant_index: u32, variant: &'static str,
     ) -> Res {
         match name {
-            "ChannelType" => Ok(()), // "session" unit variant
+            "ChannelType" => Ok(()), // eg "session" unit variant
             _ => self.serialize_str(variant),
         }
     }
@@ -500,7 +500,6 @@ impl<'de> DeSSHBytes<'de> {
         let (t, rest) = self.input.split_at(len);
         self.input = rest;
         self.pos += len;
-        trace!(target: "serde,hexdump", "take new pos {}, {:?}", self.pos, t.hex_dump());
         Ok(t)
     }
 
@@ -530,7 +529,6 @@ impl<'de> DeSSHBytes<'de> {
         let len = self.parse_u32()?;
         let t = self.take(len as usize)?;
         let s = core::str::from_utf8(t).map_err(|_| Error::BadString)?;
-        trace!(target: "serde", "parse_str '{s}'");
         Ok(s)
     }
 }
@@ -617,22 +615,20 @@ impl<'de, 'a> Deserializer<'de> for &'a mut DeSSHBytes<'de> {
     where
         V: Visitor<'de>,
     {
-        let variant_field = match name {
+        match name {
             |"ChannelOpen"
             |"ChannelRequest"
-            => Some("channel_type"),
-            _ => None,
-        };
-
-        if variant_field.is_some() {
-            // We need a struct deserializer to extract specific fields
-            let ma = MapAccessDeSSH::new(self, fields, variant_field);
-            let v = visitor.visit_map(ma)?;
-            debug_assert!(self.next_variant.is_none());
-            Ok(v)
-        } else {
-            // A simple deserialize_tuple is smaller
-            self.deserialize_tuple(fields.len(), visitor)
+            => {
+                // We need a struct deserializer to extract specific fields
+                let ma = MapAccessDeSSH::new(self, fields, "channel_type");
+                let v = visitor.visit_map(ma)?;
+                debug_assert!(self.next_variant.is_none());
+                Ok(v)
+            }
+            _ => {
+                // A simple deserialize_tuple is smaller
+                self.deserialize_tuple(fields.len(), visitor)
+            }
         }
     }
 
@@ -654,7 +650,7 @@ impl<'de, 'a> Deserializer<'de> for &'a mut DeSSHBytes<'de> {
             }
             _ => {
                 // A mystery enum has been added to packets.rs
-                return Error::bug_args(format_args!("Mystery enum {name}"))
+                return Error::bug_args(format_args!("Mystery enum"))
             }
         };
 
@@ -744,13 +740,13 @@ struct MapAccessDeSSH<'de, 'a> {
     // This assumes that no intervening enums are decoded before
     // the desired one.
     // Perhaps in future #[serde(flatten)] etc could be used instead.
-    variant_field: Option<&'a str>,
+    variant_field: &'a str,
 }
 
 impl<'de: 'a, 'a> MapAccessDeSSH<'de, 'a> {
     fn new(
         ds: &'a mut DeSSHBytes<'de>, fields: &'static [&'static str],
-        variant_field: Option<&'a str>,
+        variant_field: &'a str,
     ) -> Self {
         debug_assert!(ds.next_variant.is_none());
         MapAccessDeSSH { ds, fields, pos: 0, variant_field }
@@ -768,12 +764,10 @@ impl<'de: 'a, 'a> MapAccess<'de> for MapAccessDeSSH<'de, 'a> {
         if self.pos < self.fields.len() {
             debug_assert!(self.ds.capture_str.is_none());
             debug_assert!(!self.ds.capture_next_str);
-            if let Some(cf) = self.variant_field {
-                // The subsequent next_value_seed() should
-                // capture the string value if this is our
-                // capture_field.
-                self.ds.capture_next_str = cf == self.fields[self.pos];
-            };
+            // The subsequent next_value_seed() should
+            // capture the string value if this is our
+            // capture_field.
+            self.ds.capture_next_str = self.variant_field == self.fields[self.pos];
 
             // Return the field name as the key
             let dsfield =

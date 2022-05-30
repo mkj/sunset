@@ -86,6 +86,7 @@ pub trait BlockCliBehaviour {
     /// Return `Ok(false)` to skip password authentication
     // TODO: having the hostname and username is useful to build a prompt?
     // or we could provide a full prompt as Args
+    // TODO: should just return an Option<ResponseString>.
     #[allow(unused)]
     fn auth_password(&mut self, pwbuf: &mut ResponseString) -> BhResult<bool> {
         Ok(false)

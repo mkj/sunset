@@ -149,7 +149,7 @@ impl Channels {
             Packet::ChannelFailure(_p) => {
                 todo!();
             }
-            _ => unreachable!(),
+            _ => Error::bug_msg("unreachable")
         };
         match r {
             Err(Error::BadChannel) => {

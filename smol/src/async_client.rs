@@ -1,6 +1,8 @@
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
 
+use core::str::FromStr;
+
 use door::SignKey;
 use door_sshproto as door;
 use door_sshproto::{BhError, BhResult};
@@ -68,10 +70,7 @@ impl door::AsyncCliBehaviour for SimpleClient {
     }
 
     async fn username(&mut self) -> BhResult<door::ResponseString> {
-        // TODO unwrap
-        let mut p = door::ResponseString::new();
-        p.push_str(&self.username).unwrap();
-        Ok(p)
+        door::ResponseString::from_str(&self.username).map_err(|_| BhError::Fail)
     }
 
     async fn valid_hostkey(&mut self, key: &door::PubKey) -> BhResult<bool> {

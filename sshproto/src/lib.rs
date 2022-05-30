@@ -43,6 +43,7 @@ mod termmodes;
 mod async_behaviour;
 mod block_behaviour;
 mod ssh_chapoly;
+mod sshwire;
 
 pub use behaviour::{Behaviour, BhError, BhResult, ResponseString};
 #[cfg(feature = "std")]

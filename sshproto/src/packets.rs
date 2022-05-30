@@ -25,11 +25,14 @@ use serde::Deserializer;
 
 use serde::{Deserialize, Serialize};
 
+use sshwire_derive::SSHEncode;
+
 use crate::*;
 use namelist::NameList;
 use sshnames::*;
 use wireformat::{BinString, Blob};
 use sign::{SigType, OwnedSig};
+use sshwire::SSHEncode;
 
 // Each struct needs one #[borrow] tag before one of the struct fields with a lifetime
 // (eg `blob: BinString<'a>`). That avoids the cryptic error in derive:
@@ -38,7 +41,7 @@ use sign::{SigType, OwnedSig};
 // Any `enum` needs to have special handling to select a variant when deserializing.
 // This is done in conjunction with [`wireformat::deserialize_enum`].
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, SSHEncode)]
 pub struct KexInit<'a> {
     pub cookie: [u8; 16],
     #[serde(borrow)]
@@ -115,7 +118,7 @@ pub struct UserauthRequest<'a> {
 }
 
 /// The method-specific part of a [`UserauthRequest`].
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, SSHEncode)]
 pub enum AuthMethod<'a> {
     #[serde(borrow)]
     #[serde(rename = "password")]

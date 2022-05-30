@@ -9,15 +9,13 @@ members = [
     "sshproto",
     "smol",
     "door-tokio",
+    "sshwire_derive",
 ]
 
 [profile.release]
 opt-level = 's'
 # lto = "fat"
 debug = 1
-
-[patch."https://github.com/mkj/ring"]
-ring = { path = "/home/matt/3rd/rs/ring" }
 
 [patch."https://github.com/mkj/ed25519-dalek"]
 ed25519-dalek = { path = "/home/matt/3rd/rs/ed25519-dalek" }
