@@ -9,10 +9,11 @@ use rand::rngs::OsRng;
 use ed25519_dalek as dalek;
 use ed25519_dalek::{Verifier, Signer};
 
-use crate::*;
+use crate::{*, packets::ParseContext};
 use sshnames::*;
 use packets::{PubKey, Signature, Ed25519PubKey};
 use wireformat::BinString;
+use sshwire::SSHEncode;
 
 use pretty_hex::PrettyHex;
 
@@ -123,12 +124,15 @@ impl SignKey {
         k.try_into()
     }
 
-    pub(crate) fn sign_serialize<'s>(&self, msg: &'s impl serde::Serialize) -> Result<OwnedSig> {
+    // pub(crate) fn sign_serialize<'s>(&self, msg: &'s impl serde::Serialize) -> Result<OwnedSig> {
+    pub(crate) fn sign_serialize<'s>(&self, msg: &'s impl SSHEncode) -> Result<OwnedSig> {
         match self {
             SignKey::Ed25519(k) => {
                 let exk: dalek::ExpandedSecretKey = (&k.secret).into();
                 exk.sign_parts(|h| {
-                    wireformat::hash_ser(h, msg).map_err(|_| dalek::SignatureError::new())
+                    let mut ctx = ParseContext::default();
+                    ctx.method_pubkey_force_sig_bool = true;
+                    sshwire::hash_ser(h, Some(&ctx), msg).map_err(|_| dalek::SignatureError::new())
                 }, &k.public)
                 .trap()
                 .map(|s| s.into())

@@ -162,10 +162,12 @@ impl<B: Clone> Clone for Blob<B> {
     }
 }
 
-impl<B: Serialize + Debug> Debug for Blob<B> {
+impl<B: SSHEncode + Serialize + Debug> Debug for Blob<B> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let len = SeSSHBytes::get_length(&self.0)
+        let len = sshwire::length_enc(&self.0)
             .map_err(|_| ser::Error::custom(Error::bug()))?;
+        // let len = SeSSHBytes::get_length(&self.0)
+        //     .map_err(|_| ser::Error::custom(Error::bug()))?;
         write!(f, "Blob(len={len}, {:?})", self.0)
     }
 }
@@ -279,6 +281,7 @@ impl SeSSHBytes<'_> {
 
     /// Appends serialized data
     fn push(&mut self, v: &[u8]) -> Res {
+        panic!("push");
         match self {
             SeSSHBytes::WriteBytes { target, ref mut pos } => {
                 if *pos + v.len() > target.len() {
@@ -532,6 +535,7 @@ impl<'de> DeSSHBytes<'de> {
     }
 
     fn take(&mut self, len: usize) -> Result<&'de [u8]> {
+        panic!("take");
         if len > self.input.len() {
             return Err(Error::RanOut);
         }

@@ -180,10 +180,6 @@ impl<'a> Traffic<'a> {
             _ => Err(Error::bug())?,
         };
 
-        let mut z = [0u8; 1000];
-        let qlen = wireformat::write_ssh(&mut z, &p)?;
-        trace!("old {qlen} {:?}", (&z[..qlen]).hex_dump());
-
         // Use the remainder of our buffer to write the packet. Payload starts
         // after the length and padding bytes which get filled by encrypt()
         let wbuf = &mut self.buf[len..];
@@ -193,8 +189,6 @@ impl<'a> Traffic<'a> {
         let plen = sshwire::write_ssh(&mut wbuf[SSH_PAYLOAD_START..], &p)?;
         trace!("Sending {p:?}");
         trace!("new {plen} {:?}", (&wbuf[SSH_PAYLOAD_START..SSH_PAYLOAD_START+plen]).hex_dump());
-
-        assert_eq!(z[..qlen], wbuf[SSH_PAYLOAD_START..SSH_PAYLOAD_START+plen]);
 
         // Encrypt in place
         let elen = keys.encrypt(plen, wbuf)?;

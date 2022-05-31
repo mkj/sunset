@@ -14,7 +14,7 @@ use crate::{packets::UserauthPkOk, *};
 use behaviour::CliBehaviour;
 use client::*;
 use conn::RespPackets;
-use packets::{AuthMethod, MethodPubKey, ParseContext, UserauthRequest};
+use packets::{MessageNumber, AuthMethod, MethodPubKey, ParseContext, UserauthRequest};
 use packets::{Packet, Signature, Userauth60};
 use sign::{SignKey, OwnedSig};
 use sshnames::*;
@@ -169,11 +169,12 @@ impl CliAuth {
                     sig: None,
                     signing_now: true,
                 }),
-            }.into();
+            };
 
             let msg = auth::AuthSigMsg {
                 sess_id: BinString(sess_id.as_ref()),
-                p: sig_packet,
+                msg_num: MessageNumber::SSH_MSG_USERAUTH_REQUEST as u8,
+                u: sig_packet,
             };
             key.sign_serialize(&msg)
         } else {

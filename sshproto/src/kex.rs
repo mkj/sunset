@@ -20,7 +20,8 @@ use namelist::LocalNames;
 use packets::{Packet, PubKey, Signature};
 use sign::SigType;
 use sshnames::*;
-use wireformat::{hash_mpint, hash_ser, hash_ser_length, BinString, Blob};
+use wireformat::{hash_mpint, BinString, Blob};
+use sshwire::{hash_ser, hash_ser_length};
 use behaviour::{CliBehaviour, Behaviour, ServBehaviour};
 
 // at present we only have curve25519 with sha256

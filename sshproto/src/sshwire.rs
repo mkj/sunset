@@ -71,6 +71,27 @@ where
     Ok(s.pos)
 }
 
+pub fn hash_ser_length<T>(hash_ctx: &mut impl digest::DynDigest,
+    value: &T) -> Result<()>
+where
+    T: SSHEncode,
+{
+    let len = length_enc(value)? as u32;
+    hash_ctx.update(&len.to_be_bytes());
+    hash_ser(hash_ctx, None, value)
+}
+
+pub fn hash_ser<T>(hash_ctx: &mut impl digest::DynDigest,
+    parse_ctx: Option<&ParseContext>,
+    value: &T) -> Result<()>
+where
+    T: SSHEncode,
+{
+    let mut s = EncodeHash { hash_ctx, parse_ctx: parse_ctx.cloned() };
+    value.enc(&mut s)?;
+    Ok(())
+}
+
 pub fn length_enc<T>(value: &T) -> Result<usize>
 where
     T: SSHEncode,
@@ -214,7 +235,7 @@ impl<'de> SSHDecode<'de> for bool {
 
 // TODO: inline seemed to help code size in wireformat?
 impl<'de> SSHDecode<'de> for u8 {
-    #[inline]
+    // #[inline]
     fn dec<S>(s: &mut S) -> Result<Self>
     where S: SSHSource<'de> {
         let t = s.take(core::mem::size_of::<u8>())?;
@@ -223,7 +244,7 @@ impl<'de> SSHDecode<'de> for u8 {
 }
 
 impl<'de> SSHDecode<'de> for u32 {
-    #[inline]
+    // #[inline]
     fn dec<S>(s: &mut S) -> Result<Self>
     where S: SSHSource<'de> {
         let t = s.take(core::mem::size_of::<u32>())?;
@@ -232,7 +253,7 @@ impl<'de> SSHDecode<'de> for u32 {
 }
 
 impl<'de: 'a, 'a> SSHDecode<'de> for &'a str {
-    #[inline]
+    // #[inline]
     fn dec<S>(s: &mut S) -> Result<Self>
     where S: SSHSource<'de> {
         let len = u32::dec(s)?;
