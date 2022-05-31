@@ -1,11 +1,6 @@
 //! Named SSH algorithms, methods and extensions. This module also serves as
 //! an index of SSH specifications.
 
-// Note that some names are listed as string literals in packets.rs instead,
-// for #[serde(rename)].  Those could be moved here if this is resolved
-// https://github.com/serde-rs/serde/issues/1964
-// "Rename With Expressions"
-
 /// [RFC8731](https://tools.ietf.org/html/rfc8731)
 pub const SSH_NAME_CURVE25519: &str = "curve25519-sha256";
 /// An older alias prior to standardisation. Eventually could be removed

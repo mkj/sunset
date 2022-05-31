@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use proc_macro::Delimiter;
 use virtue::generate::FnSelfArg;
 use virtue::parse::{Attribute, AttributeLocation, EnumBody, StructBody};
+use virtue::utils::{parse_tagged_attribute, ParsedAttribute};
 use virtue::prelude::*;
 
 #[proc_macro_derive(SSHEncode, attributes(sshwire))]
@@ -76,58 +77,28 @@ enum FieldAtt {
 }
 
 fn take_cont_atts(atts: &[Attribute]) -> Result<Vec<ContainerAtt>> {
-    atts.iter()
+    let x = atts.iter()
         .filter_map(|a| {
-            match a.location {
-                AttributeLocation::Container => {
-                    let mut s = a.tokens.stream().into_iter();
-                    if &s.next().expect("missing attribute name").to_string()
-                        != "sshwire"
-                    {
-                        // skip attributes other than "sshwire"
-                        return None;
-                    }
-                    Some(if let Some(TokenTree::Group(g)) = s.next() {
-                        let mut g = g.stream().into_iter();
-                        let f = match g.next() {
-                            Some(TokenTree::Ident(l))
-                                if l.to_string() == "no_variant_names" =>
-                            {
-                                Ok(ContainerAtt::NoNames)
-                            }
+            parse_tagged_attribute(&a.tokens, "sshwire")
+            .transpose()
+        });
 
-                            Some(TokenTree::Ident(l))
-                                if l.to_string() == "variant_prefix" =>
-                            {
-                                Ok(ContainerAtt::VariantPrefix)
-                            }
-
-                            _ => Err(Error::Custom {
-                                error: "Unknown sshwire atttribute".into(),
-                                span: Some(a.tokens.span()),
-                            }),
-                        };
-
-                        if let Some(_) = g.next() {
-                            Err(Error::Custom {
-                                error: "Extra unhandled parts".into(),
-                                span: Some(a.tokens.span()),
-                            })
-                        } else {
-                            f
-                        }
-                    } else {
-                        Err(Error::Custom {
-                            error: "#[sshwire(...)] attribute is missing (...) part"
-                                .into(),
-                            span: Some(a.tokens.span()),
-                        })
-                    })
-                }
-                _ => panic!("Non-field attribute for field: {a:#?}"),
-            }
-        })
-        .collect()
+    let mut ret = vec![];
+    // flatten the lists
+    for a in x {
+        for a in a? {
+            let l = match a {
+                ParsedAttribute::Tag(l) if l.to_string() == "no_variant_names" => Ok(ContainerAtt::NoNames),
+                ParsedAttribute::Tag(l) if l.to_string() == "variant_prefix" => Ok(ContainerAtt::VariantPrefix),
+                _ => Err(Error::Custom {
+                    error: "Unknown sshwire atttribute".into(),
+                    span: None,
+                }),
+            }?;
+            ret.push(l);
+        }
+    }
+    Ok(ret)
 }
 
 // TODO: we could use virtue parse_tagged_attribute() though it doesn't support Literals

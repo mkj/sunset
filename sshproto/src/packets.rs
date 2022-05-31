@@ -101,11 +101,11 @@ pub struct UserauthRequest<'a> {
 #[derive(Debug, SSHEncode, SSHDecode)]
 #[sshwire(variant_prefix)]
 pub enum AuthMethod<'a> {
-    #[sshwire(variant = "password")]
+    #[sshwire(variant = SSH_AUTHMETHOD_PASSWORD)]
     Password(MethodPassword<'a>),
-    #[sshwire(variant = "publickey")]
+    #[sshwire(variant = SSH_AUTHMETHOD_PUBLICKEY)]
     PubKey(MethodPubKey<'a>),
-    #[sshwire(variant = "none")]
+    #[sshwire(variant = SSH_NAME_NONE)]
     None,
     #[sshwire(unknown)]
     Unknown(Unknown<'a>),
@@ -228,9 +228,9 @@ pub struct UserauthBanner<'a> {
 #[derive(SSHEncode, SSHDecode, Debug, Clone, PartialEq)]
 #[sshwire(variant_prefix)]
 pub enum PubKey<'a> {
-    #[sshwire(variant = "ssh-ed25519")]
+    #[sshwire(variant = SSH_NAME_ED25519)]
     Ed25519(Ed25519PubKey<'a>),
-    #[sshwire(variant = "ssh-rsa")]
+    #[sshwire(variant = SSH_NAME_RSA)]
     RSA(RSAPubKey<'a>),
     #[sshwire(unknown)]
     Unknown(Unknown<'a>),
@@ -262,9 +262,9 @@ pub struct RSAPubKey<'a> {
 #[derive(Debug, SSHEncode,  SSHDecode)]
 #[sshwire(variant_prefix)]
 pub enum Signature<'a> {
-    #[sshwire(variant = "ssh-ed25519")]
+    #[sshwire(variant = SSH_NAME_ED25519)]
     Ed25519(Ed25519Sig<'a>),
-    #[sshwire(variant = "rsa-sha2-256")]
+    #[sshwire(variant = SSH_NAME_RSA_SHA256)]
     RSA256(RSA256Sig<'a>),
     #[sshwire(unknown)]
     Unknown(Unknown<'a>),
