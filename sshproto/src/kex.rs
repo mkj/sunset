@@ -20,7 +20,7 @@ use namelist::LocalNames;
 use packets::{Packet, PubKey, Signature};
 use sign::SigType;
 use sshnames::*;
-use wireformat::{hash_mpint, BinString, Blob};
+use sshwire::{hash_mpint, BinString, Blob};
 use sshwire::{hash_ser, hash_ser_length};
 use behaviour::{CliBehaviour, Behaviour, ServBehaviour};
 
@@ -597,9 +597,9 @@ mod tests {
     }
 
     /// Round trip a `Packet`
-    fn reserialize<'a>(out_buf: &'a mut [u8], p: Packet, ctx: &ParseContext) -> Packet<'a> {
-        wireformat::write_ssh(out_buf, &p).unwrap();
-        wireformat::packet_from_bytes(out_buf, &ctx).unwrap()
+    fn reencode<'a>(out_buf: &'a mut [u8], p: Packet, ctx: &ParseContext) -> Packet<'a> {
+        sshwire::write_ssh(out_buf, &p).unwrap();
+        sshwire::packet_from_bytes(out_buf, &ctx).unwrap()
     }
 
     #[test]
@@ -618,12 +618,12 @@ mod tests {
         let mut cli = kex::Kex::new().unwrap();
         let mut serv = kex::Kex::new().unwrap();
 
-        // reserialize so we end up with NameList::String not Local
+        // reencode so we end up with NameList::String not Local
         let ctx = ParseContext::new();
         let si = serv.make_kexinit(&serv_conf);
-        let si = reserialize(&mut bufs, si, &ctx);
+        let si = reencode(&mut bufs, si, &ctx);
         let ci = cli.make_kexinit(&cli_conf);
-        let ci = reserialize(&mut bufc, ci, &ctx);
+        let ci = reencode(&mut bufc, ci, &ctx);
 
         serv.handle_kexinit(false, &serv_conf, &cli_version, &ci).unwrap();
         cli.handle_kexinit(true, &cli_conf, &serv_version, &si).unwrap();

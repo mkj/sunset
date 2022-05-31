@@ -12,8 +12,7 @@ use ed25519_dalek::{Verifier, Signer};
 use crate::{*, packets::ParseContext};
 use sshnames::*;
 use packets::{PubKey, Signature, Ed25519PubKey};
-use wireformat::BinString;
-use sshwire::SSHEncode;
+use sshwire::{BinString, SSHEncode};
 
 use pretty_hex::PrettyHex;
 
@@ -124,15 +123,12 @@ impl SignKey {
         k.try_into()
     }
 
-    // pub(crate) fn sign_serialize<'s>(&self, msg: &'s impl serde::Serialize) -> Result<OwnedSig> {
-    pub(crate) fn sign_serialize<'s>(&self, msg: &'s impl SSHEncode) -> Result<OwnedSig> {
+    pub(crate) fn sign_encode<'s>(&self, msg: &'s impl SSHEncode, parse_ctx: Option<&ParseContext>) -> Result<OwnedSig> {
         match self {
             SignKey::Ed25519(k) => {
                 let exk: dalek::ExpandedSecretKey = (&k.secret).into();
                 exk.sign_parts(|h| {
-                    let mut ctx = ParseContext::default();
-                    ctx.method_pubkey_force_sig_bool = true;
-                    sshwire::hash_ser(h, Some(&ctx), msg).map_err(|_| dalek::SignatureError::new())
+                    sshwire::hash_ser(h, parse_ctx, msg).map_err(|_| dalek::SignatureError::new())
                 }, &k.public)
                 .trap()
                 .map(|s| s.into())
@@ -166,10 +162,8 @@ pub(crate) mod tests {
     use ed25519_dalek::Signer;
 
     use crate::sshnames::SSH_NAME_ED25519;
-    use crate::{packets, wireformat};
+    use crate::packets;
     use crate::sign::*;
-    use crate::wireformat::tests::assert_serialize_equal;
-    use serde::{Deserialize, Deserializer, Serialize, Serializer};
     use crate::doorlog::init_test_log;
 
     pub(crate) fn make_ed25519_signkey() -> SignKey {

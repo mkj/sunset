@@ -2,12 +2,10 @@
 mod tests {
     use crate::error::Error;
     use crate::packets::*;
-    use crate::wireformat::BinString;
+    use crate::sshwire::BinString;
     use crate::packets::{Packet,ParseContext};
-    use crate::{packets, wireformat};
+    use crate::{packets, sshwire};
     use pretty_hex::PrettyHex;
-    use serde::de::Unexpected;
-    use serde::{Deserialize, Serialize};
     use simplelog::{TestLogger,self,LevelFilter};
 
     pub fn init_log() {
@@ -16,14 +14,14 @@ mod tests {
 
     fn test_roundtrip_packet(p: &Packet) -> Result<(), Error> {
         let mut buf1 = vec![99; 500];
-        let _w1 = wireformat::write_ssh(&mut buf1, &p)?;
+        let _w1 = sshwire::write_ssh(&mut buf1, p)?;
 
         let ctx = ParseContext::new();
 
-        let p2 = wireformat::packet_from_bytes(&buf1, &ctx)?;
+        let p2 = sshwire::packet_from_bytes(&buf1, &ctx)?;
 
         let mut buf2 = vec![99; 500];
-        let _w2 = wireformat::write_ssh(&mut buf2, &p2)?;
+        let _w2 = sshwire::write_ssh(&mut buf2, &p2)?;
         // println!("{p:?}");
         // println!("{p2:?}");
         // println!("{:?}", buf1.hex_dump());

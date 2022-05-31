@@ -5,7 +5,6 @@ use log::{debug, error, info, log, trace, warn};
 use core::fmt::Arguments;
 use core::fmt;
 
-use serde::de::{Expected, Unexpected};
 use snafu::{prelude::*, Location};
 
 use heapless::String;
@@ -114,10 +113,6 @@ pub enum Error {
     /// channel name etc.
     #[snafu(display("Unknown {kind} method {name}"))]
     UnknownMethod { kind: &'static str, name: UnknownName },
-
-    /// Serde invalid value
-    // internal
-    InvalidDeserializeU8 { value: u8 },
 
     /// Implementation behaviour error
     #[snafu(display("Failure from application: {msg}"))]
@@ -258,60 +253,6 @@ impl From<BhError> for Error {
         match e {
             BhError::Fail => Error::BehaviourError { msg: "Unknown" }
         }
-    }
-}
-
-
-// needed for docs. TODO cfg for doc?
-// impl serde::de::StdError for Error {}
-
-// TODO: need to figure how to return our own Error variants from serde
-// rather than using serde Error::custom().
-impl serde::ser::Error for Error {
-    fn custom<T>(msg: T) -> Self
-    where
-        T: core::fmt::Display,
-    {
-        trace!("custom ser error: {}", msg);
-
-        Error::msg("ser error")
-    }
-}
-
-impl serde::de::Error for Error {
-    fn custom<T>(msg: T) -> Self
-    where
-        T: core::fmt::Display,
-    {
-        trace!("custom de error: {}", msg);
-
-        Error::msg("de error")
-    }
-
-    fn invalid_value(unexp: Unexpected<'_>, exp: &dyn Expected) -> Self {
-        if let Unexpected::Unsigned(val) = unexp {
-            if val <= 255 {
-                return Error::InvalidDeserializeU8 { value: val as u8 };
-            }
-        }
-        info!("Invalid input. Expected {} got {:?}", exp, unexp);
-        if let Unexpected::Str(_) = unexp {
-            return Error::BadString
-        }
-        Error::bug()
-    }
-
-    fn unknown_variant(variant: &str, _expected: &'static [&'static str]) -> Self {
-        debug!("Unknown variant '{variant}' wasn't caught");
-        Error::bug()
-    }
-}
-
-pub struct ExpectedMessageNumber;
-
-impl Expected for ExpectedMessageNumber {
-    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(formatter, "a known SSH message number")
     }
 }
 

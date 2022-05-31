@@ -65,7 +65,7 @@ enum FieldAtt {
     /// eg `#[sshwire(variant_name = ch)]` for `ChannelRequest`
     VariantName(Ident),
     /// Any unknown variant name should be recorded here.
-    /// This variant can't be serialized
+    /// This variant can't be written out.
     /// `#[sshwire(unknown))]`
     CaptureUnknown,
     /// The name of a variant, used by the parent struct

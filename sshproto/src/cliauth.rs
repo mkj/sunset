@@ -18,7 +18,7 @@ use packets::{MessageNumber, AuthMethod, MethodPubKey, ParseContext, UserauthReq
 use packets::{Packet, Signature, Userauth60};
 use sign::{SignKey, OwnedSig};
 use sshnames::*;
-use wireformat::{BinString, Blob};
+use sshwire::{BinString, Blob};
 use kex::SessId;
 
 // pub for packets::ParseContext
@@ -167,7 +167,6 @@ impl CliAuth {
                     sig_algo,
                     pubkey: pubkey.clone(),
                     sig: None,
-                    signing_now: true,
                 }),
             };
 
@@ -176,7 +175,9 @@ impl CliAuth {
                 msg_num: MessageNumber::SSH_MSG_USERAUTH_REQUEST as u8,
                 u: sig_packet,
             };
-            key.sign_serialize(&msg)
+            let mut ctx = ParseContext::default();
+            ctx.method_pubkey_force_sig_bool = true;
+            key.sign_encode(&msg, Some(&ctx))
         } else {
             Err(Error::bug())
         }

@@ -355,7 +355,6 @@ dependencies = [
  "pretty-hex 0.3.0",
  "proptest",
  "rand",
- "serde",
  "serde_json",
  "sha2 0.10.2",
  "simplelog",

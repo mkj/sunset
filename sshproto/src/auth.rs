@@ -6,7 +6,6 @@ use {
 
 use core::task::{Poll, Waker};
 use heapless::{String, Vec};
-use serde::Serialize;
 
 use crate::*;
 use behaviour::CliBehaviour;
@@ -16,12 +15,12 @@ use packets::ParseContext;
 use packets::{Packet, Signature, Userauth60};
 use sign::SignKey;
 use sshnames::*;
-use wireformat::BinString;
+use sshwire::BinString;
 use sshwire_derive::SSHEncode;
 
 /// The message to be signed in a pubkey authentication message,
 /// RFC4252 Section 7. The packet is a UserauthRequest, with None sig.
-#[derive(Serialize, SSHEncode)]
+#[derive(SSHEncode)]
 pub(crate) struct AuthSigMsg<'a> {
     pub sess_id: BinString<'a>,
 

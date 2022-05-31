@@ -5,24 +5,17 @@ use {
     log::{debug, error, info, log, trace, warn},
 };
 
-
-use serde::de;
-use serde::de::{DeserializeSeed, SeqAccess, Visitor, Unexpected, Expected};
-use serde::ser::{SerializeSeq, SerializeTuple, Serializer};
-use serde::Deserializer;
-
-use serde::{Deserialize, Serialize};
 use sshwire_derive::{SSHEncode, SSHDecode};
 
 use crate::*;
 use sshwire::{SSHEncode, SSHDecode, SSHSource, SSHSink};
 
-/// A comma separated string, can be deserialized or serialized.
+/// A comma separated string, can be decoded or encoded.
 /// Used for remote name lists.
-#[derive(Serialize, Deserialize, SSHEncode, SSHDecode, Debug)]
+#[derive(SSHEncode, SSHDecode, Debug)]
 pub struct StringNames<'a>(pub &'a str);
 
-/// A list of names, can only be serialized. Used for local name lists, comes
+/// A list of names, can only be encoded. Used for local name lists, comes
 /// from local fixed lists
 /// Deliberately `'static` since it should only come from hardcoded local strings
 /// `SSH_NAME_*` in [`crate::sshnames`]. We don't validate string contents.
@@ -30,26 +23,11 @@ pub struct StringNames<'a>(pub &'a str);
 pub struct LocalNames<'a>(pub &'a [&'static str]);
 
 /// The general form that can store either representation
-#[derive(Serialize, SSHEncode, Debug)]
-#[serde(untagged)]
+#[derive(SSHEncode, Debug)]
 #[sshwire(no_variant_names)]
 pub enum NameList<'a> {
     String(StringNames<'a>),
     Local(LocalNames<'a>),
-}
-
-impl<'de: 'a, 'a> Deserialize<'de> for NameList<'a> {
-    fn deserialize<D>(deserializer: D) -> Result<NameList<'a>, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let s = StringNames::deserialize(deserializer)?;
-        if s.0.is_ascii() {
-            Ok(NameList::String(s))
-        } else {
-            Err(de::Error::invalid_value(Unexpected::Str(s.0), &"ASCII"))
-        }
-    }
 }
 
 impl<'de: 'a, 'a> SSHDecode<'de> for NameList<'a> {
@@ -63,31 +41,6 @@ impl<'de: 'a, 'a> SSHDecode<'de> for NameList<'a> {
         } else {
             Err(Error::BadString)
         }
-    }
-}
-
-/// Serialize the list of names with comma separators
-impl<'a> Serialize for LocalNames<'a> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        // This isn't quite right for a generic serde serializer
-        // but it's OK for our SSH serializer. Serde doesn't have
-        // an API to incrementally serialize string parts.
-        // See packets::tests::json() for a test.
-        let mut seq = serializer.serialize_seq(None)?;
-        let names = &self.0;
-        let strlen = names.iter().map(|n| n.len()).sum::<usize>()
-            + names.len().saturating_sub(1);
-        seq.serialize_element(&(strlen as u32))?;
-        for i in 0..names.len() {
-            seq.serialize_element(names[i].as_bytes())?;
-            if i < names.len() - 1 {
-                seq.serialize_element(&(',' as u8))?;
-            }
-        }
-        seq.end()
     }
 }
 
@@ -219,7 +172,6 @@ impl<'a> LocalNames<'a> {
 #[cfg(test)]
 mod tests {
     use crate::namelist::*;
-    use crate::wireformat;
     use pretty_hex::PrettyHex;
     use std::vec::Vec;
     use crate::doorlog::init_test_log;
@@ -256,7 +208,7 @@ mod tests {
         for t in tests.iter() {
             let n = NameList::Local(LocalNames(t));
             let mut buf = vec![99; 30];
-            let l = wireformat::write_ssh(&mut buf, &n).unwrap();
+            let l = sshwire::write_ssh(&mut buf, &n).unwrap();
             buf.truncate(l);
             let out1 = core::str::from_utf8(&buf).unwrap();
             // check that a join with std gives the same result.

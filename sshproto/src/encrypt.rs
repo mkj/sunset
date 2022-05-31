@@ -15,7 +15,7 @@ use sha2::Digest as Sha2DigestForTrait;
 use crate::*;
 use kex::{self, SessId};
 use sshnames::*;
-use wireformat::hash_mpint;
+use sshwire::hash_mpint;
 use ssh_chapoly::SSHChaPoly;
 
 // TODO: check that Ctr32 is sufficient. Should be OK with SSH rekeying.

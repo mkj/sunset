@@ -1,8 +1,6 @@
-//! SSH protocol packets. A [`Packet`] can be serialized/deserialized to the
-//! SSH Binary Packet Protocol using [`serde`] with [`crate::wireformat`].
+//! SSH protocol packets. A [`Packet`] can be encoded/decoded to the
+//! SSH Binary Packet Protocol using [`crate::sshwire`].
 //!
-//! These are mostly container formats though there is some logic to determine
-//! which enum variant needs deserializing for certain packet types.
 use core::borrow::BorrowMut;
 use core::cell::Cell;
 use core::fmt;
@@ -14,37 +12,22 @@ use {
 };
 
 use heapless::String;
-use serde::de;
-use serde::de::{
-    DeserializeSeed, Error as DeError, Expected, MapAccess, SeqAccess, Visitor,
-};
-use serde::ser::{
-    Error as SerError, SerializeSeq, SerializeStruct, SerializeTuple, Serializer,
-};
-use serde::Deserializer;
-
-use serde::{Deserialize, Serialize};
 
 use sshwire_derive::*;
 
 use crate::*;
 use namelist::NameList;
 use sshnames::*;
-use wireformat::{BinString, Blob};
+use sshwire::{BinString, Blob};
 use sign::{SigType, OwnedSig};
 use sshwire::{SSHEncode, SSHEncodeEnum, SSHDecode, SSHDecodeEnum, SSHSource, SSHSink};
 
-// Each struct needs one #[borrow] tag before one of the struct fields with a lifetime
-// (eg `blob: BinString<'a>`). That avoids the cryptic error in derive:
-// error[E0495]: cannot infer an appropriate lifetime for lifetime parameter `'de` due to conflicting requirements
-
 // Any `enum` needs to have special handling to select a variant when deserializing.
-// This is done in conjunction with [`wireformat::deserialize_enum`].
+// This is mostly done with `#[sshwire(...)]` attributes.
 
-#[derive(Serialize, Deserialize, Debug, SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode)]
 pub struct KexInit<'a> {
     pub cookie: [u8; 16],
-    #[serde(borrow)]
     pub kex: NameList<'a>,
     pub hostkey: NameList<'a>, // is actually a signature type, not a key type
     pub cipher_c2s: NameList<'a>,
@@ -59,79 +42,71 @@ pub struct KexInit<'a> {
     pub reserved: u32,
 }
 
-#[derive(Serialize, Deserialize, Debug, SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode)]
 pub struct NewKeys {}
 
-#[derive(Serialize, Deserialize, Debug, SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode)]
 pub struct Ignore {}
 
 /// Named to avoid clashing with [`fmt::Debug`]
-#[derive(Serialize, Deserialize, Debug, SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode)]
 pub struct DebugPacket<'a> {
     pub always_display: bool,
     pub message: &'a str,
     pub lang: &'a str,
 }
 
-#[derive(Serialize, Deserialize, Debug, SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode)]
 pub struct Disconnect<'a> {
     pub reason: u32,
     pub desc: &'a str,
     pub lang: &'a str,
 }
 
-#[derive(Serialize, Deserialize, Debug, SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode)]
 pub struct Unimplemented {
     pub seq: u32,
 }
 
-#[derive(Serialize, Deserialize, Debug, SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode)]
 pub struct KexDHInit<'a> {
-    #[serde(borrow)]
     pub q_c: BinString<'a>,
 }
 
-#[derive(Serialize, Deserialize, Debug, SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode)]
 pub struct KexDHReply<'a> {
-    #[serde(borrow)]
     pub k_s: Blob<PubKey<'a>>,
     pub q_s: BinString<'a>,
     pub sig: Blob<Signature<'a>>,
 }
 
-#[derive(Serialize, Deserialize, Debug, SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode)]
 pub struct ServiceRequest<'a> {
     pub name: &'a str,
 }
 
-#[derive(Serialize, Deserialize, Debug, SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode)]
 pub struct ServiceAccept<'a> {
     pub name: &'a str,
 }
 
-#[derive(Serialize, Deserialize, Debug, SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode)]
 pub struct UserauthRequest<'a> {
     pub username: &'a str,
     pub service: &'a str,
-    // #[serde(deserialize_with = "wrap_unknown")]
     pub method: AuthMethod<'a>,
 }
 
 /// The method-specific part of a [`UserauthRequest`].
-#[derive(Serialize, Deserialize, Debug, SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode)]
 #[sshwire(variant_prefix)]
 pub enum AuthMethod<'a> {
-    #[serde(borrow)]
-    #[serde(rename = "password")]
     #[sshwire(variant = "password")]
     Password(MethodPassword<'a>),
-    #[serde(rename = "publickey")]
     #[sshwire(variant = "publickey")]
     PubKey(MethodPubKey<'a>),
-    #[serde(rename = "none")]
     #[sshwire(variant = "none")]
     None,
-    #[serde(skip_serializing)]
     #[sshwire(unknown)]
     Unknown(Unknown<'a>),
 }
@@ -145,16 +120,14 @@ impl<'a> TryFrom<PubKey<'a>> for AuthMethod<'a> {
             sig_algo,
             pubkey: Blob(pubkey),
             sig: None,
-            signing_now: false,
         }))
     }
 }
 
 
-#[derive(Serialize, Deserialize, Debug, SSHEncode)]
+#[derive(Debug, SSHEncode)]
 #[sshwire(no_variant_names)]
 pub enum Userauth60<'a> {
-    #[serde(borrow)]
     PkOk(UserauthPkOk<'a>),
     PwChangeReq(UserauthPwChangeReq<'a>),
     // TODO keyboard interactive
@@ -174,34 +147,19 @@ impl<'de: 'a, 'a> SSHDecode<'de> for Userauth60<'a> {
     }
 }
 
-impl<'a> Userauth60<'a> {
-    /// Special handling in [`wireformat`]
-    pub(crate) fn variant(ctx: &ParseContext) -> Result<&'static str> {
-        match ctx.cli_auth_type {
-            Some(cliauth::AuthType::Password) => Ok("PwChangeReq"),
-            Some(cliauth::AuthType::PubKey) => Ok("PkOk"),
-            _ => {
-                trace!("Wrong packet state for userauth60");
-                return Err(Error::PacketWrong)
-            }
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode)]
 pub struct UserauthPkOk<'a> {
     pub algo: &'a str,
-    #[serde(borrow)]
     pub key: Blob<PubKey<'a>>,
 }
 
-#[derive(Serialize, Deserialize, Debug, SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode)]
 pub struct UserauthPwChangeReq<'a> {
     pub prompt: &'a str,
     pub lang: &'a str,
 }
 
-#[derive(Serialize, Deserialize, SSHEncode, SSHDecode)]
+#[derive(SSHEncode, SSHDecode)]
 pub struct MethodPassword<'a> {
     pub change: bool,
     pub password: &'a str,
@@ -222,29 +180,6 @@ pub struct MethodPubKey<'a> {
     pub sig_algo: &'a str,
     pub pubkey: Blob<PubKey<'a>>,
     pub sig: Option<Blob<Signature<'a>>>,
-
-    // Set internally when serializing for to create a signature,
-    // the wire format has true for the have_signature bool
-    // but no actual signature.
-    // Should only be used by cli_auth::auth_sig_msg().
-    pub(crate) signing_now: bool,
-
-}
-
-impl<'a> Serialize for MethodPubKey<'a> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let mut seq = serializer.serialize_seq(None)?;
-        seq.serialize_element(&(self.sig.is_some() || self.signing_now))?;
-        seq.serialize_element(&self.sig_algo)?;
-        seq.serialize_element(&self.pubkey)?;
-        if let Some(s) = &self.sig {
-            seq.serialize_element(&s)?;
-        }
-        seq.end()
-    }
 }
 
 impl SSHEncode for MethodPubKey<'_> {
@@ -271,85 +206,32 @@ impl<'de: 'a, 'a> SSHDecode<'de> for MethodPubKey<'a> {
         } else {
             None
         };
-        Ok(Self { sig_algo, pubkey, sig, signing_now: false })
+        Ok(Self { sig_algo, pubkey, sig })
     }
 }
 
-impl<'de: 'a, 'a> Deserialize<'de> for MethodPubKey<'a> {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        struct Vis;
-
-        impl<'de> Visitor<'de> for Vis {
-            type Value = MethodPubKey<'de>;
-
-            fn expecting(
-                &self, formatter: &mut core::fmt::Formatter,
-            ) -> core::fmt::Result {
-                formatter.write_str("MethodPubKey")
-            }
-            fn visit_seq<V>(self, mut seq: V) -> Result<MethodPubKey<'de>, V::Error>
-            where
-                V: SeqAccess<'de>,
-            {
-                let actual_sig = seq
-                    .next_element()?
-                    .ok_or_else(|| de::Error::missing_field("actual_sig flag"))?;
-
-                let sig_algo = seq
-                    .next_element()?
-                    .ok_or_else(|| de::Error::missing_field("sig_algo"))?;
-
-                let pubkey = seq
-                    .next_element()?
-                    .ok_or_else(|| de::Error::missing_field("pubkey"))?;
-
-                let sig = if actual_sig {
-                    Some(
-                        seq.next_element()?
-                            .ok_or_else(|| de::Error::missing_field("sig"))?,
-                    )
-                } else {
-                    None
-                };
-
-                Ok(MethodPubKey { sig_algo, pubkey, sig, signing_now: false })
-            }
-        }
-        deserializer.deserialize_seq(Vis)
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode)]
 pub struct UserauthFailure<'a> {
-    #[serde(borrow)]
     pub methods: NameList<'a>,
     pub partial: bool,
 }
 
-#[derive(Serialize, Deserialize, Debug, SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode)]
 pub struct UserauthSuccess {}
 
-#[derive(Serialize, Deserialize, Debug, SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode)]
 pub struct UserauthBanner<'a> {
-    #[serde(borrow)]
     pub message: &'a str,
     pub lang: &'a str,
 }
 
-#[derive(SSHEncode, SSHDecode, Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(SSHEncode, SSHDecode, Debug, Clone, PartialEq)]
 #[sshwire(variant_prefix)]
 pub enum PubKey<'a> {
-    #[serde(borrow)]
-    #[serde(rename = "ssh-ed25519")]
     #[sshwire(variant = "ssh-ed25519")]
     Ed25519(Ed25519PubKey<'a>),
-    #[serde(rename = "ssh-rsa")]
     #[sshwire(variant = "ssh-rsa")]
     RSA(RSAPubKey<'a>),
-    #[serde(skip_serializing)]
     #[sshwire(unknown)]
     Unknown(Unknown<'a>),
 }
@@ -364,51 +246,26 @@ impl<'a> PubKey<'a> {
         }
     }
 }
-// impl<'de: 'a, 'a> crate::sshwire::SSHDecode<'de> for PubKey<'a> {
-//     fn dec<S: crate::sshwire::SSHSource<'de>>(s: &mut S) -> Result<Self> {
-//         let variant = crate::sshwire::SSHDecode::dec(s)?;
-//         crate::sshwire::SSHDecodeEnum::dec_enum(s, variant)
-//     }
-// }
-// impl<'de: 'a, 'a> crate::sshwire::SSHDecodeEnum<'de> for PubKey<'a> {
-//     fn dec_enum<S: crate::sshwire::SSHSource<'de>>(
-//         s: &mut S,
-//         variant: &'de str,
-//     ) -> Result<Self> {
-//         let r = match variant {
-//             "ssh-ed25519" => Self::Ed25519(crate::sshwire::SSHDecode::dec(s)?),
-//             "ssh-rsa" => Self::RSA(crate::sshwire::SSHDecode::dec(s)?),
-//             unk => Self::Unknown(Unknown(unk)),
-//         };
-//         Ok(r)
-//     }
-// }
 
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, SSHEncode, SSHDecode)]
+#[derive(Debug, Clone, PartialEq, SSHEncode, SSHDecode)]
 pub struct Ed25519PubKey<'a> {
-    #[serde(borrow)]
     pub key: BinString<'a>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, SSHEncode, SSHDecode)]
+#[derive(Debug, Clone, PartialEq, SSHEncode, SSHDecode)]
 pub struct RSAPubKey<'a> {
-    #[serde(borrow)]
     pub e: BinString<'a>,
     pub n: BinString<'a>,
 }
 
-#[derive(Serialize, Deserialize, Debug, SSHEncode,  SSHDecode)]
+#[derive(Debug, SSHEncode,  SSHDecode)]
 #[sshwire(variant_prefix)]
 pub enum Signature<'a> {
-    #[serde(borrow)]
-    #[serde(rename = "ssh-ed25519")]
     #[sshwire(variant = "ssh-ed25519")]
     Ed25519(Ed25519Sig<'a>),
-    #[serde(rename = "rsa-sha2-256")]
     #[sshwire(variant = "rsa-sha2-256")]
     RSA256(RSA256Sig<'a>),
-    #[serde(skip_serializing)]
     #[sshwire(unknown)]
     Unknown(Unknown<'a>),
 }
@@ -458,19 +315,17 @@ impl <'a> From<&'a OwnedSig> for Signature<'a> {
 }
 
 
-#[derive(Serialize, Deserialize, Debug, SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode)]
 pub struct Ed25519Sig<'a> {
-    #[serde(borrow)]
     pub sig: BinString<'a>,
 }
 
-#[derive(Serialize, Deserialize, Debug, SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode)]
 pub struct RSA256Sig<'a> {
-    #[serde(borrow)]
     pub sig: BinString<'a>,
 }
 
-// #[derive(Serialize, Deserialize, Debug)]
+// #[derive(Debug)]
 // pub struct GlobalRequest<'a> {
 //     name: &'a str,
 //     want_reply: bool,
@@ -492,107 +347,23 @@ pub struct ChannelOpen<'a> {
     pub ch: ChannelOpenType<'a>,
 }
 
-#[derive(Serialize, Deserialize, Debug, SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode)]
 pub enum ChannelOpenType<'a> {
-    #[serde(rename = "session")]
     #[sshwire(variant = "session")]
     Session,
-    #[serde(rename = "forwarded-tcpip")]
     #[sshwire(variant = "forwarded-tcpip")]
-    #[serde(borrow)]
     ForwardedTcpip(ForwardedTcpip<'a>),
-    #[serde(rename = "direct-tcpip")]
     #[sshwire(variant = "direct-tcpip")]
     DirectTcpip(DirectTcpip<'a>),
-    // #[serde(rename = "x11")]
     // #[sshwire(variant = "x11")]
     // Session(X11<'a>),
-    // #[serde(rename = "auth-agent@openssh.com")]
     // #[sshwire(variant = "auth-agent@openssh.com")]
     // Session(Agent<'a>),
-    #[serde(skip_serializing)]
     #[sshwire(unknown)]
     Unknown(Unknown<'a>),
 }
 
-impl<'a> Serialize for ChannelOpen<'a> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let mut seq = serializer.serialize_struct("ChannelOpen", 5)?;
-        let channel_type = match self.ch {
-            ChannelOpenType::Session => "session",
-            ChannelOpenType::ForwardedTcpip(_) => "forwarded-tcpip",
-            ChannelOpenType::DirectTcpip(_) => "direct-tcpip",
-            ChannelOpenType::Unknown(_) => return Err(S::Error::custom("unknown")),
-        };
-        seq.serialize_field("channel_type", channel_type)?;
-        seq.serialize_field("num", &self.num)?;
-        seq.serialize_field("initial_window", &self.initial_window)?;
-        seq.serialize_field("max_packet", &self.initial_window)?;
-        seq.serialize_field("ch", &self.ch)?;
-        seq.end()
-    }
-}
-
-impl<'de: 'a, 'a> Deserialize<'de> for ChannelOpen<'a> {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        struct Vis;
-
-        impl<'de> Visitor<'de> for Vis {
-            type Value = ChannelOpen<'de>;
-
-            fn expecting(
-                &self, formatter: &mut core::fmt::Formatter,
-            ) -> core::fmt::Result {
-                formatter.write_str("ChannelOpen")
-            }
-
-            fn visit_map<V>(self, mut map: V) -> Result<ChannelOpen<'de>, V::Error>
-            where
-                V: MapAccess<'de>,
-            {
-                // a bit horrible
-                let mut _k: &'de str;
-                let _channel_type: &'de str;
-                let num;
-                let initial_window;
-                let max_packet;
-                let ch;
-                (_k, _channel_type) = map
-                    .next_entry()?
-                    .ok_or_else(|| de::Error::missing_field("channel_type"))?;
-                (_k, num) = map
-                    .next_entry()?
-                    .ok_or_else(|| de::Error::missing_field("num"))?;
-                (_k, initial_window) = map
-                    .next_entry()?
-                    .ok_or_else(|| de::Error::missing_field("initial_window"))?;
-                (_k, max_packet) = map
-                    .next_entry()?
-                    .ok_or_else(|| de::Error::missing_field("max_packet"))?;
-                (_k, ch) = map
-                    .next_entry()?
-                    .ok_or_else(|| de::Error::missing_field("ch"))?;
-
-                Ok(ChannelOpen { num, initial_window, max_packet, ch })
-            }
-        }
-        // deserialize as a struct so wireformat can get the channel_type
-        // used to decode the ch enum.
-        deserializer.deserialize_struct(
-            "ChannelOpen",
-            &["channel_type", "num", "initial_window", "max_packet", "ch"],
-            Vis,
-        )
-    }
-}
-
-#[derive(Debug,Serialize,Deserialize, SSHEncode, SSHDecode)]
+#[derive(Debug,SSHEncode, SSHDecode)]
 pub struct ChannelOpenConfirmation {
     pub num: u32,
     pub sender_num: u32,
@@ -600,7 +371,7 @@ pub struct ChannelOpenConfirmation {
     pub max_packet: u32,
 }
 
-#[derive(Debug,Serialize,Deserialize, SSHEncode, SSHDecode)]
+#[derive(Debug,SSHEncode, SSHDecode)]
 pub struct ChannelOpenFailure<'a> {
     pub num: u32,
     pub reason: u32,
@@ -608,43 +379,41 @@ pub struct ChannelOpenFailure<'a> {
     pub lang: &'a str,
 }
 
-#[derive(Debug,Serialize,Deserialize, SSHEncode, SSHDecode)]
+#[derive(Debug,SSHEncode, SSHDecode)]
 pub struct ChannelWindowAdjust {
     pub num: u32,
     pub adjust: u32,
 }
 
-#[derive(Debug,Serialize,Deserialize, SSHEncode, SSHDecode)]
+#[derive(Debug,SSHEncode, SSHDecode)]
 pub struct ChannelData<'a> {
     pub num: u32,
-    #[serde(borrow)]
     pub data: BinString<'a>,
 }
 
-#[derive(Debug,Serialize,Deserialize, SSHEncode, SSHDecode)]
+#[derive(Debug,SSHEncode, SSHDecode)]
 pub struct ChannelDataExt<'a> {
     pub num: u32,
     pub code: u32,
-    #[serde(borrow)]
     pub data: BinString<'a>,
 }
 
-#[derive(Debug,Serialize,Deserialize, SSHEncode, SSHDecode)]
+#[derive(Debug,SSHEncode, SSHDecode)]
 pub struct ChannelEof {
     pub num: u32,
 }
 
-#[derive(Debug,Serialize,Deserialize, SSHEncode, SSHDecode)]
+#[derive(Debug,SSHEncode, SSHDecode)]
 pub struct ChannelClose {
     pub num: u32,
 }
 
-#[derive(Debug,Serialize,Deserialize, SSHEncode, SSHDecode)]
+#[derive(Debug,SSHEncode, SSHDecode)]
 pub struct ChannelSuccess {
     pub num: u32,
 }
 
-#[derive(Debug,Serialize,Deserialize, SSHEncode, SSHDecode)]
+#[derive(Debug,SSHEncode, SSHDecode)]
 pub struct ChannelFailure {
     pub num: u32,
 }
@@ -660,34 +429,24 @@ pub struct ChannelRequest<'a> {
     pub ch: ChannelReqType<'a>,
 }
 
-#[derive(Serialize, Deserialize, Debug, SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode)]
 pub enum ChannelReqType<'a> {
-    #[serde(rename = "shell")]
     #[sshwire(variant = "shell")]
     Shell,
-    #[serde(rename = "exec")]
     #[sshwire(variant = "exec")]
-    #[serde(borrow)]
     Exec(Exec<'a>),
-    #[serde(rename = "pty-req")]
     #[sshwire(variant = "pty-req")]
     Pty(Pty<'a>),
-    #[serde(rename = "subsystem")]
     #[sshwire(variant = "subsystem")]
     Subsystem(Subsystem<'a>),
-    #[serde(rename = "window-change")]
     #[sshwire(variant = "window-change")]
     WinChange(WinChange),
-    #[serde(rename = "signal")]
     #[sshwire(variant = "signal")]
     Signal(Signal<'a>),
-    #[serde(rename = "exit-status")]
     #[sshwire(variant = "exit-status")]
     ExitStatus(ExitStatus),
-    #[serde(rename = "exit-signal")]
     #[sshwire(variant = "exit-signal")]
     ExitSignal(ExitSignal<'a>),
-    #[serde(rename = "break")]
     #[sshwire(variant = "break")]
     Break(Break),
     // Other requests that aren't implemented at present:
@@ -695,96 +454,16 @@ pub enum ChannelReqType<'a> {
     // x11-req
     // env
     // xon-xoff
-    #[serde(skip_serializing)]
     #[sshwire(unknown)]
     Unknown(Unknown<'a>),
 }
 
-impl<'a> Serialize for ChannelRequest<'a> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let mut seq = serializer.serialize_struct("ChannelRequest", 5)?;
-        let channel_type = match self.ch {
-            ChannelReqType::Shell => "shell",
-            ChannelReqType::Exec(_) => "exec",
-            ChannelReqType::Pty(_) => "pty-req",
-            ChannelReqType::Subsystem(_) => "subsystem",
-            ChannelReqType::WinChange(_) => "window-change",
-            ChannelReqType::Signal(_) => "signal",
-            ChannelReqType::ExitStatus(_) => "exit-status",
-            ChannelReqType::ExitSignal(_) => "exit-signal",
-            ChannelReqType::Break(_) => "break",
-            ChannelReqType::Unknown(_) => return Err(S::Error::custom("unknown")),
-        };
-        seq.serialize_field("num", &self.num)?;
-        seq.serialize_field("channel_type", channel_type)?;
-        seq.serialize_field("want_reply", &self.want_reply)?;
-        seq.serialize_field("ch", &self.ch)?;
-        seq.end()
-    }
-}
-
-impl<'de: 'a, 'a> Deserialize<'de> for ChannelRequest<'a> {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        struct Vis;
-
-        impl<'de> Visitor<'de> for Vis {
-            type Value = ChannelRequest<'de>;
-
-            fn expecting(
-                &self, formatter: &mut core::fmt::Formatter,
-            ) -> core::fmt::Result {
-                formatter.write_str("ChannelRequest")
-            }
-
-            fn visit_map<V>(self, mut map: V) -> Result<ChannelRequest<'de>, V::Error>
-            where
-                V: MapAccess<'de>,
-            {
-                // a bit horrible
-                let mut _k: &'de str;
-                let _channel_type: &'de str;
-                let num;
-                let want_reply;
-                let ch;
-                (_k, num) = map
-                    .next_entry()?
-                    .ok_or_else(|| de::Error::missing_field("num"))?;
-                (_k, _channel_type) = map
-                    .next_entry()?
-                    .ok_or_else(|| de::Error::missing_field("channel_type"))?;
-                (_k, want_reply) = map
-                    .next_entry()?
-                    .ok_or_else(|| de::Error::missing_field("want_reply"))?;
-                (_k, ch) = map
-                    .next_entry()?
-                    .ok_or_else(|| de::Error::missing_field("ch"))?;
-
-                Ok(ChannelRequest { num, want_reply, ch })
-            }
-        }
-        // deserialize as a struct so wireformat can get the channel_type
-        // used to decode the ch enum.
-        deserializer.deserialize_struct(
-            "ChannelRequest",
-            &["num", "channel_type", "want_reply", "ch"],
-            Vis,
-        )
-    }
-}
-
-
-#[derive(Serialize, Deserialize, Debug, SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode)]
 pub struct Exec<'a> {
     pub command: &'a str,
 }
 
-#[derive(Serialize, Deserialize, Debug, SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode)]
 pub struct Pty<'a> {
     pub term: &'a str,
     pub cols: u32,
@@ -794,12 +473,12 @@ pub struct Pty<'a> {
     pub modes: BinString<'a>,
 }
 
-#[derive(Serialize, Deserialize, Debug, SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode)]
 pub struct Subsystem<'a> {
     pub subsystem: &'a str,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, SSHEncode, SSHDecode)]
+#[derive(Debug, Clone, SSHEncode, SSHDecode)]
 pub struct WinChange {
     pub cols: u32,
     pub rows: u32,
@@ -807,17 +486,17 @@ pub struct WinChange {
     pub height: u32,
 }
 
-#[derive(Serialize, Deserialize, Debug, SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode)]
 pub struct Signal<'a> {
     pub sig: &'a str,
 }
 
-#[derive(Serialize, Deserialize, Debug, SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode)]
 pub struct ExitStatus {
     pub status: u32,
 }
 
-#[derive(Serialize, Deserialize, Debug, SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode)]
 pub struct ExitSignal<'a> {
     pub signal: &'a str,
     pub core: bool,
@@ -825,12 +504,12 @@ pub struct ExitSignal<'a> {
     pub lang: &'a str,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, SSHEncode, SSHDecode)]
+#[derive(Debug, Clone, SSHEncode, SSHDecode)]
 pub struct Break {
     pub length: u32,
 }
 
-#[derive(Serialize, Deserialize, Debug, SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode)]
 pub struct ForwardedTcpip<'a> {
     pub address: &'a str,
     pub port: u32,
@@ -838,7 +517,7 @@ pub struct ForwardedTcpip<'a> {
     pub origin_port: u32,
 }
 
-#[derive(Serialize, Deserialize, Debug, SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode)]
 pub struct DirectTcpip<'a> {
     pub address: &'a str,
     pub port: u32,
@@ -850,15 +529,16 @@ pub struct DirectTcpip<'a> {
 // Placeholder for unknown method names. These are sometimes non-fatal and
 // need to be handled by the relevant code, for example newly invented pubkey types
 // This is deliberately not Serializable, we only receive it.
-#[derive(Debug, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Unknown<'a>(pub &'a str);
 
-/// State to be passed to deserialisation.
-/// Use this so the parser can select the correct enum variant to deserialize.
+/// State to be passed to decoding.
+/// Use this so the parser can select the correct enum variant to decode.
 #[derive(Default, Clone, Debug)]
 pub struct ParseContext {
     pub cli_auth_type: Option<cliauth::AuthType>,
 
+    // Used by sign_encode()
     pub method_pubkey_force_sig_bool: bool,
 }
 
@@ -866,14 +546,6 @@ impl ParseContext {
     pub fn new() -> Self {
         ParseContext { cli_auth_type: None, method_pubkey_force_sig_bool: false }
     }
-}
-
-/// State passed as the Deserializer seed.
-pub(crate) struct PacketState {
-    pub ctx: ParseContext,
-    // Private fields that keep state during parsing.
-    // TODO Perhaps not actually necessary, could be removed and just pass ParseContext?
-    // pub(crate) ty: Cell<Option<MessageNumber>>,
 }
 
 // we have repeated `match` statements for the various packet types, use a macro
@@ -907,56 +579,6 @@ impl TryFrom<u8> for MessageNumber {
                 Err(Error::UnknownPacket { number: v })
             }
         }
-    }
-}
-
-impl<'de: 'a, 'a> Deserialize<'de> for Packet<'a> {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        struct Vis;
-
-        impl<'de> Visitor<'de> for Vis {
-            type Value = Packet<'de>;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("struct Packet")
-            }
-            fn visit_seq<V>(self, mut seq: V) -> Result<Packet<'de>, V::Error>
-            where
-                V: SeqAccess<'de>
-            {
-                // First byte is always message number
-                let msg_num: u8 = seq
-                    .next_element()?
-                    .ok_or_else(|| de::Error::missing_field("message number"))?;
-                let ty = MessageNumber::try_from(msg_num);
-                let ty = match ty {
-                    Ok(t) => t,
-                    Err(_) => {
-                        return Err(de::Error::invalid_value(de::Unexpected::Unsigned(msg_num as u64),
-                            &self));
-                    }
-                };
-
-                // Decode based on the message number
-                let p = match ty {
-                    // eg
-                    // MessageNumber::SSH_MSG_KEXINIT => Packet::KexInit(
-                    // ...
-                    $(
-                    MessageNumber::$SSH_MESSAGE_NAME => Packet::$SpecificPacketVariant(
-                        seq.next_element()?
-                        .ok_or_else(|| de::Error::missing_field("rest of packet"))?
-                    ),
-                    )*
-                };
-
-                Ok(p)
-            }
-        }
-        deserializer.deserialize_seq(Vis { })
     }
 }
 
@@ -999,31 +621,6 @@ impl<'de: 'a, 'a> SSHDecode<'de> for Packet<'a> {
             )*
         };
         Ok(p)
-    }
-}
-
-impl<'a> Serialize for Packet<'a> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let mut seq = serializer.serialize_seq(Some(2))?;
-
-        let t = self.message_num() as u8;
-        seq.serialize_element(&t)?;
-
-        match self {
-            // eg
-            // Packet::KexInit(p) => {
-            // ...
-            $(
-            Packet::$SpecificPacketVariant(p) => {
-                seq.serialize_element(p)?;
-            }
-            )*
-        };
-
-        seq.end()
     }
 }
 
@@ -1105,11 +702,10 @@ mod tests {
     use crate::doorlog::init_test_log;
     use crate::packets::*;
     use crate::sshnames::*;
-    use crate::wireformat::tests::{assert_serialize_equal, test_roundtrip};
-    use crate::wireformat::{packet_from_bytes, write_ssh};
-    use crate::{packets, wireformat};
+    use crate::sshwire::tests::{assert_serialize_equal, test_roundtrip};
+    use crate::sshwire::{packet_from_bytes, write_ssh};
+    use crate::{packets, sshwire};
     use pretty_hex::PrettyHex;
-    use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
     #[test]
     /// check round trip of packet enums is right
@@ -1120,14 +716,6 @@ mod tests {
                 assert_eq!(i, ty as u8);
             }
         }
-    }
-
-    fn json_roundtrip(p: &Packet) {
-        // let t = serde_json::to_string_pretty(p).unwrap();
-        // trace!("json {t}");
-        // let p2 = serde_json::from_str(&t).unwrap();
-
-        // assert_serialize_equal(p, &p2);
     }
 
     #[test]
@@ -1171,7 +759,6 @@ mod tests {
             }),
         });
         test_roundtrip(&p);
-        json_roundtrip(&p);
 
         let p = Packet::ChannelOpen(ChannelOpen {
             num: 0,
@@ -1180,7 +767,6 @@ mod tests {
             ch: ChannelOpenType::Session,
         });
         test_roundtrip(&p);
-        json_roundtrip(&p);
     }
 
     #[test]
@@ -1215,29 +801,5 @@ mod tests {
         });
         let mut buf1 = vec![88; 1000];
         write_ssh(&mut buf1, &p).unwrap();
-    }
-
-    #[test]
-    /// See whether we work with another `Serializer`/`Deserializer`.
-    /// Not required, but might make `packets` more reusable without `wireformat`.
-    fn json() {
-        init_test_log();
-        let p = Packet::Userauth60(Userauth60::PwChangeReq(UserauthPwChangeReq {
-            prompt: "change the password",
-            lang: "",
-        }));
-        json_roundtrip(&p);
-
-        // Fails, namelist string sections are serialized piecewise, serde
-        // doesn't have any API to write strings in parts. It's fine for
-        // SSH format since we have no sequence delimiters.
-
-        // let cli_conf = kex::AlgoConfig::new(true);
-        // let cli = kex::Kex::new().unwrap();
-        // let p = cli.make_kexinit(&cli_conf);
-        // json_roundtrip(&p);
-
-        // It seems BinString also has problems, haven't figured where the
-        // problem is.
     }
 }

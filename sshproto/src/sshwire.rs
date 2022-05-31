@@ -5,6 +5,8 @@ use {
 };
 
 use core::str;
+use core::convert::AsRef;
+use core::fmt::{self,Debug};
 
 use crate::*;
 use packets::{Packet, ParseContext};
@@ -49,17 +51,7 @@ pub trait SSHDecodeEnum<'de>: Sized {
 /// Parses a [`Packet`] from a borrowed `&[u8]` byte buffer.
 pub fn packet_from_bytes<'a>(b: &'a [u8], ctx: &ParseContext) -> Result<Packet<'a>> {
     let mut s = DecodeBytes { input: b, pos: 0, parse_ctx: ctx.clone() };
-    Packet::dec(&mut s).map_err(|e| {
-        // TODO better handling of this. Stuff it in PacketState.
-        // Also should return which MessageNumber failed in later parsing
-        if let Error::InvalidDeserializeU8 { value } = e {
-            // This assumes that the only deserialize that can hit
-            // invalid_value() is an unknown packet type. Seems safe at present.
-            Error::UnknownPacket { number: value }
-        } else {
-            e
-        }
-    })
+    Packet::dec(&mut s)
 }
 
 pub fn write_ssh<T>(target: &mut [u8], value: &T) -> Result<usize>
@@ -166,6 +158,96 @@ impl<'de> SSHSource<'de> for DecodeBytes<'de> {
     }
 }
 
+// Hashes a slice to be treated as a mpint. Has u32 length prefix
+// and an extra 0x00 byte if the MSB is set.
+pub fn hash_mpint(hash_ctx: &mut dyn digest::DynDigest, m: &[u8]) {
+    let pad = m.len() > 0 && (m[0] & 0x80) != 0;
+    let l = m.len() as u32 + pad as u32;
+    hash_ctx.update(&l.to_be_bytes());
+    if pad {
+        hash_ctx.update(&[0x00]);
+    }
+    hash_ctx.update(m);
+}
+
+///////////////////////////////////////////////
+
+/// A SSH style binary string. Serialized as 32 bit length followed by the bytes
+/// of the slice.
+#[derive(Clone,PartialEq)]
+pub struct BinString<'a>(pub &'a [u8]);
+
+impl<'a> AsRef<[u8]> for BinString<'a> {
+    fn as_ref(&self) -> &'a [u8] {
+        self.0
+    }
+}
+
+impl<'a> Debug for BinString<'a> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "BinString(len={})", self.0.len())
+    }
+}
+
+impl SSHEncode for BinString<'_> {
+    fn enc<S>(&self, s: &mut S) -> Result<()>
+    where S: sshwire::SSHSink {
+        (self.0.len() as u32).enc(s)?;
+        self.0.enc(s)
+    }
+}
+
+impl<'de> SSHDecode<'de> for BinString<'de> {
+    fn dec<S>(s: &mut S) -> Result<Self>
+    where S: sshwire::SSHSource<'de> {
+        let len = u32::dec(s)? as usize;
+        Ok(BinString(s.take(len)?))
+    }
+
+}
+
+// A wrapper for a u32 prefixed data structure `B`, such as a public key blob
+pub struct Blob<B>(pub B);
+
+impl<B> AsRef<B> for Blob<B> {
+    fn as_ref(&self) -> &B {
+        &self.0
+    }
+}
+
+impl<B: Clone> Clone for Blob<B> {
+    fn clone(&self) -> Self {
+        Blob(self.0.clone())
+    }
+}
+
+impl<B: SSHEncode + Debug> Debug for Blob<B> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let len = sshwire::length_enc(&self.0)
+            .map_err(|_| core::fmt::Error)?;
+        write!(f, "Blob(len={len}, {:?})", self.0)
+    }
+}
+
+impl<B: SSHEncode> SSHEncode for Blob<B> {
+    fn enc<S>(&self, s: &mut S) -> Result<()>
+    where S: sshwire::SSHSink {
+        let len: u32 = sshwire::length_enc(&self.0)?.try_into().trap()?;
+        len.enc(s)?;
+        self.0.enc(s)
+    }
+}
+
+impl<'de, B: SSHDecode<'de>> SSHDecode<'de> for Blob<B> {
+    fn dec<S>(s: &mut S) -> Result<Self>
+    where S: sshwire::SSHSource<'de> {
+        let len = u32::dec(s)?;
+        let inner = SSHDecode::dec(s)?;
+        // TODO verify length matches
+        Ok(Blob(inner))
+    }
+}
+
 ///////////////////////////////////////////////
 
 impl SSHEncode for u8 {
@@ -233,9 +315,10 @@ impl<'de> SSHDecode<'de> for bool {
     }
 }
 
-// TODO: inline seemed to help code size in wireformat?
+// #[inline] seems to decrease code size somehow
+
 impl<'de> SSHDecode<'de> for u8 {
-    // #[inline]
+    #[inline]
     fn dec<S>(s: &mut S) -> Result<Self>
     where S: SSHSource<'de> {
         let t = s.take(core::mem::size_of::<u8>())?;
@@ -244,7 +327,7 @@ impl<'de> SSHDecode<'de> for u8 {
 }
 
 impl<'de> SSHDecode<'de> for u32 {
-    // #[inline]
+    #[inline]
     fn dec<S>(s: &mut S) -> Result<Self>
     where S: SSHSource<'de> {
         let t = s.take(core::mem::size_of::<u32>())?;
@@ -253,7 +336,7 @@ impl<'de> SSHDecode<'de> for u32 {
 }
 
 impl<'de: 'a, 'a> SSHDecode<'de> for &'a str {
-    // #[inline]
+    #[inline]
     fn dec<S>(s: &mut S) -> Result<Self>
     where S: SSHSource<'de> {
         let len = u32::dec(s)?;
@@ -269,5 +352,100 @@ impl<'de, const N: usize> SSHDecode<'de> for [u8; N] {
         let mut l = [0u8; N];
         l.copy_from_slice(s.take(N)?);
         Ok(l)
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod tests {
+    use crate::*;
+    use doorlog::init_test_log;
+    use error::Error;
+    use packets::*;
+    use sshwire::*;
+    use pretty_hex::PrettyHex;
+
+    /// Checks that two items serialize the same
+    pub fn assert_serialize_equal<'de, T: SSHEncode>(p1: &T, p2: &T) {
+        let mut buf1 = vec![99; 2000];
+        let mut buf2 = vec![88; 1000];
+        let l1 = write_ssh(&mut buf1, p1).unwrap();
+        let l2 = write_ssh(&mut buf2, p2).unwrap();
+        buf1.truncate(l1);
+        buf2.truncate(l2);
+        assert_eq!(buf1, buf2);
+    }
+
+    #[test]
+    /// check that hash_ser_length() matches hashing a serialized message
+    fn test_hash_packet() {
+        use sha2::Sha256;
+        use digest::Digest;
+        let input = "hello";
+        let mut buf = vec![99; 20];
+        let w1 = write_ssh(&mut buf, &input).unwrap();
+        buf.truncate(w1);
+
+        // hash_ser_length
+        let mut hash_ctx = Sha256::new();
+        hash_ser_length(&mut hash_ctx, &input).unwrap();
+        let digest1 = hash_ctx.finalize();
+
+        let mut hash_ctx = Sha256::new();
+        hash_ctx.update(&(w1 as u32).to_be_bytes());
+        hash_ctx.update(&buf);
+        let digest2 = hash_ctx.finalize();
+
+        assert_eq!(digest1, digest2);
+
+        // hash_ser
+        let mut hash_ctx = Sha256::new();
+        hash_ctx.update(&(w1 as u32).to_be_bytes());
+        hash_ser(&mut hash_ctx, None, &input).unwrap();
+        let digest3 = hash_ctx.finalize();
+        assert_eq!(digest3, digest2);
+    }
+
+    pub fn test_roundtrip_context(p: &Packet, ctx: &ParseContext) {
+        let mut buf = vec![99; 200];
+        let l = write_ssh(&mut buf, p).unwrap();
+        buf.truncate(l);
+        trace!("wrote packet {:?}", buf.hex_dump());
+
+        let p2 = packet_from_bytes(&buf, &ctx).unwrap();
+        trace!("returned packet {:#?}", p2);
+        assert_serialize_equal(p, &p2);
+    }
+
+    /// With default context
+    pub fn test_roundtrip(p: &Packet) {
+        test_roundtrip_context(&p, &ParseContext::default());
+    }
+
+    /// Tests parsing a packet with a ParseContext.
+    #[test]
+    fn test_parse_context() {
+        init_test_log();
+        let mut ctx = ParseContext::new();
+
+        let p = Userauth60::PwChangeReq(UserauthPwChangeReq {
+            prompt: "change the password",
+            lang: "",
+        }).into();
+        let mut pw = ResponseString::new();
+        pw.push_str("123").unwrap();
+        ctx.cli_auth_type = Some(cliauth::AuthType::Password);
+        test_roundtrip_context(&p, &ctx);
+
+        // PkOk is a more interesting case because the PubKey inside it is also
+        // an enum but that can identify its own enum variant.
+        let p = Userauth60::PkOk(UserauthPkOk {
+            algo: "ed25519",
+            key: Blob(PubKey::Ed25519(Ed25519PubKey {
+                key: BinString(&[0x11, 0x22, 0x33]),
+            })),
+        }).into();
+        let s = sign::tests::make_ed25519_signkey();
+        ctx.cli_auth_type = Some(cliauth::AuthType::PubKey);
+        test_roundtrip_context(&p, &ctx);
     }
 }

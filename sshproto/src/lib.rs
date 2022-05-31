@@ -18,7 +18,6 @@ pub mod ident;
 pub mod kex;
 pub mod test;
 pub mod traffic;
-pub mod wireformat;
 pub mod namelist;
 pub mod random;
 pub mod sshnames;
@@ -43,7 +42,7 @@ mod termmodes;
 mod async_behaviour;
 mod block_behaviour;
 mod ssh_chapoly;
-mod sshwire;
+pub mod sshwire;
 
 pub use behaviour::{Behaviour, BhError, BhResult, ResponseString};
 #[cfg(feature = "std")]
