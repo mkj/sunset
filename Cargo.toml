@@ -19,3 +19,6 @@ debug = 1
 
 [patch."https://github.com/mkj/ed25519-dalek"]
 ed25519-dalek = { path = "/home/matt/3rd/rs/ed25519-dalek" }
+
+[patch.crates-io]
+virtue = { path = "/home/matt/3rd/rs/virtue" }

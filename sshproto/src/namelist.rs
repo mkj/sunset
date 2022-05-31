@@ -5,7 +5,6 @@ use {
     log::{debug, error, info, log, trace, warn},
 };
 
-use sshwire_derive::SSHEncode;
 
 use serde::de;
 use serde::de::{DeserializeSeed, SeqAccess, Visitor, Unexpected, Expected};
@@ -13,13 +12,14 @@ use serde::ser::{SerializeSeq, SerializeTuple, Serializer};
 use serde::Deserializer;
 
 use serde::{Deserialize, Serialize};
+use sshwire_derive::{SSHEncode, SSHDecode};
 
 use crate::*;
-use sshwire::SSHEncode;
+use sshwire::{SSHEncode, SSHDecode, SSHSource, SSHSink};
 
 /// A comma separated string, can be deserialized or serialized.
 /// Used for remote name lists.
-#[derive(Serialize, Deserialize, SSHEncode, Debug)]
+#[derive(Serialize, Deserialize, SSHEncode, SSHDecode, Debug)]
 pub struct StringNames<'a>(pub &'a str);
 
 /// A list of names, can only be serialized. Used for local name lists, comes
@@ -32,6 +32,7 @@ pub struct LocalNames<'a>(pub &'a [&'static str]);
 /// The general form that can store either representation
 #[derive(Serialize, SSHEncode, Debug)]
 #[serde(untagged)]
+#[sshwire(no_variant_names)]
 pub enum NameList<'a> {
     String(StringNames<'a>),
     Local(LocalNames<'a>),
@@ -47,6 +48,20 @@ impl<'de: 'a, 'a> Deserialize<'de> for NameList<'a> {
             Ok(NameList::String(s))
         } else {
             Err(de::Error::invalid_value(Unexpected::Str(s.0), &"ASCII"))
+        }
+    }
+}
+
+impl<'de: 'a, 'a> SSHDecode<'de> for NameList<'a> {
+    fn dec<S>(s: &mut S) -> Result<NameList<'a>>
+    where
+        S: SSHSource<'de>,
+    {
+        let i = StringNames::dec(s)?;
+        if i.0.is_ascii() {
+            Ok(NameList::String(i))
+        } else {
+            Err(Error::BadString)
         }
     }
 }
@@ -86,7 +101,7 @@ impl SSHEncode for LocalNames<'_> {
             + names.len().saturating_sub(1);
         (strlen as u32).enc(e)?;
         for i in 0..names.len() {
-            names[i].enc(e)?;
+            names[i].as_bytes().enc(e)?;
             if i < names.len() - 1 {
                 b','.enc(e)?;
             }

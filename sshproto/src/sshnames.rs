@@ -52,5 +52,3 @@ pub const SSH_AUTHMETHOD_PUBLICKEY: &str = "publickey";
 /// [RFC4256](https://tools.ietf.org/html/rfc4256)
 pub const SSH_AUTHMETHOD_INTERACTIVE: &str = "keyboard-interactive";
 
-/// [rfc4335](https://tools.ietf.org/html/rfc4335)
-pub const SSH_CHAN_REQ_BREAK: &str = "break";

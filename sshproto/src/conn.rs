@@ -164,7 +164,7 @@ impl<'a> Conn<'a> {
     pub(crate) async fn handle_payload(
         &mut self, payload: &[u8], keys: &mut KeyState, b: &mut Behaviour<'_>,
     ) -> Result<RespPackets<'_>, Error> {
-        let p = wireformat::packet_from_bytes(payload, &self.parse_ctx)?;
+        let p = sshwire::packet_from_bytes(payload, &self.parse_ctx)?;
         let r = self.dispatch_packet(&p, keys, b).await;
         r
     }

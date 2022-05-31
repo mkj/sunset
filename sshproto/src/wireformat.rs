@@ -22,11 +22,13 @@ use pretty_hex::PrettyHex;
 
 use crate::packets::{Packet, PacketState, ParseContext};
 use crate::{packets::UserauthPkOk, *};
-use core::cell::Cell;
+use core::{cell::Cell, fmt::Binary};
 use core::convert::AsRef;
 use core::fmt::{self,Debug};
 use core::slice;
 use core::marker::PhantomData;
+
+use crate::sshwire::{SSHEncode, SSHDecode};
 
 /// Parses a [`Packet`] from a borrowed `&[u8]` byte buffer.
 pub fn packet_from_bytes<'a>(
@@ -128,6 +130,23 @@ impl<'a> Serialize for BinString<'a> {
     }
 }
 
+impl SSHEncode for BinString<'_> {
+    fn enc<S>(&self, s: &mut S) -> Result<()>
+    where S: sshwire::SSHSink {
+        (self.0.len() as u32).enc(s)?;
+        self.0.enc(s)
+    }
+}
+
+impl<'de> SSHDecode<'de> for BinString<'de> {
+    fn dec<S>(s: &mut S) -> Result<Self>
+    where S: sshwire::SSHSource<'de> {
+        let len = u32::dec(s)? as usize;
+        Ok(BinString(s.take(len)?))
+    }
+
+}
+
 // a wrapper for a u32 prefixed data structure `B`, such as a public key blob
 pub struct Blob<B>(pub B);
 
@@ -148,6 +167,25 @@ impl<B: Serialize + Debug> Debug for Blob<B> {
         let len = SeSSHBytes::get_length(&self.0)
             .map_err(|_| ser::Error::custom(Error::bug()))?;
         write!(f, "Blob(len={len}, {:?})", self.0)
+    }
+}
+
+impl<B: SSHEncode> SSHEncode for Blob<B> {
+    fn enc<S>(&self, s: &mut S) -> Result<()>
+    where S: sshwire::SSHSink {
+        let len: u32 = sshwire::length_enc(&self.0)?.try_into().trap()?;
+        len.enc(s)?;
+        self.0.enc(s)
+    }
+}
+
+impl<'de, B: SSHDecode<'de>> SSHDecode<'de> for Blob<B> {
+    fn dec<S>(s: &mut S) -> Result<Self>
+    where S: sshwire::SSHSource<'de> {
+        let len = u32::dec(s)?;
+        let inner = SSHDecode::dec(s)?;
+        // TODO verify length matches
+        Ok(Blob(inner))
     }
 }
 
@@ -909,11 +947,11 @@ pub(crate) mod tests {
     // use pretty_hex::PrettyHex;
 
     /// Checks that two items serialize the same
-    pub fn assert_serialize_equal<'de, T: Serialize>(p1: &T, p2: &T) {
+    pub fn assert_serialize_equal<'de, T: Serialize+SSHEncode>(p1: &T, p2: &T) {
         let mut buf1 = vec![99; 2000];
         let mut buf2 = vec![88; 1000];
-        let l1 = write_ssh(&mut buf1, &p1).unwrap();
-        let l2 = write_ssh(&mut buf2, &p2).unwrap();
+        let l1 = write_ssh(&mut buf1, p1).unwrap();
+        let l2 = write_ssh(&mut buf2, p2).unwrap();
         buf1.truncate(l1);
         buf2.truncate(l2);
         assert_eq!(buf1, buf2);
@@ -951,7 +989,7 @@ pub(crate) mod tests {
 
     pub fn test_roundtrip_context(p: &Packet, ctx: &ParseContext) {
         let mut buf = vec![99; 200];
-        let l = write_ssh(&mut buf, &p).unwrap();
+        let l = write_ssh(&mut buf, p).unwrap();
         buf.truncate(l);
         trace!("wrote packet {:?}", buf.hex_dump());
 

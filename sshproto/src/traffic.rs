@@ -180,15 +180,21 @@ impl<'a> Traffic<'a> {
             _ => Err(Error::bug())?,
         };
 
+        let mut z = [0u8; 1000];
+        let qlen = wireformat::write_ssh(&mut z, &p)?;
+        trace!("old {qlen} {:?}", (&z[..qlen]).hex_dump());
+
         // Use the remainder of our buffer to write the packet. Payload starts
         // after the length and padding bytes which get filled by encrypt()
         let wbuf = &mut self.buf[len..];
         if wbuf.len() < SSH_PAYLOAD_START {
             return Err(Error::NoRoom)
         }
-        let plen = wireformat::write_ssh(&mut wbuf[SSH_PAYLOAD_START..], &p)?;
+        let plen = sshwire::write_ssh(&mut wbuf[SSH_PAYLOAD_START..], &p)?;
         trace!("Sending {p:?}");
-        trace!("{:?}", (&wbuf[SSH_PAYLOAD_START..SSH_PAYLOAD_START+plen]).hex_dump());
+        trace!("new {plen} {:?}", (&wbuf[SSH_PAYLOAD_START..SSH_PAYLOAD_START+plen]).hex_dump());
+
+        assert_eq!(z[..qlen], wbuf[SSH_PAYLOAD_START..SSH_PAYLOAD_START+plen]);
 
         // Encrypt in place
         let elen = keys.encrypt(plen, wbuf)?;
@@ -248,7 +254,6 @@ impl<'a> Traffic<'a> {
                 if total_len > self.buf.len() {
                     // TODO: Or just BadDecrypt could make more sense if
                     // it were packet corruption/decryption failure
-                    panic!("xxx");
                     return Err(Error::BigPacket { size: total_len });
                 }
                 self.state = TrafState::Read { idx, expect: total_len }
