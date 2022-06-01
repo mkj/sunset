@@ -230,7 +230,8 @@ fn encode_struct(gen: &mut Generator, body: StructBody) -> Result<()> {
 
                 }
                 _ => {
-                    // empty
+                    // other variants are only for enums
+                    unreachable!()
                 }
 
             }
@@ -245,9 +246,6 @@ fn encode_enum(
     atts: &[Attribute],
     body: EnumBody,
 ) -> Result<()> {
-    // if body.variants.is_empty() {
-    //     return Ok(())
-    // }
 
     let cont_atts = take_cont_atts(atts)?;
 
@@ -429,7 +427,8 @@ fn decode_struct(gen: &mut Generator, body: StructBody) -> Result<()> {
                         })?;
                     }
                     _ => {
-                        // empty
+                        // other variants are only for enums
+                        unreachable!()
                     }
 
                 }
@@ -474,7 +473,7 @@ fn decode_enum_variant_prefix(
         .generate_fn("dec")
         .with_generic_deps("S", ["crate::sshwire::SSHSource<'de>"])
         .with_arg("s", "&mut S")
-        .with_return_type(format!("Result<Self>"))
+        .with_return_type("Result<Self>")
         .body(|fn_body| {
             fn_body
                 .push_parsed("let variant = crate::sshwire::SSHDecode::dec(s)?;")?;
@@ -495,7 +494,7 @@ fn decode_enum_names(
         .with_generic_deps("S", ["crate::sshwire::SSHSource<'de>"])
         .with_arg("s", "&mut S")
         .with_arg("variant", "&'de str")
-        .with_return_type(format!("Result<Self>"))
+        .with_return_type("Result<Self>")
         .body(|fn_body| {
             fn_body.push_parsed("let r = match variant")?;
             fn_body.group(Delimiter::Brace, |match_arm| {
