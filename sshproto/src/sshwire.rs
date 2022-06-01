@@ -54,6 +54,11 @@ pub fn packet_from_bytes<'a>(b: &'a [u8], ctx: &ParseContext) -> Result<Packet<'
     Packet::dec(&mut s)
 }
 
+pub fn read_ssh<'a, T: SSHDecode<'a>>(b: &'a [u8], ctx: Option<ParseContext>) -> Result<T> {
+    let mut s = DecodeBytes { input: b, pos: 0, parse_ctx: ctx.unwrap_or_default() };
+    T::dec(&mut s)
+}
+
 pub fn write_ssh<T>(target: &mut [u8], value: &T) -> Result<usize>
 where
     T: SSHEncode,

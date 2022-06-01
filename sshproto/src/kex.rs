@@ -9,7 +9,6 @@ use {
 use core::fmt;
 use core::marker::PhantomData;
 
-use rand::rngs::OsRng;
 use sha2::Sha256;
 use digest::Digest;
 
@@ -516,7 +515,7 @@ impl core::fmt::Debug for KexCurve25519 {
 
 impl KexCurve25519 {
     fn new() -> Result<Self> {
-        let ours = x25519_dalek::EphemeralSecret::new(OsRng);
+        let ours = x25519_dalek::EphemeralSecret::new(random::DoorRng::default());
         let pubkey = (&ours).into();
         Ok(KexCurve25519 { ours: Some(ours), pubkey })
     }

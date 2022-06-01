@@ -259,6 +259,21 @@ pub struct RSAPubKey<'a> {
     pub n: BinString<'a>,
 }
 
+// #[cfg(feature = "rsa")]
+// impl TryFrom<RsaPubKey<'_> for rsa::RsaPublicKey {
+//     fn try_from(value: RsaPubKey<'_>) -> Result<Self, Self::Error> {
+//         use rsa::BigUint;
+//         rsa::RsaPublickey::new(
+//             BigUint::from_bytes_be(n.0),
+//             BigUint::from_bytes_be(e.0),
+//             )
+//         .map_err(|e| {
+//             debug!("Bad RSA key: {e}");
+//             Error::BadKey
+//         })
+//     }
+// }
+
 #[derive(Debug, SSHEncode,  SSHDecode)]
 #[sshwire(variant_prefix)]
 pub enum Signature<'a> {

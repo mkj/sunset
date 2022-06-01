@@ -5,7 +5,6 @@ use {
     log::{debug, error, info, log, trace, warn},
 };
 
-use rand::rngs::OsRng;
 use ed25519_dalek as dalek;
 use ed25519_dalek::{Verifier, Signer};
 
@@ -68,10 +67,21 @@ impl SigType {
                 k.verify(message, &s).map_err(|_| Error::BadSignature)
             }
 
-            (SigType::RSA256, ..) => {
+            (SigType::RSA256, PubKey::RSA(_k), Signature::RSA256(_s)) => {
                 // TODO
                 warn!("RSA256 is not implemented for no_std");
                 Err(Error::BadSignature)
+                // // untested
+                // use rsa::{PublicKey, RsaPrivateKey, RsaPublicKey, PaddingScheme};
+                // let k: RsaPublicKey = k.try_into()?;
+                // let h = sha2::Sha256::digest(message);
+                // k.verify(rsa::padding::PaddingScheme::PKCS1v15Sign{ hash: rsa::hash::Hash::SHA2_256},
+                //     &h,
+                //     s.sig.0)
+                // .map_err(|e| {
+                //     trace!("RSA signature failed: {e}");
+                //     Error::BadSignature
+                // })
             }
 
             _ => {
@@ -158,16 +168,16 @@ impl TryFrom<ssh_key::PrivateKey> for SignKey {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use rand::rngs::OsRng;
     use ed25519_dalek::Signer;
 
-    use crate::sshnames::SSH_NAME_ED25519;
-    use crate::packets;
-    use crate::sign::*;
-    use crate::doorlog::init_test_log;
+    use crate::*;
+    use sshnames::SSH_NAME_ED25519;
+    use packets;
+    use sign::*;
+    use doorlog::init_test_log;
 
     pub(crate) fn make_ed25519_signkey() -> SignKey {
-        let mut rng = OsRng{};
+        let mut rng = random::DoorRng::default();
         let ed = dalek::Keypair::generate(&mut rng);
         sign::SignKey::Ed25519(ed)
     }
