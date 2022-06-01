@@ -383,7 +383,7 @@ fn decode_struct(gen: &mut Generator, body: StructBody) -> Result<()> {
         .generate_fn("dec")
         .with_generic_deps("S", ["crate::sshwire::SSHSource<'de>"])
         .with_arg("s", "&mut S")
-        .with_return_type(format!("Result<Self>"))
+        .with_return_type("Result<Self>")
         .body(|fn_body| {
             let mut named_enums = HashSet::new();
             if let Fields::Struct(v) = &body.fields {
@@ -391,6 +391,7 @@ fn decode_struct(gen: &mut Generator, body: StructBody) -> Result<()> {
                     let atts = take_field_atts(&f.1.attributes)?;
                     for a in atts {
                         if let FieldAtt::VariantName(enum_field) = a {
+                            // Read the extra field on the wire that isn't directly included in the struct
                             named_enums.insert(enum_field.to_string());
                             fn_body.push_parsed(format!("let enum_name_{enum_field} = crate::sshwire::SSHDecode::dec(s)?;"))?;
                         }
