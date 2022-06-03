@@ -39,6 +39,8 @@ impl Client {
     }
 
     pub(crate) async fn banner(&mut self, banner: &packets::UserauthBanner<'_>, b: &mut CliBehaviour<'_>) {
-        b.show_banner(banner.message, banner.lang).await
+        if let Err(e) = b.show_banner(banner.message, banner.lang).await {
+            warn!("Banner not shown: {e}")
+        }
     }
 }

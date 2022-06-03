@@ -18,6 +18,7 @@ use packets::{self,Packet};
 use runner::{self,Runner};
 use channel::ChanMsg;
 use conn::RespPackets;
+use sshwire::TextString;
 
 // TODO: "Bh" is an ugly abbreviation. Naming is hard.
 
@@ -153,11 +154,15 @@ impl<'a> CliBehaviour<'a> {
         self.inner.authenticated().await
     }
 
-    pub(crate) async fn show_banner(&self, banner: &str, language: &str) {
-        self.inner.show_banner(banner, language).await
+    pub(crate) async fn show_banner(&self, banner: TextString<'_>, language: TextString<'_>) -> Result<()> {
+        let banner = banner.as_str().map_err(|e| { warn!("Bad banner {:?}", banner); e})?;
+        let language = language.as_str()?;
+        self.inner.show_banner(banner, language).await;
+        Ok(())
     }
 }
 
+// no-std blocking variant
 #[cfg(not(feature = "std"))]
 impl<'a> CliBehaviour<'a> {
     pub(crate) async fn username(&mut self) -> BhResult<ResponseString>{
@@ -181,8 +186,12 @@ impl<'a> CliBehaviour<'a> {
         self.inner.authenticated()
     }
 
-    pub(crate) async fn show_banner(&self, banner: &str, language: &str) {
-        self.inner.show_banner(banner, language)
+    // TODO: make ascii/utf8 a feature
+    pub(crate) async fn show_banner(&self, banner: TextString<'_>, language: TextString<'_>) -> Result<()> {
+        let banner = banner.as_ascii().map_err(|e| { warn!("Bad banner {:?}", banner); e})?;
+        let language = language.as_ascii()?;
+        self.inner.show_banner(banner, language);
+        Ok(())
     }
 }
 

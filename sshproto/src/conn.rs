@@ -266,14 +266,11 @@ impl<'a> Conn<'a> {
                 warn!("Received SSH unimplemented message");
             }
             Packet::DebugPacket(p) => {
-                warn!(
-                    "SSH debug message from remote host: '{}'",
-                    p.message.escape_default()
-                );
+                warn!("SSH debug message from remote host: '{:?}'", p.message);
             }
             Packet::Disconnect(p) => {
                 // TODO: SSH2_DISCONNECT_BY_APPLICATION is normal, sent by openssh client.
-                info!("Received disconnect: {}", p.desc.escape_default());
+                info!("Received disconnect: {:?}", p.desc);
             }
             Packet::UserauthRequest(_p) => {
                 // TODO: this is server only

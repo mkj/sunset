@@ -12,13 +12,14 @@ use {
 };
 
 use heapless::String;
+use pretty_hex::PrettyHex;
 
 use sshwire_derive::*;
 
 use crate::*;
 use namelist::NameList;
 use sshnames::*;
-use sshwire::{BinString, Blob};
+use sshwire::{BinString, TextString, Blob};
 use sign::{SigType, OwnedSig};
 use sshwire::{SSHEncode, SSHEncodeEnum, SSHDecode, SSHDecodeEnum, SSHSource, SSHSink};
 
@@ -52,15 +53,15 @@ pub struct Ignore {}
 #[derive(Debug, SSHEncode, SSHDecode)]
 pub struct DebugPacket<'a> {
     pub always_display: bool,
-    pub message: &'a str,
+    pub message: TextString<'a>,
     pub lang: &'a str,
 }
 
 #[derive(Debug, SSHEncode, SSHDecode)]
 pub struct Disconnect<'a> {
     pub reason: u32,
-    pub desc: &'a str,
-    pub lang: &'a str,
+    pub desc: TextString<'a>,
+    pub lang: TextString<'a>,
 }
 
 #[derive(Debug, SSHEncode, SSHDecode)]
@@ -92,7 +93,7 @@ pub struct ServiceAccept<'a> {
 
 #[derive(Debug, SSHEncode, SSHDecode)]
 pub struct UserauthRequest<'a> {
-    pub username: &'a str,
+    pub username: TextString<'a>,
     pub service: &'a str,
     pub method: AuthMethod<'a>,
 }
@@ -155,14 +156,14 @@ pub struct UserauthPkOk<'a> {
 
 #[derive(Debug, SSHEncode, SSHDecode)]
 pub struct UserauthPwChangeReq<'a> {
-    pub prompt: &'a str,
-    pub lang: &'a str,
+    pub prompt: TextString<'a>,
+    pub lang: TextString<'a>,
 }
 
 #[derive(SSHEncode, SSHDecode)]
 pub struct MethodPassword<'a> {
     pub change: bool,
-    pub password: &'a str,
+    pub password: TextString<'a>,
 }
 
 // Don't print password
@@ -221,8 +222,8 @@ pub struct UserauthSuccess {}
 
 #[derive(Debug, SSHEncode, SSHDecode)]
 pub struct UserauthBanner<'a> {
-    pub message: &'a str,
-    pub lang: &'a str,
+    pub message: TextString<'a>,
+    pub lang: TextString<'a>,
 }
 
 #[derive(SSHEncode, SSHDecode, Debug, Clone, PartialEq)]
@@ -238,11 +239,11 @@ pub enum PubKey<'a> {
 
 impl<'a> PubKey<'a> {
     /// The algorithm name presented. May be invalid.
-    pub fn algorithm_name(&self) -> &'a str {
+    pub fn algorithm_name(&self) -> Result<&'a str, &Unknown<'a>> {
         match self {
-            PubKey::Ed25519(_) => SSH_NAME_ED25519,
-            PubKey::RSA(_) => SSH_NAME_RSA,
-            PubKey::Unknown(u) => u.0,
+            PubKey::Ed25519(_) => Ok(SSH_NAME_ED25519),
+            PubKey::RSA(_) => Ok(SSH_NAME_RSA),
+            PubKey::Unknown(u) => Err(u),
         }
     }
 }
@@ -287,11 +288,11 @@ pub enum Signature<'a> {
 
 impl<'a> Signature<'a> {
     /// The algorithm name presented. May be invalid.
-    pub fn algorithm_name(&self) -> &'a str {
+    pub fn algorithm_name(&self) -> Result<&'a str, &Unknown<'a>> {
         match self {
-            Signature::Ed25519(_) => SSH_NAME_ED25519,
-            Signature::RSA256(_) => SSH_NAME_RSA_SHA256,
-            Signature::Unknown(u) => u.0,
+            Signature::Ed25519(_) => Ok(SSH_NAME_ED25519),
+            Signature::RSA256(_) => Ok(SSH_NAME_RSA_SHA256),
+            Signature::Unknown(u) => Err(u),
         }
     }
 
@@ -392,7 +393,7 @@ pub struct ChannelOpenConfirmation {
 pub struct ChannelOpenFailure<'a> {
     pub num: u32,
     pub reason: u32,
-    pub desc: &'a str,
+    pub desc: TextString<'a>,
     pub lang: &'a str,
 }
 
@@ -477,12 +478,12 @@ pub enum ChannelReqType<'a> {
 
 #[derive(Debug, SSHEncode, SSHDecode)]
 pub struct Exec<'a> {
-    pub command: &'a str,
+    pub command: TextString<'a>,
 }
 
 #[derive(Debug, SSHEncode, SSHDecode)]
 pub struct Pty<'a> {
-    pub term: &'a str,
+    pub term: TextString<'a>,
     pub cols: u32,
     pub rows: u32,
     pub width: u32,
@@ -517,7 +518,7 @@ pub struct ExitStatus {
 pub struct ExitSignal<'a> {
     pub signal: &'a str,
     pub core: bool,
-    pub error: &'a str,
+    pub error: TextString<'a>,
     pub lang: &'a str,
 }
 
@@ -528,17 +529,17 @@ pub struct Break {
 
 #[derive(Debug, SSHEncode, SSHDecode)]
 pub struct ForwardedTcpip<'a> {
-    pub address: &'a str,
+    pub address: TextString<'a>,
     pub port: u32,
-    pub origin: &'a str,
+    pub origin: TextString<'a>,
     pub origin_port: u32,
 }
 
 #[derive(Debug, SSHEncode, SSHDecode)]
 pub struct DirectTcpip<'a> {
-    pub address: &'a str,
+    pub address: TextString<'a>,
     pub port: u32,
-    pub origin: &'a str,
+    pub origin: TextString<'a>,
     pub origin_port: u32,
 }
 
@@ -547,13 +548,16 @@ pub struct DirectTcpip<'a> {
 // need to be handled by the relevant code, for example newly invented pubkey types
 // This is deliberately not Serializable, we only receive it.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Unknown<'a>(pub &'a str);
+pub struct Unknown<'a>(pub &'a [u8]);
 
 impl core::fmt::Display for Unknown<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.escape_default().fmt(f)
+        if let Ok(s) = sshwire::try_as_ascii_str(self.0) {
+            f.write_str(s)
+        } else {
+            write!(f, "non-ascii {:?}", self.0.hex_dump())
+        }
     }
-
 }
 
 /// State to be passed to decoding.
@@ -749,8 +753,8 @@ mod tests {
         // with None sig
         let s = sign::tests::make_ed25519_signkey();
         let p = UserauthRequest {
-            username: "matt",
-            service: "conn",
+            username: "matt".into(),
+            service: "conn".into(),
             method: s.pubkey().try_into().unwrap(),
         }.into();
         test_roundtrip(&p);
@@ -761,7 +765,7 @@ mod tests {
         });
         let sig = Some(Blob(sig));
         let p = UserauthRequest {
-            username: "matt",
+            username: "matt".into(),
             service: "conn",
             method: s.pubkey().try_into().unwrap(),
         }.into();
@@ -776,9 +780,9 @@ mod tests {
             initial_window: 50000,
             max_packet: 20000,
             ch: ChannelOpenType::DirectTcpip(DirectTcpip {
-                address: "localhost",
+                address: "localhost".into(),
                 port: 4444,
-                origin: "somewhere",
+                origin: "somewhere".into(),
                 origin_port: 0,
             }),
         });
@@ -821,7 +825,7 @@ mod tests {
             num: 0,
             initial_window: 200000,
             max_packet: 88200,
-            ch: ChannelOpenType::Unknown(Unknown("audio-stream"))
+            ch: ChannelOpenType::Unknown(Unknown(b"audio-stream"))
         });
         let mut buf1 = vec![88; 1000];
         write_ssh(&mut buf1, &p).unwrap();

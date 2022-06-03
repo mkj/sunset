@@ -11,6 +11,7 @@ snafu = { version = "0.7", default-features = false, features = ["rust_1_46"] }
 log = { version = "0.4" }
 heapless = "0.7.10"
 no-panic = "0.1"
+ascii = { version = "1.0", default-features = false }
 
 # TODO: needs changing for embedded platforms
 rand = { version = "0.8", default-features = false }
@@ -25,7 +26,6 @@ ssh-key = { version = "0.4", default-features = false, features = ["ed25519", "e
 chacha20 = "0.9"
 poly1305 = "0.7"
 
-# for debugging
 pretty-hex = { version = "0.3", default-features = false }
 
 pin-utils = "0.1"
@@ -57,7 +57,7 @@ branch = "mobilecoin"
 
 [features]
 default = [ "getrandom" ]
-std = ["async-trait"]
+std = ["async-trait", "snafu/std"]
 # tokio-queue = ["dep:tokio"]
 
 getrandom = ["rand/getrandom"]

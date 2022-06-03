@@ -109,7 +109,7 @@ pub trait BlockCliBehaviour {
     /// Language may be empty, is provided by the server.
     #[allow(unused)]
     fn show_banner(&self, banner: &str, language: &str) {
-        info!("Got banner:\n{}", banner.escape_default());
+        info!("Got banner:\n{:?}", banner.escape_default());
     }
     // TODO: postauth channel callbacks
 }

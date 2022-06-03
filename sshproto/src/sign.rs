@@ -54,7 +54,7 @@ impl SigType {
         // This would also get caught by SignatureMismatch below
         // but that error message is intended for mismatch key vs sig.
         if discriminant(&sig_type) != discriminant(self) {
-            warn!("Received {} signature, expecting {}",
+            warn!("Received {:?} signature, expecting {}",
                 sig.algorithm_name(), self.algorithm_name());
             return Err(Error::BadSignature)
         }
@@ -85,7 +85,7 @@ impl SigType {
             }
 
             _ => {
-                warn!("Signature \"{}\" doesn't match key type \"{}\"",
+                warn!("Signature \"{:?}\" doesn't match key type \"{:?}\"",
                     sig.algorithm_name(),
                     pubkey.algorithm_name(),
                     );

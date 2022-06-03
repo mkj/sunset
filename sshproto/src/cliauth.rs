@@ -47,6 +47,7 @@ impl Req {
         username: &'b str,
         parse_ctx: &mut ParseContext,
     ) -> Result<Packet<'b>> {
+        let username = username.into();
         let p = match self {
             Req::PubKey { key, .. } => {
                 // already checked by make_pubkey_req()
@@ -64,7 +65,7 @@ impl Req {
                     service: SSH_SERVICE_CONNECTION,
                     method: packets::AuthMethod::Password(packets::MethodPassword {
                         change: false,
-                        password: pw,
+                        password: pw.as_str().into(),
                     }),
                 }.into()
             }
@@ -113,7 +114,7 @@ impl CliAuth {
             resp.push(p.into()).trap()?;
 
             let p: Packet = packets::UserauthRequest {
-                username: &self.username,
+                username: self.username.as_str().into(),
                 service: SSH_SERVICE_CONNECTION,
                 method: packets::AuthMethod::None,
             }.into();
@@ -161,7 +162,7 @@ impl CliAuth {
         }) = p
         {
             let sig_packet = UserauthRequest {
-                username,
+                username: *username,
                 service,
                 method: AuthMethod::PubKey(MethodPubKey {
                     sig_algo,

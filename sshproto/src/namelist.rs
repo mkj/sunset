@@ -5,15 +5,17 @@ use {
     log::{debug, error, info, log, trace, warn},
 };
 
+use ascii::{AsciiStr, AsciiChar::Comma};
+
 use sshwire_derive::{SSHEncode, SSHDecode};
 
 use crate::*;
-use sshwire::{SSHEncode, SSHDecode, SSHSource, SSHSink};
+use sshwire::{SSHEncode, SSHDecode, SSHSource, SSHSink, BinString, try_as_ascii};
 
 /// A comma separated string, can be decoded or encoded.
 /// Used for remote name lists.
 #[derive(SSHEncode, SSHDecode, Debug)]
-pub struct StringNames<'a>(pub &'a str);
+pub struct StringNames<'a>(pub &'a AsciiStr);
 
 /// A list of names, can only be encoded. Used for local name lists, comes
 /// from local fixed lists
@@ -35,12 +37,7 @@ impl<'de: 'a, 'a> SSHDecode<'de> for NameList<'a> {
     where
         S: SSHSource<'de>,
     {
-        let i = StringNames::dec(s)?;
-        if i.0.is_ascii() {
-            Ok(NameList::String(i))
-        } else {
-            Err(Error::BadString)
-        }
+        Ok(NameList::String(StringNames::dec(s)?))
     }
 }
 
@@ -63,19 +60,23 @@ impl SSHEncode for LocalNames<'_> {
     }
 }
 
-impl<'a> From<&'a str> for StringNames<'a> {
-    fn from(s: &'a str) -> Self {
-        Self(s)
+// for tests
+impl<'a> TryFrom<&'a str> for StringNames<'a> {
+    type Error = ();
+    fn try_from(s: &'a str) -> Result<Self, Self::Error> {
+        Ok(Self(AsciiStr::from_ascii(s).map_err(|_| ())?))
     }
 }
+impl<'a> TryFrom<&'a str> for NameList<'a> {
+    type Error = ();
+    fn try_from(s: &'a str) -> Result<Self, Self::Error> {
+        Ok(NameList::String(s.try_into()?))
+    }
+}
+
 impl<'a> From<&'a [&'static str]> for LocalNames<'a> {
     fn from(s: &'a [&'static str]) -> Self {
         Self(s)
-    }
-}
-impl<'a> From<&'a str> for NameList<'a> {
-    fn from(s: &'a str) -> Self {
-        NameList::String(s.into())
     }
 }
 impl<'a> From<&LocalNames<'a>> for NameList<'a> {
@@ -127,7 +128,7 @@ impl<'a> NameList<'a> {
 impl<'a> StringNames<'a> {
     /// Returns the first name in this namelist that matches one of the provided options
     fn first_string_match(&self, options: &LocalNames) -> Option<&'static str> {
-        for n in self.0.split(',') {
+        for n in self.0.split(Comma) {
             for o in options.0.iter() {
                 if n == *o {
                     return Some(*o);
@@ -140,7 +141,7 @@ impl<'a> StringNames<'a> {
     /// Returns the first of "options" that is in this namelist
     fn first_options_match(&self, options: &LocalNames) -> Option<&'static str> {
         for o in options.0.iter() {
-            for n in self.0.split(',') {
+            for n in self.0.split(Comma) {
                 if n == *o {
                     return Some(*o);
                 }
@@ -151,11 +152,11 @@ impl<'a> StringNames<'a> {
 
     fn first(&self) -> &str {
         // unwrap is OK, split() always returns an item
-        self.0.split(',').next().unwrap()
+        self.0.split(Comma).next().unwrap().as_str()
     }
 
     fn has_algo(&self, algo: &str) -> bool {
-        self.0.split(',').any(|a| a == algo)
+        self.0.split(Comma).any(|a| a == algo)
     }
 }
 
@@ -179,8 +180,8 @@ mod tests {
 
     #[test]
     fn test_match() {
-        let r1 = NameList::String("rho,cog".into());
-        let r2 = NameList::String("woe".into());
+        let r1 = NameList::String("rho,cog".try_into().unwrap());
+        let r2 = NameList::String("woe".try_into().unwrap());
         let l1 = LocalNames(&["rho", "cog"]);
         let l2 = LocalNames(&["cog", "rho"]);
         let l3 = LocalNames(&["now", "woe"]);
@@ -228,7 +229,7 @@ mod tests {
         for t in tests.iter() {
             let l = NameList::Local(LocalNames(t));
             let x = t.join(",");
-            let s = NameList::String(StringNames(&x));
+            let s: NameList = x.as_str().try_into().unwrap();
             assert_eq!(l.first(), s.first());
             if t.len() == 0{
                 assert_eq!(l.first(), "");
@@ -241,7 +242,8 @@ mod tests {
     #[test]
     fn test_has_algo() {
         fn n(list: &str, has: &str) -> bool {
-            NameList::String(StringNames(list)).has_algo(has).unwrap()
+            let s: NameList = list.try_into().unwrap();
+            s.has_algo(has).unwrap()
         }
         assert_eq!(n("", ""), true);
         assert_eq!(n("", "one"), false);

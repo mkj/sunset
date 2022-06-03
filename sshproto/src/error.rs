@@ -30,6 +30,9 @@ pub enum Error {
     /// Not a UTF8 string
     BadString,
 
+    /// Not a valid SSH ascii string
+    BadName,
+
     /// Decryption failure or integrity mismatch
     BadDecrypt,
 

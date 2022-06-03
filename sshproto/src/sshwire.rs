@@ -7,6 +7,9 @@ use {
 use core::str;
 use core::convert::AsRef;
 use core::fmt::{self,Debug};
+use pretty_hex::PrettyHex;
+
+use ascii::{AsAsciiStr, AsciiChar, AsciiStr};
 
 use crate::*;
 use packets::{Packet, ParseContext};
@@ -42,8 +45,8 @@ pub trait SSHDecode<'de>: Sized {
 
 /// Decodes enums with an externally provided name
 pub trait SSHDecodeEnum<'de>: Sized {
-    /// `var` is the variant name to decode
-    fn dec_enum<S>(s: &mut S, var: &'de str) -> Result<Self> where S: SSHSource<'de>;
+    /// `var` is the variant name to decode, as raw bytes off the wire.
+    fn dec_enum<S>(s: &mut S, var: &'de [u8]) -> Result<Self> where S: SSHSource<'de>;
 }
 
 ///////////////////////////////////////////////
@@ -211,6 +214,69 @@ impl<'de> SSHDecode<'de> for BinString<'de> {
 
 }
 
+/// A text string that may be presented to a user.
+/// The SSH protocol defines it to be UTF-8, though
+/// in some applications it can be treated as ascii-only.
+/// The library treats it as an opaque `&[u8]`, leaving
+/// decoding to the `Behaviour`.
+
+/// Note that SSH protocol identifiers in `Packet` etc
+/// are `&str` rather than `TextString`, and always defined as ASCII.
+#[derive(Clone,PartialEq,Copy)]
+pub struct TextString<'a>(pub &'a [u8]);
+
+impl<'a> TextString<'a> {
+    /// Returns the utf8 decoded string, using [`core::str::from_utf8`]
+    /// Don't call this if you are avoiding including utf8 routines in
+    /// the binary.
+    pub fn as_str(&self) -> Result<&'a str> {
+        core::str::from_utf8(self.0).map_err(|_| Error::BadString)
+    }
+
+    pub fn as_ascii(&self) -> Result<&'a str> {
+        self.0.as_ascii_str().map_err(|_| Error::BadString).map(|s| s.as_str())
+    }
+}
+
+impl<'a> AsRef<[u8]> for TextString<'a> {
+    fn as_ref(&self) -> &'a [u8] {
+        self.0
+    }
+}
+
+impl<'a> From<&'a str> for TextString<'a> {
+    fn from(s: &'a str) -> Self {
+        TextString(s.as_bytes())
+    }
+}
+
+impl<'a> Debug for TextString<'a> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let s = core::str::from_utf8(self.0);
+        if let Ok(s) = s {
+            write!(f, "TextString(\"{}\")", s.escape_default())
+        } else {
+            write!(f, "TextString(not utf8!, {:#?})", self.0.hex_dump())
+        }
+    }
+}
+
+impl SSHEncode for TextString<'_> {
+    fn enc<S>(&self, s: &mut S) -> Result<()>
+    where S: sshwire::SSHSink {
+        (self.0.len() as u32).enc(s)?;
+        self.0.enc(s)
+    }
+}
+
+impl<'de> SSHDecode<'de> for TextString<'de> {
+    fn dec<S>(s: &mut S) -> Result<Self>
+    where S: sshwire::SSHSource<'de> {
+        let len = u32::dec(s)? as usize;
+        Ok(TextString(s.take(len)?))
+    }
+}
+
 // A wrapper for a u32 prefixed data structure `B`, such as a public key blob
 pub struct Blob<B>(pub B);
 
@@ -313,6 +379,14 @@ impl<T: SSHEncode> SSHEncode for Option<T> {
     }
 }
 
+impl SSHEncode for &AsciiStr{
+    fn enc<S>(&self, s: &mut S) -> Result<()>
+    where S: SSHSink {
+        let v = self.as_bytes();
+        BinString(v).enc(s)
+    }
+}
+
 impl<'de> SSHDecode<'de> for bool {
     fn dec<S>(s: &mut S) -> Result<Self>
     where S: SSHSource<'de> {
@@ -340,13 +414,36 @@ impl<'de> SSHDecode<'de> for u32 {
     }
 }
 
+/// Decodes a SSH name string. Must be ascii
+/// without control characters. RFC4251 section 6.
+pub fn try_as_ascii<'a>(t: &'a [u8]) -> Result<&'a AsciiStr> {
+    let n = t.as_ascii_str().map_err(|_| Error::BadName)?;
+    if n.chars().any(|ch| ch.is_ascii_control() || ch == AsciiChar::DEL) {
+        return Err(Error::BadName);
+    }
+    Ok(n)
+}
+
+pub fn try_as_ascii_str<'a>(t: &'a [u8]) -> Result<&'a str> {
+    try_as_ascii(t).map(AsciiStr::as_str)
+}
+
 impl<'de: 'a, 'a> SSHDecode<'de> for &'a str {
     #[inline]
     fn dec<S>(s: &mut S) -> Result<Self>
     where S: SSHSource<'de> {
         let len = u32::dec(s)?;
         let t = s.take(len as usize)?;
-        str::from_utf8(t).map_err(|_| Error::BadString)
+        try_as_ascii_str(t)
+    }
+}
+
+impl<'de: 'a, 'a> SSHDecode<'de> for &'de AsciiStr {
+    fn dec<S>(s: &mut S) -> Result<&'de AsciiStr>
+    where
+        S: SSHSource<'de>, {
+        let b: BinString = SSHDecode::dec(s)?;
+        try_as_ascii(b.0)
     }
 }
 
@@ -359,6 +456,7 @@ impl<'de, const N: usize> SSHDecode<'de> for [u8; N] {
         Ok(l)
     }
 }
+
 
 #[cfg(test)]
 pub(crate) mod tests {
@@ -433,8 +531,8 @@ pub(crate) mod tests {
         let mut ctx = ParseContext::new();
 
         let p = Userauth60::PwChangeReq(UserauthPwChangeReq {
-            prompt: "change the password",
-            lang: "",
+            prompt: "change the password".into(),
+            lang: "".into(),
         }).into();
         let mut pw = ResponseString::new();
         pw.push_str("123").unwrap();

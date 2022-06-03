@@ -18,9 +18,9 @@ fn main() -> Result<()> {
 
 fn do_userauth() -> Result<()> {
     let p: Packet = packets::UserauthRequest {
-        username: "matt",
+        username: "matt".into(),
         service: "con",
-        method: AuthMethod::Password(packets::MethodPassword { change: false, password: "123" }),
+        method: AuthMethod::Password(packets::MethodPassword { change: false, password: "123".into() }),
     }.into();
 
     let mut buf = vec![0; 2000];
@@ -42,16 +42,16 @@ fn do_kexinit() -> Result<()> {
     let k = KexInit {
         // cookie: &[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16],
         cookie: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
-        kex: "hello,more".into(),
-        hostkey: "hello,more".into(),
-        cipher_c2s: "hello,more".into(),
-        cipher_s2c: "hello,more".into(),
-        mac_c2s: "hi".into(),
-        mac_s2c: "hello,more".into(),
-        comp_c2s: "hello,more".into(),
-        comp_s2c: "hello,more".into(),
-        lang_c2s: "hello,more".into(),
-        lang_s2c: "hello,more".into(),
+        kex: "hello,more".try_into().unwrap(),
+        hostkey: "hello,more".try_into().unwrap(),
+        cipher_c2s: "hello,more".try_into().unwrap(),
+        cipher_s2c: "hello,more".try_into().unwrap(),
+        mac_c2s: "hi".try_into().unwrap(),
+        mac_s2c: "hello,more".try_into().unwrap(),
+        comp_c2s: "hello,more".try_into().unwrap(),
+        comp_s2c: "hello,more".try_into().unwrap(),
+        lang_c2s: "hello,more".try_into().unwrap(),
+        lang_s2c: "hello,more".try_into().unwrap(),
         first_follows: false,
         reserved: 0,
     };

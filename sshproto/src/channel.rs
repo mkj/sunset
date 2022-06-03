@@ -237,7 +237,7 @@ impl Req {
                 todo!("serialize modes")
             }
             ReqDetails::Exec(cmd) => {
-                ChannelReqType::Exec(packets::Exec { command: &cmd })
+                ChannelReqType::Exec(packets::Exec { command: cmd.as_str().into() })
             }
             ReqDetails::WinChange(rt) => ChannelReqType::WinChange(rt.clone()),
             ReqDetails::Break(rt) => ChannelReqType::Break(rt.clone()),

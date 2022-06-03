@@ -393,12 +393,12 @@ fn decode_struct(gen: &mut Generator, body: StructBody) -> Result<()> {
                         if let FieldAtt::VariantName(enum_field) = a {
                             // Read the extra field on the wire that isn't directly included in the struct
                             named_enums.insert(enum_field.to_string());
-                            fn_body.push_parsed(format!("let enum_name_{enum_field} = crate::sshwire::SSHDecode::dec(s)?;"))?;
+                            fn_body.push_parsed(format!("let enum_name_{enum_field}: BinString = crate::sshwire::SSHDecode::dec(s)?;"))?;
                         }
                     }
                     let fname = &f.0;
                     if named_enums.contains(&fname.to_string()) {
-                        fn_body.push_parsed(format!("let field_{fname} =  crate::sshwire::SSHDecodeEnum::dec_enum(s, enum_name_{fname})?;"))?;
+                        fn_body.push_parsed(format!("let field_{fname} =  crate::sshwire::SSHDecodeEnum::dec_enum(s, enum_name_{fname}.0)?;"))?;
                     } else {
                         fn_body.push_parsed(format!("let field_{fname} = crate::sshwire::SSHDecode::dec(s)?;"))?;
                     }
@@ -477,9 +477,9 @@ fn decode_enum_variant_prefix(
         .with_return_type("Result<Self>")
         .body(|fn_body| {
             fn_body
-                .push_parsed("let variant = crate::sshwire::SSHDecode::dec(s)?;")?;
+                .push_parsed("let variant: crate::sshwire::BinString = crate::sshwire::SSHDecode::dec(s)?;")?;
             fn_body.push_parsed(
-                "crate::sshwire::SSHDecodeEnum::dec_enum(s, variant)",
+                "crate::sshwire::SSHDecodeEnum::dec_enum(s, variant.0)",
             )?;
             Ok(())
         })
@@ -494,10 +494,13 @@ fn decode_enum_names(
         .generate_fn("dec_enum")
         .with_generic_deps("S", ["crate::sshwire::SSHSource<'de>"])
         .with_arg("s", "&mut S")
-        .with_arg("variant", "&'de str")
+        .with_arg("variant", "&'de [u8]")
         .with_return_type("Result<Self>")
         .body(|fn_body| {
-            fn_body.push_parsed("let r = match variant")?;
+            // Some(ascii_string), or None
+            fn_body.push_parsed("let var_str = crate::sshwire::try_as_ascii_str(variant).ok();")?;
+
+            fn_body.push_parsed("let r = match var_str")?;
             fn_body.group(Delimiter::Brace, |match_arm| {
                 let mut unknown_arm = None;
                 for var in &body.variants {
@@ -505,13 +508,13 @@ fn decode_enum_names(
                     if atts.iter().any(|a| matches!(a, FieldAtt::CaptureUnknown)) {
                         // create the Unknown fallthrough but it will be at the end of the match list
                         let mut m = StreamBuilder::new();
-                        m.push_parsed(format!("unk => Self::{}(Unknown(unk))", var.name))?;
+                        m.push_parsed(format!("_ => Self::{}(Unknown(variant))", var.name))?;
                         if unknown_arm.replace(m).is_some() {
                             return Err(Error::Custom { error: "only one variant can have #[sshwire(unknown)]".into(), span: None})
                         }
                     } else {
                         let var_name = field_att_var_names(&var.name, atts)?;
-                        match_arm.push_parsed(format!("{} => ", var_name))?;
+                        match_arm.push_parsed(format!("Some({}) => ", var_name))?;
                         match_arm.group(Delimiter::Brace, |var_body| {
                             match var.fields {
                                 Fields::Unit => {
