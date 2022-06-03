@@ -34,6 +34,8 @@ impl SimpleClient {
     pub fn add_authkey(&mut self, k: SignKey) {
         self.authkeys.push_back(k)
     }
+
+    fn write_stdout
 }
 
 #[async_trait(?Send)]

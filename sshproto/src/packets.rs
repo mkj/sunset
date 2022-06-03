@@ -303,8 +303,10 @@ impl<'a> Signature<'a> {
         match pubkey {
             PubKey::Ed25519(_) => Ok(SSH_NAME_ED25519),
             PubKey::RSA(_) => Ok(SSH_NAME_RSA_SHA256),
-            PubKey::Unknown(u) => Err(Error::UnknownMethod {kind: "key",
-                    name: u.0.into() })
+            PubKey::Unknown(u) => {
+                warn!("Unknown key type \"{}\"", u);
+                Err(Error::UnknownMethod {kind: "key"})
+            }
         }
     }
 
@@ -313,8 +315,8 @@ impl<'a> Signature<'a> {
             Signature::Ed25519(_) => Ok(SigType::Ed25519),
             Signature::RSA256(_) => Ok(SigType::RSA256),
             Signature::Unknown(u) => {
-                Err(Error::UnknownMethod {kind: "signature",
-                    name: u.0.into() })
+                warn!("Unknown signature type \"{}\"", u);
+                Err(Error::UnknownMethod {kind: "signature" })
             }
         }
     }
@@ -546,6 +548,13 @@ pub struct DirectTcpip<'a> {
 // This is deliberately not Serializable, we only receive it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Unknown<'a>(pub &'a str);
+
+impl core::fmt::Display for Unknown<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.escape_default().fmt(f)
+    }
+
+}
 
 /// State to be passed to decoding.
 /// Use this so the parser can select the correct enum variant to decode.

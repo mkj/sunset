@@ -453,7 +453,7 @@ impl fmt::Display for Cipher {
 
 impl Cipher {
     /// Creates a cipher key by algorithm name. Must be passed a known name.
-    pub fn from_name(name: &str) -> Result<Self, Error> {
+    pub fn from_name(name: &'static str) -> Result<Self, Error> {
         match name {
             SSH_NAME_CHAPOLY => Ok(Cipher::ChaPoly),
             SSH_NAME_AES256_CTR => Ok(Cipher::Aes256Ctr),
@@ -571,7 +571,7 @@ pub(crate) enum Integ {
 
 impl Integ {
     /// Matches a MAC name. Should not be called for AEAD ciphers, instead use [`EncKey::integ`] etc
-    pub fn from_name(name: &str) -> Result<Self, Error> {
+    pub fn from_name(name: &'static str) -> Result<Self, Error> {
         match name {
             SSH_NAME_HMAC_SHA256 => Ok(Integ::HmacSha256),
             _ => Err(Error::bug()),

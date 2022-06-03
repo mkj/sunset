@@ -383,7 +383,7 @@ impl fmt::Display for SharedSecret {
 }
 
 impl SharedSecret {
-    pub fn from_name(name: &str) -> Result<Self> {
+    pub fn from_name(name: &'static str) -> Result<Self> {
         match name {
             SSH_NAME_CURVE25519 | SSH_NAME_CURVE25519_LIBSSH => {
                 Ok(SharedSecret::KexCurve25519(KexCurve25519::new()?))

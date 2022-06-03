@@ -93,7 +93,7 @@ impl<'a> NameList<'a> {
     /// Must only be called on [`StringNames`], will fail if called with self as [`LocalNames`].
     pub fn first_match(
         &self, is_client: bool, our_options: &LocalNames,
-    ) -> Result<Option<&str>> {
+    ) -> Result<Option<&'static str>> {
         match self {
             NameList::String(s) => Ok(if is_client {
                 s.first_options_match(our_options)
@@ -126,11 +126,11 @@ impl<'a> NameList<'a> {
 
 impl<'a> StringNames<'a> {
     /// Returns the first name in this namelist that matches one of the provided options
-    fn first_string_match(&self, options: &LocalNames) -> Option<&str> {
+    fn first_string_match(&self, options: &LocalNames) -> Option<&'static str> {
         for n in self.0.split(',') {
             for o in options.0.iter() {
                 if n == *o {
-                    return Some(n);
+                    return Some(*o);
                 }
             }
         }
@@ -138,11 +138,11 @@ impl<'a> StringNames<'a> {
     }
 
     /// Returns the first of "options" that is in this namelist
-    fn first_options_match(&self, options: &LocalNames) -> Option<&str> {
+    fn first_options_match(&self, options: &LocalNames) -> Option<&'static str> {
         for o in options.0.iter() {
             for n in self.0.split(',') {
                 if n == *o {
-                    return Some(n);
+                    return Some(*o);
                 }
             }
         }

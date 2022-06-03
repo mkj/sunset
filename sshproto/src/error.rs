@@ -11,44 +11,9 @@ use heapless::String;
 
 use crate::behaviour::BhError;
 
-// RFC4251 defines a maximum of 64, but 35 is probably enough to identify
-// a problem.
-#[derive(Debug)]
-pub struct UnknownName(pub String<35>);
-
-    impl fmt::Display for UnknownName {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.fmt(f)
-    }
-}
-
-impl From<&str> for UnknownName {
-
-    /// Indicates truncation
-    fn from(from: &str) -> Self {
-        let mut s = String::new();
-        // +10 to avoid wasteful iteration on untrusted input
-        let need = from.escape_default().take(s.capacity()+10).count();
-        let used = if need > s.capacity() {
-            s.capacity() - 4
-        } else {
-            need
-        };
-        for e in from.escape_default().take(used) {
-            s.push(e).unwrap()
-        }
-
-        if need > used {
-            s.push_str(" ...").unwrap()
-        }
-        UnknownName(s)
-    }
-}
-
-
-
 // TODO: can we make Snafu not require Debug?
 // TODO: maybe split this into a list of public vs private errors?
+
 #[non_exhaustive]
 #[derive(Snafu, Debug)]
 pub enum Error {
@@ -74,8 +39,8 @@ pub enum Error {
     /// Key exchange incorrect
     BadKex,
 
-    #[snafu(display("Signature \"{sig}\" doesn't match key type \"{key}\""))]
-    SignatureMismatch { key: UnknownName, sig: UnknownName },
+    // Signature doesn't match key type
+    SignatureMismatch,
 
     /// Error in received SSH protocol
     SSHProtoError,
@@ -111,8 +76,8 @@ pub enum Error {
 
     /// An unknown SSH name is provided, for a key type, signature type,
     /// channel name etc.
-    #[snafu(display("Unknown {kind} method {name}"))]
-    UnknownMethod { kind: &'static str, name: UnknownName },
+    #[snafu(display("Unknown {kind} method"))]
+    UnknownMethod { kind: &'static str},
 
     /// Implementation behaviour error
     #[snafu(display("Failure from application: {msg}"))]
@@ -263,17 +228,6 @@ pub(crate) mod tests {
     use crate::packets::Unknown;
     use proptest::prelude::*;
 
-    proptest! {
-        #[test]
-        fn unknown_name_from_pt(s: std::string::String) {
-            let u: UnknownName = s.as_str().into();
-            let cap = u.0.capacity();
-            if s.escape_default().count() > cap {
-                assert_eq!(&u.0[cap-4..], " ...");
-            }
-        }
-
-    }
 
 }
 

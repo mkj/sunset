@@ -71,7 +71,7 @@ fn main() -> Result<()> {
     // time crate won't read TZ if we're threaded, in case someone
     // tries to mutate shared state with setenv.
     // https://github.com/rust-lang/rust/issues/90308 etc
-    // So we can't use async main.
+    // logging uses the timezone, so we can't use async main.
     setup_log(&args);
 
     tokio::runtime::Builder::new_multi_thread()
@@ -104,7 +104,7 @@ fn setup_log(args: &Args) {
     .add_filter_allow_str("con1")
     // not debugging these bits of the stack at present
     // .add_filter_ignore_str("door_sshproto::traffic")
-    .add_filter_ignore_str("door_sshproto::runner")
+    // .add_filter_ignore_str("door_sshproto::runner")
     .add_filter_ignore_str("door_smol::async_door")
     .set_time_offset_to_local().expect("Couldn't get local timezone")
     .build();

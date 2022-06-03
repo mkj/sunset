@@ -28,7 +28,7 @@ pub enum SigType {
 
 impl SigType {
     /// Must be a valid name
-    pub fn from_name(name: &str) -> Result<Self> {
+    pub fn from_name(name: &'static str) -> Result<Self> {
         match name {
             SSH_NAME_ED25519 => Ok(SigType::Ed25519),
             SSH_NAME_RSA_SHA256 => Ok(SigType::RSA256),
@@ -85,10 +85,11 @@ impl SigType {
             }
 
             _ => {
-                Err(Error::SignatureMismatch {
-                    key: pubkey.algorithm_name().into(),
-                    sig: sig.algorithm_name().into(),
-                })
+                warn!("Signature \"{}\" doesn't match key type \"{}\"",
+                    sig.algorithm_name(),
+                    pubkey.algorithm_name(),
+                    );
+                Err(Error::SignatureMismatch)
             }
         }
     }
