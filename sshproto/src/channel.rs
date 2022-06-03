@@ -74,7 +74,8 @@ impl Channels {
     fn remove(&mut self, num: u32) -> Result<()> {
         // TODO any checks?
         *self.ch.get_mut(num as usize).ok_or(Error::BadChannel)? = None;
-        Ok(())
+        Err(Error::otherbug())
+        // Ok(())
     }
 
     // incoming packet handling

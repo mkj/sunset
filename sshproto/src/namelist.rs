@@ -10,7 +10,7 @@ use ascii::{AsciiStr, AsciiChar::Comma};
 use sshwire_derive::{SSHEncode, SSHDecode};
 
 use crate::*;
-use sshwire::{SSHEncode, SSHDecode, SSHSource, SSHSink, BinString, try_as_ascii};
+use sshwire::{SSHEncode, SSHDecode, SSHSource, SSHSink, BinString, WireResult};
 
 /// A comma separated string, can be decoded or encoded.
 /// Used for remote name lists.
@@ -33,7 +33,7 @@ pub enum NameList<'a> {
 }
 
 impl<'de: 'a, 'a> SSHDecode<'de> for NameList<'a> {
-    fn dec<S>(s: &mut S) -> Result<NameList<'a>>
+    fn dec<S>(s: &mut S) -> WireResult<NameList<'a>>
     where
         S: SSHSource<'de>,
     {
@@ -43,7 +43,7 @@ impl<'de: 'a, 'a> SSHDecode<'de> for NameList<'a> {
 
 /// Serialize the list of names with comma separators
 impl SSHEncode for LocalNames<'_> {
-    fn enc<S>(&self, e: &mut S) -> Result<()>
+    fn enc<S>(&self, e: &mut S) -> WireResult<()>
     where S: sshwire::SSHSink {
         let names = &self.0;
         // space for names and commas

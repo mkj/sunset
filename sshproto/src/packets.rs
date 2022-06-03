@@ -21,7 +21,8 @@ use namelist::NameList;
 use sshnames::*;
 use sshwire::{BinString, TextString, Blob};
 use sign::{SigType, OwnedSig};
-use sshwire::{SSHEncode, SSHEncodeEnum, SSHDecode, SSHDecodeEnum, SSHSource, SSHSink};
+use sshwire::{SSHEncode, SSHDecode, SSHSource, SSHSink, WireResult, WireError};
+use sshwire::{SSHEncodeEnum, SSHDecodeEnum};
 
 // Any `enum` needs to have special handling to select a variant when deserializing.
 // This is mostly done with `#[sshwire(...)]` attributes.
@@ -135,14 +136,14 @@ pub enum Userauth60<'a> {
 }
 
 impl<'de: 'a, 'a> SSHDecode<'de> for Userauth60<'a> {
-    fn dec<S>(s: &mut S) -> Result<Self>
+    fn dec<S>(s: &mut S) -> WireResult<Self>
     where S: SSHSource<'de> {
         match s.ctx().cli_auth_type {
             Some(cliauth::AuthType::Password) => Ok(Self::PwChangeReq(SSHDecode::dec(s)?)),
             Some(cliauth::AuthType::PubKey) => Ok(Self::PkOk(SSHDecode::dec(s)?)),
             _ => {
                 trace!("Wrong packet state for userauth60");
-                return Err(Error::PacketWrong)
+                return Err(WireError::PacketWrong)
             }
         }
     }
@@ -184,7 +185,7 @@ pub struct MethodPubKey<'a> {
 }
 
 impl SSHEncode for MethodPubKey<'_> {
-    fn enc<S>(&self, s: &mut S) -> Result<()>
+    fn enc<S>(&self, s: &mut S) -> WireResult<()>
     where S: SSHSink {
         let force_sig_bool = s.ctx().map_or(false, |c| c.method_pubkey_force_sig_bool);
         let sig = self.sig.is_some() || force_sig_bool;
@@ -197,7 +198,7 @@ impl SSHEncode for MethodPubKey<'_> {
 }
 
 impl<'de: 'a, 'a> SSHDecode<'de> for MethodPubKey<'a> {
-    fn dec<S>(s: &mut S) -> Result<Self>
+    fn dec<S>(s: &mut S) -> WireResult<Self>
     where S: sshwire::SSHSource<'de> {
         let sig = bool::dec(s)?;
         let sig_algo = SSHDecode::dec(s)?;
@@ -611,7 +612,7 @@ impl TryFrom<u8> for MessageNumber {
 }
 
 impl SSHEncode for Packet<'_> {
-    fn enc<S>(&self, s: &mut S) -> Result<()>
+    fn enc<S>(&self, s: &mut S) -> WireResult<()>
     where S: SSHSink {
         let t = self.message_num() as u8;
         t.enc(s)?;
@@ -630,13 +631,13 @@ impl SSHEncode for Packet<'_> {
 }
 
 impl<'de: 'a, 'a> SSHDecode<'de> for Packet<'a> {
-    fn dec<S>(s: &mut S) -> Result<Self>
+    fn dec<S>(s: &mut S) -> WireResult<Self>
     where S: SSHSource<'de> {
         let msg_num = u8::dec(s)?;
         let ty = MessageNumber::try_from(msg_num);
         let ty = match ty {
             Ok(t) => t,
-            Err(_) => return Err(Error::UnknownPacket { number: msg_num })
+            Err(_) => return Err(WireError::UnknownPacket { number: msg_num })
         };
 
         // Decode based on the message number

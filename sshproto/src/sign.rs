@@ -62,7 +62,7 @@ impl SigType {
         match (self, pubkey, sig) {
 
             (SigType::Ed25519, PubKey::Ed25519(k), Signature::Ed25519(s)) => {
-                let k = dalek::PublicKey::from_bytes(k.key.0).map_err(|_| Error::BadKey)?;
+                let k = dalek::PublicKey::from_bytes(k.key.0).map_err(|_| Error::BadSignature)?;
                 let s = dalek::Signature::from_bytes(s.sig.0).map_err(|_| Error::BadSignature)?;
                 k.verify(message, &s).map_err(|_| Error::BadSignature)
             }

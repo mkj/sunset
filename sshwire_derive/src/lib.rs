@@ -201,7 +201,7 @@ fn encode_struct(gen: &mut Generator, body: StructBody) -> Result<()> {
         .with_generic_deps("E", ["crate::sshwire::SSHSink"])
         .with_self_arg(FnSelfArg::RefSelf)
         .with_arg("s", "&mut E")
-        .with_return_type("Result<()>")
+        .with_return_type("crate::sshwire::WireResult<()>")
         .body(|fn_body| {
             match &body.fields {
                 Fields::Tuple(v) => {
@@ -254,7 +254,7 @@ fn encode_enum(
         .with_generic_deps("S", ["crate::sshwire::SSHSink"])
         .with_self_arg(FnSelfArg::RefSelf)
         .with_arg("s", "&mut S")
-        .with_return_type("Result<()>")
+        .with_return_type("crate::sshwire::WireResult<()>")
         .body(|fn_body| {
             if cont_atts.iter().any(|c| matches!(c, ContainerAtt::VariantPrefix)) {
                 fn_body.push_parsed("crate::sshwire::SSHEncode::enc(&self.variant_name()?, s)?;")?;
@@ -283,7 +283,7 @@ fn encode_enum(
                                 Ok(())
                             })?;
                             if atts.iter().any(|a| matches!(a, FieldAtt::CaptureUnknown)) {
-                                rhs.push_parsed("return Error::bug_msg(\"Can't encode Unknown\")")?;
+                                rhs.push_parsed("return Err(crate::sshwire::WireError::UnknownVariant)")?;
                             } else {
                                 rhs.push_parsed(format!("crate::sshwire::SSHEncode::enc(i, s)?;"))?;
                             }
@@ -331,7 +331,7 @@ fn encode_enum_names(
     gen.impl_for("crate::sshwire::SSHEncodeEnum")
         .generate_fn("variant_name")
         .with_self_arg(FnSelfArg::RefSelf)
-        .with_return_type("Result<&'static str>")
+        .with_return_type("crate::sshwire::WireResult<&'static str>")
         .body(|fn_body| {
             fn_body.push_parsed("let r = match self")?;
             fn_body.group(Delimiter::Brace, |match_arm| {
@@ -343,7 +343,7 @@ fn encode_enum_names(
                     let mut rhs = StreamBuilder::new();
                     let atts = take_field_atts(&var.attributes)?;
                     if atts.iter().any(|a| matches!(a, FieldAtt::CaptureUnknown)) {
-                        rhs.push_parsed("return Error::bug_msg(\"Can't encode Unknown\")")?;
+                        rhs.push_parsed("return Err(crate::sshwire::WireError::UnknownVariant)")?;
                     } else {
                         rhs.push(field_att_var_names(&var.name, atts)?);
                     }
@@ -383,7 +383,7 @@ fn decode_struct(gen: &mut Generator, body: StructBody) -> Result<()> {
         .generate_fn("dec")
         .with_generic_deps("S", ["crate::sshwire::SSHSource<'de>"])
         .with_arg("s", "&mut S")
-        .with_return_type("Result<Self>")
+        .with_return_type("crate::sshwire::WireResult<Self>")
         .body(|fn_body| {
             let mut named_enums = HashSet::new();
             if let Fields::Struct(v) = &body.fields {
@@ -474,7 +474,7 @@ fn decode_enum_variant_prefix(
         .generate_fn("dec")
         .with_generic_deps("S", ["crate::sshwire::SSHSource<'de>"])
         .with_arg("s", "&mut S")
-        .with_return_type("Result<Self>")
+        .with_return_type("crate::sshwire::WireResult<Self>")
         .body(|fn_body| {
             fn_body
                 .push_parsed("let variant: crate::sshwire::BinString = crate::sshwire::SSHDecode::dec(s)?;")?;
@@ -495,7 +495,7 @@ fn decode_enum_names(
         .with_generic_deps("S", ["crate::sshwire::SSHSource<'de>"])
         .with_arg("s", "&mut S")
         .with_arg("variant", "&'de [u8]")
-        .with_return_type("Result<Self>")
+        .with_return_type("crate::sshwire::WireResult<Self>")
         .body(|fn_body| {
             // Some(ascii_string), or None
             fn_body.push_parsed("let var_str = crate::sshwire::try_as_ascii_str(variant).ok();")?;

@@ -92,8 +92,12 @@ pub enum Error {
 
     // This state should not be reached, previous logic should have prevented it.
     // Create this using [`Error::bug()`] or [`.trap()`](TrapBug::trap).
-    #[snafu(display("Program bug {location}"))]
-    Bug { location: snafu::Location },
+    // #[snafu(display("Program bug {location}"))]
+    // Bug { location: snafu::Location },
+    /// Program bug
+    Bug,
+
+    OtherBug { location: snafu::Location },
 }
 
 impl Error {
@@ -101,7 +105,6 @@ impl Error {
         Error::Custom { msg: m }
     }
 
-    #[track_caller]
     #[cold]
     /// Panics in debug builds, returns [`Error::Bug`] in release.
     // TODO: this should return a Result since it's always used as Err(Error::bug())
@@ -111,8 +114,27 @@ impl Error {
         if cfg!(debug_assertions) {
             panic!("Hit a bug");
         } else {
+            // let caller = core::panic::Location::caller();
+            Error::Bug
+            // {
+            //     location: snafu::Location::new(
+            //         caller.file(),
+            //         caller.line(),
+            //         caller.column(),
+            //     ),
+            // }
+        }
+    }
+
+    pub fn otherbug() -> Error {
+        // Easier to track the source of errors in development,
+        // but release builds shouldn't panic.
+        if cfg!(debug_assertions) {
+            panic!("Hit a bug");
+        } else {
             let caller = core::panic::Location::caller();
-            Error::Bug {
+            Error::OtherBug
+            {
                 location: snafu::Location::new(
                     caller.file(),
                     caller.line(),
@@ -124,10 +146,8 @@ impl Error {
 
     /// Like [`bug()`] but with a message
     /// The message can be used instead of a code comment, is logged at `debug` level.
-    #[track_caller]
     #[cold]
-    /// TODO: is the generic `T` going to make it bloat?
-    pub fn bug_args<T>(args: Arguments) -> Result<T, Error> {
+    pub fn bug_args(args: Arguments) -> Error {
         // Easier to track the source of errors in development,
         // but release builds shouldn't panic.
         if cfg!(debug_assertions) {
@@ -136,21 +156,26 @@ impl Error {
             debug!("Hit a bug: {args}");
             // TODO: this bloats binaries with full paths
             // https://github.com/rust-lang/rust/issues/95529 is having function
-            let caller = core::panic::Location::caller();
-            Err(Error::Bug {
-                location: snafu::Location::new(
-                    caller.file(),
-                    caller.line(),
-                    caller.column(),
-                ),
-            })
+            // let caller = core::panic::Location::caller();
+            Error::Bug
+            // {
+            //     location: snafu::Location::new(
+            //         caller.file(),
+            //         caller.line(),
+            //         caller.column(),
+            //     ),
+            // }
         }
     }
 
-    #[track_caller]
     #[cold]
     /// TODO: is the generic `T` going to make it bloat?
     pub fn bug_msg<T>(msg: &str) -> Result<T, Error> {
+        Err(Self::bug_args(format_args!("{}", msg)))
+    }
+
+    #[cold]
+    pub fn bug_err_msg(msg: &str) -> Error {
         Self::bug_args(format_args!("{}", msg))
     }
 
@@ -162,12 +187,10 @@ pub trait TrapBug<T> {
     /// `.trap()` should be used like `.unwrap()`, in situations
     /// never expected to fail. Instead it calls [`Error::bug()`].
     /// (or debug builds may panic)
-    #[track_caller]
     fn trap(self) -> Result<T, Error>;
 
     /// Like [`trap()`] but with a message, calls [`Error::bug_msg()`]
     /// The message can be used instead of a comment.
-    #[track_caller]
     fn trap_msg(self, args: Arguments) -> Result<T, Error>;
 }
 
@@ -185,7 +208,7 @@ impl<T, E> TrapBug<T> for Result<T, E> {
         if let Ok(i) = self {
             Ok(i)
         } else {
-            Error::bug_args(args)
+            Err(Error::bug_args(args))
         }
     }
 }
@@ -204,7 +227,7 @@ impl<T> TrapBug<T> for Option<T> {
         if let Some(i) = self {
             Ok(i)
         } else {
-            Error::bug_args(args)
+            Err(Error::bug_args(args))
         }
     }
 }

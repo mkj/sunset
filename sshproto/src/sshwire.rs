@@ -8,6 +8,7 @@ use core::str;
 use core::convert::AsRef;
 use core::fmt::{self,Debug};
 use pretty_hex::PrettyHex;
+use snafu::{prelude::*, Location};
 
 use ascii::{AsAsciiStr, AsciiChar, AsciiStr};
 
@@ -16,50 +17,86 @@ use packets::{Packet, ParseContext};
 
 
 pub trait SSHSink {
-    fn push(&mut self, v: &[u8]) -> Result<()>;
+    fn push(&mut self, v: &[u8]) -> WireResult<()>;
     fn ctx(&self) -> Option<&ParseContext> {
         None
     }
 }
 
 pub trait SSHSource<'de> {
-    fn take(&mut self, len: usize) -> Result<&'de [u8]>;
+    fn take(&mut self, len: usize) -> WireResult<&'de [u8]>;
     fn ctx(&self) -> &ParseContext;
 }
 
 pub trait SSHEncode {
-    fn enc<S>(&self, s: &mut S) -> Result<()> where S: SSHSink;
+    fn enc<S>(&self, s: &mut S) -> WireResult<()> where S: SSHSink;
 }
 
 /// For enums with an externally provided name
 pub trait SSHEncodeEnum {
     /// Returns the current variant, used for encoding parent structs.
     /// Fails if it is Unknown
-    fn variant_name(&self) -> Result<&'static str>;
+    fn variant_name(&self) -> WireResult<&'static str>;
 }
 
 /// Decodes `struct` and `enum`s without an externally provided enum name
 pub trait SSHDecode<'de>: Sized {
-    fn dec<S>(s: &mut S) -> Result<Self> where S: SSHSource<'de>;
+    fn dec<S>(s: &mut S) -> WireResult<Self> where S: SSHSource<'de>;
 }
 
 /// Decodes enums with an externally provided name
 pub trait SSHDecodeEnum<'de>: Sized {
     /// `var` is the variant name to decode, as raw bytes off the wire.
-    fn dec_enum<S>(s: &mut S, var: &'de [u8]) -> Result<Self> where S: SSHSource<'de>;
+    fn dec_enum<S>(s: &mut S, var: &'de [u8]) -> WireResult<Self> where S: SSHSource<'de>;
 }
+
+/// A subset of [`Error`] for `SSHEncode` and `SSHDecode`.
+/// Compiled code size is very sensitive to the size of this
+/// enum so we avoid unused elements.
+#[derive(Debug)]
+pub enum WireError {
+    NoRoom,
+
+    RanOut,
+
+    BadString,
+
+    BadName,
+
+    UnknownVariant,
+
+    PacketWrong,
+
+    UnknownPacket { number: u8 },
+}
+
+impl From<WireError> for Error {
+    fn from(w: WireError) -> Self {
+        match w {
+            WireError::NoRoom => Error::NoRoom,
+            WireError::RanOut => Error::RanOut,
+            WireError::BadString => Error::BadString,
+            WireError::BadName => Error::BadName,
+            WireError::PacketWrong => Error::PacketWrong,
+            WireError::UnknownVariant => Error::bug_err_msg("Can't encode Unknown"),
+            WireError::UnknownPacket { number } => Error::UnknownPacket { number },
+        }
+    }
+}
+
+pub type WireResult<T> = core::result::Result<T, WireError>;
 
 ///////////////////////////////////////////////
 
 /// Parses a [`Packet`] from a borrowed `&[u8]` byte buffer.
 pub fn packet_from_bytes<'a>(b: &'a [u8], ctx: &ParseContext) -> Result<Packet<'a>> {
     let mut s = DecodeBytes { input: b, pos: 0, parse_ctx: ctx.clone() };
-    Packet::dec(&mut s)
+    Ok(Packet::dec(&mut s)?)
 }
 
 pub fn read_ssh<'a, T: SSHDecode<'a>>(b: &'a [u8], ctx: Option<ParseContext>) -> Result<T> {
     let mut s = DecodeBytes { input: b, pos: 0, parse_ctx: ctx.unwrap_or_default() };
-    T::dec(&mut s)
+    Ok(T::dec(&mut s)?)
 }
 
 pub fn write_ssh<T>(target: &mut [u8], value: &T) -> Result<usize>
@@ -67,7 +104,7 @@ where
     T: SSHEncode,
 {
     let mut s = EncodeBytes { target, pos: 0 };
-    value.enc(&mut s)?;
+    let r = value.enc(&mut s)?;
     Ok(s.pos)
 }
 
@@ -76,7 +113,7 @@ pub fn hash_ser_length<T>(hash_ctx: &mut impl digest::DynDigest,
 where
     T: SSHEncode,
 {
-    let len = length_enc(value)? as u32;
+    let len: u32 = length_enc(value)?;
     hash_ctx.update(&len.to_be_bytes());
     hash_ser(hash_ctx, None, value)
 }
@@ -92,13 +129,14 @@ where
     Ok(())
 }
 
-pub fn length_enc<T>(value: &T) -> Result<usize>
+/// Returns `WireError::NoRoom` if larger than `u32`
+fn length_enc<T>(value: &T) -> WireResult<u32>
 where
     T: SSHEncode,
 {
     let mut s = EncodeLen { pos: 0 };
     value.enc(&mut s)?;
-    Ok(s.pos)
+    s.pos.try_into().map_err(|e| WireError::NoRoom)
 }
 
 struct EncodeBytes<'a> {
@@ -107,9 +145,9 @@ struct EncodeBytes<'a> {
 }
 
 impl SSHSink for EncodeBytes<'_> {
-    fn push(&mut self, v: &[u8]) -> Result<()> {
+    fn push(&mut self, v: &[u8]) -> WireResult<()> {
         if self.pos + v.len() > self.target.len() {
-            return Err(Error::NoRoom);
+            return Err(WireError::NoRoom);
         }
         self.target[self.pos..self.pos + v.len()].copy_from_slice(v);
         self.pos += v.len();
@@ -122,7 +160,7 @@ struct EncodeLen {
 }
 
 impl SSHSink for EncodeLen {
-    fn push(&mut self, v: &[u8]) -> Result<()> {
+    fn push(&mut self, v: &[u8]) -> WireResult<()> {
         self.pos += v.len();
         Ok(())
     }
@@ -134,7 +172,7 @@ struct EncodeHash<'a> {
 }
 
 impl SSHSink for EncodeHash<'_> {
-    fn push(&mut self, v: &[u8]) -> Result<()> {
+    fn push(&mut self, v: &[u8]) -> WireResult<()> {
         self.hash_ctx.update(v);
         Ok(())
     }
@@ -151,9 +189,9 @@ struct DecodeBytes<'a> {
 }
 
 impl<'de> SSHSource<'de> for DecodeBytes<'de> {
-    fn take(&mut self, len: usize) -> Result<&'de [u8]> {
+    fn take(&mut self, len: usize) -> WireResult<&'de [u8]> {
         if len > self.input.len() {
-            return Err(Error::RanOut);
+            return Err(WireError::RanOut);
         }
         let t;
         (t, self.input) = self.input.split_at(len);
@@ -198,7 +236,7 @@ impl<'a> Debug for BinString<'a> {
 }
 
 impl SSHEncode for BinString<'_> {
-    fn enc<S>(&self, s: &mut S) -> Result<()>
+    fn enc<S>(&self, s: &mut S) -> WireResult<()>
     where S: sshwire::SSHSink {
         (self.0.len() as u32).enc(s)?;
         self.0.enc(s)
@@ -206,7 +244,7 @@ impl SSHEncode for BinString<'_> {
 }
 
 impl<'de> SSHDecode<'de> for BinString<'de> {
-    fn dec<S>(s: &mut S) -> Result<Self>
+    fn dec<S>(s: &mut S) -> WireResult<Self>
     where S: sshwire::SSHSource<'de> {
         let len = u32::dec(s)? as usize;
         Ok(BinString(s.take(len)?))
@@ -262,7 +300,7 @@ impl<'a> Debug for TextString<'a> {
 }
 
 impl SSHEncode for TextString<'_> {
-    fn enc<S>(&self, s: &mut S) -> Result<()>
+    fn enc<S>(&self, s: &mut S) -> WireResult<()>
     where S: sshwire::SSHSink {
         (self.0.len() as u32).enc(s)?;
         self.0.enc(s)
@@ -270,7 +308,7 @@ impl SSHEncode for TextString<'_> {
 }
 
 impl<'de> SSHDecode<'de> for TextString<'de> {
-    fn dec<S>(s: &mut S) -> Result<Self>
+    fn dec<S>(s: &mut S) -> WireResult<Self>
     where S: sshwire::SSHSource<'de> {
         let len = u32::dec(s)? as usize;
         Ok(TextString(s.take(len)?))
@@ -294,23 +332,25 @@ impl<B: Clone> Clone for Blob<B> {
 
 impl<B: SSHEncode + Debug> Debug for Blob<B> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let len = sshwire::length_enc(&self.0)
-            .map_err(|_| core::fmt::Error)?;
-        write!(f, "Blob(len={len}, {:?})", self.0)
+        if let Ok(len) = sshwire::length_enc(&self.0) {
+            write!(f, "Blob(len={len}, {:?})", self.0)
+        } else {
+            write!(f, "Blob(len>u32, {:?})", self.0)
+        }
     }
 }
 
 impl<B: SSHEncode> SSHEncode for Blob<B> {
-    fn enc<S>(&self, s: &mut S) -> Result<()>
+    fn enc<S>(&self, s: &mut S) -> WireResult<()>
     where S: sshwire::SSHSink {
-        let len: u32 = sshwire::length_enc(&self.0)?.try_into().trap()?;
+        let len: u32 = sshwire::length_enc(&self.0)?;
         len.enc(s)?;
         self.0.enc(s)
     }
 }
 
 impl<'de, B: SSHDecode<'de>> SSHDecode<'de> for Blob<B> {
-    fn dec<S>(s: &mut S) -> Result<Self>
+    fn dec<S>(s: &mut S) -> WireResult<Self>
     where S: sshwire::SSHSource<'de> {
         let len = u32::dec(s)?;
         let inner = SSHDecode::dec(s)?;
@@ -322,21 +362,21 @@ impl<'de, B: SSHDecode<'de>> SSHDecode<'de> for Blob<B> {
 ///////////////////////////////////////////////
 
 impl SSHEncode for u8 {
-    fn enc<S>(&self, s: &mut S) -> Result<()>
+    fn enc<S>(&self, s: &mut S) -> WireResult<()>
     where S: SSHSink {
         s.push(&[*self])
     }
 }
 
 impl SSHEncode for bool {
-    fn enc<S>(&self, s: &mut S) -> Result<()>
+    fn enc<S>(&self, s: &mut S) -> WireResult<()>
     where S: SSHSink {
         (*self as u8).enc(s)
     }
 }
 
 impl SSHEncode for u32 {
-    fn enc<S>(&self, s: &mut S) -> Result<()>
+    fn enc<S>(&self, s: &mut S) -> WireResult<()>
     where S: SSHSink {
         s.push(&self.to_be_bytes())
     }
@@ -344,7 +384,7 @@ impl SSHEncode for u32 {
 
 // no length prefix
 impl SSHEncode for &[u8] {
-    fn enc<S>(&self, s: &mut S) -> Result<()>
+    fn enc<S>(&self, s: &mut S) -> WireResult<()>
     where S: SSHSink {
         // data
         s.push(&self)
@@ -353,14 +393,14 @@ impl SSHEncode for &[u8] {
 
 // no length prefix
 impl<const N: usize> SSHEncode for [u8; N] {
-    fn enc<S>(&self, s: &mut S) -> Result<()>
+    fn enc<S>(&self, s: &mut S) -> WireResult<()>
     where S: SSHSink {
         s.push(self)
     }
 }
 
 impl SSHEncode for &str {
-    fn enc<S>(&self, s: &mut S) -> Result<()>
+    fn enc<S>(&self, s: &mut S) -> WireResult<()>
     where S: SSHSink {
         let v = self.as_bytes();
         // length prefix
@@ -370,7 +410,7 @@ impl SSHEncode for &str {
 }
 
 impl<T: SSHEncode> SSHEncode for Option<T> {
-    fn enc<S>(&self, s: &mut S) -> Result<()>
+    fn enc<S>(&self, s: &mut S) -> WireResult<()>
     where S: SSHSink {
         if let Some(t) = self.as_ref() {
             t.enc(s)?;
@@ -380,7 +420,7 @@ impl<T: SSHEncode> SSHEncode for Option<T> {
 }
 
 impl SSHEncode for &AsciiStr{
-    fn enc<S>(&self, s: &mut S) -> Result<()>
+    fn enc<S>(&self, s: &mut S) -> WireResult<()>
     where S: SSHSink {
         let v = self.as_bytes();
         BinString(v).enc(s)
@@ -388,7 +428,7 @@ impl SSHEncode for &AsciiStr{
 }
 
 impl<'de> SSHDecode<'de> for bool {
-    fn dec<S>(s: &mut S) -> Result<Self>
+    fn dec<S>(s: &mut S) -> WireResult<Self>
     where S: SSHSource<'de> {
         Ok(u8::dec(s)? != 0)
     }
@@ -398,7 +438,7 @@ impl<'de> SSHDecode<'de> for bool {
 
 impl<'de> SSHDecode<'de> for u8 {
     #[inline]
-    fn dec<S>(s: &mut S) -> Result<Self>
+    fn dec<S>(s: &mut S) -> WireResult<Self>
     where S: SSHSource<'de> {
         let t = s.take(core::mem::size_of::<u8>())?;
         Ok(u8::from_be_bytes(t.try_into().unwrap()))
@@ -407,7 +447,7 @@ impl<'de> SSHDecode<'de> for u8 {
 
 impl<'de> SSHDecode<'de> for u32 {
     #[inline]
-    fn dec<S>(s: &mut S) -> Result<Self>
+    fn dec<S>(s: &mut S) -> WireResult<Self>
     where S: SSHSource<'de> {
         let t = s.take(core::mem::size_of::<u32>())?;
         Ok(u32::from_be_bytes(t.try_into().unwrap()))
@@ -416,21 +456,21 @@ impl<'de> SSHDecode<'de> for u32 {
 
 /// Decodes a SSH name string. Must be ascii
 /// without control characters. RFC4251 section 6.
-pub fn try_as_ascii<'a>(t: &'a [u8]) -> Result<&'a AsciiStr> {
-    let n = t.as_ascii_str().map_err(|_| Error::BadName)?;
+pub fn try_as_ascii<'a>(t: &'a [u8]) -> WireResult<&'a AsciiStr> {
+    let n = t.as_ascii_str().map_err(|_| WireError::BadName)?;
     if n.chars().any(|ch| ch.is_ascii_control() || ch == AsciiChar::DEL) {
-        return Err(Error::BadName);
+        return Err(WireError::BadName);
     }
     Ok(n)
 }
 
-pub fn try_as_ascii_str<'a>(t: &'a [u8]) -> Result<&'a str> {
+pub fn try_as_ascii_str<'a>(t: &'a [u8]) -> WireResult<&'a str> {
     try_as_ascii(t).map(AsciiStr::as_str)
 }
 
 impl<'de: 'a, 'a> SSHDecode<'de> for &'a str {
     #[inline]
-    fn dec<S>(s: &mut S) -> Result<Self>
+    fn dec<S>(s: &mut S) -> WireResult<Self>
     where S: SSHSource<'de> {
         let len = u32::dec(s)?;
         let t = s.take(len as usize)?;
@@ -439,7 +479,7 @@ impl<'de: 'a, 'a> SSHDecode<'de> for &'a str {
 }
 
 impl<'de: 'a, 'a> SSHDecode<'de> for &'de AsciiStr {
-    fn dec<S>(s: &mut S) -> Result<&'de AsciiStr>
+    fn dec<S>(s: &mut S) -> WireResult<&'de AsciiStr>
     where
         S: SSHSource<'de>, {
         let b: BinString = SSHDecode::dec(s)?;
@@ -448,7 +488,7 @@ impl<'de: 'a, 'a> SSHDecode<'de> for &'de AsciiStr {
 }
 
 impl<'de, const N: usize> SSHDecode<'de> for [u8; N] {
-    fn dec<S>(s: &mut S) -> Result<Self>
+    fn dec<S>(s: &mut S) -> WireResult<Self>
     where S: SSHSource<'de> {
         // TODO is there a better way? Or can we return a slice?
         let mut l = [0u8; N];
