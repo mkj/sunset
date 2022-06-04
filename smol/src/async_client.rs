@@ -35,7 +35,6 @@ impl SimpleClient {
         self.authkeys.push_back(k)
     }
 
-    fn write_stdout
 }
 
 #[async_trait(?Send)]

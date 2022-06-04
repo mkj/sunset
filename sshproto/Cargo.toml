@@ -22,6 +22,7 @@ aes = "0.8"
 sha2 = { version = "0.10", default-features = false }
 hmac = "0.12"
 digest = "0.10"
+signature = { version = "1.4", default-features = false }
 ssh-key = { version = "0.4", default-features = false, features = ["ed25519", "ecdsa", "sha2"] }
 chacha20 = "0.9"
 poly1305 = "0.7"
@@ -33,27 +34,7 @@ pin-utils = "0.1"
 # tokio = { version = "1.18", features = ["sync"], optional = true }
 async-trait = { version = "0.1", optional = true }
 
-[dependencies.ed25519-dalek]
-version = "2.0.0-pre.1"
-default-features = false
-# TODO: switch u32/u64 based on targets somehow? needs to match x25519's
-# TODO: is "rand" needed here, or only for tests?
-features = [ "u32_backend", "rand" ]
-# pending https://github.com/dalek-cryptography/ed25519-dalek/pull/193
-# and also sign_parts()
-# git = "https://github.com/mkj/ed25519-dalek"
-# branch = "parts"
-path = "/home/matt/3rd/rs/ed25519-dalek"
-
-[dependencies.x25519-dalek]
-version = "2.0.0-pre.2"
-default-features = false
-# TODO: switch based on targets somehow?
-features = [ "u32_backend" ]
-# pending https://github.com/dalek-cryptography/x25519-dalek/pull/87
-# upstream version uses older rand
-git = "https://github.com/mobilecoinfoundation/x25519-dalek"
-branch = "mobilecoin"
+salty = { version = "0.2", path = "/home/matt/3rd/rs/salty" }
 
 [features]
 default = [ "getrandom" ]

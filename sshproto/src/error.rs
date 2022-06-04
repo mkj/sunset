@@ -23,10 +23,6 @@ pub enum Error {
     /// Input buffer ran out
     RanOut,
 
-    /// Not implemented (unused in SSH protocol)
-    // internal
-    NoSerializer,
-
     /// Not a UTF8 string
     BadString,
 
@@ -37,13 +33,13 @@ pub enum Error {
     BadDecrypt,
 
     /// Signature is incorrect
-    BadSignature,
+    BadSig,
 
     /// Key exchange incorrect
     BadKex,
 
     // Signature doesn't match key type
-    SignatureMismatch,
+    SigMismatch,
 
     /// Error in received SSH protocol
     SSHProtoError,

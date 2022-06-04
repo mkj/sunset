@@ -67,12 +67,6 @@ fn parse_args() -> Result<Args> {
 
 fn main() -> Result<()> {
     let args = parse_args()?;
-    use std::panic;
-
-    panic::set_hook(Box::new(|_| {
-        println!("Custom panic hook");
-    }));
-
 
     // time crate won't read TZ if we're threaded, in case someone
     // tries to mutate shared state with setenv.

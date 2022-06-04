@@ -5,10 +5,11 @@ use {
     log::{debug, error, info, log, trace, warn},
 };
 
-use ed25519_dalek as dalek;
-use ed25519_dalek::{Verifier, Signer};
+use salty::{SecretKey, PublicKey};
+use signature::Verifier;
 
-use crate::{*, packets::ParseContext};
+use crate::*;
+use packets::ParseContext;
 use sshnames::*;
 use packets::{PubKey, Signature, Ed25519PubKey};
 use sshwire::{BinString, SSHEncode};
@@ -56,21 +57,23 @@ impl SigType {
         if discriminant(&sig_type) != discriminant(self) {
             warn!("Received {:?} signature, expecting {}",
                 sig.algorithm_name(), self.algorithm_name());
-            return Err(Error::BadSignature)
+            return Err(Error::BadSig)
         }
 
         match (self, pubkey, sig) {
 
             (SigType::Ed25519, PubKey::Ed25519(k), Signature::Ed25519(s)) => {
-                let k = dalek::PublicKey::from_bytes(k.key.0).map_err(|_| Error::BadSignature)?;
-                let s = dalek::Signature::from_bytes(s.sig.0).map_err(|_| Error::BadSignature)?;
-                k.verify(message, &s).map_err(|_| Error::BadSignature)
+                let k: &[u8; 32] = k.key.0.try_into().map_err(|_| Error::BadKey)?;
+                let k: salty::PublicKey = k.try_into().map_err(|_| Error::BadKey)?;
+                let s: &[u8; 64] = s.sig.0.try_into().map_err(|_| Error::BadSig)?;
+                let s: salty::Signature = s.into();
+                k.verify(message, &s).map_err(|_| Error::BadSig)
             }
 
             (SigType::RSA256, PubKey::RSA(_k), Signature::RSA256(_s)) => {
                 // TODO
                 warn!("RSA256 is not implemented for no_std");
-                Err(Error::BadSignature)
+                Err(Error::BadSig)
                 // // untested
                 // use rsa::{PublicKey, RsaPrivateKey, RsaPublicKey, PaddingScheme};
                 // let k: RsaPublicKey = k.try_into()?;
@@ -80,7 +83,7 @@ impl SigType {
                 //     s.sig.0)
                 // .map_err(|e| {
                 //     trace!("RSA signature failed: {e}");
-                //     Error::BadSignature
+                //     Error::BadSig
                 // })
             }
 
@@ -89,21 +92,21 @@ impl SigType {
                     sig.algorithm_name(),
                     pubkey.algorithm_name(),
                     );
-                Err(Error::SignatureMismatch)
+                Err(Error::SigMismatch)
             }
         }
     }
 }
 
 pub(crate) enum OwnedSig {
-    // dalek::Signature doesn't let us borrow the inner bytes,
+    // Signature doesn't let us borrow the inner bytes,
     // so we just store raw bytes here.
     Ed25519([u8; 64]),
     RSA256, // TODO
 }
 
-impl From<dalek::Signature> for OwnedSig {
-    fn from(s: dalek::Signature) -> Self {
+impl From<salty::Signature> for OwnedSig {
+    fn from(s: salty::Signature) -> Self {
         OwnedSig::Ed25519(s.to_bytes())
     }
 
@@ -113,7 +116,7 @@ impl From<dalek::Signature> for OwnedSig {
 /// or could potentially send the signing requests to a SSH agent
 /// or other entitiy.
 pub enum SignKey {
-    Ed25519(dalek::Keypair),
+    Ed25519(salty::Keypair),
 }
 
 impl SignKey {
@@ -137,10 +140,9 @@ impl SignKey {
     pub(crate) fn sign_encode<'s>(&self, msg: &'s impl SSHEncode, parse_ctx: Option<&ParseContext>) -> Result<OwnedSig> {
         match self {
             SignKey::Ed25519(k) => {
-                let exk: dalek::ExpandedSecretKey = (&k.secret).into();
-                exk.sign_parts(|h| {
-                    sshwire::hash_ser(h, parse_ctx, msg).map_err(|_| dalek::SignatureError::new())
-                }, &k.public)
+                k.sign_parts(|h| {
+                    sshwire::hash_ser(h, parse_ctx, msg).map_err(|_| salty::Error::ContextTooLong)
+                })
                 .trap()
                 .map(|s| s.into())
             }
@@ -154,13 +156,11 @@ impl TryFrom<ssh_key::PrivateKey> for SignKey {
     fn try_from(k: ssh_key::PrivateKey) -> Result<Self> {
         match k.key_data() {
             ssh_key::private::KeypairData::Ed25519(k) => {
-                let edk = dalek::Keypair {
-                    secret: dalek::SecretKey::from_bytes(&k.private.to_bytes())
-                        .map_err(|_| Error::BadKey)?,
-                    public: dalek::PublicKey::from_bytes(&k.public.0)
-                        .map_err(|_| Error::BadKey)?,
+                let key = salty::Keypair {
+                    secret: (&k.private.to_bytes()).into(),
+                    public: (&k.public.0).try_into().map_err(|_| Error::BadKey)?,
                 };
-                Ok(SignKey::Ed25519(edk))
+                Ok(SignKey::Ed25519(key))
             }
             _ => Err(Error::NotAvailable { what: k.algorithm().as_str() })
         }
@@ -169,7 +169,6 @@ impl TryFrom<ssh_key::PrivateKey> for SignKey {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use ed25519_dalek::Signer;
 
     use crate::*;
     use sshnames::SSH_NAME_ED25519;
@@ -178,8 +177,9 @@ pub(crate) mod tests {
     use doorlog::init_test_log;
 
     pub(crate) fn make_ed25519_signkey() -> SignKey {
-        let mut rng = random::DoorRng::default();
-        let ed = dalek::Keypair::generate(&mut rng);
+        let mut s = [0u8; 32];
+        random::fill_random(s.as_mut_slice()).unwrap();
+        let ed = salty::Keypair::from(&s);
         sign::SignKey::Ed25519(ed)
     }
 

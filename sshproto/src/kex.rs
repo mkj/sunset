@@ -442,9 +442,9 @@ impl SharedSecret {
         kex_hash.prefinish(&fake_hostkey, p.q_c.0, algos.kex.pubkey())?;
         let kex_out = match algos.kex {
             SharedSecret::KexCurve25519(ref k) => {
-                let pubkey = (k.ours.as_ref().trap()?).into();
+                let pubkey: salty::agreement::PublicKey = k.ours.as_ref().trap()?.into();
                 let mut kex_out = KexCurve25519::secret(&mut algos, p.q_c.0, kex_hash, sess_id)?;
-                kex_out.pubkey = Some(pubkey);
+                kex_out.pubkey = Some(pubkey.to_bytes());
                 kex_out
             }
         };
@@ -464,8 +464,10 @@ pub(crate) struct KexOutput {
     pub keys: Keys,
 
     // storage for kex packet reply content that outlives Kex
-    // TODO: this should become generic
-    pubkey: Option<x25519_dalek::PublicKey>,
+    // in make_kexdhreply().
+
+    // TODO: this should become generic for other kex methods
+    pubkey: Option<[u8; 32]>,
 }
 
 impl fmt::Debug for KexOutput {
@@ -490,7 +492,7 @@ impl<'a> KexOutput {
 
     // server only
     pub fn make_kexdhreply(&'a self) -> Result<Packet<'a>> {
-        let q_s = BinString(self.pubkey.as_ref().trap()?.as_bytes());
+        let q_s = BinString(self.pubkey.as_ref().trap()?);
         // TODO
         let k_s = Blob(PubKey::Ed25519(packets::Ed25519PubKey{ key: BinString(&[]) }));
         let sig = Blob(Signature::Ed25519(packets::Ed25519Sig{ sig: BinString(&[]) }));
@@ -500,28 +502,32 @@ impl<'a> KexOutput {
 }
 
 pub(crate) struct KexCurve25519 {
-    ours: Option<x25519_dalek::EphemeralSecret>,
-    pubkey: x25519_dalek::PublicKey,
+    ours: Option<salty::agreement::SecretKey>,
+    pubkey: [u8; 32],
 }
 
 impl core::fmt::Debug for KexCurve25519 {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         f.debug_struct("KexCurve25519")
             .field("ours", &if self.ours.is_some() { "Some" } else { "None" })
-            .field("pubkey", self.pubkey.as_bytes())
+            .field("pubkey", &self.pubkey)
             .finish()
     }
 }
 
 impl KexCurve25519 {
     fn new() -> Result<Self> {
-        let ours = x25519_dalek::EphemeralSecret::new(random::DoorRng::default());
-        let pubkey = (&ours).into();
+        let mut s = [0u8; 32];
+        random::fill_random(s.as_mut_slice())?;
+        // TODO: check that pure random bytes are OK
+        let ours = salty::agreement::SecretKey::from_seed(&s);
+        let pubkey: salty::agreement::PublicKey = (&ours).into();
+        let pubkey = pubkey.to_bytes();
         Ok(KexCurve25519 { ours: Some(ours), pubkey })
     }
 
     fn pubkey<'a>(&'a self) -> &'a [u8] {
-        self.pubkey.as_bytes()
+        self.pubkey.as_slice()
     }
 
     fn secret<'a>(
@@ -536,9 +542,9 @@ impl KexCurve25519 {
         };
         let ours = kex.ours.take().trap()?;
         let theirs: [u8; 32] = theirs.try_into().map_err(|_| Error::BadKex)?;
-        let theirs = theirs.into();
-        let shsec = ours.diffie_hellman(&theirs);
-        KexOutput::make(shsec.as_bytes(), algos, kex_hash, sess_id)
+        let theirs = theirs.try_into().map_err(|_| Error::BadKex)?;
+        let shsec = ours.agree(&theirs);
+        KexOutput::make(&shsec.to_bytes(), algos, kex_hash, sess_id)
     }
 }
 
