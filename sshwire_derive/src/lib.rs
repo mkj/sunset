@@ -62,7 +62,7 @@ enum ContainerAtt {
 
 #[derive(Debug)]
 enum FieldAtt {
-    /// A variant method will be encoded/decoded before the next field.
+    /// A variant method name will be encoded/decoded before the next field.
     /// eg `#[sshwire(variant_name = ch)]` for `ChannelRequest`
     VariantName(Ident),
     /// Any unknown variant name should be recorded here.
@@ -223,8 +223,6 @@ fn encode_struct(gen: &mut Generator, body: StructBody) -> Result<()> {
                                 fn_body.push_parsed(format!("crate::sshwire::SSHEncode::enc(&self.{enum_field}.variant_name()?, s)?;"))?;
                             }
                         }
-                        // println!("atts for {fname}: {atts:?}");
-                        // TODO handle attributes
                         fn_body.push_parsed(format!("crate::sshwire::SSHEncode::enc(&self.{fname}, s)?;"))?;
                     }
 
@@ -289,7 +287,7 @@ fn encode_enum(
                             }
 
                         }
-                        _ => return Err(Error::Custom { error: "SSHEncode currently only implements Unit or single value enum variants. ".into(), span: None})
+                        _ => return Err(Error::Custom { error: "SSHEncode currently only implements Unit or single value enum variants.".into(), span: None})
                     }
 
                     match_arm.puncts("=>");
@@ -359,7 +357,7 @@ fn encode_enum_names(
                             })?;
 
                         }
-                        _ => return Err(Error::Custom { error: "SSHEncode currently only implements Unit or single value enum variants. ".into(), span: None})
+                        _ => return Err(Error::Custom { error: "SSHEncode currently only implements Unit or single value enum variants.".into(), span: None})
                     }
 
                     match_arm.puncts("=>");
