@@ -1392,7 +1392,3 @@ dependencies = [
  "syn",
  "synstructure",
 ]
-
-[[patch.unused]]
-name = "ed25519-dalek"
-version = "2.0.0-pre.1"
