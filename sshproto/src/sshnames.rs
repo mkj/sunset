@@ -1,6 +1,9 @@
 //! Named SSH algorithms, methods and extensions. This module also serves as
 //! an index of SSH specifications.
 
+//! Some identifiers are also listed directly in `packet.rs` derive attributes.
+//! Packet numbers are listed in `packet.rs`.
+
 /// [RFC8731](https://tools.ietf.org/html/rfc8731)
 pub const SSH_NAME_CURVE25519: &str = "curve25519-sha256";
 /// An older alias prior to standardisation. Eventually could be removed
@@ -47,3 +50,5 @@ pub const SSH_AUTHMETHOD_PUBLICKEY: &str = "publickey";
 /// [RFC4256](https://tools.ietf.org/html/rfc4256)
 pub const SSH_AUTHMETHOD_INTERACTIVE: &str = "keyboard-interactive";
 
+/// [RFC4254](https://tools.ietf.org/html/rfc4254)
+pub const SSH_EXTENDED_DATA_STDERR: u32 = 1;

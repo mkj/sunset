@@ -22,10 +22,10 @@ to get a backtrace.
 
 ## Serialisation/deserialisation
 
-Previously the code used serde with a custom `Serializer`/`Deserializer`. That worked
+Previously the code used `serde` with a custom `Serializer`/`Deserializer`. That worked
 fine for serializing and `derive(Deserialize)`, but deserializing enums was a pain.
 For types like `packets::ChannelRequest`
-the deserializer had to stash the channel request type string from the parent struct somewhere,
+the deserializer had to stash the channel request type string from the `ChannelRequest` struct somewhere,
 then use that later when deserialising the `ChannelReqType` enum. Other response packets like number 60 `Userauth60`
 mean completely different things depending on the previous request, but that state is hard to pass through
 the deserializer.
