@@ -25,6 +25,7 @@ pub trait SSHSink {
 
 pub trait SSHSource<'de> {
     fn take(&mut self, len: usize) -> WireResult<&'de [u8]>;
+    fn pos(&self) -> usize;
     fn ctx(&self) -> &ParseContext;
 }
 
@@ -67,6 +68,8 @@ pub enum WireError {
 
     PacketWrong,
 
+    SSHProtoError,
+
     UnknownPacket { number: u8 },
 }
 
@@ -77,6 +80,7 @@ impl From<WireError> for Error {
             WireError::RanOut => Error::RanOut,
             WireError::BadString => Error::BadString,
             WireError::BadName => Error::BadName,
+            WireError::SSHProtoError => Error::SSHProtoError,
             WireError::PacketWrong => Error::PacketWrong,
             WireError::UnknownVariant => Error::bug_err_msg("Can't encode Unknown"),
             WireError::UnknownPacket { number } => Error::UnknownPacket { number },
@@ -91,7 +95,12 @@ pub type WireResult<T> = core::result::Result<T, WireError>;
 /// Parses a [`Packet`] from a borrowed `&[u8]` byte buffer.
 pub fn packet_from_bytes<'a>(b: &'a [u8], ctx: &ParseContext) -> Result<Packet<'a>> {
     let mut s = DecodeBytes { input: b, pos: 0, parse_ctx: ctx.clone() };
-    Ok(Packet::dec(&mut s)?)
+    let p = Packet::dec(&mut s)?;
+    if s.pos() == b.len() {
+        Ok(p)
+    } else {
+        Err(Error::WrongPacketLength)
+    }
 }
 
 pub fn read_ssh<'a, T: SSHDecode<'a>>(b: &'a [u8], ctx: Option<ParseContext>) -> Result<T> {
@@ -197,6 +206,10 @@ impl<'de> SSHSource<'de> for DecodeBytes<'de> {
         (t, self.input) = self.input.split_at(len);
         self.pos += len;
         Ok(t)
+    }
+
+    fn pos(&self) -> usize {
+        self.pos
     }
 
     fn ctx(&self) -> &ParseContext {
@@ -315,7 +328,7 @@ impl<'de> SSHDecode<'de> for TextString<'de> {
     }
 }
 
-// A wrapper for a u32 prefixed data structure `B`, such as a public key blob
+/// A wrapper for a u32 prefixed data structure `B`, such as a public key blob
 pub struct Blob<B>(pub B);
 
 impl<B> AsRef<B> for Blob<B> {
@@ -353,9 +366,14 @@ impl<'de, B: SSHDecode<'de>> SSHDecode<'de> for Blob<B> {
     fn dec<S>(s: &mut S) -> WireResult<Self>
     where S: sshwire::SSHSource<'de> {
         let len = u32::dec(s)?;
+        let pos1 = s.pos();
         let inner = SSHDecode::dec(s)?;
-        // TODO verify length matches
-        Ok(Blob(inner))
+        let pos2 = s.pos();
+        if (pos2 - pos1) == len as usize {
+            Ok(Blob(inner))
+        } else {
+            Err(WireError::SSHProtoError)
+        }
     }
 }
 

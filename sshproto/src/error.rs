@@ -56,6 +56,9 @@ pub enum Error {
     /// Bad channel number
     BadChannel,
 
+    /// SSH packet contents doesn't match length
+    WrongPacketLength,
+
     // Used for unknown key types etc.
     #[snafu(display("{what} is not available"))]
     NotAvailable { what: &'static str },

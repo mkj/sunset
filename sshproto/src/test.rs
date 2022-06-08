@@ -14,11 +14,11 @@ mod tests {
 
     fn test_roundtrip_packet(p: &Packet) -> Result<(), Error> {
         let mut buf1 = vec![99; 500];
-        let _w1 = sshwire::write_ssh(&mut buf1, p)?;
+        let w1 = sshwire::write_ssh(&mut buf1, p)?;
 
         let ctx = ParseContext::new();
 
-        let p2 = sshwire::packet_from_bytes(&buf1, &ctx)?;
+        let p2 = sshwire::packet_from_bytes(&buf1[..w1], &ctx)?;
 
         let mut buf2 = vec![99; 500];
         let _w2 = sshwire::write_ssh(&mut buf2, &p2)?;

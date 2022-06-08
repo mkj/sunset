@@ -603,8 +603,8 @@ mod tests {
 
     /// Round trip a `Packet`
     fn reencode<'a>(out_buf: &'a mut [u8], p: Packet, ctx: &ParseContext) -> Packet<'a> {
-        sshwire::write_ssh(out_buf, &p).unwrap();
-        sshwire::packet_from_bytes(out_buf, &ctx).unwrap()
+        let l = sshwire::write_ssh(out_buf, &p).unwrap();
+        sshwire::packet_from_bytes(&out_buf[..l], &ctx).unwrap()
     }
 
     #[test]
