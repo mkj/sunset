@@ -909,6 +909,7 @@ checksum = "f3f6f92acf49d1b98f7a81226834412ada05458b7364277387724a237f062695"
 [[package]]
 name = "salty"
 version = "0.2.0"
+source = "git+https://github.com/mkj/salty?branch=parts#d886ddcef3159eb5e6632a388dd2f93365598311"
 dependencies = [
  "digest 0.10.3",
  "ed25519",
