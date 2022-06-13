@@ -74,7 +74,7 @@ impl Behaviour<'_> {
         self.inner.progress(runner)
     }
 
-    pub(crate) async fn chan_handler<'f>(&mut self, resp: &mut RespPackets<'_>, chan_msg: ChanMsg<'f>) -> Result<()> {
+    pub(crate) async fn chan_handler(&mut self, resp: &mut RespPackets<'_>, chan_msg: ChanMsg) -> Result<()> {
         self.inner.chan_handler(resp, chan_msg).await
     }
 
@@ -108,7 +108,7 @@ impl<'a> Behaviour<'a>
         self.inner.progress(runner)
     }
 
-    pub(crate) async fn chan_handler<'f>(&mut self, resp: &mut RespPackets<'_>, chan_msg: ChanMsg<'f>) -> Result<()> {
+    pub(crate) async fn chan_handler(&mut self, resp: &mut RespPackets<'_>, chan_msg: ChanMsg) -> Result<()> {
         self.inner.chan_handler(resp, chan_msg)
     }
 

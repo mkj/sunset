@@ -2,6 +2,8 @@
 name = "door-sshproto"
 version = "0.1.0"
 edition = "2021"
+categories = ["network-programming", "no-std"]
+keywords = ["ssh"]
 
 [dependencies]
 sshwire_derive = { path = "../sshwire_derive" }
@@ -11,9 +13,10 @@ snafu = { version = "0.7", default-features = false, features = ["rust_1_46"] }
 log = { version = "0.4" }
 heapless = "0.7.10"
 no-panic = "0.1"
+
+# allows avoiding utf8 for SSH identifier names
 ascii = { version = "1.0", default-features = false }
 
-# TODO: needs changing for embedded platforms
 rand = { version = "0.8", default-features = false }
 rand_core = { version = "0.6", default-features = false }
 
@@ -23,18 +26,20 @@ sha2 = { version = "0.10", default-features = false }
 hmac = "0.12"
 digest = "0.10"
 signature = { version = "1.4", default-features = false }
-ssh-key = { version = "0.4", default-features = false, features = ["ed25519", "ecdsa", "sha2"] }
 chacha20 = "0.9"
 poly1305 = "0.7"
+# ed25519/x25519
+salty = { version = "0.2", path = "/home/matt/3rd/rs/salty" }
+# could be optional? though isn't linked if openssh keys aren't loaded
+ssh-key = { version = "0.4", default-features = false, features = ["ed25519", "ecdsa", "sha2"] }
 
+# for debug printing
 pretty-hex = { version = "0.3", default-features = false }
 
 pin-utils = "0.1"
 
 # tokio = { version = "1.18", features = ["sync"], optional = true }
 async-trait = { version = "0.1", optional = true }
-
-salty = { version = "0.2", path = "/home/matt/3rd/rs/salty" }
 
 [features]
 default = [ "getrandom" ]

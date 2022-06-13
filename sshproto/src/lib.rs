@@ -44,6 +44,7 @@ mod block_behaviour;
 mod ssh_chapoly;
 pub mod sshwire;
 
+// Application API
 pub use behaviour::{Behaviour, BhError, BhResult, ResponseString};
 #[cfg(feature = "std")]
 pub use async_behaviour::{AsyncCliBehaviour,AsyncServBehaviour};
@@ -56,3 +57,4 @@ pub use sign::SignKey;
 pub use packets::PubKey;
 pub use error::{Error,Result};
 pub use channel::{ChanMsg,ChanMsgDetails};
+pub use conn::Event;

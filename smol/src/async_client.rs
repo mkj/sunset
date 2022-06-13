@@ -39,19 +39,16 @@ impl SimpleClient {
 
 #[async_trait(?Send)]
 impl door::AsyncCliBehaviour for SimpleClient {
-    async fn chan_handler<'f>(
+    async fn chan_handler(
         &mut self,
         resp: &mut RespPackets,
-        chan_msg: ChanMsg<'f>,
+        chan_msg: ChanMsg,
     ) -> Result<()> {
         if Some(chan_msg.num) != self.main_ch {
             return Err(Error::SSHProtoError);
         }
 
         match chan_msg.msg {
-            ChanMsgDetails::Data(buf) => {
-                let _ = tokio::io::stdout().write_all(buf).await;
-            }
             ChanMsgDetails::ExtData { .. } => {}
             ChanMsgDetails::Req { .. } => {}
             _ => {}

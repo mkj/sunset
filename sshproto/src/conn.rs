@@ -27,6 +27,10 @@ pub(crate) const MAX_RESPONSES: usize = 4;
 
 pub type RespPackets<'a> = heapless::Vec<PacketMaker<'a>, MAX_RESPONSES>;
 
+pub(crate) enum Handled<'a> {
+    Response(RespPackets<'a>),
+}
+
 /// The core state of a SSH instance.
 pub struct Conn<'a> {
     state: ConnState,
@@ -85,6 +89,16 @@ enum ConnState {
     /// After auth success
     Authed,
     // Cleanup ??
+}
+
+// Application API
+#[derive(Debug)]
+pub enum Event<'a> {
+    Channel(channel::ChanEvent<'a>),
+}
+
+pub(crate) enum EventMaker {
+    Channel(channel::ChanEventMaker),
 }
 
 impl<'a> Conn<'a> {
@@ -161,21 +175,22 @@ impl<'a> Conn<'a> {
     /// Consumes an input payload which is a view into [`traffic::Traffic::buf`].
     /// We queue response packets that can be sent (written into the same buffer)
     /// after `handle_payload()` runs.
-    pub(crate) async fn handle_payload(
-        &mut self, payload: &[u8], keys: &mut KeyState, b: &mut Behaviour<'_>,
-    ) -> Result<RespPackets<'_>, Error> {
+    pub(crate) async fn handle_payload<'p>(
+        &mut self, payload: &'p [u8], keys: &mut KeyState, b: &mut Behaviour<'_>,
+    ) -> Result<Dispatched<'_>, Error> {
         let p = sshwire::packet_from_bytes(payload, &self.parse_ctx)?;
-        let r = self.dispatch_packet(&p, keys, b).await;
+        let r = self.dispatch_packet(p, keys, b).await;
         r
     }
 
-    async fn dispatch_packet(
-        &mut self, packet: &Packet<'_>, keys: &mut KeyState, b: &mut Behaviour<'_>,
-    ) -> Result<RespPackets<'_>, Error> {
+    async fn dispatch_packet<'p>(
+        &mut self, packet: Packet<'p>, keys: &mut KeyState, b: &mut Behaviour<'_>,
+    ) -> Result<Dispatched<'_>, Error> {
         // TODO: perhaps could consolidate packet allowed checks into a separate function
         // to run first?
         trace!("Incoming {packet:#?}");
         let mut resp = RespPackets::new();
+        let mut ev = None;
         match packet {
             Packet::KexInit(_) => {
                 if matches!(self.state, ConnState::InKex { .. }) {
@@ -189,7 +204,7 @@ impl<'a> Conn<'a> {
                     self.cliserv.is_client(),
                     &self.algo_conf,
                     &self.remote_version,
-                    packet,
+                    &packet,
                 )?;
                 if let Some(r) = r {
                     resp.push(r.into()).trap()?;
@@ -207,7 +222,7 @@ impl<'a> Conn<'a> {
                         } else {
                             let kex =
                                 core::mem::replace(&mut self.kex, kex::Kex::new()?);
-                            *output = Some(kex.handle_kexdhinit(p, &self.sess_id)?);
+                            *output = Some(kex.handle_kexdhinit(&p, &self.sess_id)?);
                             let reply = output.as_ref().trap()?.make_kexdhreply()?;
                             resp.push(reply.into()).trap()?;
                         }
@@ -224,7 +239,7 @@ impl<'a> Conn<'a> {
                             } else {
                                 let kex =
                                     core::mem::replace(&mut self.kex, kex::Kex::new()?);
-                                *output = Some(kex.handle_kexdhreply(p, &self.sess_id, &mut b.client()?).await?);
+                                *output = Some(kex.handle_kexdhreply(&p, &self.sess_id, &mut b.client()?).await?);
                                 resp.push(Packet::NewKeys(packets::NewKeys {}).into()).trap()?;
                             }
                         } else {
@@ -279,7 +294,7 @@ impl<'a> Conn<'a> {
             Packet::UserauthFailure(p) => {
                 // TODO: client only
                 if let ClientServer::Client(cli) = &mut self.cliserv {
-                    cli.auth.failure(p, &mut b.client()?, &mut resp, &mut self.parse_ctx).await?;
+                    cli.auth.failure(&p, &mut b.client()?, &mut resp, &mut self.parse_ctx).await?;
                 } else {
                     debug!("Received UserauthFailure as a server");
                     return Err(Error::SSHProtoError)
@@ -310,7 +325,7 @@ impl<'a> Conn<'a> {
             Packet::UserauthBanner(p) => {
                 // TODO: client only
                 if let ClientServer::Client(cli) = &mut self.cliserv {
-                    cli.banner(p, &mut b.client()?).await;
+                    cli.banner(&p, &mut b.client()?).await;
                 } else {
                     debug!("Received banner as a server");
                     return Err(Error::SSHProtoError)
@@ -319,7 +334,7 @@ impl<'a> Conn<'a> {
             Packet::Userauth60(p) => {
                 // TODO: client only
                 if let ClientServer::Client(cli) = &mut self.cliserv {
-                    cli.auth.auth60(p, &mut resp, self.sess_id.as_ref().trap()?, &mut self.parse_ctx).await?;
+                    cli.auth.auth60(&p, &mut resp, self.sess_id.as_ref().trap()?, &mut self.parse_ctx).await?;
                 } else {
                     debug!("Received userauth60 as a server");
                     return Err(Error::SSHProtoError)
@@ -336,9 +351,42 @@ impl<'a> Conn<'a> {
             | Packet::ChannelRequest(_)
             | Packet::ChannelSuccess(_)
             | Packet::ChannelFailure(_)
-            // TODO: probably needs a conn or cliserv argument.
-            => self.channels.dispatch(packet, &mut resp, b).await?,
+            // TODO: maybe needs a conn or cliserv argument.
+            => {
+                let chev = self.channels.dispatch(packet, &mut resp, b).await?;
+                ev = chev.map(|c| EventMaker::Channel(c))
+           }
         };
-        Ok(resp)
+        if let Some(ev) = ev {
+            if resp.is_empty() {
+                Ok(Dispatched::Event(ev))
+            } else {
+                Err(Error::bug())
+            }
+        } else {
+            Ok(Dispatched::Resp(resp))
+        }
     }
+
+    pub(crate) fn make_event<'p>(&mut self, payload: &'p [u8], ev: EventMaker)
+            -> Result<Option<Event<'p>>> {
+        let p = sshwire::packet_from_bytes(payload, &self.parse_ctx)?;
+        match ev {
+            EventMaker::Channel(cev) => {
+                let c = cev.make(p);
+                Ok(c.map(|c| Event::Channel(c)))
+            }
+        }
+    }
+
+}
+
+// pub(crate) struct Dispatched<'r, 'e> {
+//     pub resp: RespPackets<'r>,
+//     pub event: Option<Event<'e>>,
+// }
+
+pub(crate) enum Dispatched<'r> {
+    Resp(RespPackets<'r>),
+    Event(EventMaker),
 }

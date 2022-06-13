@@ -50,7 +50,7 @@ impl BlockCliServ<'_>
     pub(crate) fn chan_handler<'f>(
         &mut self,
         resp: &mut RespPackets<'_>,
-        chan_msg: ChanMsg<'f>,
+        chan_msg: ChanMsg,
     ) -> Result<()> {
         match self {
             Self::Client(i) => i.chan_handler(resp, chan_msg),
@@ -63,7 +63,7 @@ pub trait BlockCliBehaviour {
     fn chan_handler<'f>(
         &mut self,
         resp: &mut RespPackets,
-        chan_msg: ChanMsg<'f>,
+        chan_msg: ChanMsg,
     ) -> Result<()>;
 
     /// Should not block

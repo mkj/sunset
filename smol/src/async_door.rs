@@ -7,14 +7,15 @@ use core::task::{Context, Poll};
 use pin_utils::pin_mut;
 
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
+use tokio::sync::Mutex as TokioMutex;
+use tokio::sync::Notify as TokioNotify;
 
 use std::io::Error as IoError;
 use std::io::ErrorKind;
 
+use core::task::Waker;
 use std::sync::{Arc, Mutex, MutexGuard};
-
-use parking_lot::lock_api::ArcMutexGuard;
-use parking_lot::Mutex as ParkingLotMutex;
+use futures::task::AtomicWaker;
 
 // TODO
 use anyhow::{anyhow, Context as _, Error, Result};
@@ -34,88 +35,65 @@ pub struct Inner<'a> {
     behaviour: Behaviour<'a>,
 }
 
+#[derive(Clone)]
 pub struct AsyncDoor<'a> {
-    inner: Arc<ParkingLotMutex<Inner<'a>>>,
-    out_progress_fut:
-        Option<Pin<Box<dyn Future<Output = Result<(), DoorError>> + 'a>>>,
-}
+    inner: Arc<TokioMutex<Inner<'a>>>,
 
-impl Clone for AsyncDoor<'_> {
-    fn clone(&self) -> Self {
-        Self { inner: self.inner.clone(), out_progress_fut: None }
-    }
+    read_waker: Arc<AtomicWaker>,
+    write_waker: Arc<AtomicWaker>,
+    progress_notify: Arc<TokioNotify>,
 }
 
 impl<'a> AsyncDoor<'a> {
     pub fn new(runner: Runner<'a>, behaviour: Behaviour<'a>) -> Self {
-        let inner = Inner { runner, behaviour };
-        Self { inner: Arc::new(ParkingLotMutex::new(inner)), out_progress_fut: None }
+        let inner = Arc::new(TokioMutex::new(Inner { runner, behaviour }));
+        let read_waker = Arc::new(AtomicWaker::new());
+        let write_waker = Arc::new(AtomicWaker::new());
+        let progress_notify = Arc::new(TokioNotify::new());
+        Self { inner, read_waker, write_waker, progress_notify }
     }
 
-    // TODO this should go away, or perhaps pass the function down to the Behaviour
-    pub fn with_behaviour<F, R>(&self, f: F) -> R
-    where
-        F: FnOnce(&mut Behaviour<'a>) -> R,
-    {
-        f(&mut self.lock().behaviour)
+    pub async fn progress<F, R>(&mut self, f: F)
+        -> Result<Option<R>> where F: FnOnce(door::Event) -> Result<R> {
+        {
+            self.progress_notify.notified().await;
+            let res = {
+                let mut inner = self.inner.lock().await;
+                let inner = inner.deref_mut();
+                let ev = inner.runner.progress(&mut inner.behaviour).await.context("progess")?;
+                if let Some(ev) = ev {
+                    f(ev).map(|r| Some(r))
+                } else {
+                    Ok(None)
+                }
+            };
+            // self.read_waker.take().map(|w| w.wake());
+            // self.write_waker.take().map(|w| w.wake());
+            res
+        }
     }
-
-    fn lock(&self) -> parking_lot::MutexGuard<Inner<'a>> {
-        self.inner.lock()
-    }
-
-    // fn poll_write_channel(
-    //     self: Pin<&mut Self>,
-    //     channel: u32,
-    //     cx: &mut Context<'_>,
-    //     buf: &[u8],
-    // ) -> Poll<Result<usize, IoError>> {
-    // }
-
 }
-
 
 impl<'a> AsyncRead for AsyncDoor<'a> {
     fn poll_read(
-        mut self: Pin<&mut Self>,
+        self: Pin<&mut Self>,
         cx: &mut Context<'_>,
         buf: &mut ReadBuf,
     ) -> Poll<Result<(), IoError>> {
         trace!("poll_read");
 
-        let r = if let Some(f) = self.out_progress_fut.as_mut() {
-            f.as_mut().poll(cx)
-            .map_err(|e| IoError::new(ErrorKind::Other, e))
+        // try to lock, or return pending
+        self.read_waker.register(cx.waker());
+        let mut inner = self.inner.try_lock();
+        let runner = if let Ok(ref mut inner) = inner {
+            &mut inner.deref_mut().runner
         } else {
-            // TODO this blocks
-            let mut inner = ParkingLotMutex::lock_arc(&self.inner);
-
-            // TODO: should this be conditional on the result of the poll?
-            inner.runner.set_output_waker(cx.waker().clone());
-            // async move block to capture `inner`
-            let mut b = Box::pin(async move {
-                let inner = inner.deref_mut();
-                inner.runner.out_progress(&mut inner.behaviour).await
-            });
-            // let mut b = Box::pin(guard_wait(inner));
-            let r = b.as_mut().poll(cx);
-            if let Poll::Pending = r {
-                self.out_progress_fut = Some(b);
-            }
-            r.map_err(|e| IoError::new(ErrorKind::Other, e))
-        }?;
-        if let Poll::Pending = r {
-            return Poll::Pending;
-        } else {
-            self.out_progress_fut = None
-        }
-
-        let runner = &mut self.lock().runner;
+            return Poll::Pending
+        };
 
         let b = buf.initialize_unfilled();
         let r = runner.output(b).map_err(|e| IoError::new(ErrorKind::Other, e));
 
-        trace!("runner output {r:?}");
         let r = match r {
             // sz=0 means EOF
             Ok(0) => Poll::Pending,
@@ -126,7 +104,8 @@ impl<'a> AsyncRead for AsyncDoor<'a> {
             }
             Err(e) => Poll::Ready(Err(e)),
         };
-        info!("finish poll_read {r:?}");
+        drop(inner);
+        self.write_waker.take().map(|w| w.wake());
         r
     }
 }
@@ -138,9 +117,15 @@ impl<'a> AsyncWrite for AsyncDoor<'a> {
         buf: &[u8],
     ) -> Poll<Result<usize, IoError>> {
         trace!("poll_write");
-        // TODO: this lock is blocking
-        let runner = &mut self.lock().runner;
-        runner.set_input_waker(cx.waker().clone());
+
+        // try to lock, or return pending
+        self.write_waker.register(cx.waker());
+        let mut inner = self.inner.try_lock();
+        let runner = if let Ok(ref mut inner) = inner {
+            &mut inner.deref_mut().runner
+        } else {
+            return Poll::Pending
+        };
 
         // TODO: should runner just have poll_write/poll_read?
         // TODO: is ready_input necessary? .input() should return size=0
@@ -153,7 +138,9 @@ impl<'a> AsyncWrite for AsyncDoor<'a> {
         } else {
             Poll::Pending
         };
-        trace!("poll_write {r:?}");
+        drop(inner);
+        self.progress_notify.notify_one();
+        // self.read_waker.take().map(|w| w.wake());
         r
     }
 

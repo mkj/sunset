@@ -50,7 +50,7 @@ impl AsyncCliServ {
         }
     }
 
-    pub(crate) async fn chan_handler<'f>(&mut self, resp: &mut RespPackets<'_>, chan_msg: ChanMsg<'f>) -> Result<()> {
+    pub(crate) async fn chan_handler(&mut self, resp: &mut RespPackets<'_>, chan_msg: ChanMsg) -> Result<()> {
         match self {
             Self::Client(i) => i.chan_handler(resp, chan_msg).await,
             Self::Server(i) => i.chan_handler(resp, chan_msg),
@@ -60,7 +60,7 @@ impl AsyncCliServ {
 
 #[async_trait(?Send)]
 pub trait AsyncCliBehaviour {
-    async fn chan_handler<'f>(&mut self, resp: &mut RespPackets, chan_msg: ChanMsg<'f>) -> Result<()>;
+    async fn chan_handler(&mut self, resp: &mut RespPackets, chan_msg: ChanMsg) -> Result<()>;
 
     /// Should not block
     fn progress(&mut self, runner: &mut Runner) -> Result<()> { Ok(()) }

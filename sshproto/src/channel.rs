@@ -10,17 +10,24 @@ use heapless::{Deque, String, Vec};
 
 use crate::{conn::RespPackets, *};
 use config::*;
-use packets::{ChannelReqType, ChannelRequest, Packet, ChannelOpenType};
+use packets::{ChannelReqType, ChannelRequest, Packet, ChannelOpenType, ChannelData, ChannelDataExt};
+use sshwire::BinString;
 
 pub(crate) struct Channels {
     ch: [Option<Channel>; config::MAX_CHANNELS],
+
+    /// The size of data last set with `ChanEvent::DataIn`.
+    pending_input: Option<PendInput>,
 }
 
 pub(crate) type InitReqs = Vec<ReqDetails, MAX_INIT_REQS>;
 
 impl Channels {
     pub fn new() -> Self {
-        Channels { ch: Default::default() }
+        Channels {
+            ch: Default::default(),
+            pending_input: None,
+        }
     }
 
     pub fn open<'b>(
@@ -38,17 +45,7 @@ impl Channels {
             )
             .ok_or(Error::NoChannels)?;
 
-        let chan = Channel {
-            state: ChanState::Opening { init_req },
-            ty: (&ty).into(),
-            last_req: Deque::new(),
-            recv: ChanDir {
-                num,
-                max_packet: config::DEFAULT_MAX_PACKET,
-                window: config::DEFAULT_WINDOW,
-            },
-            send: None,
-        };
+        let chan = Channel::new(num, (&ty).into(), init_req);
         let p = packets::ChannelOpen {
             num,
             initial_window: chan.recv.window as u32,
@@ -78,14 +75,46 @@ impl Channels {
         // Ok(())
     }
 
+    /// Returns the channel data packet to send, and the length of data consumed
+    pub(crate) fn send_data<'b>(&mut self, num: u32, ext: Option<u32>, data: &'b [u8])
+            -> Result<(Packet<'b>, usize)> {
+        let send_ch = self.get_chan(num)?.send.as_ref().trap()?.num;
+        // TODO: check: channel state, channel window, maxpacket
+        let len = data.len();
+        let data = BinString(data);
+        let p = if let Some(code) = ext {
+            // TODO: check code is valid for this channel
+            packets::ChannelDataExt { num: send_ch, code, data }.into()
+        } else {
+            packets::ChannelData { num: send_ch, data }.into()
+        };
+        Ok((p, len))
+    }
+
+    /// Informs the channel layer that an incoming packet has been read out,
+    /// so a window adjustment can be queued.
+    pub(crate) fn finished_input(&mut self, num: u32) -> Result<()> {
+        match self.pending_input {
+            Some(ref p) if p.chan == num => {
+                // TODO: send window adjustment
+                let len = p.len;
+                let ch = self.get_chan(num)?;
+                ch.finished_input(len);
+                self.pending_input = None;
+                Ok(())
+            }
+            _ => Err(Error::bug()),
+        }
+    }
+
     // incoming packet handling
-    pub async fn dispatch<'a>(
+    pub async fn dispatch(
         &mut self,
-        packet: &Packet<'a>,
+        packet: Packet<'_>,
         resp: &mut RespPackets<'_>,
         b: &mut Behaviour<'_>,
-    ) -> Result<()> {
-        trace!("chan dispatchh");
+    ) -> Result<Option<ChanEventMaker>> {
+        trace!("chan dispatch");
         let r = match packet {
             Packet::ChannelOpen(_p) => {
                 todo!();
@@ -108,7 +137,7 @@ impl Channels {
                             }
                             ch.state = ChanState::Normal;
                         }
-                        Ok(())
+                        Ok(None)
                     }
                     _ => Err(Error::SSHProtoError),
                 }
@@ -118,21 +147,33 @@ impl Channels {
                 if ch.send.is_some() {
                     Err(Error::SSHProtoError)
                 } else {
-                    self.remove(p.num)
+                    self.remove(p.num);
+                    // TODO event
+                    Ok(None)
                 }
             }
             Packet::ChannelWindowAdjust(p) => {
                 todo!();
             }
             Packet::ChannelData(p) => {
-                b.chan_handler(
-                    resp,
-                    ChanMsg { num: p.num, msg: ChanMsgDetails::Data(p.data.0) },
-                )
-                .await
+                let ch = self.get_chan(p.num)?;
+                // TODO check we are expecting input
+                if self.pending_input.is_some() {
+                    return Err(Error::bug())
+                }
+                self.pending_input = Some(PendInput { chan: p.num, len: p.data.0.len() });
+                let di = DataIn { num: p.num, ext: None, offset: p.data_offset(), len: p.data.0.len() };
+                Ok(Some(ChanEventMaker::DataIn(di)))
             }
-            Packet::ChannelDataExt(_p) => {
-                todo!();
+            Packet::ChannelDataExt(p) => {
+                let ch = self.get_chan(p.num)?;
+                // TODO check we are expecting input and ext is valid.
+                if self.pending_input.is_some() {
+                    return Err(Error::bug())
+                }
+                self.pending_input = Some(PendInput { chan: p.num, len: p.data.0.len() });
+                let di = DataIn { num: p.num, ext: Some(p.code), offset: p.data_offset(), len: p.data.0.len() };
+                Ok(Some(ChanEventMaker::DataIn(di)))
             }
             Packet::ChannelEof(_p) => {
                 todo!();
@@ -140,12 +181,20 @@ impl Channels {
             Packet::ChannelClose(_p) => {
                 todo!();
             }
-            Packet::ChannelRequest(_p) => {
-                todo!();
+            Packet::ChannelRequest(p) => {
+                match self.get_chan(p.num) {
+                    Ok(ch) => Ok(Some(ChanEventMaker::Req)),
+                    Err(ch) => {
+                        if p.want_reply {
+                            // TODO respond with an error
+                        }
+                        Ok(None)
+                    }
+                }
             }
             Packet::ChannelSuccess(_p) => {
                 trace!("channel success, TODO");
-                Ok(())
+                Ok(None)
             }
             Packet::ChannelFailure(_p) => {
                 todo!();
@@ -155,9 +204,9 @@ impl Channels {
         match r {
             Err(Error::BadChannel) => {
                 warn!("Ignoring bad channel number");
-                Ok(())
+                Ok(None)
             }
-            Ok(()) => Ok(()),
+            Ok(ev) => Ok(ev),
             // TODO: close channel on error? or on SSHProtoError?
             Err(any) => Err(any),
         }
@@ -243,7 +292,7 @@ impl Req {
             ReqDetails::WinChange(rt) => ChannelReqType::WinChange(rt.clone()),
             ReqDetails::Break(rt) => ChannelReqType::Break(rt.clone()),
         };
-        let p = ChannelRequest { num, want_reply, ch: ty }.into();
+        let p = ChannelRequest { num, want_reply, req: ty }.into();
         Ok(p)
     }
 }
@@ -274,7 +323,10 @@ pub struct ChanDir {
 }
 
 pub enum ChanState {
-    // TODO: this is wasting half a kB. where else could we store it?
+    /// init_req are the request messages to be sent once the ChannelOpenConfirmation
+    /// is received
+    // TODO: this is wasting half a kB. where else could we store it? could
+    // the Behaviour own it? Or we don't store them here, just callback to the Behaviour.
     Opening { init_req: InitReqs },
     Normal,
     DrainRead,
@@ -290,9 +342,26 @@ pub struct Channel {
     recv: ChanDir,
     // filled after confirmation
     send: Option<ChanDir>,
+
+    /// Accumulated bytes for the next window adjustment (inbound data direction)
+    pending_adjust: usize,
 }
 
 impl Channel {
+    fn new(num: u32, ty: ChanType, init_req: InitReqs) -> Self {
+        Channel {
+            state: ChanState::Opening { init_req },
+            ty,
+            last_req: Deque::new(),
+            recv: ChanDir {
+                num,
+                max_packet: config::DEFAULT_MAX_PACKET,
+                window: config::DEFAULT_WINDOW,
+            },
+            send: None,
+            pending_adjust: 0,
+        }
+    }
     fn request(&mut self, req: ReqDetails, resp: &mut RespPackets) -> Result<()> {
         let num = self.send.as_ref().trap()?.num;
         let r = Req { num, details: req };
@@ -303,33 +372,101 @@ impl Channel {
     pub(crate) fn number(&self) -> u32 {
         self.recv.num
     }
+
+    fn finished_input(&mut self, len: usize ) {
+        self.pending_adjust = self.pending_adjust.saturating_add(len)
+    }
 }
 
-pub struct ChanMsg<'a> {
+pub struct ChanMsg {
     pub num: u32,
-    pub msg: ChanMsgDetails<'a>,
+    pub msg: ChanMsgDetails,
 }
 
-pub enum ChanMsgDetails<'a> {
-    Data(&'a [u8]),
-    ExtData { ext: u32, data: &'a [u8] },
+pub enum ChanMsgDetails {
+    Data,
+    ExtData { ext: u32 },
     // TODO: perhaps we don't need the storaged ReqDetails, just have the reqtype packet?
     Req(ReqDetails),
     // TODO closein/closeout/eof, etc. Should also return the exit status etc
     Close,
 }
 
-pub enum ChanOut {
-    // Size written into [`channel_output()`](runner::Runner::channel_output)
-    // `buf` argument.
-    Data(usize),
-    // Size written into [`channel_output()`](runner::Runner::channel_output)
-    // `buf` argument.
-    ExtData { ext: u32, size: usize },
-    // TODO: perhaps we don't need the storaged ReqDetails, just have the reqtype packet?
-    Req(ReqDetails),
+#[derive(Debug)]
+pub(crate) struct DataIn {
+    pub num: u32,
+    pub ext: Option<u32>,
+    pub offset: usize,
+    pub len: usize,
+}
+
+/// An event returned from `Channel::dispatch()`.
+/// Most are propagated to the application, `DataIn is caught by `runner`
+#[derive(Debug)]
+pub(crate) enum ChanEventMaker {
+    /// Channel data is ready with `channel_input()`. This breaks the `Packet` abstraction
+    /// by returning the offset into the payload buffer, used by `traffic`.
+    DataIn(DataIn),
+
+    OpenSuccess { num: u32 },
+
+    // A ChannelRequest. Will be split into separate ChanEvent variants
+    // for each type.
+    Req,
     // TODO closein/closeout/eof, etc. Should also return the exit status etc
 
-    // TODO: responses to a previous ChanMsg
-    Close,
+    Close { num: u32 },
+    // TODO: responses to a previous ChanMsg?
+}
+
+impl ChanEventMaker {
+    // To be called on the same packet that created the ChanEventMaker.
+    pub fn make<'p>(&self, packet: Packet<'p>) -> Option<ChanEvent<'p>> {
+        match self {
+            // Datain is handled at the traffic level, not propagated as an Event
+            Self::DataIn(_) => {
+                debug!("DataIn should not be reached");
+                None
+            }
+            Self::OpenSuccess { num } => Some(ChanEvent::OpenSuccess { num: *num }),
+            Self::Req => {
+                if let Packet::ChannelRequest(ChannelRequest { num, want_reply, req }) = packet {
+                    match req {
+                        ChannelReqType::Pty(pty) => Some(ChanEvent::ReqPty { num, want_reply, pty }),
+                        _ => {
+                            warn!("Unhandled {:?}", self);
+                            None
+                        }
+                    }
+                } else {
+                    None
+                }
+            }
+            Self::Close { num } => Some(ChanEvent::Close { num: *num }),
+        }
+
+    }
+}
+
+/// Application API
+#[derive(Debug)]
+pub enum ChanEvent<'a> {
+    // TODO: perhaps this one should go a level above since it isn't for existing channels?
+    OpenSuccess { num: u32 },
+
+    // TODO details
+    // OpenRequest { },
+
+    ReqPty { num: u32, want_reply: bool, pty: packets::Pty<'a> },
+
+    Req { num: u32, req: ChannelReqType<'a> },
+    // TODO closein/closeout/eof, etc. Should also return the exit status etc
+
+    Close { num: u32 },
+    // TODO: responses to a previous ChanMsg?
+}
+
+struct PendInput {
+    chan: u32,
+    len: usize,
 }

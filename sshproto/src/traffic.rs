@@ -42,9 +42,20 @@ enum TrafState {
     ReadComplete { len: usize },
     /// Decrypted complete input payload
     InPayload { len: usize },
+    /// Decrypted incoming channel data
+    InChannelData {
+        /// channel number
+        chan: u32,
+        /// extended flag. usually None, or `Some(1)` for `SSH_EXTENDED_DATA_STDERR`
+        ext: Option<u32>,
+        /// read index of channel data. should transition to Idle once `idx==len`
+        idx: usize,
+        /// length of buffer, end of channel data
+        len: usize,
+    },
 
     /// Writing to the socket. Buffer is encrypted in-place.
-    /// Should never be left in idx==len state,
+    /// Should never be left in `idx==len` state,
     /// instead should transition to Idle
     Write {
         /// Cursor position in the buffer
@@ -93,6 +104,7 @@ impl<'a> Traffic<'a> {
             | TrafState::Read { .. } => true,
             TrafState::ReadComplete { .. }
             | TrafState::InPayload { .. }
+            | TrafState::InChannelData { .. }
             | TrafState::Write { .. } => false,
         }
     }
@@ -177,7 +189,10 @@ impl<'a> Traffic<'a> {
         let (idx, len) = match self.state {
             TrafState::Idle => (0, 0),
             TrafState::Write { idx, len } => (idx, len),
-            _ => Err(Error::bug())?,
+            _ => {
+                trace!("bad state {:?}", self.state);
+                Err(Error::bug())?
+            }
         };
 
         // Use the remainder of our buffer to write the packet. Payload starts
@@ -276,4 +291,62 @@ impl<'a> Traffic<'a> {
 
         Ok(buf.len() - r.len())
     }
+
+    pub fn ready_channel_input(&self, chan: u32, ext: Option<u32>) -> bool {
+        match self.state {
+            TrafState::InChannelData { chan: c, ext: e, .. }
+                if (c, e) == (chan, ext) => true,
+            _ => false,
+        }
+    }
+
+    pub fn ready_channel_send(&self) -> bool {
+        match self.state {
+            TrafState::Idle => true,
+            _ => false,
+        }
+    }
+
+    pub fn set_channel_input(&mut self, di: channel::DataIn) -> Result<()> {
+        match self.state {
+            TrafState::Idle => {
+                let idx = SSH_PAYLOAD_START + di.offset;
+                self.state = TrafState::InChannelData { chan: di.num, ext: di.ext, idx, len: di.len };
+                Ok(())
+            }
+            _ => Err(Error::bug()),
+        }
+    }
+
+    // Returns the length consumed, and a bool indicating whether the whole
+    // data packet has been completed.
+    pub fn channel_input(
+        &mut self,
+        chan: u32,
+        ext: Option<u32>,
+        buf: &mut [u8],
+    ) -> (usize, bool) {
+        if !matches!(self.state, TrafState::Idle) {
+            return (0, false)
+        }
+
+        match self.state {
+            TrafState::InChannelData { chan: c, ext: e, ref mut idx, len }
+                if (c, e) == (chan, ext) => {
+                let wlen = (len - *idx).min(buf.len());
+                buf[..wlen].copy_from_slice(&self.buf[*idx..*idx + wlen]);
+                *idx += wlen;
+
+                if *idx == len {
+                    // all done.
+                    self.state = TrafState::Idle;
+                    (wlen, true)
+                } else {
+                    (wlen, false)
+                }
+            }
+            _ => (0, false)
+        }
+    }
+
 }

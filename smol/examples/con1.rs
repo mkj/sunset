@@ -164,6 +164,10 @@ async fn run(args: &Args) -> Result<()> {
     loop {
         tokio::select! {
             e = &mut netio => break e.map(|_| ()).context("net loop"),
+            ev = door.progress(|ev| {
+                trace!("progress event {ev:?}");
+                Ok(())
+            }) => {}
             // q = door.next_request() => {
             //     handle_request(&door, q).await
             // }

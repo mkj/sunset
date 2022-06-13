@@ -113,7 +113,7 @@ where
     T: SSHEncode,
 {
     let mut s = EncodeBytes { target, pos: 0 };
-    let r = value.enc(&mut s)?;
+    value.enc(&mut s)?;
     Ok(s.pos)
 }
 
@@ -233,6 +233,7 @@ pub fn hash_mpint(hash_ctx: &mut dyn digest::DynDigest, m: &[u8]) {
 
 /// A SSH style binary string. Serialized as 32 bit length followed by the bytes
 /// of the slice.
+/// Application API
 #[derive(Clone,PartialEq)]
 pub struct BinString<'a>(pub &'a [u8]);
 
@@ -265,14 +266,16 @@ impl<'de> SSHDecode<'de> for BinString<'de> {
 
 }
 
-/// A text string that may be presented to a user.
+/// A text string that may be presented to a user or used
+/// for things such as a password, username, exec command, tcp hostname, etc.
 /// The SSH protocol defines it to be UTF-8, though
-/// in some applications it can be treated as ascii-only.
+/// in some applications it could be treated as ascii-only.
 /// The library treats it as an opaque `&[u8]`, leaving
 /// decoding to the `Behaviour`.
 
 /// Note that SSH protocol identifiers in `Packet` etc
 /// are `&str` rather than `TextString`, and always defined as ASCII.
+/// Application API
 #[derive(Clone,PartialEq,Copy)]
 pub struct TextString<'a>(pub &'a [u8]);
 

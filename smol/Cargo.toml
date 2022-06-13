@@ -11,13 +11,13 @@ rpassword = "6.0"
 argh = "0.1"
 
 # smol = { version = "1.2" }
-# futures = "0.3"
 # futures-io = "0.3"
 # futures-micro = "0.5"
 # async-dup = "1.2"
 
 pin-utils = "0.1"
 tokio = { version = "1.17", features = ["full"] }
+futures = "0.3"
 parking_lot = { version = "0.12", features = ["arc_lock", "send_guard"] }
 
 async-trait = "0.1"

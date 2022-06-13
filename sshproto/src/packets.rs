@@ -410,11 +410,25 @@ pub struct ChannelData<'a> {
     pub data: BinString<'a>,
 }
 
+impl ChannelData<'_> {
+    // offset into a packet payload
+    pub(crate) fn data_offset(&self) -> usize {
+        5
+    }
+}
+
 #[derive(Debug,SSHEncode, SSHDecode)]
 pub struct ChannelDataExt<'a> {
     pub num: u32,
     pub code: u32,
     pub data: BinString<'a>,
+}
+
+impl ChannelDataExt<'_> {
+    // offset into a packet payload
+    pub(crate) fn data_offset(&self) -> usize {
+        9
+    }
 }
 
 #[derive(Debug,SSHEncode, SSHDecode)]
@@ -441,11 +455,11 @@ pub struct ChannelFailure {
 pub struct ChannelRequest<'a> {
     pub num: u32,
 
-    // channel_type is implicit in ch below
-    #[sshwire(variant_name = ch)]
+    // channel_type is implicit in req below
+    #[sshwire(variant_name = req)]
 
     pub want_reply: bool,
-    pub ch: ChannelReqType<'a>,
+    pub req: ChannelReqType<'a>,
 }
 
 #[derive(Debug, SSHEncode, SSHDecode)]

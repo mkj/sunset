@@ -35,7 +35,8 @@ const MAX_IV_LEN: usize = 32;
 /// Largest is chacha. Also applies to MAC keys
 const MAX_KEY_LEN: usize = 64;
 
-/// Stateful [`Keys`], stores a sequence number as well
+/// Stateful [`Keys`], stores a sequence number as well, a single instance
+/// is kept for the entire session.
 pub(crate) struct KeyState {
     keys: Keys,
     // Packet sequence numbers. These must be transferred to subsequent KeyState
@@ -83,9 +84,7 @@ impl KeyState {
         self.seq_encrypt += 1;
         e
     }
-    pub fn size_integ_dec(&self) -> usize {
-        self.keys.integ_dec.size_out()
-    }
+
     pub fn size_block_dec(&self) -> usize {
         self.keys.dec.size_block()
     }
@@ -239,8 +238,8 @@ impl Keys {
     /// total SSH packet (including length+mac) which is calculated
     /// from the decrypted first 4 bytes.
     /// Whether bytes `buf[4..block_size]` are decrypted depends on the cipher, they may be
-    /// handled later by [`decrypt`]. Bytes `buf[0..4]` may not be modified.
-    pub fn decrypt_first_block(
+    /// handled later by [`decrypt`]. Bytes `buf[0..4]` may be left unmodified.
+    fn decrypt_first_block(
         &mut self, buf: &mut [u8], seq: u32,
     ) -> Result<u32, Error> {
         if buf.len() < self.dec.size_block() {
@@ -257,7 +256,6 @@ impl Keys {
                 u32::from_be_bytes(buf[..SSH_LENGTH_SIZE].try_into().unwrap())
             }
         };
-        trace!("len {len}");
 
         let total_len = len
             .checked_add((SSH_LENGTH_SIZE + self.integ_dec.size_out()) as u32)
@@ -271,7 +269,7 @@ impl Keys {
     /// Ensures that the packet meets minimum length.
     /// The first block_size bytes may have been already decrypted by
     /// [`decrypt_first_block`] depending on the cipher.
-    pub fn decrypt(&mut self, buf: &mut [u8], seq: u32) -> Result<usize, Error> {
+    fn decrypt(&mut self, buf: &mut [u8], seq: u32) -> Result<usize, Error> {
         let size_block = self.dec.size_block();
         let size_integ = self.integ_dec.size_out();
 
@@ -295,7 +293,7 @@ impl Keys {
 
         let (data, mac) = buf.split_at_mut(buf.len() - size_integ);
 
-        // TODO: ETM modes would check integrity here.
+        // ETM modes would check integrity here.
 
         match &mut self.dec {
             DecKey::ChaPoly(k) => {
@@ -372,7 +370,7 @@ impl Keys {
     /// Encrypt a buffer in-place, adding packet size, padding, MAC etc.
     /// Returns the total length.
     /// Ensures that the packet meets minimum and other length requirements.
-    pub fn encrypt(
+    fn encrypt(
         &mut self, payload_len: usize, buf: &mut [u8], seq: u32,
     ) -> Result<usize, Error> {
         let size_block = self.enc.size_block();
@@ -438,7 +436,7 @@ impl Keys {
 pub(crate) enum Cipher {
     ChaPoly,
     Aes256Ctr,
-    // TODO Aes gcm etc
+    // TODO AesGcm etc
 }
 
 impl fmt::Display for Cipher {
@@ -461,7 +459,7 @@ impl Cipher {
         }
     }
 
-    /// length in bytes
+    /// Length in bytes
     pub fn key_len(&self) -> usize {
         match self {
             Cipher::ChaPoly => SSHChaPoly::key_len(),
@@ -469,7 +467,7 @@ impl Cipher {
         }
     }
 
-    /// length in bytes
+    /// Length in bytes
     pub fn iv_len(&self) -> usize {
         match self {
             Cipher::ChaPoly => 0,
@@ -492,6 +490,10 @@ pub(crate) enum EncKey {
     // AesGcm(Todo?)
     NoCipher,
 }
+
+// TODO: could probably unify EncKey and DecKey as "CipherKey".
+// Ring had sealing/opening keys which are separate, but RustCrypto
+// uses the same structs in both directions.
 
 impl EncKey {
     /// Construct a key
