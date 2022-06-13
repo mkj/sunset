@@ -29,7 +29,7 @@ signature = { version = "1.4", default-features = false }
 chacha20 = "0.9"
 poly1305 = "0.7"
 # ed25519/x25519
-salty = { version = "0.2", path = "/home/matt/3rd/rs/salty" }
+salty = { version = "0.2", git = "https://github.com/mkj/salty", branch = "parts" }
 # could be optional? though isn't linked if openssh keys aren't loaded
 ssh-key = { version = "0.4", default-features = false, features = ["ed25519", "ecdsa", "sha2"] }
 
@@ -40,6 +40,7 @@ pin-utils = "0.1"
 
 # tokio = { version = "1.18", features = ["sync"], optional = true }
 async-trait = { version = "0.1", optional = true }
+
 
 [features]
 default = [ "getrandom" ]
