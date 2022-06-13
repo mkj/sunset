@@ -53,7 +53,7 @@ impl<'a> Runner<'a> {
             buf,
         )?;
         // payload will be handled when progress() is called
-        if self.traffic.payload().is_some() {
+        if self.traffic.payload(false).is_some() {
             trace!("payload some, waker {:?}", self.output_waker);
             if let Some(w) = self.output_waker.take() {
                 trace!("woke");
@@ -68,29 +68,27 @@ impl<'a> Runner<'a> {
     /// Optionally returns `Event` which provides channel or session
     // event to the application.
     pub async fn progress<'f>(&'f mut self, b: &mut Behaviour<'_>) -> Result<Option<Event<'f>>, Error> {
-        let em = if let Some(payload) = self.traffic.payload() {
+        trace!("prog");
+        let em = if let Some(payload) = self.traffic.payload(false) {
             // Lifetimes here are a bit subtle.
             // `payload` has self.traffic lifetime, used until `handle_payload`
             // completes.
-            // The `resp` from handle_payload() references self.conn, consume
+            // The `resp` from handle_payload() references self.conn, consumed
             // by the send_packet().
             // After that progress() can perform more send_packet() itself.
 
-            let r = self.conn.handle_payload(payload, &mut self.keys, b).await?;
-            match r {
-                Dispatched::Resp(resp) => {
-                    debug!("done_payload");
-                    self.traffic.done_payload()?;
-                    for r in resp {
-                        r.send_packet(&mut self.traffic, &mut self.keys)?;
-                    }
+            let d = self.conn.handle_payload(payload, &mut self.keys, b).await?;
+            self.traffic.handled_payload()?;
 
-                    None
-                }
-                Dispatched::Event(em) => {
-                    Some(em)
-                }
+            if !d.resp.is_empty() || d.event.is_none() {
+                // switch to using the buffer for output.
+                self.traffic.done_payload()?;
             }
+            for r in d.resp {
+                r.send_packet(&mut self.traffic, &mut self.keys)?;
+            }
+
+            d.event
         } else {
             None
         };
@@ -105,20 +103,27 @@ impl<'a> Runner<'a> {
             match em {
                 EventMaker::Channel(ChanEventMaker::DataIn(di)) => {
                     self.traffic.set_channel_input(di)?;
+                    self.traffic.done_payload()?;
                     None
                 }
                 _ => {
-                    let payload = self.traffic.payload().trap()?;
+                    // Some(payload) is only required for some variants in make_event()
+                    trace!("event ");
+                    let payload = self.traffic.payload(true);
                     self.conn.make_event(payload, em)?
                 }
             }
-
         } else {
             self.conn.progress(&mut self.traffic, &mut self.keys, b).await?;
             None
         };
+        trace!("prog event {ev:?}");
 
         Ok(ev)
+    }
+
+    pub fn done_payload(&mut self) -> Result<()> {
+        self.traffic.done_payload()
     }
 
     /// Write any pending output to the wire, returning the size written

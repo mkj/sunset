@@ -100,6 +100,11 @@ pub trait AsyncCliBehaviour {
     /// by the server so could be hazardous, they should be escaped with
     /// [`banner.escape_default()`](core::str::escape_default) or similar.
     /// Language may be empty, is provided by the server.
+
+    /// This is a `Behaviour` method rather than an [`Event`] because
+    /// it must be displayed prior to other authentication
+    /// functions. `Events` may be handled asynchronously so wouldn't
+    /// guarantee that.
     #[allow(unused)]
     async fn show_banner(&self, banner: &str, language: &str) {
         info!("Got banner:\n{:?}", banner.escape_default());

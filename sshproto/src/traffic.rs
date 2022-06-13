@@ -42,6 +42,9 @@ enum TrafState {
     ReadComplete { len: usize },
     /// Decrypted complete input payload
     InPayload { len: usize },
+    /// Decrypted complete input payload. It has been dispatched by handle_payload(),
+    /// remains "borrowed" for use by a progress() Event.
+    BorrowPayload { len: usize },
     /// Decrypted incoming channel data
     InChannelData {
         /// channel number
@@ -104,6 +107,7 @@ impl<'a> Traffic<'a> {
             | TrafState::Read { .. } => true,
             TrafState::ReadComplete { .. }
             | TrafState::InPayload { .. }
+            | TrafState::BorrowPayload { .. }
             | TrafState::InChannelData { .. }
             | TrafState::Write { .. } => false,
         }
@@ -144,20 +148,47 @@ impl<'a> Traffic<'a> {
         Ok(inlen)
     }
 
-    /// Returns a reference to the decrypted payload buffer if ready
-    pub(crate) fn payload(&mut self) -> Option<&[u8]> {
-        trace!("traf payload {:?}", self.state);
-        if let TrafState::InPayload { len } = self.state {
-            let payload = &self.buf[SSH_PAYLOAD_START..SSH_PAYLOAD_START + len];
-            Some(payload)
-        } else {
-            None
+    /// Returns a reference to the decrypted payload buffer if ready.
+    /// For a given payload should be called once initially to pass to handle_payload(),
+    /// with borrow=false. Subsequent calls will only return the payload if borrow=false,
+    /// used for borrowing the payload for Event.
+    pub(crate) fn payload(&mut self, borrow: bool) -> Option<&[u8]> {
+        trace!("traf payload {:?} borrow {borrow}", self.state);
+        let p = match self.state {
+            | TrafState::InPayload { len, .. }
+            => {
+                let payload = &self.buf[SSH_PAYLOAD_START..SSH_PAYLOAD_START + len];
+                Some(payload)
+            }
+            | TrafState::BorrowPayload { len, .. } if borrow
+            => {
+                let payload = &self.buf[SSH_PAYLOAD_START..SSH_PAYLOAD_START + len];
+                Some(payload)
+            }
+            _ => None,
+        };
+        trace!("traf 2 {:?}", self.state);
+        p
+    }
+
+    pub(crate) fn handled_payload(&mut self) -> Result<(), Error> {
+        match self.state {
+            | TrafState::InPayload { len }
+            | TrafState::BorrowPayload { len }
+            => {
+                self.state = TrafState::BorrowPayload { len };
+                Ok(())
+            }
+            _ => Err(Error::bug())
         }
     }
 
     pub(crate) fn done_payload(&mut self) -> Result<(), Error> {
         match self.state {
-            TrafState::InPayload { .. } => {
+            | TrafState::InPayload { .. }
+            | TrafState::BorrowPayload { .. }
+            | TrafState::Idle // TODO, is this wise?
+            => {
                 self.state = TrafState::Idle;
                 Ok(())
             }

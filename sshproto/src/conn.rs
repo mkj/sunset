@@ -18,7 +18,7 @@ use encrypt::KeyState;
 use packets::{Packet,ParseContext};
 use server::Server;
 use traffic::{Traffic,PacketMaker};
-use channel::{Channel, Channels};
+use channel::{Channel, Channels, ChanEvent, ChanEventMaker};
 use config::MAX_CHANNELS;
 use kex::SessId;
 
@@ -94,11 +94,13 @@ enum ConnState {
 // Application API
 #[derive(Debug)]
 pub enum Event<'a> {
-    Channel(channel::ChanEvent<'a>),
+    Channel(ChanEvent<'a>),
+    Authenticated,
 }
 
 pub(crate) enum EventMaker {
-    Channel(channel::ChanEventMaker),
+    Channel(ChanEventMaker),
+    Authenticated,
 }
 
 impl<'a> Conn<'a> {
@@ -190,7 +192,7 @@ impl<'a> Conn<'a> {
         // to run first?
         trace!("Incoming {packet:#?}");
         let mut resp = RespPackets::new();
-        let mut ev = None;
+        let mut event = None;
         match packet {
             Packet::KexInit(_) => {
                 if matches!(self.state, ConnState::InKex { .. }) {
@@ -306,14 +308,7 @@ impl<'a> Conn<'a> {
                     if matches!(self.state, ConnState::PreAuth) {
                         self.state = ConnState::Authed;
                         cli.auth_success(&mut resp, &mut self.parse_ctx, &mut b.client()?).await?;
-                        // if h.open_session {
-                        //     let (chan, p) = self.channels.open(
-                        //         packets::ChannelOpenType::Session)?;
-                        //     resp.push(p).trap()?;
-                        //     if h.pty {
-                        //         todo!();
-                        //     }
-                        // }
+                        event = Some(EventMaker::Authenticated);
                     } else {
                         debug!("Received UserauthSuccess unrequested")
                     }
@@ -354,29 +349,30 @@ impl<'a> Conn<'a> {
             // TODO: maybe needs a conn or cliserv argument.
             => {
                 let chev = self.channels.dispatch(packet, &mut resp, b).await?;
-                ev = chev.map(|c| EventMaker::Channel(c))
+                event = chev.map(|c| EventMaker::Channel(c))
            }
         };
-        if let Some(ev) = ev {
-            if resp.is_empty() {
-                Ok(Dispatched::Event(ev))
-            } else {
-                Err(Error::bug())
-            }
-        } else {
-            Ok(Dispatched::Resp(resp))
-        }
+        Ok(Dispatched { resp, event })
     }
 
-    pub(crate) fn make_event<'p>(&mut self, payload: &'p [u8], ev: EventMaker)
+    /// creates an `Event` that borrows data from the payload. Some `Event` variants don't
+    /// require payload data, the payload is not required in that case.
+    /// Those variants are allowed to return `resp` packets from `dispatch()`
+    pub(crate) fn make_event<'p>(&mut self, payload: Option<&'p [u8]>, ev: EventMaker)
             -> Result<Option<Event<'p>>> {
-        let p = sshwire::packet_from_bytes(payload, &self.parse_ctx)?;
-        match ev {
-            EventMaker::Channel(cev) => {
-                let c = cev.make(p);
-                Ok(c.map(|c| Event::Channel(c)))
+        let p = payload.map(|pl| sshwire::packet_from_bytes(pl, &self.parse_ctx)).transpose()?;
+        let r = match ev {
+            EventMaker::Channel(ChanEventMaker::DataIn(_)) => {
+                // no event returned, handled specially by caller
+                None
             }
-        }
+            EventMaker::Channel(cev) => {
+                let c = cev.make(p.trap()?);
+                c.map(|c| Event::Channel(c))
+            }
+            EventMaker::Authenticated => Some(Event::Authenticated),
+        };
+        Ok(r)
     }
 
 }
@@ -386,7 +382,20 @@ impl<'a> Conn<'a> {
 //     pub event: Option<Event<'e>>,
 // }
 
-pub(crate) enum Dispatched<'r> {
-    Resp(RespPackets<'r>),
-    Event(EventMaker),
+pub(crate) struct Dispatched<'r> {
+    pub resp: RespPackets<'r>,
+    pub event: Option<EventMaker>,
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::doorlog::*;
+    use crate::conn::*;
+    use crate::error::Error;
+
+    // #[test]
+    // fn event_variants() {
+    //     // TODO sanity check event variants.
+    // }
+}
+

@@ -54,23 +54,39 @@ impl<'a> AsyncDoor<'a> {
     }
 
     pub async fn progress<F, R>(&mut self, f: F)
-        -> Result<Option<R>> where F: FnOnce(door::Event) -> Result<R> {
+        -> Result<Option<R>> where F: FnOnce(door::Event) -> Result<Option<R>> {
         {
-            self.progress_notify.notified().await;
+            info!("progress top");
             let res = {
                 let mut inner = self.inner.lock().await;
+                info!("progress locked");
                 let inner = inner.deref_mut();
                 let ev = inner.runner.progress(&mut inner.behaviour).await.context("progess")?;
+                info!("progress ev {ev:?}");
                 if let Some(ev) = ev {
-                    f(ev).map(|r| Some(r))
+                    let r = f(ev);
+                    inner.runner.done_payload()?;
+                    r
                 } else {
                     Ok(None)
                 }
             };
-            // self.read_waker.take().map(|w| w.wake());
-            // self.write_waker.take().map(|w| w.wake());
+            self.read_waker.take().map(|w| w.wake());
+            self.write_waker.take().map(|w| w.wake());
+            // TODO: currently this is only woken by incoming data, should it
+            // also wake internally from runner or conn? It runs once at start
+            // to kick off the outgoing handshake at least.
+            if let Ok(None) = res {
+                self.progress_notify.notified().await;
+            }
             res
         }
+    }
+
+    pub async fn with_runner<F, R>(&mut self, f: F) -> R
+        where F: FnOnce(&mut Runner) -> R {
+        let mut inner = self.inner.lock().await;
+        f(&mut inner.runner)
     }
 }
 
@@ -140,7 +156,7 @@ impl<'a> AsyncWrite for AsyncDoor<'a> {
         };
         drop(inner);
         self.progress_notify.notify_one();
-        // self.read_waker.take().map(|w| w.wake());
+        self.read_waker.take().map(|w| w.wake());
         r
     }
 

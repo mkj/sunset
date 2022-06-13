@@ -105,7 +105,7 @@ fn setup_log(args: &Args) {
     // not debugging these bits of the stack at present
     // .add_filter_ignore_str("door_sshproto::traffic")
     // .add_filter_ignore_str("door_sshproto::runner")
-    .add_filter_ignore_str("door_smol::async_door")
+    // .add_filter_ignore_str("door_smol::async_door")
     .set_time_offset_to_local().expect("Couldn't get local timezone")
     .build();
 
@@ -166,8 +166,22 @@ async fn run(args: &Args) -> Result<()> {
             e = &mut netio => break e.map(|_| ()).context("net loop"),
             ev = door.progress(|ev| {
                 trace!("progress event {ev:?}");
-                Ok(())
-            }) => {}
+                let e = match ev {
+                    Event::Authenticated => Some(Event::Authenticated),
+                    _ => None,
+                };
+                Ok(e)
+            }) => {
+                let ev = ev?;
+                match ev {
+                    Some(Event::Authenticated) => {
+                        info!("auth auth")
+
+                    }
+                    Some(_) => unreachable!(),
+                    None => {},
+                }
+            }
             // q = door.next_request() => {
             //     handle_request(&door, q).await
             // }

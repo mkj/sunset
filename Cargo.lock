@@ -344,7 +344,6 @@ dependencies = [
  "hmac",
  "log",
  "no-panic",
- "pin-utils",
  "poly1305",
  "pretty-hex 0.3.0",
  "proptest",
