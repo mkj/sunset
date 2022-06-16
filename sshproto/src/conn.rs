@@ -143,7 +143,7 @@ impl<'a> Conn<'a> {
             }
             ConnState::PreAuth => {
                 // TODO. need to figure how we'll do "unbounded" responses
-                // and backpressure.
+                // and backpressure. can_output() should have a size check?
                 if traffic.can_output() {
                     if let ClientServer::Client(cli) = &mut self.cliserv {
                         cli.auth.start(&mut resp, b.client()?).await?;

@@ -121,6 +121,7 @@ impl<'a> Traffic<'a> {
     }
 
     pub fn can_output(&self) -> bool {
+        // TODO: test for full output buffer
         match self.state {
             TrafState::Write { .. }
             | TrafState::Idle => true,
@@ -152,15 +153,11 @@ impl<'a> Traffic<'a> {
     /// For a given payload should be called once initially to pass to handle_payload(),
     /// with borrow=false. Subsequent calls will only return the payload if borrow=false,
     /// used for borrowing the payload for Event.
-    pub(crate) fn payload(&mut self, borrow: bool) -> Option<&[u8]> {
-        trace!("traf payload {:?} borrow {borrow}", self.state);
+    // TODO: get rid of the bool and make two functions. need to figure naming.
+    // "payload_reborrow()"?
+    pub(crate) fn payload(&mut self) -> Option<&[u8]> {
         let p = match self.state {
             | TrafState::InPayload { len, .. }
-            => {
-                let payload = &self.buf[SSH_PAYLOAD_START..SSH_PAYLOAD_START + len];
-                Some(payload)
-            }
-            | TrafState::BorrowPayload { len, .. } if borrow
             => {
                 let payload = &self.buf[SSH_PAYLOAD_START..SSH_PAYLOAD_START + len];
                 Some(payload)
@@ -171,6 +168,22 @@ impl<'a> Traffic<'a> {
         p
     }
 
+    pub(crate) fn payload_reborrow(&mut self) -> Option<&[u8]> {
+        let p = match self.state {
+            | TrafState::InPayload { len, .. }
+            | TrafState::BorrowPayload { len, .. }
+            => {
+                let payload = &self.buf[SSH_PAYLOAD_START..SSH_PAYLOAD_START + len];
+                Some(payload)
+            }
+            _ => None,
+        };
+        trace!("traf 2 {:?}", self.state);
+        p
+    }
+
+    /// Called when `payload()` has been handled once, can still be
+    /// `payload_reborrow()`ed later.
     pub(crate) fn handled_payload(&mut self) -> Result<(), Error> {
         match self.state {
             | TrafState::InPayload { len }
@@ -183,6 +196,7 @@ impl<'a> Traffic<'a> {
         }
     }
 
+    /// Called when `payload()` and `payload_reborrow()` are complete.
     pub(crate) fn done_payload(&mut self) -> Result<(), Error> {
         match self.state {
             | TrafState::InPayload { .. }
@@ -192,7 +206,10 @@ impl<'a> Traffic<'a> {
                 self.state = TrafState::Idle;
                 Ok(())
             }
-            _ => Err(Error::bug())
+            _ => {
+                /* Just ignore it */
+                Ok(())
+            }
         }
     }
 
@@ -332,6 +349,7 @@ impl<'a> Traffic<'a> {
     }
 
     pub fn ready_channel_send(&self) -> bool {
+        // TODO: this should call can_output()
         match self.state {
             TrafState::Idle => true,
             _ => false,
@@ -339,6 +357,7 @@ impl<'a> Traffic<'a> {
     }
 
     pub fn set_channel_input(&mut self, di: channel::DataIn) -> Result<()> {
+        trace!("traf chan input state {:?}", self.state);
         match self.state {
             TrafState::Idle => {
                 let idx = SSH_PAYLOAD_START + di.offset;

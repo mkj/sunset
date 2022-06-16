@@ -54,15 +54,13 @@ impl<'a> AsyncDoor<'a> {
     }
 
     pub async fn progress<F, R>(&mut self, f: F)
-        -> Result<Option<R>> where F: FnOnce(door::Event) -> Result<Option<R>> {
+        -> Result<Option<R>>
+        where F: FnOnce(door::Event) -> Result<Option<R>> {
         {
-            info!("progress top");
             let res = {
                 let mut inner = self.inner.lock().await;
-                info!("progress locked");
                 let inner = inner.deref_mut();
                 let ev = inner.runner.progress(&mut inner.behaviour).await.context("progess")?;
-                info!("progress ev {ev:?}");
                 if let Some(ev) = ev {
                     let r = f(ev);
                     inner.runner.done_payload()?;
@@ -102,6 +100,7 @@ impl<'a> AsyncRead for AsyncDoor<'a> {
         self.read_waker.register(cx.waker());
         let mut inner = self.inner.try_lock();
         let runner = if let Ok(ref mut inner) = inner {
+            self.read_waker.take();
             &mut inner.deref_mut().runner
         } else {
             return Poll::Pending
@@ -112,7 +111,10 @@ impl<'a> AsyncRead for AsyncDoor<'a> {
 
         let r = match r {
             // sz=0 means EOF
-            Ok(0) => Poll::Pending,
+            Ok(0) => {
+                runner.set_output_waker(cx.waker().clone());
+                Poll::Pending
+            }
             Ok(sz) => {
                 trace!("{:?}", (&b[..sz]).hex_dump());
                 buf.advance(sz);
@@ -120,8 +122,13 @@ impl<'a> AsyncRead for AsyncDoor<'a> {
             }
             Err(e) => Poll::Ready(Err(e)),
         };
+
+        // drop the mutex guard before waking others
         drop(inner);
-        self.write_waker.take().map(|w| w.wake());
+        self.write_waker.take().map(|w| {
+            trace!("wake write_waker");
+            w.wake()
+        });
         r
     }
 }
@@ -138,6 +145,7 @@ impl<'a> AsyncWrite for AsyncDoor<'a> {
         self.write_waker.register(cx.waker());
         let mut inner = self.inner.try_lock();
         let runner = if let Ok(ref mut inner) = inner {
+            self.write_waker.take();
             &mut inner.deref_mut().runner
         } else {
             return Poll::Pending
@@ -152,11 +160,23 @@ impl<'a> AsyncWrite for AsyncDoor<'a> {
                 .map_err(|e| IoError::new(std::io::ErrorKind::Other, e));
             Poll::Ready(r)
         } else {
+            runner.set_input_waker(cx.waker().clone());
             Poll::Pending
         };
+
+        // drop the mutex guard before waking others
         drop(inner);
-        self.progress_notify.notify_one();
-        self.read_waker.take().map(|w| w.wake());
+
+        if let Poll::Ready(_) = r {
+            // TODO: only notify if packet traffic.payload().is_some() ?
+            self.progress_notify.notify_one();
+            trace!("notify progress");
+        }
+        // TODO: check output_pending() before waking?
+        self.read_waker.take().map(|w| {
+            trace!("wake read_waker");
+            w.wake()
+        });
         r
     }
 

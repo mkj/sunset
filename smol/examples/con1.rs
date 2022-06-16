@@ -62,6 +62,7 @@ fn parse_args() -> Result<Args> {
         // TODO current user
         args.username = Some("matt".into());
     }
+
     Ok(args)
 }
 
@@ -160,6 +161,7 @@ async fn run(args: &Args) -> Result<()> {
     pin_mut!(netio);
     // let mut f = future::try_zip(netwrite, netread).fuse();
     // f.await;
+    let mut main_ch;
 
     loop {
         tokio::select! {
@@ -175,8 +177,11 @@ async fn run(args: &Args) -> Result<()> {
                 let ev = ev?;
                 match ev {
                     Some(Event::Authenticated) => {
-                        info!("auth auth")
-
+                        info!("auth auth");
+                        let ch = door.with_runner(|runner| {
+                            runner.open_client_session(Some("cowsay it works"), false)
+                        }).await?;
+                        main_ch = Some(ch);
                     }
                     Some(_) => unreachable!(),
                     None => {},

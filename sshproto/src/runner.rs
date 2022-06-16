@@ -46,30 +46,27 @@ impl<'a> Runner<'a> {
     }
 
     pub fn input(&mut self, buf: &[u8]) -> Result<usize, Error> {
-        trace!("in size {} {:?}", buf.len(), buf.hex_dump());
-        let size = self.traffic.input(
+        self.traffic.input(
             &mut self.keys,
             &mut self.conn.remote_version,
             buf,
-        )?;
-        // payload will be handled when progress() is called
-        if self.traffic.payload(false).is_some() {
-            trace!("payload some, waker {:?}", self.output_waker);
-            if let Some(w) = self.output_waker.take() {
-                trace!("woke");
-                w.wake()
-            }
-        }
-        Ok(size)
+        )
     }
+
+    /// Write any pending output to the wire, returning the size written
+    pub fn output(&mut self, buf: &mut [u8]) -> Result<usize, Error> {
+        let r = self.traffic.output(buf);
+        self.wake();
+        Ok(r)
+    }
+
 
     /// Drives connection progress, handling received payload and sending
     /// other packets as required. This must be polled/awaited regularly.
     /// Optionally returns `Event` which provides channel or session
     // event to the application.
     pub async fn progress<'f>(&'f mut self, b: &mut Behaviour<'_>) -> Result<Option<Event<'f>>, Error> {
-        trace!("prog");
-        let em = if let Some(payload) = self.traffic.payload(false) {
+        let em = if let Some(payload) = self.traffic.payload() {
             // Lifetimes here are a bit subtle.
             // `payload` has self.traffic lifetime, used until `handle_payload`
             // completes.
@@ -102,19 +99,20 @@ impl<'a> Runner<'a> {
         let ev = if let Some(em) = em {
             match em {
                 EventMaker::Channel(ChanEventMaker::DataIn(di)) => {
-                    self.traffic.set_channel_input(di)?;
                     self.traffic.done_payload()?;
+                    self.traffic.set_channel_input(di)?;
+                    // TODO: channel wakers
                     None
                 }
                 _ => {
                     // Some(payload) is only required for some variants in make_event()
-                    trace!("event ");
-                    let payload = self.traffic.payload(true);
+                    let payload = self.traffic.payload_reborrow();
                     self.conn.make_event(payload, em)?
                 }
             }
         } else {
             self.conn.progress(&mut self.traffic, &mut self.keys, b).await?;
+            self.wake();
             None
         };
         trace!("prog event {ev:?}");
@@ -126,17 +124,19 @@ impl<'a> Runner<'a> {
         self.traffic.done_payload()
     }
 
-    /// Write any pending output to the wire, returning the size written
-    pub fn output(&mut self, buf: &mut [u8]) -> Result<usize, Error> {
-        let r = self.traffic.output(buf);
+    pub fn wake(&mut self) {
         if self.ready_input() {
             if let Some(w) = self.input_waker.take() {
+                trace!("wake input waker");
                 w.wake()
             }
         }
-        Ok(r)
-        // TODO: need some kind of progress() here which
-        // will return errors
+        if self.output_pending() {
+            if let Some(w) = self.output_waker.take() {
+                trace!("wake output waker");
+                w.wake()
+            }
+        }
     }
 
     pub fn open_client_session(&mut self, exec: Option<&str>, pty: bool) -> Result<u32> {
@@ -193,12 +193,12 @@ impl<'a> Runner<'a> {
         self.conn.initial_sent() && self.traffic.ready_input()
     }
 
-    pub fn set_input_waker(&mut self, waker: Waker) {
-        self.input_waker = Some(waker);
-    }
-
     pub fn output_pending(&self) -> bool {
         !self.conn.initial_sent() || self.traffic.output_pending()
+    }
+
+    pub fn set_input_waker(&mut self, waker: Waker) {
+        self.input_waker = Some(waker);
     }
 
     pub fn set_output_waker(&mut self, waker: Waker) {
