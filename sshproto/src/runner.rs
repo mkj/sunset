@@ -121,7 +121,9 @@ impl<'a> Runner<'a> {
     }
 
     pub fn done_payload(&mut self) -> Result<()> {
-        self.traffic.done_payload()
+        self.traffic.done_payload()?;
+        self.wake();
+        Ok(())
     }
 
     pub fn wake(&mut self) {

@@ -1,3 +1,4 @@
+use door::sshnames::SSH_EXTENDED_DATA_STDERR;
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
 
@@ -6,15 +7,16 @@ use core::pin::Pin;
 use core::task::{Context, Poll};
 use pin_utils::pin_mut;
 
+use futures::lock::Mutex;
+
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
-use tokio::sync::Mutex as TokioMutex;
 use tokio::sync::Notify as TokioNotify;
 
 use std::io::Error as IoError;
 use std::io::ErrorKind;
 
 use core::task::Waker;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::Arc;
 use futures::task::AtomicWaker;
 
 // TODO
@@ -35,22 +37,24 @@ pub struct Inner<'a> {
     behaviour: Behaviour<'a>,
 }
 
-#[derive(Clone)]
 pub struct AsyncDoor<'a> {
-    inner: Arc<TokioMutex<Inner<'a>>>,
+    // Not contended much since the Runner is inherently single threaded anyway,
+    // using a single buffer for input/output.
+    inner: Arc<Mutex<Inner<'a>>>,
 
-    read_waker: Arc<AtomicWaker>,
-    write_waker: Arc<AtomicWaker>,
     progress_notify: Arc<TokioNotify>,
 }
 
 impl<'a> AsyncDoor<'a> {
     pub fn new(runner: Runner<'a>, behaviour: Behaviour<'a>) -> Self {
-        let inner = Arc::new(TokioMutex::new(Inner { runner, behaviour }));
-        let read_waker = Arc::new(AtomicWaker::new());
-        let write_waker = Arc::new(AtomicWaker::new());
+        let inner = Arc::new(Mutex::new(Inner { runner, behaviour }));
         let progress_notify = Arc::new(TokioNotify::new());
-        Self { inner, read_waker, write_waker, progress_notify }
+        Self { inner, progress_notify }
+    }
+
+    pub fn clone(&'_ self) -> Self {
+        Self { inner: self.inner.clone(),
+            progress_notify: self.progress_notify.clone() }
     }
 
     pub async fn progress<F, R>(&mut self, f: F)
@@ -69,8 +73,6 @@ impl<'a> AsyncDoor<'a> {
                     Ok(None)
                 }
             };
-            self.read_waker.take().map(|w| w.wake());
-            self.write_waker.take().map(|w| w.wake());
             // TODO: currently this is only woken by incoming data, should it
             // also wake internally from runner or conn? It runs once at start
             // to kick off the outgoing handshake at least.
@@ -86,6 +88,25 @@ impl<'a> AsyncDoor<'a> {
         let mut inner = self.inner.lock().await;
         f(&mut inner.runner)
     }
+
+    // fn channel_poll_read(
+    //     self: Pin<&mut Self>,
+    //     cx: &mut Context<'_>,
+    //     buf: &mut ReadBuf,
+
+    pub async fn open_client_session(&mut self, exec: Option<&str>, pty: bool)
+    -> Result<(ChanInOut<'a>, ChanExtIn<'a>)> {
+        let chan = self.with_runner(|runner| {
+            runner.open_client_session(exec, pty)
+        }).await?;
+
+        let door = self.clone();
+        let cstd = ChanInOut { door, chan };
+        let door = self.clone();
+        let cerr = ChanExtIn { door, chan, ext: SSH_EXTENDED_DATA_STDERR };
+        Ok((cstd, cerr))
+    }
+
 }
 
 impl<'a> AsyncRead for AsyncDoor<'a> {
@@ -96,21 +117,21 @@ impl<'a> AsyncRead for AsyncDoor<'a> {
     ) -> Poll<Result<(), IoError>> {
         trace!("poll_read");
 
-        // try to lock, or return pending
-        self.read_waker.register(cx.waker());
-        let mut inner = self.inner.try_lock();
-        let runner = if let Ok(ref mut inner) = inner {
-            self.read_waker.take();
-            &mut inner.deref_mut().runner
-        } else {
-            return Poll::Pending
+        // TODO: can this go into a common function returning a Poll<MappedMutexGuard<Runner>>?
+        //  Lifetimes seem tricky.
+        let g = self.inner.lock();
+        pin_mut!(g);
+        let mut g = g.poll(cx);
+        let runner = match g {
+            Poll::Ready(ref mut i) => &mut i.runner,
+            Poll::Pending => return Poll::Pending,
         };
 
         let b = buf.initialize_unfilled();
         let r = runner.output(b).map_err(|e| IoError::new(ErrorKind::Other, e));
 
-        let r = match r {
-            // sz=0 means EOF
+        match r {
+            // sz=0 means EOF, we don't want that
             Ok(0) => {
                 runner.set_output_waker(cx.waker().clone());
                 Poll::Pending
@@ -121,15 +142,7 @@ impl<'a> AsyncRead for AsyncDoor<'a> {
                 Poll::Ready(Ok(()))
             }
             Err(e) => Poll::Ready(Err(e)),
-        };
-
-        // drop the mutex guard before waking others
-        drop(inner);
-        self.write_waker.take().map(|w| {
-            trace!("wake write_waker");
-            w.wake()
-        });
-        r
+        }
     }
 }
 
@@ -141,14 +154,12 @@ impl<'a> AsyncWrite for AsyncDoor<'a> {
     ) -> Poll<Result<usize, IoError>> {
         trace!("poll_write");
 
-        // try to lock, or return pending
-        self.write_waker.register(cx.waker());
-        let mut inner = self.inner.try_lock();
-        let runner = if let Ok(ref mut inner) = inner {
-            self.write_waker.take();
-            &mut inner.deref_mut().runner
-        } else {
-            return Poll::Pending
+        let g = self.inner.lock();
+        pin_mut!(g);
+        let mut g = g.poll(cx);
+        let runner = match g {
+            Poll::Ready(ref mut i) => &mut i.runner,
+            Poll::Pending => return Poll::Pending,
         };
 
         // TODO: should runner just have poll_write/poll_read?
@@ -164,19 +175,14 @@ impl<'a> AsyncWrite for AsyncDoor<'a> {
             Poll::Pending
         };
 
-        // drop the mutex guard before waking others
-        drop(inner);
+        // drop before waking others
+        drop(runner);
 
         if let Poll::Ready(_) = r {
             // TODO: only notify if packet traffic.payload().is_some() ?
             self.progress_notify.notify_one();
             trace!("notify progress");
         }
-        // TODO: check output_pending() before waking?
-        self.read_waker.take().map(|w| {
-            trace!("wake read_waker");
-            w.wake()
-        });
         r
     }
 
@@ -193,4 +199,138 @@ impl<'a> AsyncWrite for AsyncDoor<'a> {
     ) -> Poll<Result<(), IoError>> {
         todo!("poll_close")
     }
+}
+
+pub struct ChanInOut<'a> {
+    chan: u32,
+    door: AsyncDoor<'a>,
+}
+
+pub struct ChanExtIn<'a> {
+    chan: u32,
+    ext: u32,
+    door: AsyncDoor<'a>,
+}
+
+pub struct ChanExtOut<'a> {
+    chan: u32,
+    ext: u32,
+    door: AsyncDoor<'a>,
+}
+
+impl<'a> ChanInOut<'a> {
+    fn new(chan: u32, door: &AsyncDoor<'a>) -> Self {
+        Self {
+            chan, door: door.clone(),
+        }
+    }
+}
+
+impl<'a> ChanExtIn<'a> {
+    fn new(chan: u32, ext: u32, door: &AsyncDoor<'a>) -> Self {
+        Self {
+            chan, ext, door: door.clone(),
+        }
+    }
+}
+
+impl<'a> AsyncRead for ChanInOut<'a> {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf,
+    ) -> Poll<Result<(), IoError>> {
+        let this = self.deref_mut();
+        chan_poll_read(&mut this.door, this.chan, None, cx, buf)
+    }
+}
+
+impl<'a> AsyncRead for ChanExtIn<'a> {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf,
+    ) -> Poll<Result<(), IoError>> {
+        let this = self.deref_mut();
+        chan_poll_read(&mut this.door, this.chan, Some(this.ext), cx, buf)
+    }
+}
+
+// Common for `ChanInOut` and `ChanExtIn`
+fn chan_poll_read(
+    door: &mut AsyncDoor,
+    chan: u32,
+    ext: Option<u32>,
+    cx: &mut Context,
+    buf: &mut ReadBuf,
+) -> Poll<Result<(), IoError>> {
+
+    error!("chan_poll_read {chan} {ext:?}");
+
+    let g = door.inner.lock();
+    pin_mut!(g);
+    let mut g = g.poll(cx);
+    let runner = match g {
+        Poll::Ready(ref mut i) => &mut i.runner,
+        Poll::Pending => {
+            trace!("lock pending");
+            return Poll::Pending
+        }
+    };
+
+    trace!("chan_poll_read locked");
+
+    let b = buf.initialize_unfilled();
+    let r = runner.channel_input(chan, ext, b)
+        .map_err(|e| IoError::new(std::io::ErrorKind::Other, e));
+
+    match r {
+        // sz=0 means EOF, we don't want that
+        Ok(0) => {
+            runner.set_output_waker(cx.waker().clone());
+            Poll::Pending
+        }
+        Ok(sz) => {
+            buf.advance(sz);
+            Poll::Ready(Ok(()))
+        }
+        Err(e) => Poll::Ready(Err(e)),
+    }
+}
+
+impl<'a> AsyncWrite for ChanInOut<'a> {
+    fn poll_write(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<Result<usize, IoError>> {
+        let this = self.deref_mut();
+        chan_poll_write(&mut this.door, this.chan, None, cx, buf)
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), std::io::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), std::io::Error>> {
+        // perhaps common between InOut and ExtOut?
+        todo!("channel poll_shutdown")
+    }
+}
+
+fn chan_poll_write(
+    door: &mut AsyncDoor,
+    chan: u32,
+    ext: Option<u32>,
+    cx: &mut Context<'_>,
+    buf: &[u8],
+) -> Poll<Result<usize, IoError>> {
+
+    let mut g = door.inner.lock();
+    pin_mut!(g);
+    let runner = match g.poll(cx) {
+        Poll::Ready(ref mut i) => &mut i.runner,
+        Poll::Pending => return Poll::Pending,
+    };
+    todo!()
 }

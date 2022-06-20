@@ -142,6 +142,7 @@ async fn run(args: &Args) -> Result<()> {
     // let mut stream = TcpStream::connect("130.95.13.18:22").await?;
 
     let mut work = vec![0; 3000];
+    let work = Box::leak(Box::new(work));
     let mut sess = door_smol::SimpleClient::new(args.username.as_ref().unwrap());
     for i in &args.identityfile {
         sess.add_authkey(read_key(&i)
@@ -161,7 +162,6 @@ async fn run(args: &Args) -> Result<()> {
     pin_mut!(netio);
     // let mut f = future::try_zip(netwrite, netread).fuse();
     // f.await;
-    let mut main_ch;
 
     loop {
         tokio::select! {
@@ -178,10 +178,21 @@ async fn run(args: &Args) -> Result<()> {
                 match ev {
                     Some(Event::Authenticated) => {
                         info!("auth auth");
-                        let ch = door.with_runner(|runner| {
-                            runner.open_client_session(Some("cowsay it works"), false)
-                        }).await?;
-                        main_ch = Some(ch);
+                        let r = door.open_client_session(Some("Cowsay it works"), false).await;
+                        match r {
+                            Ok((mut stdio, mut _stderr)) => {
+                                tokio::spawn(async move {
+                                    trace!("io copy thread");
+                                    let r = tokio::io::copy(&mut stdio, &mut tokio::io::stdout()).await;
+                                    if let Err(e) = r {
+                                        warn!("IO error: {e}");
+                                    }
+                                });
+                            },
+                            Err(e) => {
+                                warn!("Failed opening session: {e}")
+                            }
+                        }
                     }
                     Some(_) => unreachable!(),
                     None => {},

@@ -67,3 +67,7 @@ so `.await` fits well.
 The problem is that `async_trait` requires `Box`, won't work on `no_std`. The `Behaviour` struct has a `cfg` to switch
 between async and non-async traits, hiding that from the main code. Eventually `async fn` [should work OK](https://github.com/rust-lang/rust/issues/91611) in static traits on `no_std`, and then it can be unified.
 
+## Async
+
+The majority of packet dispatch handling isn't async, it just returns Ready straight away. Becaues of that we just have a Tokio `Mutex` which occassionally
+holds the mutex across the `.await` boundary - it should seldom be contended.
