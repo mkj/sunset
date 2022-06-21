@@ -159,22 +159,23 @@ async fn run(args: &Args) -> Result<()> {
             match ev {
                 Some(Event::Authenticated) => {
                     info!("auth auth");
-                    let r = door.open_client_session(Some("cowsay it works"), false).await
+                    let r = door.open_client_session_nopty(Some("cowsay it works")).await
                         .context("Opening session")?;
                     let (mut io, mut err) = r;
                     tokio::spawn(async move {
-                        trace!("io copy thread");
-                        // let mut i = tokio::io::stdin();
-                        let mut o = tokio::io::stdout();
+                        trace!("channel copy");
+                        let mut i = door_async::stdin().unwrap();
+                        // let mut o = tokio::io::stdout();
+                        let mut o = door_async::stdout().unwrap();
                         let mut e = tokio::io::stderr();
                         let mut io2 = io.clone();
                         let co = tokio::io::copy(&mut io, &mut o);
-                        // let ci = tokio::io::copy(&mut i, &mut io2);
+                        let ci = tokio::io::copy(&mut i, &mut io2);
                         let ce = tokio::io::copy(&mut err, &mut e);
-                        let r = futures::join!(co, ce);
-                        r.0?;
-                        r.1?;
-                        // r.2?;
+                        let (r1, r2, r3) = futures::join!(co, ci, ce);
+                        r1?;
+                        r2?;
+                        r3?;
                         Ok::<_, anyhow::Error>(())
                     });
                 }

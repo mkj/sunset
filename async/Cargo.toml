@@ -24,12 +24,15 @@ tokio = { version = "1.17", features = ["sync"] }
 futures = { version = "0.4.0-alpha.0", git = "https://github.com/rust-lang/futures-rs", revision = "8b0f812f53ada0d0aeb74abc32be22ab9dafae05" }
 async-trait = "0.1"
 
+libc = "0.2"
+nix = "0.24"
+
 # TODO
-anyhow = { version = "1.0" }
 pretty-hex = "0.3"
+snafu = { version = "0.7", default-features = true }
 
 [dev-dependencies]
-snafu = { default-features = true }
-tokio = { features = ["full"] }
+anyhow = { version = "1.0" }
+tokio = { version = "1.17", features = ["full"] }
 pretty-hex = "0.3"
 simplelog = "0.12"

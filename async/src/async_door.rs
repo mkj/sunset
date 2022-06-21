@@ -1,4 +1,3 @@
-use door::sshnames::SSH_EXTENDED_DATA_STDERR;
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
 
@@ -19,11 +18,8 @@ use core::task::Waker;
 use core::ops::DerefMut;
 use std::sync::Arc;
 
-// TODO
-use anyhow::{anyhow, Context as _, Error, Result};
-
 use door_sshproto as door;
-use door::{Behaviour, AsyncCliBehaviour, Runner, Conn};
+use door::{Behaviour, AsyncCliBehaviour, Runner, Conn, Result};
 // use door_sshproto::client::*;
 
 use pretty_hex::PrettyHex;
@@ -68,7 +64,7 @@ impl<'a> AsyncDoor<'a> {
         let res = {
             let mut inner = self.inner.lock().await;
             let inner = inner.deref_mut();
-            let ev = inner.runner.progress(&mut inner.behaviour).await.context("progess")?;
+            let ev = inner.runner.progress(&mut inner.behaviour).await?;
             let r = if let Some(ev) = ev {
                 let r = f(ev);
                 inner.runner.done_payload()?;
@@ -131,46 +127,6 @@ impl Clone for AsyncDoor<'_> {
     }
 }
 
-
-pub struct SSHClient<'a> {
-    door: AsyncDoor<'a>,
-}
-
-impl<'a> SSHClient<'a> {
-    pub fn new(buf: &'a mut [u8], behaviour: Box<dyn AsyncCliBehaviour+Send>) -> Result<Self> {
-        let conn = Conn::new_client()?;
-        let runner = Runner::new(conn, buf)?;
-        let b = Behaviour::new_async_client(behaviour);
-        let door = AsyncDoor::new(runner, b);
-        Ok(Self {
-            door
-        })
-    }
-
-    pub fn socket(&self) -> AsyncDoorSocket<'a> {
-        self.door.socket()
-    }
-
-    pub async fn progress<F, R>(&mut self, f: F)
-        -> Result<Option<R>>
-        where F: FnOnce(door::Event) -> Result<Option<R>> {
-        self.door.progress(f).await
-    }
-
-    // TODO: return a Channel object that gives events like WinChange or exit status
-    // TODO: move to SimpleClient or something?
-    pub async fn open_client_session(&mut self, exec: Option<&str>, pty: bool)
-    -> Result<(ChanInOut<'a>, ChanExtIn<'a>)> {
-        let chan = self.door.with_runner(|runner| {
-            runner.open_client_session(exec, pty)
-        }).await?;
-
-        let cstd = ChanInOut::new(chan, &self.door);
-        let cerr = ChanExtIn::new(chan, SSH_EXTENDED_DATA_STDERR, &self.door);
-        Ok((cstd, cerr))
-    }
-
-}
 
 /// Tries to lock Inner for a poll_read()/poll_write().
 /// lock_fut from the caller holds the future so that it can
@@ -322,7 +278,7 @@ pub struct ChanExtOut<'a> {
 }
 
 impl<'a> ChanInOut<'a> {
-    fn new(chan: u32, door: &AsyncDoor<'a>) -> Self {
+    pub(crate) fn new(chan: u32, door: &AsyncDoor<'a>) -> Self {
         Self {
             chan, door: door.clone(),
             rlfut: None, wlfut: None,
@@ -340,7 +296,7 @@ impl Clone for ChanInOut<'_> {
 }
 
 impl<'a> ChanExtIn<'a> {
-    fn new(chan: u32, ext: u32, door: &AsyncDoor<'a>) -> Self {
+    pub(crate) fn new(chan: u32, ext: u32, door: &AsyncDoor<'a>) -> Self {
         Self {
             chan, ext, door: door.clone(),
             rlfut: None,
