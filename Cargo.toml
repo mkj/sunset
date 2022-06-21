@@ -7,9 +7,8 @@ license = "MPL-2.0"
 [workspace]
 members = [
     "sshproto",
-    "smol",
-    "door-tokio",
     "sshwire_derive",
+    "async",
 ]
 
 [profile.release]

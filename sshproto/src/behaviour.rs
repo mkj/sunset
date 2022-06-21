@@ -56,22 +56,18 @@ pub struct Behaviour<'a> {
 
 #[cfg(feature = "std")]
 impl Behaviour<'_> {
-    pub fn new_async_client(b: std::boxed::Box<dyn async_behaviour::AsyncCliBehaviour + Send>) -> Self {
+    pub fn new_async_client(b: Box<dyn async_behaviour::AsyncCliBehaviour + Send>) -> Self {
         Self {
             inner: async_behaviour::AsyncCliServ::Client(b),
             phantom: PhantomData::default(),
         }
     }
 
-    pub fn new_async_server(b: std::boxed::Box<dyn async_behaviour::AsyncServBehaviour + Send>) -> Self {
+    pub fn new_async_server(b: Box<dyn async_behaviour::AsyncServBehaviour + Send>) -> Self {
         Self {
             inner: async_behaviour::AsyncCliServ::Server(b),
             phantom: PhantomData::default(),
         }
-    }
-
-    pub(crate) fn progress(&mut self, runner: &mut Runner) -> Result<()> {
-        self.inner.progress(runner)
     }
 
     pub(crate) async fn chan_handler(&mut self, resp: &mut RespPackets<'_>, chan_msg: ChanMsg) -> Result<()> {
@@ -103,9 +99,6 @@ impl<'a> Behaviour<'a>
             inner: block_behaviour::BlockCliServ::Server(b),
             phantom: PhantomData::default(),
         }
-    }
-    pub(crate) fn progress(&mut self, runner: &mut Runner) -> Result<()> {
-        self.inner.progress(runner)
     }
 
     pub(crate) async fn chan_handler(&mut self, resp: &mut RespPackets<'_>, chan_msg: ChanMsg) -> Result<()> {

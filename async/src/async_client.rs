@@ -54,17 +54,6 @@ impl door::AsyncCliBehaviour for SimpleClient {
         Ok(())
     }
 
-    fn progress(&mut self, runner: &mut Runner) -> Result<()> {
-        if self.auth_done {
-            if self.main_ch.is_none() {
-                let ch =
-                    runner.open_client_session(Some("cowsay it works"), false)?;
-                self.main_ch = Some(ch);
-            }
-        }
-        Ok(())
-    }
-
     async fn username(&mut self) -> BhResult<door::ResponseString> {
         door::ResponseString::from_str(&self.username).map_err(|_| BhError::Fail)
     }

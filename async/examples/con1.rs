@@ -11,6 +11,7 @@ use tokio::net::TcpStream;
 use std::{net::Ipv6Addr, io::Read};
 
 use door_sshproto::*;
+use door_async::SSHClient;
 
 use simplelog::*;
 
@@ -87,16 +88,6 @@ fn main() -> Result<()> {
         })
 }
 
-// async fn handle_request(door: &door_smol::AsyncDoor<'_>, query: HookQuery) {
-//     match query {
-//         HookQuery::Username(_) => {
-//             let mut s = ResponseString::new();
-//             s.push_str("matt").unwrap();
-//             door.reply_request(Ok(HookQuery::Username(s))).unwrap();
-//         }
-//     }
-// }
-
 fn setup_log(args: &Args) {
     let mut conf = simplelog::ConfigBuilder::new();
     let conf = conf
@@ -105,7 +96,7 @@ fn setup_log(args: &Args) {
     // not debugging these bits of the stack at present
     // .add_filter_ignore_str("door_sshproto::traffic")
     // .add_filter_ignore_str("door_sshproto::runner")
-    // .add_filter_ignore_str("door_smol::async_door")
+    // .add_filter_ignore_str("door_async::async_door")
     .set_time_offset_to_local().expect("Couldn't get local timezone")
     .build();
 
@@ -137,30 +128,21 @@ async fn run(args: &Args) -> Result<()> {
 
     // Connect to a peer
     let mut stream = TcpStream::connect((args.host.as_str(), args.port)).await?;
-    // let mut stream = net::TcpStream::connect("::1:2244").await?;
-    // let mut stream = TcpStream::connect("130.95.13.18:22").await?;
 
-    let mut work = vec![0; 3000];
+    let work = vec![0; 3000];
+    // TODO: better lifetime rather than leaking
     let work = Box::leak(Box::new(work));
-    let mut sess = door_smol::SimpleClient::new(args.username.as_ref().unwrap());
+
+    let mut sess = door_async::SimpleClient::new(args.username.as_ref().unwrap());
     for i in &args.identityfile {
         sess.add_authkey(read_key(&i)
             .with_context(|| format!("loading key {i}"))?);
     }
-    let conn = Conn::new_client()?;
-    let runner = Runner::new(conn, work.as_mut_slice())?;
 
-    let b = Behaviour::new_async_client(Box::new(sess));
-    // let b = Behaviour::new_blocking_client(&mut sess);
-    let mut door = door_smol::AsyncDoor::new(runner, b);
+    let mut door = SSHClient::new(work.as_mut_slice(), Box::new(sess))?;
 
-    // let door = async_dup::Mutex::new(door_smol::AsyncDoor { runner });
-
-    // let mut f = future::try_zip(netwrite, netread).fuse();
-    // f.await;
-
-    let mut d = door.clone();
-    let netloop = tokio::io::copy_bidirectional(&mut stream, &mut d);
+    let mut s = door.socket();
+    let netloop = tokio::io::copy_bidirectional(&mut stream, &mut s);
 
     let prog = tokio::spawn(async move {
 

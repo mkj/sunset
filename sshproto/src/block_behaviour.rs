@@ -40,13 +40,6 @@ impl BlockCliServ<'_>
         Ok(c)
     }
 
-    pub(crate) fn progress(&mut self, runner: &mut Runner) -> Result<()> {
-        match self {
-            Self::Client(i) => i.progress(runner),
-            Self::Server(i) => i.progress(runner),
-        }
-    }
-
     pub(crate) fn chan_handler<'f>(
         &mut self,
         resp: &mut RespPackets<'_>,
@@ -65,11 +58,6 @@ pub trait BlockCliBehaviour {
         resp: &mut RespPackets,
         chan_msg: ChanMsg,
     ) -> Result<()>;
-
-    /// Should not block
-    fn progress(&mut self, runner: &mut Runner) -> Result<()> {
-        Ok(())
-    }
 
     /// Provide the username to use for authentication. Will only be called once
     /// per session.
@@ -115,10 +103,6 @@ pub trait BlockCliBehaviour {
 }
 
 pub trait BlockServBehaviour {
-    fn progress(&mut self, runner: &mut Runner) -> Result<()> {
-        Ok(())
-    }
-
     fn chan_handler(
         &mut self,
         resp: &mut RespPackets,

@@ -22,9 +22,8 @@ use std::sync::Arc;
 // TODO
 use anyhow::{anyhow, Context as _, Error, Result};
 
-use door::{Behaviour, Runner};
 use door_sshproto as door;
-use door_sshproto::error::Error as DoorError;
+use door::{Behaviour, AsyncCliBehaviour, Runner, Conn};
 // use door_sshproto::client::*;
 
 use pretty_hex::PrettyHex;
@@ -45,8 +44,6 @@ pub struct AsyncDoor<'a> {
 
     progress_notify: Arc<TokioNotify>,
 
-    read_lock_fut: Option<OwnedMutexLockFuture<Inner<'a>>>,
-    write_lock_fut: Option<OwnedMutexLockFuture<Inner<'a>>>,
 }
 
 impl<'a> AsyncDoor<'a> {
@@ -56,7 +53,11 @@ impl<'a> AsyncDoor<'a> {
         let inner = Arc::new(Mutex::new(Inner { runner, behaviour,
             chan_read_wakers, chan_write_wakers }));
         let progress_notify = Arc::new(TokioNotify::new());
-        Self { inner, progress_notify, read_lock_fut: None, write_lock_fut: None }
+        Self { inner, progress_notify }
+    }
+
+    pub fn socket(&self) -> AsyncDoorSocket<'a> {
+        AsyncDoorSocket::new(self)
     }
 
     pub async fn progress<F, R>(&mut self, f: F)
@@ -120,34 +121,58 @@ impl<'a> AsyncDoor<'a> {
         let mut inner = self.inner.lock().await;
         f(&mut inner.runner)
     }
-
-    // TODO: return a Channel object that gives events like WinChange or exit status
-    // TODO: move to SimpleClient or something?
-    pub async fn open_client_session(&mut self, exec: Option<&str>, pty: bool)
-    -> Result<(ChanInOut<'a>, ChanExtIn<'a>)> {
-        let chan = self.with_runner(|runner| {
-            runner.open_client_session(exec, pty)
-        }).await?;
-
-        let cstd = ChanInOut::new(chan, &self);
-        let cerr = ChanExtIn::new(chan, SSH_EXTENDED_DATA_STDERR, &self);
-        Ok((cstd, cerr))
-    }
-
 }
 
 impl Clone for AsyncDoor<'_> {
     fn clone(&self) -> Self {
         Self { inner: self.inner.clone(),
             progress_notify: self.progress_notify.clone(),
-            read_lock_fut: None,
-            write_lock_fut: None,
         }
     }
 }
 
 
-/// Tries to locks Inner for a poll_read()/poll_write().
+pub struct SSHClient<'a> {
+    door: AsyncDoor<'a>,
+}
+
+impl<'a> SSHClient<'a> {
+    pub fn new(buf: &'a mut [u8], behaviour: Box<dyn AsyncCliBehaviour+Send>) -> Result<Self> {
+        let conn = Conn::new_client()?;
+        let runner = Runner::new(conn, buf)?;
+        let b = Behaviour::new_async_client(behaviour);
+        let door = AsyncDoor::new(runner, b);
+        Ok(Self {
+            door
+        })
+    }
+
+    pub fn socket(&self) -> AsyncDoorSocket<'a> {
+        self.door.socket()
+    }
+
+    pub async fn progress<F, R>(&mut self, f: F)
+        -> Result<Option<R>>
+        where F: FnOnce(door::Event) -> Result<Option<R>> {
+        self.door.progress(f).await
+    }
+
+    // TODO: return a Channel object that gives events like WinChange or exit status
+    // TODO: move to SimpleClient or something?
+    pub async fn open_client_session(&mut self, exec: Option<&str>, pty: bool)
+    -> Result<(ChanInOut<'a>, ChanExtIn<'a>)> {
+        let chan = self.door.with_runner(|runner| {
+            runner.open_client_session(exec, pty)
+        }).await?;
+
+        let cstd = ChanInOut::new(chan, &self.door);
+        let cerr = ChanExtIn::new(chan, SSH_EXTENDED_DATA_STDERR, &self.door);
+        Ok((cstd, cerr))
+    }
+
+}
+
+/// Tries to lock Inner for a poll_read()/poll_write().
 /// lock_fut from the caller holds the future so that it can
 /// be woken later if the lock was contended
 fn poll_lock<'a>(inner: Arc<Mutex<Inner<'a>>>, cx: &mut Context<'_>,
@@ -162,7 +187,21 @@ fn poll_lock<'a>(inner: Arc<Mutex<Inner<'a>>>, cx: &mut Context<'_>,
     p
 }
 
-impl<'a> AsyncRead for AsyncDoor<'a> {
+pub struct AsyncDoorSocket<'a> {
+    door: AsyncDoor<'a>,
+
+    read_lock_fut: Option<OwnedMutexLockFuture<Inner<'a>>>,
+    write_lock_fut: Option<OwnedMutexLockFuture<Inner<'a>>>,
+}
+
+impl<'a> AsyncDoorSocket<'a> {
+    fn new(door: &AsyncDoor<'a>) -> Self {
+        AsyncDoorSocket { door: door.clone(),
+            read_lock_fut: None, write_lock_fut: None }
+    }
+}
+
+impl<'a> AsyncRead for AsyncDoorSocket<'a> {
     fn poll_read(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -170,7 +209,7 @@ impl<'a> AsyncRead for AsyncDoor<'a> {
     ) -> Poll<Result<(), IoError>> {
         trace!("poll_read");
 
-        let mut p = poll_lock(self.inner.clone(), cx, &mut self.read_lock_fut);
+        let mut p = poll_lock(self.door.inner.clone(), cx, &mut self.read_lock_fut);
 
         let runner = match p {
             Poll::Ready(ref mut i) => &mut i.runner,
@@ -200,7 +239,7 @@ impl<'a> AsyncRead for AsyncDoor<'a> {
     }
 }
 
-impl<'a> AsyncWrite for AsyncDoor<'a> {
+impl<'a> AsyncWrite for AsyncDoorSocket<'a> {
     fn poll_write(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -208,7 +247,7 @@ impl<'a> AsyncWrite for AsyncDoor<'a> {
     ) -> Poll<Result<usize, IoError>> {
         trace!("poll_write");
 
-        let mut p = poll_lock(self.inner.clone(), cx, &mut self.write_lock_fut);
+        let mut p = poll_lock(self.door.inner.clone(), cx, &mut self.write_lock_fut);
 
         let runner = match p {
             Poll::Ready(ref mut i) => &mut i.runner,
@@ -237,7 +276,7 @@ impl<'a> AsyncWrite for AsyncDoor<'a> {
         if let Poll::Ready(_) = r {
             // TODO: only notify if packet traffic.payload().is_some() ?
             // Though we also are using progress() for other events.
-            self.progress_notify.notify_one();
+            self.door.progress_notify.notify_one();
             trace!("notify progress");
         }
         r

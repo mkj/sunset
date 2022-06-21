@@ -43,13 +43,6 @@ impl AsyncCliServ {
         Ok(c)
     }
 
-    pub(crate) fn progress(&mut self, runner: &mut Runner) -> Result<()> {
-        match self {
-            Self::Client(i) => i.progress(runner),
-            Self::Server(i) => i.progress(runner),
-        }
-    }
-
     pub(crate) async fn chan_handler(&mut self, resp: &mut RespPackets<'_>, chan_msg: ChanMsg) -> Result<()> {
         match self {
             Self::Client(i) => i.chan_handler(resp, chan_msg).await,
@@ -65,9 +58,6 @@ impl AsyncCliServ {
 #[async_trait]
 pub trait AsyncCliBehaviour: Sync+Send {
     async fn chan_handler(&mut self, resp: &mut RespPackets, chan_msg: ChanMsg) -> Result<()>;
-
-    /// Should not block
-    fn progress(&mut self, runner: &mut Runner) -> Result<()> { Ok(()) }
 
     /// Provide the username to use for authentication. Will only be called once
     /// per session.
@@ -119,7 +109,5 @@ pub trait AsyncCliBehaviour: Sync+Send {
 // #[async_trait(?Send)]
 #[async_trait]
 pub trait AsyncServBehaviour: Sync+Send {
-    fn progress(&mut self, runner: &mut Runner) -> Result<()> { Ok(()) }
-
     fn chan_handler(&mut self, resp: &mut RespPackets, chan_msg: ChanMsg) -> Result<()>;
 }

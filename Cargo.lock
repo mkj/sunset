@@ -311,7 +311,7 @@ name = "door"
 version = "0.1.0"
 
 [[package]]
-name = "door-smol"
+name = "door-async"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -320,7 +320,7 @@ dependencies = [
  "door-sshproto",
  "futures",
  "log",
- "pretty-hex 0.3.0",
+ "pretty-hex",
  "rpassword",
  "simplelog",
  "snafu",
@@ -343,7 +343,7 @@ dependencies = [
  "log",
  "no-panic",
  "poly1305",
- "pretty-hex 0.3.0",
+ "pretty-hex",
  "proptest",
  "rand",
  "rand_core 0.6.3",
@@ -355,20 +355,6 @@ dependencies = [
  "snafu",
  "ssh-key",
  "sshwire_derive",
-]
-
-[[package]]
-name = "door-tokio"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "door-sshproto",
- "log",
- "pin-utils",
- "pretty-hex 0.2.1",
- "simplelog",
- "snafu",
- "tokio",
 ]
 
 [[package]]
@@ -772,12 +758,6 @@ name = "ppv-lite86"
 version = "0.2.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "eb9f9e6e233e5c4a35559a617bf40a4ec447db2e84c20b55a6f83167b7e57872"
-
-[[package]]
-name = "pretty-hex"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc5c99d529f0d30937f6f4b8a86d988047327bb88d04d2c4afc356de74722131"
 
 [[package]]
 name = "pretty-hex"
