@@ -262,9 +262,7 @@ impl<'a> Traffic<'a> {
 
     /// Write any pending output, returning the size written
     pub fn output(&mut self, buf: &mut [u8]) -> usize {
-        trace!("output state {:?}", self.state);
-
-        match self.state {
+        let r = match self.state {
             TrafState::Write { ref mut idx, len } => {
                 let wlen = (len - *idx).min(buf.len());
                 buf[..wlen].copy_from_slice(&self.buf[*idx..*idx + wlen]);
@@ -277,7 +275,9 @@ impl<'a> Traffic<'a> {
                 wlen
             }
             _ => 0,
-        }
+        };
+        trace!("output state now {:?}", self.state);
+        r
     }
 
     fn fill_input(
@@ -340,19 +340,10 @@ impl<'a> Traffic<'a> {
         Ok(buf.len() - r.len())
     }
 
-    pub fn ready_channel_input(&self, chan: u32, ext: Option<u32>) -> bool {
+    pub fn ready_channel_input(&self) -> Option<(u32, Option<u32>)> {
         match self.state {
-            TrafState::InChannelData { chan: c, ext: e, .. }
-                if (c, e) == (chan, ext) => true,
-            _ => false,
-        }
-    }
-
-    pub fn ready_channel_send(&self) -> bool {
-        // TODO: this should call can_output()
-        match self.state {
-            TrafState::Idle => true,
-            _ => false,
+            TrafState::InChannelData { chan, ext, .. } => Some((chan, ext)),
+            _ => None,
         }
     }
 
@@ -376,9 +367,7 @@ impl<'a> Traffic<'a> {
         ext: Option<u32>,
         buf: &mut [u8],
     ) -> (usize, bool) {
-        if !matches!(self.state, TrafState::Idle) {
-            return (0, false)
-        }
+        trace!("channel input {chan} {ext:?} st {:?}", self.state);
 
         match self.state {
             TrafState::InChannelData { chan: c, ext: e, ref mut idx, len }

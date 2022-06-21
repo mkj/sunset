@@ -15,11 +15,13 @@ argh = "0.1"
 # futures-micro = "0.5"
 # async-dup = "1.2"
 
-pin-utils = "0.1"
-tokio = { version = "1.17", features = ["full"] }
-futures = "0.3"
-parking_lot = { version = "0.12", features = ["arc_lock", "send_guard"] }
+# pin-utils = "0.1"
+# pin-project = "1.0"
+# parking_lot = { version = "0.12", features = ["arc_lock", "send_guard"] }
 
+tokio = { version = "1.17", features = ["sync"] }
+# require alpha for https://github.com/rust-lang/futures-rs/pull/2571
+futures = { version = "0.4.0-alpha.0", git = "https://github.com/rust-lang/futures-rs", revision = "8b0f812f53ada0d0aeb74abc32be22ab9dafae05" }
 async-trait = "0.1"
 
 # TODO
@@ -27,6 +29,7 @@ anyhow = { version = "1.0" }
 pretty-hex = "0.3"
 
 [dev-dependencies]
-snafu = { version = "0.7", default-features = true }
+snafu = { default-features = true }
+tokio = { features = ["full"] }
 pretty-hex = "0.3"
 simplelog = "0.12"

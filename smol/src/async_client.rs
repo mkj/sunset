@@ -9,8 +9,6 @@ use door_sshproto::{BhError, BhResult};
 use door_sshproto::{ChanMsg, ChanMsgDetails, Error, RespPackets, Result, Runner};
 
 use std::collections::VecDeque;
-use std::io::Write;
-use tokio::io::AsyncWriteExt;
 
 use async_trait::async_trait;
 
@@ -34,10 +32,10 @@ impl SimpleClient {
     pub fn add_authkey(&mut self, k: SignKey) {
         self.authkeys.push_back(k)
     }
-
 }
 
-#[async_trait(?Send)]
+// #[async_trait(?Send)]
+#[async_trait]
 impl door::AsyncCliBehaviour for SimpleClient {
     async fn chan_handler(
         &mut self,

@@ -56,7 +56,10 @@ impl<'a> Runner<'a> {
     /// Write any pending output to the wire, returning the size written
     pub fn output(&mut self, buf: &mut [u8]) -> Result<usize, Error> {
         let r = self.traffic.output(buf);
-        self.wake();
+        if r > 0 {
+            trace!("output() wake");
+            self.wake();
+        }
         Ok(r)
     }
 
@@ -99,6 +102,7 @@ impl<'a> Runner<'a> {
         let ev = if let Some(em) = em {
             match em {
                 EventMaker::Channel(ChanEventMaker::DataIn(di)) => {
+                    trace!("chanmaaker {di:?}");
                     self.traffic.done_payload()?;
                     self.traffic.set_channel_input(di)?;
                     // TODO: channel wakers
@@ -127,16 +131,21 @@ impl<'a> Runner<'a> {
     }
 
     pub fn wake(&mut self) {
+        error!("wake");
         if self.ready_input() {
+            trace!("wake ready_input, waker {:?}", self.input_waker);
             if let Some(w) = self.input_waker.take() {
                 trace!("wake input waker");
                 w.wake()
             }
         }
+
         if self.output_pending() {
             if let Some(w) = self.output_waker.take() {
                 trace!("wake output waker");
                 w.wake()
+            } else {
+                trace!("no waker");
             }
         }
     }
@@ -180,9 +189,11 @@ impl<'a> Runner<'a> {
         ext: Option<u32>,
         buf: &mut [u8],
     ) -> Result<usize> {
+        trace!("runner chan in");
         let (len, complete) = self.traffic.channel_input(chan, ext, buf);
         if complete {
             self.conn.channels.finished_input(chan)?;
+            self.wake();
         }
         Ok(len)
     }
@@ -191,12 +202,8 @@ impl<'a> Runner<'a> {
         self.conn.initial_sent() && self.traffic.ready_input()
     }
 
-    pub fn ready_progress(&self) -> bool {
-        self.conn.initial_sent() && self.traffic.ready_input()
-    }
-
     pub fn output_pending(&self) -> bool {
-        !self.conn.initial_sent() || self.traffic.output_pending()
+        self.traffic.output_pending()
     }
 
     pub fn set_input_waker(&mut self, waker: Waker) {
@@ -207,13 +214,13 @@ impl<'a> Runner<'a> {
         self.output_waker = Some(waker);
     }
 
-    pub fn ready_channel_input(&self, chan: u32, ext: Option<u32>) -> bool {
-        self.traffic.ready_channel_input(chan, ext)
+    pub fn ready_channel_input(&self) -> Option<(u32, Option<u32>)> {
+        self.traffic.ready_channel_input()
     }
 
-    // TODO check the chan/ext are valid
+    // TODO check the chan/ext are valid, SSH window
     pub fn ready_channel_send(&self, _chan: u32, _ext: Option<u32>) -> bool {
-        self.traffic.ready_channel_send()
+        self.traffic.can_output()
         // && self.conn.channels.ready_send_data(chan, ext)
     }
 

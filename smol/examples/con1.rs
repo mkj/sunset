@@ -3,10 +3,9 @@ use {
     // crate::error::Error,
     log::{debug, error, info, log, trace, warn},
 };
-use anyhow::{Context, Result, Error};
+use anyhow::{Context, Result, Error, bail};
 use pretty_hex::PrettyHex;
 
-use pin_utils::*;
 use tokio::net::TcpStream;
 
 use std::{net::Ipv6Addr, io::Read};
@@ -157,50 +156,61 @@ async fn run(args: &Args) -> Result<()> {
 
     // let door = async_dup::Mutex::new(door_smol::AsyncDoor { runner });
 
-    let mut d = door.clone();
-    let netio = tokio::io::copy_bidirectional(&mut stream, &mut d);
-    pin_mut!(netio);
     // let mut f = future::try_zip(netwrite, netread).fuse();
     // f.await;
 
-    loop {
-        tokio::select! {
-            e = &mut netio => break e.map(|_| ()).context("net loop"),
-            ev = door.progress(|ev| {
+    let mut d = door.clone();
+    let netloop = tokio::io::copy_bidirectional(&mut stream, &mut d);
+
+    let prog = tokio::spawn(async move {
+
+        loop {
+            let ev = door.progress(|ev| {
                 trace!("progress event {ev:?}");
                 let e = match ev {
                     Event::Authenticated => Some(Event::Authenticated),
                     _ => None,
                 };
                 Ok(e)
-            }) => {
-                let ev = ev?;
-                match ev {
-                    Some(Event::Authenticated) => {
-                        info!("auth auth");
-                        let r = door.open_client_session(Some("Cowsay it works"), false).await;
-                        match r {
-                            Ok((mut stdio, mut _stderr)) => {
-                                tokio::spawn(async move {
-                                    trace!("io copy thread");
-                                    let r = tokio::io::copy(&mut stdio, &mut tokio::io::stdout()).await;
-                                    if let Err(e) = r {
-                                        warn!("IO error: {e}");
-                                    }
-                                });
-                            },
-                            Err(e) => {
-                                warn!("Failed opening session: {e}")
-                            }
-                        }
-                    }
-                    Some(_) => unreachable!(),
-                    None => {},
+            }).await.context("progress loop")?;
+
+            match ev {
+                Some(Event::Authenticated) => {
+                    info!("auth auth");
+                    let r = door.open_client_session(Some("cowsay it works"), false).await
+                        .context("Opening session")?;
+                    let (mut io, mut err) = r;
+                    tokio::spawn(async move {
+                        trace!("io copy thread");
+                        // let mut i = tokio::io::stdin();
+                        let mut o = tokio::io::stdout();
+                        let mut e = tokio::io::stderr();
+                        let mut io2 = io.clone();
+                        let co = tokio::io::copy(&mut io, &mut o);
+                        // let ci = tokio::io::copy(&mut i, &mut io2);
+                        let ce = tokio::io::copy(&mut err, &mut e);
+                        let r = futures::join!(co, ce);
+                        r.0?;
+                        r.1?;
+                        // r.2?;
+                        Ok::<_, anyhow::Error>(())
+                    });
                 }
+                Some(_) => unreachable!(),
+                None => {},
             }
-            // q = door.next_request() => {
-            //     handle_request(&door, q).await
-            // }
+        }
+        Ok::<_, anyhow::Error>(())
+    });
+
+    loop {
+        tokio::select! {
+            e = prog => {
+                bail!("progress loop {e:?}");
+            }
+            e = netloop => {
+                bail!("net loop {e:?}");
+            }
         }
     }
 

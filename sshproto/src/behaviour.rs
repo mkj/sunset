@@ -124,7 +124,7 @@ impl<'a> Behaviour<'a>
 
 pub struct CliBehaviour<'a> {
     #[cfg(feature = "std")]
-    pub inner: &'a mut dyn async_behaviour::AsyncCliBehaviour,
+    pub inner: &'a mut (dyn async_behaviour::AsyncCliBehaviour + Send),
     #[cfg(not(feature = "std"))]
     pub inner: &'a mut dyn block_behaviour::BlockCliBehaviour,
     // pub phantom: core::marker::PhantomData<&'a ()>,

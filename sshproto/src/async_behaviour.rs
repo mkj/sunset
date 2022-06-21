@@ -58,8 +58,12 @@ impl AsyncCliServ {
     }
 }
 
-#[async_trait(?Send)]
-pub trait AsyncCliBehaviour {
+// Send+Sync bound here is required for trait objects since there are
+// default implementations of some methods.
+// https://docs.rs/async-trait/latest/async_trait/index.html#dyn-traits
+// #[async_trait(?Send)]
+#[async_trait]
+pub trait AsyncCliBehaviour: Sync+Send {
     async fn chan_handler(&mut self, resp: &mut RespPackets, chan_msg: ChanMsg) -> Result<()>;
 
     /// Should not block
@@ -112,8 +116,9 @@ pub trait AsyncCliBehaviour {
     // TODO: postauth channel callbacks
 }
 
-#[async_trait(?Send)]
-pub trait AsyncServBehaviour {
+// #[async_trait(?Send)]
+#[async_trait]
+pub trait AsyncServBehaviour: Sync+Send {
     fn progress(&mut self, runner: &mut Runner) -> Result<()> { Ok(()) }
 
     fn chan_handler(&mut self, resp: &mut RespPackets, chan_msg: ChanMsg) -> Result<()>;
