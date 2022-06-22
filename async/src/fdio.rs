@@ -5,8 +5,7 @@ use snafu::{prelude::*, Whatever};
 
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio::io::unix::AsyncFd;
-use std::os::unix::io::{RawFd, FromRawFd};
-use std::io::{Read, Write};
+use std::os::unix::io::RawFd;
 
 use std::io::Error as IoError;
 
@@ -14,12 +13,11 @@ use core::pin::Pin;
 use core::task::{Context, Poll};
 
 use nix::fcntl::{fcntl, FcntlArg, OFlag};
-use nix::errno::Errno;
 
-fn dup_async(orig_fd: libc::c_int) -> Result<AsyncFd<RawFd>, Whatever> {
-    let fd = nix::unistd::dup(orig_fd).whatever_context("dup() failed")?;
-    fcntl(fd, FcntlArg::F_SETFL(OFlag::O_NONBLOCK)).whatever_context("fcntl failed")?;
-    AsyncFd::new(fd).whatever_context("asyncfd")
+fn dup_async(orig_fd: libc::c_int) -> Result<AsyncFd<RawFd>, IoError> {
+    let fd = nix::unistd::dup(orig_fd)?;
+    fcntl(fd, FcntlArg::F_SETFL(OFlag::O_NONBLOCK))?;
+    AsyncFd::new(fd)
 }
 
 pub struct Stdin {
@@ -32,17 +30,17 @@ pub struct Stderr {
     f: AsyncFd<RawFd>,
 }
 
-pub fn stdin() -> Result<Stdin, Whatever> {
+pub fn stdin() -> Result<Stdin, IoError> {
     Ok(Stdin {
         f: dup_async(libc::STDIN_FILENO)?,
     })
 }
-pub fn stdout() -> Result<Stdout, Whatever> {
+pub fn stdout() -> Result<Stdout, IoError> {
     Ok(Stdout {
         f: dup_async(libc::STDOUT_FILENO)?,
     })
 }
-pub fn stderr() -> Result<Stderr, Whatever> {
+pub fn stderr() -> Result<Stderr, IoError> {
     Ok(Stderr {
         f: dup_async(libc::STDERR_FILENO)?,
     })
@@ -72,6 +70,7 @@ impl AsyncRead for Stdin {
         cx: &mut Context<'_>,
         buf: &mut ReadBuf,
     ) -> Poll<Result<(), IoError>> {
+        // XXX loop was copy pasted from docs, perhaps it could be simpler
         loop {
             let mut guard = match self.f.poll_read_ready(cx)? {
                 Poll::Ready(r) => r,

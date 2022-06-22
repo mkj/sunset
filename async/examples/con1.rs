@@ -4,6 +4,7 @@ use {
     log::{debug, error, info, log, trace, warn},
 };
 use anyhow::{Context, Result, Error, bail};
+// use snafu::ResultExt;
 use pretty_hex::PrettyHex;
 
 use tokio::net::TcpStream;
@@ -164,9 +165,9 @@ async fn run(args: &Args) -> Result<()> {
                     let (mut io, mut err) = r;
                     tokio::spawn(async move {
                         trace!("channel copy");
-                        let mut i = door_async::stdin().unwrap();
+                        let mut i = door_async::stdin()?;
                         // let mut o = tokio::io::stdout();
-                        let mut o = door_async::stdout().unwrap();
+                        let mut o = door_async::stdout()?;
                         let mut e = tokio::io::stderr();
                         let mut io2 = io.clone();
                         let co = tokio::io::copy(&mut io, &mut o);
@@ -178,11 +179,13 @@ async fn run(args: &Args) -> Result<()> {
                         r3?;
                         Ok::<_, anyhow::Error>(())
                     });
+                    // TODO: handle channel completion
                 }
                 Some(_) => unreachable!(),
                 None => {},
             }
         }
+        #[allow(unreachable_code)]
         Ok::<_, anyhow::Error>(())
     });
 
