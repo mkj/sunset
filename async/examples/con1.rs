@@ -75,7 +75,7 @@ fn main() -> Result<()> {
     // logging uses the timezone, so we can't use async main.
     setup_log(&args);
 
-    tokio::runtime::Builder::new_multi_thread()
+    tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .unwrap()
@@ -143,56 +143,51 @@ async fn run(args: &Args) -> Result<()> {
     let mut s = door.socket();
     let netloop = tokio::io::copy_bidirectional(&mut stream, &mut s);
 
-    let prog = tokio::spawn(async move {
+    moro::async_scope!(|scope| {
+        scope.spawn(netloop);
 
-        loop {
-            let ev = door.progress(|ev| {
-                trace!("progress event {ev:?}");
-                let e = match ev {
-                    Event::Authenticated => Some(Event::Authenticated),
-                    _ => None,
-                };
-                Ok(e)
-            }).await.context("progress loop")?;
+        scope.spawn(async {
+            loop {
+                let ev = door.progress(|ev| {
+                    trace!("progress event {ev:?}");
+                    let e = match ev {
+                        Event::Authenticated => Some(Event::Authenticated),
+                        _ => None,
+                    };
+                    Ok(e)
+                }).await.context("progress loop")?;
 
-            match ev {
-                Some(Event::Authenticated) => {
-                    info!("Opening a new session channel");
-                    let r = door.open_client_session_nopty(Some("cowsay it works")).await
-                        .context("Opening session")?;
-                    let (mut io, mut err) = r;
-                    tokio::spawn(async move {
-                        let mut i = door_async::stdin()?;
-                        let mut o = door_async::stdout()?;
-                        let mut e = door_async::stderr()?;
-                        let mut io2 = io.clone();
-                        let co = tokio::io::copy(&mut io, &mut o);
-                        let ci = tokio::io::copy(&mut i, &mut io2);
-                        let ce = tokio::io::copy(&mut err, &mut e);
-                        let (r1, r2, r3) = futures::join!(co, ci, ce);
-                        r1?;
-                        r2?;
-                        r3?;
-                        Ok::<_, anyhow::Error>(())
-                    });
-                    // TODO: handle channel completion
+                match ev {
+                    Some(Event::Authenticated) => {
+                        info!("Opening a new session channel");
+                        let r = door.open_client_session_nopty(Some("cowsay it works")).await
+                            .context("Opening session")?;
+                        let (mut io, mut err) = r;
+                        scope.spawn(async move {
+                            let mut i = door_async::stdin()?;
+                            let mut o = door_async::stdout()?;
+                            let mut e = door_async::stderr()?;
+                            let mut io2 = io.clone();
+                            let co = tokio::io::copy(&mut io, &mut o);
+                            let ci = tokio::io::copy(&mut i, &mut io2);
+                            let ce = tokio::io::copy(&mut err, &mut e);
+                            let (r1, r2, r3) = futures::join!(co, ci, ce);
+                            r1?;
+                            r2?;
+                            r3?;
+                            Ok::<_, anyhow::Error>(())
+                        });
+                        // TODO: handle channel completion
+                    }
+                    Some(_) => unreachable!(),
+                    None => {},
                 }
-                Some(_) => unreachable!(),
-                None => {},
             }
-        }
-        #[allow(unreachable_code)]
-        Ok::<_, anyhow::Error>(())
-    });
+            #[allow(unreachable_code)]
+            Ok::<_, anyhow::Error>(())
 
-    loop {
-        tokio::select! {
-            e = prog => {
-                bail!("progress loop {e:?}");
-            }
-            e = netloop => {
-                bail!("net loop {e:?}");
-            }
-        }
-    }
+        });
+    }).await;
+
+    Ok(())
 }
