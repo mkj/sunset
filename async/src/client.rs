@@ -20,7 +20,7 @@ use crate::*;
 use crate::async_door::*;
 
 use door_sshproto as door;
-use door::{Behaviour, AsyncCliBehaviour, Runner, Conn, Result};
+use door::{Behaviour, AsyncCliBehaviour, Runner, Result};
 use door::sshnames::SSH_EXTENDED_DATA_STDERR;
 
 pub struct SSHClient<'a> {
@@ -29,8 +29,7 @@ pub struct SSHClient<'a> {
 
 impl<'a> SSHClient<'a> {
     pub fn new(buf: &'a mut [u8], behaviour: Box<dyn AsyncCliBehaviour+Send>) -> Result<Self> {
-        let conn = Conn::new_client()?;
-        let runner = Runner::new(conn, buf)?;
+        let runner = Runner::new_client(buf)?;
         let b = Behaviour::new_async_client(behaviour);
         let door = AsyncDoor::new(runner, b);
         Ok(Self {

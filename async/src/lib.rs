@@ -3,11 +3,11 @@
 
 mod client;
 mod async_door;
-mod simple_client;
+mod cmdline_client;
 
 pub use async_door::AsyncDoor;
 pub use client::SSHClient;
-pub use simple_client::SimpleClient;
+pub use cmdline_client::CmdlineClient;
 
 #[cfg(unix)]
 mod fdio;

@@ -12,7 +12,7 @@ use crate::{*, channel::ChanEvent};
 use encrypt::KeyState;
 use traffic::Traffic;
 
-use conn::{Dispatched, EventMaker, Event};
+use conn::{Conn, Dispatched, EventMaker, Event};
 use channel::ChanEventMaker;
 
 pub struct Runner<'a> {
@@ -30,10 +30,10 @@ pub struct Runner<'a> {
 
 impl<'a> Runner<'a> {
     /// `iobuf` must be sized to fit the largest SSH packet allowed.
-    pub fn new(
-        conn: Conn<'a>,
+    pub fn new_client(
         iobuf: &'a mut [u8],
     ) -> Result<Runner<'a>, Error> {
+        let conn = Conn::new_client()?;
         let runner = Runner {
             conn,
             traffic: traffic::Traffic::new(iobuf),
@@ -216,6 +216,10 @@ impl<'a> Runner<'a> {
 
     pub fn ready_channel_input(&self) -> Option<(u32, Option<u32>)> {
         self.traffic.ready_channel_input()
+    }
+
+    pub fn channel_eof(&self, chan: u32) -> bool {
+        self.conn.channels.recv_eof(chan)
     }
 
     // TODO check the chan/ext are valid, SSH window

@@ -42,13 +42,6 @@ impl AsyncCliServ {
         };
         Ok(c)
     }
-
-    pub(crate) async fn chan_handler(&mut self, resp: &mut RespPackets<'_>, chan_msg: ChanMsg) -> Result<()> {
-        match self {
-            Self::Client(i) => i.chan_handler(resp, chan_msg).await,
-            Self::Server(i) => i.chan_handler(resp, chan_msg),
-        }
-    }
 }
 
 // Send+Sync bound here is required for trait objects since there are
@@ -57,8 +50,6 @@ impl AsyncCliServ {
 // #[async_trait(?Send)]
 #[async_trait]
 pub trait AsyncCliBehaviour: Sync+Send {
-    async fn chan_handler(&mut self, resp: &mut RespPackets, chan_msg: ChanMsg) -> Result<()>;
-
     /// Provide the username to use for authentication. Will only be called once
     /// per session.
     /// If the username needs to change a new connection should be made
@@ -109,5 +100,4 @@ pub trait AsyncCliBehaviour: Sync+Send {
 // #[async_trait(?Send)]
 #[async_trait]
 pub trait AsyncServBehaviour: Sync+Send {
-    fn chan_handler(&mut self, resp: &mut RespPackets, chan_msg: ChanMsg) -> Result<()>;
 }

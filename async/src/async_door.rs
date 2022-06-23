@@ -19,7 +19,7 @@ use core::ops::DerefMut;
 use std::sync::Arc;
 
 use door_sshproto as door;
-use door::{Behaviour, AsyncCliBehaviour, Runner, Conn, Result};
+use door::{Behaviour, AsyncCliBehaviour, Runner, Result, Event, ChanEvent};
 // use door_sshproto::client::*;
 
 use pretty_hex::PrettyHex;
@@ -52,6 +52,12 @@ impl<'a> AsyncDoor<'a> {
         Self { inner, progress_notify }
     }
 
+    fn private_clone(&self) -> Self {
+        Self { inner: self.inner.clone(),
+            progress_notify: self.progress_notify.clone(),
+        }
+    }
+
     pub fn socket(&self) -> AsyncDoorSocket<'a> {
         AsyncDoorSocket::new(self)
     }
@@ -66,7 +72,12 @@ impl<'a> AsyncDoor<'a> {
             let inner = inner.deref_mut();
             let ev = inner.runner.progress(&mut inner.behaviour).await?;
             let r = if let Some(ev) = ev {
-                let r = f(ev);
+                let r = match ev {
+                    Event::Channel(ChanEvent::Eof { num }) => {
+                        Ok(None)
+                    },
+                    _ => f(ev),
+                };
                 inner.runner.done_payload()?;
                 r
             } else {
@@ -119,15 +130,6 @@ impl<'a> AsyncDoor<'a> {
     }
 }
 
-impl Clone for AsyncDoor<'_> {
-    fn clone(&self) -> Self {
-        Self { inner: self.inner.clone(),
-            progress_notify: self.progress_notify.clone(),
-        }
-    }
-}
-
-
 /// Tries to lock Inner for a poll_read()/poll_write().
 /// lock_fut from the caller holds the future so that it can
 /// be woken later if the lock was contended
@@ -152,7 +154,7 @@ pub struct AsyncDoorSocket<'a> {
 
 impl<'a> AsyncDoorSocket<'a> {
     fn new(door: &AsyncDoor<'a>) -> Self {
-        AsyncDoorSocket { door: door.clone(),
+        AsyncDoorSocket { door: door.private_clone(),
             read_lock_fut: None, write_lock_fut: None }
     }
 }
@@ -175,14 +177,13 @@ impl<'a> AsyncRead for AsyncDoorSocket<'a> {
             }
         };
 
-        runner.set_output_waker(cx.waker().clone());
         let b = buf.initialize_unfilled();
         let r = runner.output(b).map_err(|e| IoError::new(ErrorKind::Other, e));
 
         match r {
-            // poll_read() returning 0 means EOF, we don't want that
             Ok(0) => {
                 trace!("set output waker");
+                runner.set_output_waker(cx.waker().clone());
                 Poll::Pending
             }
             Ok(sz) => {
@@ -213,7 +214,6 @@ impl<'a> AsyncWrite for AsyncDoorSocket<'a> {
             }
         };
 
-        runner.set_input_waker(cx.waker().clone());
         // TODO: should runner just have poll_write/poll_read?
         // TODO: is ready_input necessary? .input() should return size=0
         // if nothing is consumed. Or .input() could return a Poll<Result<usize>>
@@ -223,6 +223,7 @@ impl<'a> AsyncWrite for AsyncDoorSocket<'a> {
                 .map_err(|e| IoError::new(std::io::ErrorKind::Other, e));
             Poll::Ready(r)
         } else {
+            runner.set_input_waker(cx.waker().clone());
             Poll::Pending
         };
 
@@ -280,7 +281,7 @@ pub struct ChanExtOut<'a> {
 impl<'a> ChanInOut<'a> {
     pub(crate) fn new(chan: u32, door: &AsyncDoor<'a>) -> Self {
         Self {
-            chan, door: door.clone(),
+            chan, door: door.private_clone(),
             rlfut: None, wlfut: None,
         }
     }
@@ -289,7 +290,7 @@ impl<'a> ChanInOut<'a> {
 impl Clone for ChanInOut<'_> {
     fn clone(&self) -> Self {
         Self {
-            chan: self.chan, door: self.door.clone(),
+            chan: self.chan, door: self.door.private_clone(),
             rlfut: None, wlfut: None,
         }
     }
@@ -298,7 +299,7 @@ impl Clone for ChanInOut<'_> {
 impl<'a> ChanExtIn<'a> {
     pub(crate) fn new(chan: u32, ext: u32, door: &AsyncDoor<'a>) -> Self {
         Self {
-            chan, ext, door: door.clone(),
+            chan, ext, door: door.private_clone(),
             rlfut: None,
         }
     }
@@ -351,8 +352,7 @@ fn chan_poll_read<'a>(
         .map_err(|e| IoError::new(std::io::ErrorKind::Other, e));
 
     match r {
-        // sz=0 means EOF, we don't want that
-        Ok(0) => {
+        Ok(0) if !runner.channel_eof(chan) => {
             let w = cx.waker().clone();
             inner.chan_read_wakers.insert((chan, ext), w);
             Poll::Pending

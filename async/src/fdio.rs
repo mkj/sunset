@@ -20,51 +20,29 @@ fn dup_async(orig_fd: libc::c_int) -> Result<AsyncFd<RawFd>, IoError> {
     AsyncFd::new(fd)
 }
 
-pub struct Stdin {
+pub struct InFd {
     f: AsyncFd<RawFd>,
 }
-pub struct Stdout {
+pub struct OutFd {
     f: AsyncFd<RawFd>,
 }
-pub struct Stderr {
-    f: AsyncFd<RawFd>,
-}
-
-pub fn stdin() -> Result<Stdin, IoError> {
-    Ok(Stdin {
+pub fn stdin() -> Result<InFd, IoError> {
+    Ok(InFd {
         f: dup_async(libc::STDIN_FILENO)?,
     })
 }
-pub fn stdout() -> Result<Stdout, IoError> {
-    Ok(Stdout {
+pub fn stdout() -> Result<OutFd, IoError> {
+    Ok(OutFd {
         f: dup_async(libc::STDOUT_FILENO)?,
     })
 }
-pub fn stderr() -> Result<Stderr, IoError> {
-    Ok(Stderr {
+pub fn stderr() -> Result<OutFd, IoError> {
+    Ok(OutFd {
         f: dup_async(libc::STDERR_FILENO)?,
     })
 }
 
-impl AsRef<AsyncFd<RawFd>> for Stdin {
-    fn as_ref(&self) -> &AsyncFd<RawFd> {
-        &self.f
-    }
-}
-
-impl AsRef<AsyncFd<RawFd>> for Stdout {
-    fn as_ref(&self) -> &AsyncFd<RawFd> {
-        &self.f
-    }
-}
-
-impl AsRef<AsyncFd<RawFd>> for Stderr {
-    fn as_ref(&self) -> &AsyncFd<RawFd> {
-        &self.f
-    }
-}
-
-impl AsyncRead for Stdin {
+impl AsyncRead for InFd {
     fn poll_read(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -97,7 +75,7 @@ impl AsyncRead for Stdin {
     }
 }
 
-impl AsyncWrite for Stdout {
+impl AsyncWrite for OutFd {
     fn poll_write(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,

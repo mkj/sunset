@@ -58,7 +58,17 @@ impl Channels {
         Ok((ch.as_ref().unwrap(), p))
     }
 
-    fn get_chan(&mut self, num: u32) -> Result<&mut Channel> {
+    pub(crate) fn get(&self, num: u32) -> Result<&Channel> {
+        self.ch
+            .get(num as usize)
+            // out of range
+            .ok_or(Error::BadChannel)?
+            .as_ref()
+            // unused channel
+            .ok_or(Error::BadChannel)
+    }
+
+    pub(crate) fn get_mut(&mut self, num: u32) -> Result<&mut Channel> {
         self.ch
             .get_mut(num as usize)
             // out of range
@@ -78,7 +88,7 @@ impl Channels {
     /// Returns the channel data packet to send, and the length of data consumed
     pub(crate) fn send_data<'b>(&mut self, num: u32, ext: Option<u32>, data: &'b [u8])
             -> Result<(Packet<'b>, usize)> {
-        let send_ch = self.get_chan(num)?.send.as_ref().trap()?.num;
+        let send_ch = self.get(num)?.send.as_ref().trap()?.num;
         // TODO: check: channel state, channel window, maxpacket
         let len = data.len();
         let data = BinString(data);
@@ -98,13 +108,17 @@ impl Channels {
             Some(ref p) if p.chan == num => {
                 // TODO: send window adjustment
                 let len = p.len;
-                let ch = self.get_chan(num)?;
+                let ch = self.get_mut(num)?;
                 ch.finished_input(len);
                 self.pending_input = None;
                 Ok(())
             }
             _ => Err(Error::bug()),
         }
+    }
+
+    pub(crate) fn recv_eof(&self, num: u32) -> bool {
+        self.get(num).map_or(false, |c| c.recv_eof())
     }
 
     // incoming packet handling
@@ -120,7 +134,7 @@ impl Channels {
                 todo!();
             }
             Packet::ChannelOpenConfirmation(p) => {
-                let ch = self.get_chan(p.num)?;
+                let ch = self.get_mut(p.num)?;
                 match ch.state {
                     ChanState::Opening { .. } => {
                         let init_state =
@@ -143,7 +157,7 @@ impl Channels {
                 }
             }
             Packet::ChannelOpenFailure(p) => {
-                let ch = self.get_chan(p.num)?;
+                let ch = self.get(p.num)?;
                 if ch.send.is_some() {
                     Err(Error::SSHProtoError)
                 } else {
@@ -156,7 +170,7 @@ impl Channels {
                 todo!();
             }
             Packet::ChannelData(p) => {
-                let ch = self.get_chan(p.num)?;
+                let ch = self.get(p.num)?;
                 // TODO check we are expecting input
                 if self.pending_input.is_some() {
                     return Err(Error::bug())
@@ -166,7 +180,7 @@ impl Channels {
                 Ok(Some(ChanEventMaker::DataIn(di)))
             }
             Packet::ChannelDataExt(p) => {
-                let ch = self.get_chan(p.num)?;
+                let ch = self.get(p.num)?;
                 // TODO check we are expecting input and ext is valid.
                 if self.pending_input.is_some() {
                     return Err(Error::bug())
@@ -175,14 +189,15 @@ impl Channels {
                 let di = DataIn { num: p.num, ext: Some(p.code), offset: p.data_offset(), len: p.data.0.len() };
                 Ok(Some(ChanEventMaker::DataIn(di)))
             }
-            Packet::ChannelEof(_p) => {
-                todo!();
+            Packet::ChannelEof(p) => {
+                let _ch = self.get(p.num)?;
+                Ok(Some(ChanEventMaker::Eof { num: p.num }))
             }
             Packet::ChannelClose(_p) => {
                 todo!();
             }
             Packet::ChannelRequest(p) => {
-                match self.get_chan(p.num) {
+                match self.get(p.num) {
                     Ok(ch) => Ok(Some(ChanEventMaker::Req)),
                     Err(ch) => {
                         if p.want_reply {
@@ -329,13 +344,16 @@ pub enum ChanState {
     // the Behaviour own it? Or we don't store them here, just callback to the Behaviour.
     Opening { init_req: InitReqs },
     Normal,
-    DrainRead,
-    DrainWrite,
+
+    RecvEof,
+    RecvClose,
 }
 
 pub struct Channel {
     ty: ChanType,
     state: ChanState,
+    sent_eof: bool,
+    sent_close: bool,
     // queue of requests sent with want_reply
     last_req: heapless::Deque<ReqKind, MAX_OUTSTANDING_REQS>,
 
@@ -350,8 +368,10 @@ pub struct Channel {
 impl Channel {
     fn new(num: u32, ty: ChanType, init_req: InitReqs) -> Self {
         Channel {
-            state: ChanState::Opening { init_req },
             ty,
+            state: ChanState::Opening { init_req },
+            sent_close: false,
+            sent_eof: false,
             last_req: Deque::new(),
             recv: ChanDir {
                 num,
@@ -375,6 +395,16 @@ impl Channel {
 
     fn finished_input(&mut self, len: usize ) {
         self.pending_adjust = self.pending_adjust.saturating_add(len)
+    }
+
+    pub fn recv_eof(&self) -> bool {
+        match self.state {
+            |ChanState::RecvEof
+            |ChanState::RecvClose
+            => true,
+            _ => false,
+        }
+
     }
 }
 
@@ -400,6 +430,26 @@ pub(crate) struct DataIn {
     pub len: usize,
 }
 
+/// Application API
+#[derive(Debug)]
+pub enum ChanEvent<'a> {
+    // TODO: perhaps this one should go a level above since it isn't for existing channels?
+    OpenSuccess { num: u32 },
+
+    // TODO details
+    // OpenRequest { },
+
+    ReqPty { num: u32, want_reply: bool, pty: packets::Pty<'a> },
+
+    Req { num: u32, req: ChannelReqType<'a> },
+    // TODO closein/closeout/eof, etc. Should also return the exit status etc
+
+    Eof { num: u32 },
+
+    Close { num: u32 },
+    // TODO: responses to a previous ChanMsg?
+}
+
 /// An event returned from `Channel::dispatch()`.
 /// Most are propagated to the application, `DataIn is caught by `runner`
 #[derive(Debug)]
@@ -414,6 +464,8 @@ pub(crate) enum ChanEventMaker {
     // for each type.
     Req,
     // TODO closein/closeout/eof, etc. Should also return the exit status etc
+
+    Eof { num: u32 },
 
     Close { num: u32 },
     // TODO: responses to a previous ChanMsg?
@@ -442,28 +494,11 @@ impl ChanEventMaker {
                     None
                 }
             }
+            Self::Eof { num } => Some(ChanEvent::Eof { num: *num }),
             Self::Close { num } => Some(ChanEvent::Close { num: *num }),
         }
 
     }
-}
-
-/// Application API
-#[derive(Debug)]
-pub enum ChanEvent<'a> {
-    // TODO: perhaps this one should go a level above since it isn't for existing channels?
-    OpenSuccess { num: u32 },
-
-    // TODO details
-    // OpenRequest { },
-
-    ReqPty { num: u32, want_reply: bool, pty: packets::Pty<'a> },
-
-    Req { num: u32, req: ChannelReqType<'a> },
-    // TODO closein/closeout/eof, etc. Should also return the exit status etc
-
-    Close { num: u32 },
-    // TODO: responses to a previous ChanMsg?
 }
 
 struct PendInput {

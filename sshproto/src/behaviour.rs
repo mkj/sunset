@@ -70,10 +70,6 @@ impl Behaviour<'_> {
         }
     }
 
-    pub(crate) async fn chan_handler(&mut self, resp: &mut RespPackets<'_>, chan_msg: ChanMsg) -> Result<()> {
-        self.inner.chan_handler(resp, chan_msg).await
-    }
-
     // TODO: or should we just pass CliBehaviour and ServBehaviour through runner,
     // don't switch here at all
     pub(crate) fn client(&mut self) -> Result<CliBehaviour> {
@@ -99,10 +95,6 @@ impl<'a> Behaviour<'a>
             inner: block_behaviour::BlockCliServ::Server(b),
             phantom: PhantomData::default(),
         }
-    }
-
-    pub(crate) async fn chan_handler(&mut self, resp: &mut RespPackets<'_>, chan_msg: ChanMsg) -> Result<()> {
-        self.inner.chan_handler(resp, chan_msg)
     }
 
     // TODO: or should we just pass CliBehaviour and ServBehaviour through runner,

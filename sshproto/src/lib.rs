@@ -52,9 +52,9 @@ pub use async_behaviour::{AsyncCliBehaviour,AsyncServBehaviour};
 pub use block_behaviour::{BlockCliBehaviour,BlockServBehaviour};
 
 pub use runner::Runner;
-pub use conn::{Conn,RespPackets};
+pub use conn::RespPackets;
 pub use sign::SignKey;
 pub use packets::PubKey;
 pub use error::{Error,Result};
-pub use channel::{ChanMsg,ChanMsgDetails};
+pub use channel::{ChanMsg, ChanMsgDetails, ChanEvent};
 pub use conn::Event;

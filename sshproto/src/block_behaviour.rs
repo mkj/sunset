@@ -39,26 +39,9 @@ impl BlockCliServ<'_>
         };
         Ok(c)
     }
-
-    pub(crate) fn chan_handler<'f>(
-        &mut self,
-        resp: &mut RespPackets<'_>,
-        chan_msg: ChanMsg,
-    ) -> Result<()> {
-        match self {
-            Self::Client(i) => i.chan_handler(resp, chan_msg),
-            Self::Server(i) => i.chan_handler(resp, chan_msg),
-        }
-    }
 }
 
 pub trait BlockCliBehaviour {
-    fn chan_handler<'f>(
-        &mut self,
-        resp: &mut RespPackets,
-        chan_msg: ChanMsg,
-    ) -> Result<()>;
-
     /// Provide the username to use for authentication. Will only be called once
     /// per session.
     /// If the username needs to change a new connection should be made
@@ -103,9 +86,4 @@ pub trait BlockCliBehaviour {
 }
 
 pub trait BlockServBehaviour {
-    fn chan_handler(
-        &mut self,
-        resp: &mut RespPackets,
-        chan_msg: ChanMsg,
-    ) -> Result<()>;
 }

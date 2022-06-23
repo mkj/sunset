@@ -4,7 +4,6 @@ use {
     log::{debug, error, info, log, trace, warn},
 };
 use anyhow::{Context, Result, Error, bail};
-// use snafu::ResultExt;
 use pretty_hex::PrettyHex;
 
 use tokio::net::TcpStream;
@@ -134,10 +133,9 @@ async fn run(args: &Args) -> Result<()> {
     // TODO: better lifetime rather than leaking
     let work = Box::leak(Box::new(work));
 
-    let mut sess = door_async::SimpleClient::new(args.username.as_ref().unwrap());
+    let mut sess = door_async::CmdlineClient::new(args.username.as_ref().unwrap());
     for i in &args.identityfile {
-        sess.add_authkey(read_key(&i)
-            .with_context(|| format!("loading key {i}"))?);
+        sess.add_authkey(read_key(&i).with_context(|| format!("loading key {i}"))?);
     }
 
     let mut door = SSHClient::new(work.as_mut_slice(), Box::new(sess))?;
@@ -159,16 +157,14 @@ async fn run(args: &Args) -> Result<()> {
 
             match ev {
                 Some(Event::Authenticated) => {
-                    info!("auth auth");
+                    info!("Opening a new session channel");
                     let r = door.open_client_session_nopty(Some("cowsay it works")).await
                         .context("Opening session")?;
                     let (mut io, mut err) = r;
                     tokio::spawn(async move {
-                        trace!("channel copy");
                         let mut i = door_async::stdin()?;
-                        // let mut o = tokio::io::stdout();
                         let mut o = door_async::stdout()?;
-                        let mut e = tokio::io::stderr();
+                        let mut e = door_async::stderr()?;
                         let mut io2 = io.clone();
                         let co = tokio::io::copy(&mut io, &mut o);
                         let ci = tokio::io::copy(&mut i, &mut io2);
@@ -199,27 +195,4 @@ async fn run(args: &Args) -> Result<()> {
             }
         }
     }
-
-    // trace!("before loop");
-    // loop {
-    //     trace!("top loop");
-    //     future::race(
-    //         netwrite.race(netread).map(|_| ()),
-    //         stream::repeat(())
-    //             .then(|_| door.next_request())
-    //             .then(|q| async {
-    //                 handle_request(&door, q).await;
-    //                 ()
-    //             })
-    //     ).await;
-
-    //     // let r = futures::select! {
-    //     //     q = door.next_request().fuse() => {
-    //     //         handle_request(&door, q).await
-    //     //     }
-    //     //     _ = netwrite => break,
-    //     //     _ = netread => break,
-    //     // };
-    //     // trace!("result {r:?}");
-    // }
 }
