@@ -204,7 +204,10 @@ impl<'a> Runner<'a> {
         trace!("runner chan in");
         let (len, complete) = self.traffic.channel_input(chan, ext, buf);
         if complete {
-            self.conn.channels.finished_input(chan)?;
+            let p = self.conn.channels.finished_input(chan)?;
+            if let Some(p) = p {
+                self.traffic.send_packet(p, &mut self.keys)?;
+            }
             self.wake();
         }
         Ok(len)

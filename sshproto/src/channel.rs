@@ -89,10 +89,12 @@ impl Channels {
     /// Caller has already checked valid length with send_allowed()
     pub(crate) fn send_data<'b>(&mut self, num: u32, ext: Option<u32>, data: &'b [u8])
             -> Result<Packet<'b>> {
-        let send = self.get(num)?.send.as_ref().trap()?;
+        let send = self.get_mut(num)?.send.as_mut().trap()?;
         if data.len() > send.max_packet || data.len() > send.window {
             return Err(Error::bug())
         }
+        send.window -= data.len();
+
         let data = BinString(data);
         let p = if let Some(code) = ext {
             // TODO: check code is valid for this channel
@@ -100,20 +102,20 @@ impl Channels {
         } else {
             packets::ChannelData { num: send.num, data }.into()
         };
+
         Ok(p)
     }
 
     /// Informs the channel layer that an incoming packet has been read out,
     /// so a window adjustment can be queued.
-    pub(crate) fn finished_input(&mut self, num: u32) -> Result<()> {
+    pub(crate) fn finished_input(&mut self, num: u32) -> Result<Option<Packet>> {
         match self.pending_input {
             Some(ref p) if p.chan == num => {
-                // TODO: send window adjustment
                 let len = p.len;
-                let ch = self.get_mut(num)?;
-                ch.finished_input(len);
+                self.get_mut(num)?.finished_input(len);
                 self.pending_input = None;
-                Ok(())
+
+                self.get_mut(num)?.check_window_adjust()
             }
             _ => Err(Error::bug()),
         }
@@ -132,7 +134,6 @@ impl Channels {
         &mut self,
         packet: Packet<'_>,
         resp: &mut RespPackets<'_>,
-        b: &mut Behaviour<'_>,
     ) -> Result<Option<ChanEventMaker>> {
         trace!("chan dispatch");
         let r = match packet {
@@ -173,7 +174,9 @@ impl Channels {
                 }
             }
             Packet::ChannelWindowAdjust(p) => {
-                todo!();
+                let send = self.get_mut(p.num)?.send.as_mut().trap()?;
+                send.window = send.window.saturating_add(p.adjust as usize);
+                Ok(None)
             }
             Packet::ChannelData(p) => {
                 let ch = self.get(p.num)?;
@@ -193,6 +196,7 @@ impl Channels {
                 }
                 self.pending_input = Some(PendInput { chan: p.num, len: p.data.0.len() });
                 let di = DataIn { num: p.num, ext: Some(p.code), offset: p.data_offset(), len: p.data.0.len() };
+                trace!("{di:?}");
                 Ok(Some(ChanEventMaker::DataIn(di)))
             }
             Packet::ChannelEof(p) => {
@@ -371,6 +375,8 @@ pub struct Channel {
 
     /// Accumulated bytes for the next window adjustment (inbound data direction)
     pending_adjust: usize,
+
+    full_window: usize,
 }
 
 impl Channel {
@@ -388,6 +394,7 @@ impl Channel {
             },
             send: None,
             pending_adjust: 0,
+            full_window: config::DEFAULT_WINDOW,
         }
     }
     fn request(&mut self, req: ReqDetails, resp: &mut RespPackets) -> Result<()> {
@@ -419,6 +426,20 @@ impl Channel {
     fn send_allowed(&self) -> Option<usize> {
         self.send.as_ref().map(|s| usize::max(s.window, s.max_packet))
     }
+
+    /// Returns a window adjustment packet if required
+    fn check_window_adjust(&mut self) -> Result<Option<Packet>> {
+        let send = self.send.as_mut().trap()?;
+        if self.pending_adjust > self.full_window / 2 {
+            let adjust = self.pending_adjust as u32;
+            let p = packets::ChannelWindowAdjust { num: send.num, adjust }.into();
+            Ok(Some(p))
+        } else {
+            Ok(None)
+        }
+    }
+
+
 }
 
 pub struct ChanMsg {

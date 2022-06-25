@@ -222,7 +222,7 @@ impl<'a> Traffic<'a> {
             }
             _ => {
                 // Just ignore it
-                warn!("done_payload called without payload");
+                // warn!("done_payload called without payload, st {:?}", self.state);
                 Ok(())
             }
         }
@@ -367,7 +367,12 @@ impl<'a> Traffic<'a> {
         match self.state {
             TrafState::Idle => {
                 let idx = SSH_PAYLOAD_START + di.offset;
-                self.state = TrafState::InChannelData { chan: di.num, ext: di.ext, idx, len: di.len };
+                self.state = TrafState::InChannelData { chan: di.num, ext: di.ext, idx, len: idx + di.len };
+                // error!("set input {:?}", self.state);
+                trace!("all buf {:?}", self.buf[..32].hex_dump());
+                trace!("set chan input offset {} idx {} {:?}",
+                    di.offset, idx,
+                    self.buf[idx..idx + di.len].hex_dump());
                 Ok(())
             }
             _ => Err(Error::bug()),
@@ -386,9 +391,13 @@ impl<'a> Traffic<'a> {
 
         match self.state {
             TrafState::InChannelData { chan: c, ext: e, ref mut idx, len }
-                if (c, e) == (chan, ext) => {
+            if (c, e) == (chan, ext) => {
+                if *idx > len {
+                    error!("bad idx {} len {} e {:?} c {}", *idx, len, e, c);
+                }
                 let wlen = (len - *idx).min(buf.len());
                 buf[..wlen].copy_from_slice(&self.buf[*idx..*idx + wlen]);
+                // info!("idx {} += wlen {} = {}", *idx, wlen, *idx+wlen);
                 *idx += wlen;
 
                 if *idx == len {

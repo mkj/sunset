@@ -348,7 +348,7 @@ impl<'a> Conn<'a> {
             | Packet::ChannelFailure(_)
             // TODO: maybe needs a conn or cliserv argument.
             => {
-                let chev = self.channels.dispatch(packet, &mut resp, b).await?;
+                let chev = self.channels.dispatch(packet, &mut resp).await?;
                 event = chev.map(|c| EventMaker::Channel(c))
            }
         };
