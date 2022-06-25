@@ -74,15 +74,17 @@ impl<'a> AsyncDoor<'a> {
             let r = if let Some(ev) = ev {
                 let r = match ev {
                     Event::Channel(ChanEvent::Eof { num }) => {
+                        // TODO
                         Ok(None)
                     },
                     _ => f(ev),
                 };
-                inner.runner.done_payload()?;
+                trace!("async prog done payload");
                 r
             } else {
                 Ok(None)
             };
+            inner.runner.done_payload()?;
 
             if let Some(ce) = inner.runner.ready_channel_input() {
                 inner.chan_read_wakers.remove(&ce)
@@ -95,11 +97,12 @@ impl<'a> AsyncDoor<'a> {
             // TODO: fairness? Also it's not clear whether progress notify
             // will always get woken by runner.wake() to update this...
             inner.chan_write_wakers.retain(|(ch, ext), w| {
-                if inner.runner.ready_channel_send(*ch, *ext) {
-                    wakers.push(w.clone());
-                    false
-                } else {
-                    true
+                match inner.runner.ready_channel_send(*ch) {
+                    Some(n) if n > 0 => {
+                        wakers.push(w.clone());
+                        false
+                    }
+                    _ => true
                 }
             });
 
@@ -336,6 +339,7 @@ fn chan_poll_read<'a>(
     buf: &mut ReadBuf,
     lock_fut: &mut Option<OwnedMutexLockFuture<Inner<'a>>>,
 ) -> Poll<Result<(), IoError>> {
+    trace!("chan read");
 
     let mut p = poll_lock(door.inner.clone(), cx, lock_fut);
     let inner = match p {
@@ -352,6 +356,8 @@ fn chan_poll_read<'a>(
         .map_err(|e| IoError::new(std::io::ErrorKind::Other, e));
 
     match r {
+        // poll_read() returns 0 on EOF, if the channel isn't eof yet
+        // we want to return pending
         Ok(0) if !runner.channel_eof(chan) => {
             let w = cx.waker().clone();
             inner.chan_read_wakers.insert((chan, ext), w);
@@ -393,11 +399,19 @@ fn chan_poll_write<'a>(
     buf: &[u8],
     lock_fut: &mut Option<OwnedMutexLockFuture<Inner<'a>>>,
 ) -> Poll<Result<usize, IoError>> {
+    trace!("chan write");
 
     let mut p = poll_lock(door.inner.clone(), cx, lock_fut);
     let runner = match p {
         Poll::Ready(ref mut i) => &mut i.runner,
         Poll::Pending => return Poll::Pending,
     };
-    todo!()
+
+    match runner.channel_send(chan, ext, buf) {
+        Ok(Some(l)) if l == 0 => Poll::Pending,
+        Ok(Some(l)) => Poll::Ready(Ok(l)),
+        // return 0 for EOF
+        Ok(None) => Poll::Ready(Ok(0)),
+        Err(e) => Poll::Ready(Err(IoError::new(ErrorKind::Other, e))),
+    }
 }

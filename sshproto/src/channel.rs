@@ -1,4 +1,4 @@
-#[allow(unused_imports)]
+    #[allow(unused_imports)]
 use {
     crate::error::{Error, Result, TrapBug},
     log::{debug, error, info, log, trace, warn},
@@ -85,20 +85,22 @@ impl Channels {
         // Ok(())
     }
 
-    /// Returns the channel data packet to send, and the length of data consumed
+    /// Returns the channel data packet to send, and the length of data consumed.
+    /// Caller has already checked valid length with send_allowed()
     pub(crate) fn send_data<'b>(&mut self, num: u32, ext: Option<u32>, data: &'b [u8])
-            -> Result<(Packet<'b>, usize)> {
-        let send_ch = self.get(num)?.send.as_ref().trap()?.num;
-        // TODO: check: channel state, channel window, maxpacket
-        let len = data.len();
+            -> Result<Packet<'b>> {
+        let send = self.get(num)?.send.as_ref().trap()?;
+        if data.len() > send.max_packet || data.len() > send.window {
+            return Err(Error::bug())
+        }
         let data = BinString(data);
         let p = if let Some(code) = ext {
             // TODO: check code is valid for this channel
-            packets::ChannelDataExt { num: send_ch, code, data }.into()
+            packets::ChannelDataExt { num: send.num, code, data }.into()
         } else {
-            packets::ChannelData { num: send_ch, data }.into()
+            packets::ChannelData { num: send.num, data }.into()
         };
-        Ok((p, len))
+        Ok(p)
     }
 
     /// Informs the channel layer that an incoming packet has been read out,
@@ -117,8 +119,12 @@ impl Channels {
         }
     }
 
-    pub(crate) fn recv_eof(&self, num: u32) -> bool {
-        self.get(num).map_or(false, |c| c.recv_eof())
+    pub(crate) fn have_recv_eof(&self, num: u32) -> bool {
+        self.get(num).map_or(false, |c| c.have_recv_eof())
+    }
+
+    pub(crate) fn send_allowed(&self, num: u32) -> Option<usize> {
+        self.get(num).map_or(Some(0), |c| c.send_allowed())
     }
 
     // incoming packet handling
@@ -194,7 +200,9 @@ impl Channels {
                 Ok(Some(ChanEventMaker::Eof { num: p.num }))
             }
             Packet::ChannelClose(_p) => {
-                todo!();
+                // todo!();
+                error!("ignoring channel close");
+                Ok(None)
             }
             Packet::ChannelRequest(p) => {
                 match self.get(p.num) {
@@ -397,7 +405,7 @@ impl Channel {
         self.pending_adjust = self.pending_adjust.saturating_add(len)
     }
 
-    pub fn recv_eof(&self) -> bool {
+    fn have_recv_eof(&self) -> bool {
         match self.state {
             |ChanState::RecvEof
             |ChanState::RecvClose
@@ -405,6 +413,11 @@ impl Channel {
             _ => false,
         }
 
+    }
+
+    // None on close
+    fn send_allowed(&self) -> Option<usize> {
+        self.send.as_ref().map(|s| usize::max(s.window, s.max_packet))
     }
 }
 
@@ -491,6 +504,8 @@ impl ChanEventMaker {
                         }
                     }
                 } else {
+                    // TODO: return a bug result?
+                    warn!("Req event maker but not request packet");
                     None
                 }
             }

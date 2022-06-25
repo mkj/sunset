@@ -3,7 +3,7 @@ use log::{debug, error, info, log, trace, warn};
 
 use snafu::{prelude::*, Whatever};
 
-use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf, Interest};
 use tokio::io::unix::AsyncFd;
 use std::os::unix::io::RawFd;
 
@@ -14,10 +14,11 @@ use core::task::{Context, Poll};
 
 use nix::fcntl::{fcntl, FcntlArg, OFlag};
 
-fn dup_async(orig_fd: libc::c_int) -> Result<AsyncFd<RawFd>, IoError> {
+fn dup_async(orig_fd: libc::c_int, interest: Interest) -> Result<AsyncFd<RawFd>, IoError> {
     let fd = nix::unistd::dup(orig_fd)?;
     fcntl(fd, FcntlArg::F_SETFL(OFlag::O_NONBLOCK))?;
-    AsyncFd::new(fd)
+    // TODO: is with_interest necessary?
+    AsyncFd::with_interest(fd, interest)
 }
 
 pub struct InFd {
@@ -28,17 +29,17 @@ pub struct OutFd {
 }
 pub fn stdin() -> Result<InFd, IoError> {
     Ok(InFd {
-        f: dup_async(libc::STDIN_FILENO)?,
+        f: dup_async(libc::STDIN_FILENO, Interest::READABLE)?,
     })
 }
 pub fn stdout() -> Result<OutFd, IoError> {
     Ok(OutFd {
-        f: dup_async(libc::STDOUT_FILENO)?,
+        f: dup_async(libc::STDOUT_FILENO, Interest::WRITABLE)?,
     })
 }
 pub fn stderr() -> Result<OutFd, IoError> {
     Ok(OutFd {
-        f: dup_async(libc::STDERR_FILENO)?,
+        f: dup_async(libc::STDERR_FILENO, Interest::WRITABLE)?,
     })
 }
 
@@ -48,6 +49,7 @@ impl AsyncRead for InFd {
         cx: &mut Context<'_>,
         buf: &mut ReadBuf,
     ) -> Poll<Result<(), IoError>> {
+        trace!("infd rd {:?}", self.f);
         // XXX loop was copy pasted from docs, perhaps it could be simpler
         loop {
             let mut guard = match self.f.poll_read_ready(cx)? {
@@ -81,6 +83,7 @@ impl AsyncWrite for OutFd {
         cx: &mut Context<'_>,
         buf: &[u8]
     ) -> Poll<std::io::Result<usize>> {
+        trace!("outfd wr {:?}", self.f);
         loop {
             let mut guard = match self.f.poll_write_ready(cx)? {
                 Poll::Ready(r) => r,

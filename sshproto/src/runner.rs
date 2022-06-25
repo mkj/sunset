@@ -67,7 +67,8 @@ impl<'a> Runner<'a> {
     /// Drives connection progress, handling received payload and sending
     /// other packets as required. This must be polled/awaited regularly.
     /// Optionally returns `Event` which provides channel or session
-    // event to the application.
+    /// event to the application.
+    /// [`done_payload()`] must be called after any `Ok` result.
     pub async fn progress<'f>(&'f mut self, b: &mut Behaviour<'_>) -> Result<Option<Event<'f>>, Error> {
         let em = if let Some(payload) = self.traffic.payload() {
             // Lifetimes here are a bit subtle.
@@ -100,6 +101,7 @@ impl<'a> Runner<'a> {
         // "Borrow checker extends borrow range in code with early return"
         // https://github.com/rust-lang/rust/issues/54663
         let ev = if let Some(em) = em {
+            trace!("em");
             match em {
                 EventMaker::Channel(ChanEventMaker::DataIn(di)) => {
                     trace!("chanmaaker {di:?}");
@@ -115,6 +117,7 @@ impl<'a> Runner<'a> {
                 }
             }
         } else {
+            trace!("no em, conn progress");
             self.conn.progress(&mut self.traffic, &mut self.keys, b).await?;
             self.wake();
             None
@@ -131,7 +134,6 @@ impl<'a> Runner<'a> {
     }
 
     pub fn wake(&mut self) {
-        error!("wake");
         if self.ready_input() {
             trace!("wake ready_input, waker {:?}", self.input_waker);
             if let Some(w) = self.input_waker.take() {
@@ -169,17 +171,24 @@ impl<'a> Runner<'a> {
     }
 
     /// Send data from this application out the wire.
-    /// Must have already checked `ready_channel_send()`.
-    /// Returns the length of `buf` consumed.
+    /// Returns `Some` the length of `buf` consumed, or `None` on EOF
     pub fn channel_send(
         &mut self,
         chan: u32,
         ext: Option<u32>,
         buf: &[u8],
-    ) -> Result<usize> {
-        let (p, len) = self.conn.channels.send_data(chan, ext, buf)?;
+    ) -> Result<Option<usize>> {
+        let len = self.ready_channel_send(chan);
+        let len = match len {
+            Some(l) => l,
+            None => return Ok(None),
+        };
+
+        let len = len.min(buf.len());
+
+        let p = self.conn.channels.send_data(chan, ext, &buf[..len])?;
         self.traffic.send_packet(p, &mut self.keys)?;
-        Ok(len)
+        Ok(Some(len))
     }
 
     /// Receive data coming from the wire into this application
@@ -219,13 +228,14 @@ impl<'a> Runner<'a> {
     }
 
     pub fn channel_eof(&self, chan: u32) -> bool {
-        self.conn.channels.recv_eof(chan)
+        self.conn.channels.have_recv_eof(chan)
     }
 
-    // TODO check the chan/ext are valid, SSH window
-    pub fn ready_channel_send(&self, _chan: u32, _ext: Option<u32>) -> bool {
-        self.traffic.can_output()
-        // && self.conn.channels.ready_send_data(chan, ext)
+    // Returns None on channel closed
+    pub fn ready_channel_send(&self, chan: u32) -> Option<usize> {
+        // minimum of buffer space and channel window available
+        let buf_space = self.traffic.send_allowed(&self.keys);
+        self.conn.channels.send_allowed(chan).map(|s| s.min(buf_space))
     }
 
     // pub fn chan_pending(&self) -> bool {

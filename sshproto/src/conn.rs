@@ -363,8 +363,8 @@ impl<'a> Conn<'a> {
         let p = payload.map(|pl| sshwire::packet_from_bytes(pl, &self.parse_ctx)).transpose()?;
         let r = match ev {
             EventMaker::Channel(ChanEventMaker::DataIn(_)) => {
-                // no event returned, handled specially by caller
-                None
+                // caller should have handled it instead
+                return Err(Error::bug())
             }
             EventMaker::Channel(cev) => {
                 let c = cev.make(p.trap()?);

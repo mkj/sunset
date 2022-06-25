@@ -168,13 +168,11 @@ async fn run(args: &Args) -> Result<()> {
                             let mut o = door_async::stdout()?;
                             let mut e = door_async::stderr()?;
                             let mut io2 = io.clone();
-                            let co = tokio::io::copy(&mut io, &mut o);
-                            let ci = tokio::io::copy(&mut i, &mut io2);
-                            let ce = tokio::io::copy(&mut err, &mut e);
-                            let (r1, r2, r3) = futures::join!(co, ci, ce);
-                            r1?;
-                            r2?;
-                            r3?;
+                            moro::async_scope!(|scope| {
+                                scope.spawn(tokio::io::copy(&mut io, &mut o));
+                                scope.spawn(tokio::io::copy(&mut i, &mut io2));
+                                scope.spawn(tokio::io::copy(&mut err, &mut e));
+                            }).await;
                             Ok::<_, anyhow::Error>(())
                         });
                         // TODO: handle channel completion

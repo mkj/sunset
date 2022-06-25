@@ -120,12 +120,27 @@ impl<'a> Traffic<'a> {
         }
     }
 
+    /// A simple test if a packet can be sent. `send_allowed` should be used
+    /// for more general situations
     pub fn can_output(&self) -> bool {
-        // TODO: test for full output buffer
         match self.state {
             TrafState::Write { .. }
             | TrafState::Idle => true,
             _ => false
+        }
+    }
+
+    /// Returns payload space available to send a packet. Returns 0 if not ready or full
+    pub fn send_allowed(&self, keys: &KeyState) -> usize {
+        // TODO: test for full output buffer
+        match self.state {
+            TrafState::Write { len, .. } => {
+                keys.max_enc_payload(self.buf.len() - len)
+            }
+            TrafState::Idle => {
+                keys.max_enc_payload(self.buf.len())
+            }
+            _ => 0
         }
     }
 
@@ -201,13 +216,13 @@ impl<'a> Traffic<'a> {
         match self.state {
             | TrafState::InPayload { .. }
             | TrafState::BorrowPayload { .. }
-            | TrafState::Idle // TODO, is this wise?
             => {
                 self.state = TrafState::Idle;
                 Ok(())
             }
             _ => {
-                /* Just ignore it */
+                // Just ignore it
+                warn!("done_payload called without payload");
                 Ok(())
             }
         }
