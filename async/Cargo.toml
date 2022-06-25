@@ -22,7 +22,7 @@ argh = "0.1"
 # "net" for AsyncFd on unix
 tokio = { version = "1.19", features = ["sync", "net"] }
 # require alpha for https://github.com/rust-lang/futures-rs/pull/2571
-futures = { version = "0.4.0-alpha.0", git = "https://github.com/rust-lang/futures-rs", revision = "8b0f812f53ada0d0aeb74abc32be22ab9dafae05" }
+futures = { git = "https://github.com/rust-lang/futures-rs", revision = "8b0f812f53ada0d0aeb74abc32be22ab9dafae05" }
 async-trait = "0.1"
 moro = "0.4"
 

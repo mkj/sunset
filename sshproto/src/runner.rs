@@ -166,8 +166,10 @@ impl<'a> Runner<'a> {
             init_req.push(channel::ReqDetails::Shell).trap()?;
         }
         let (ch, p) = self.conn.channels.open(packets::ChannelOpenType::Session, init_req)?;
+        let chan = ch.number();
         self.traffic.send_packet(p, &mut self.keys)?;
-        Ok(ch.number())
+        self.wake();
+        Ok(chan)
     }
 
     /// Send data from this application out the wire.
@@ -188,6 +190,7 @@ impl<'a> Runner<'a> {
 
         let p = self.conn.channels.send_data(chan, ext, &buf[..len])?;
         self.traffic.send_packet(p, &mut self.keys)?;
+        self.wake();
         Ok(Some(len))
     }
 

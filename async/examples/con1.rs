@@ -160,7 +160,12 @@ async fn run(args: &Args) -> Result<()> {
                 match ev {
                     Some(Event::Authenticated) => {
                         info!("Opening a new session channel");
-                        let r = door.open_client_session_nopty(Some("cowsay it works")).await
+                        let cmd = if args.cmd.is_empty() {
+                            None
+                        } else {
+                            Some(args.cmd.join(" "))
+                        };
+                        let r = door.open_client_session_nopty(cmd.as_deref()).await
                             .context("Opening session")?;
                         let (mut io, mut err) = r;
                         scope.spawn(async move {
