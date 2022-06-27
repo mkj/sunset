@@ -2,6 +2,7 @@
 
 mod client;
 mod async_door;
+mod async_channel;
 mod cmdline_client;
 mod pty;
 

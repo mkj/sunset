@@ -18,6 +18,7 @@ use nix::fcntl::{fcntl, FcntlArg, OFlag};
 
 use crate::*;
 use crate::async_door::*;
+use crate::async_channel::*;
 
 use door_sshproto as door;
 use door::{Behaviour, AsyncCliBehaviour, Runner, Result};

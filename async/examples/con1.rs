@@ -77,7 +77,7 @@ fn main() -> Result<()> {
     // tries to mutate shared state with setenv.
     // https://github.com/rust-lang/rust/issues/90308 etc
     // logging uses the timezone, so we can't use async main.
-    setup_log(&args);
+    setup_log(&args)?;
 
     tokio::runtime::Builder::new_current_thread()
         .enable_all()

@@ -29,6 +29,8 @@ moro = "0.4"
 libc = "0.2"
 nix = "0.24"
 
+signal-hook-tokio = "0.3"
+
 heapless = "0.7.10"
 
 # TODO
