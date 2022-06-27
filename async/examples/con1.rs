@@ -11,7 +11,7 @@ use tokio::net::TcpStream;
 use std::{net::Ipv6Addr, io::Read};
 
 use door_sshproto::*;
-use door_async::SSHClient;
+use door_async::{SSHClient, raw_pty};
 
 use simplelog::*;
 
@@ -30,6 +30,10 @@ struct Args {
     #[argh(option, short='i')]
     /// a path to id_ed25519 or similar
     identityfile: Vec<String>,
+
+    #[argh(option)]
+    /// log to a file
+    tracefile: Option<String>,
 
     #[argh(option, short='l')]
     /// username
@@ -88,7 +92,7 @@ fn main() -> Result<()> {
         })
 }
 
-fn setup_log(args: &Args) {
+fn setup_log(args: &Args) -> Result<()> {
     let mut conf = simplelog::ConfigBuilder::new();
     let conf = conf
     .add_filter_allow_str("door")
@@ -108,11 +112,17 @@ fn setup_log(args: &Args) {
         LevelFilter::Warn
     };
 
-    CombinedLogger::init(
-    vec![
-        TermLogger::new(level, conf, TerminalMode::Mixed, ColorChoice::Auto),
-    ]
-    ).unwrap();
+    let mut logs: Vec<Box<dyn SharedLogger>> = vec![
+        TermLogger::new(level, conf.clone(), TerminalMode::Mixed, ColorChoice::Auto),
+    ];
+
+    if let Some(tf) = args.tracefile.as_ref() {
+        let w = std::fs::File::create(tf).with_context(|| format!("Error opening {tf}"))?;
+        logs.push(WriteLogger::new(LevelFilter::Trace, conf, w));
+    }
+
+    CombinedLogger::init(logs).unwrap();
+    Ok(())
 }
 
 fn read_key(p: &str) -> Result<SignKey> {
@@ -133,18 +143,16 @@ async fn run(args: &Args) -> Result<()> {
     // TODO: better lifetime rather than leaking
     let work = Box::leak(Box::new(work));
 
-    let mut sess = door_async::CmdlineClient::new(args.username.as_ref().unwrap());
+    let mut cli = door_async::CmdlineClient::new(args.username.as_ref().unwrap());
     for i in &args.identityfile {
-        sess.add_authkey(read_key(&i).with_context(|| format!("loading key {i}"))?);
+        cli.add_authkey(read_key(&i).with_context(|| format!("loading key {i}"))?);
     }
 
-    let mut door = SSHClient::new(work.as_mut_slice(), Box::new(sess))?;
-
+    let mut door = SSHClient::new(work.as_mut_slice(), Box::new(cli))?;
     let mut s = door.socket();
-    let netloop = tokio::io::copy_bidirectional(&mut stream, &mut s);
 
     moro::async_scope!(|scope| {
-        scope.spawn(netloop);
+        scope.spawn(tokio::io::copy_bidirectional(&mut stream, &mut s));
 
         scope.spawn(async {
             loop {
@@ -159,25 +167,40 @@ async fn run(args: &Args) -> Result<()> {
 
                 match ev {
                     Some(Event::Authenticated) => {
+                        let mut raw_pty_guard = None;
                         info!("Opening a new session channel");
-                        let cmd = if args.cmd.is_empty() {
-                            None
+                        let (cmd, pty) = if args.cmd.is_empty() {
+                            (None, true)
                         } else {
-                            Some(args.cmd.join(" "))
+                            (Some(args.cmd.join(" ")), false)
                         };
-                        let r = door.open_client_session_nopty(cmd.as_deref()).await
-                            .context("Opening session")?;
-                        let (mut io, mut err) = r;
+                        let (mut io, mut err) = if pty {
+                            raw_pty_guard = Some(raw_pty()?);
+                            let io = door.open_client_session_pty(cmd.as_deref()).await
+                                .context("Opening session")?;
+                            (io, None)
+                        } else {
+                            let (io, err) = door.open_client_session_nopty(cmd.as_deref()).await
+                                .context("Opening session")?;
+                            (io, Some(err))
+                        };
+                        let mut i = door_async::stdin()?;
+                        let mut o = door_async::stdout()?;
+                        let mut e = if err.is_some() {
+                            Some(door_async::stderr()?)
+                        } else {
+                            None
+                        };
+                        let mut io2 = io.clone();
                         scope.spawn(async move {
-                            let mut i = door_async::stdin()?;
-                            let mut o = door_async::stdout()?;
-                            let mut e = door_async::stderr()?;
-                            let mut io2 = io.clone();
                             moro::async_scope!(|scope| {
                                 scope.spawn(tokio::io::copy(&mut io, &mut o));
                                 scope.spawn(tokio::io::copy(&mut i, &mut io2));
-                                scope.spawn(tokio::io::copy(&mut err, &mut e));
+                                if let Some(ref mut err) = err {
+                                    scope.spawn(tokio::io::copy(err, e.as_mut().unwrap()));
+                                }
                             }).await;
+                            drop(raw_pty_guard);
                             Ok::<_, anyhow::Error>(())
                         });
                         // TODO: handle channel completion

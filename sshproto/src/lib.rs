@@ -9,7 +9,6 @@
 // XXX unused_imports only during dev churn
 #![allow(unused_imports)]
 
-pub mod packets;
 // XXX decide what is public
 pub mod conn;
 pub mod encrypt;
@@ -35,14 +34,16 @@ mod servauth;
 pub mod doorlog;
 mod auth;
 mod channel;
-mod config;
 mod runner;
 mod behaviour;
 mod termmodes;
 mod async_behaviour;
 mod block_behaviour;
 mod ssh_chapoly;
+
+pub mod packets;
 pub mod sshwire;
+pub mod config;
 
 // Application API
 pub use behaviour::{Behaviour, BhError, BhResult, ResponseString};
@@ -56,5 +57,5 @@ pub use conn::RespPackets;
 pub use sign::SignKey;
 pub use packets::PubKey;
 pub use error::{Error,Result};
-pub use channel::{ChanMsg, ChanMsgDetails, ChanEvent};
+pub use channel::{ChanMsg, ChanMsgDetails, ChanEvent, Pty};
 pub use conn::Event;

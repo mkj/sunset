@@ -152,11 +152,12 @@ impl<'a> Runner<'a> {
         }
     }
 
-    pub fn open_client_session(&mut self, exec: Option<&str>, pty: bool) -> Result<u32> {
+    // TODO: move somewhere client specific?
+    pub fn open_client_session(&mut self, exec: Option<&str>, pty: Option<channel::Pty>) -> Result<u32> {
         trace!("open_client_session");
         let mut init_req = channel::InitReqs::new();
-        if pty {
-            todo!("pty needs modes and that");
+        if let Some(pty) = pty {
+            init_req.push(channel::ReqDetails::Pty(pty)).trap()?;
         }
         if let Some(cmd) = exec {
             let mut s = channel::ExecString::new();

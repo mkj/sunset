@@ -22,6 +22,7 @@ use crate::async_door::*;
 use door_sshproto as door;
 use door::{Behaviour, AsyncCliBehaviour, Runner, Result};
 use door::sshnames::SSH_EXTENDED_DATA_STDERR;
+use door::config::*;
 
 pub struct SSHClient<'a> {
     door: AsyncDoor<'a>,
@@ -52,7 +53,7 @@ impl<'a> SSHClient<'a> {
     pub async fn open_client_session_nopty(&mut self, exec: Option<&str>)
     -> Result<(ChanInOut<'a>, ChanExtIn<'a>)> {
         let chan = self.door.with_runner(|runner| {
-            runner.open_client_session(exec, false)
+            runner.open_client_session(exec, None)
         }).await?;
 
         let cstd = ChanInOut::new(chan, &self.door);
@@ -62,8 +63,12 @@ impl<'a> SSHClient<'a> {
 
     pub async fn open_client_session_pty(&mut self, exec: Option<&str>)
     -> Result<ChanInOut<'a>> {
+
+        // XXX error handling
+        let pty = pty::current_pty().expect("pty fetch");
+
         let chan = self.door.with_runner(|runner| {
-            runner.open_client_session(exec, false)
+            runner.open_client_session(exec, Some(pty))
         }).await?;
 
         let cstd = ChanInOut::new(chan, &self.door);

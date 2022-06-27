@@ -345,6 +345,7 @@ dependencies = [
  "async-trait",
  "door-sshproto",
  "futures 0.4.0-alpha.0",
+ "heapless",
  "libc",
  "log",
  "moro",

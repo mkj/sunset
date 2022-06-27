@@ -253,7 +253,9 @@ impl<'a> AsyncWrite for AsyncDoorSocket<'a> {
         self: Pin<&mut Self>,
         _cx: &mut Context<'_>,
     ) -> Poll<Result<(), IoError>> {
-        todo!("poll_close")
+        // TODO
+        error!("connection closed");
+        Poll::Ready(Ok(()))
     }
 }
 

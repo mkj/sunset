@@ -11,7 +11,7 @@ use heapless::{Deque, String, Vec};
 use crate::{conn::RespPackets, *};
 use config::*;
 use packets::{ChannelReqType, ChannelRequest, Packet, ChannelOpenType, ChannelData, ChannelDataExt};
-use sshwire::BinString;
+use sshwire::{BinString, TextString};
 
 pub(crate) struct Channels {
     ch: [Option<Channel>; config::MAX_CHANNELS],
@@ -257,21 +257,21 @@ impl From<&ChannelOpenType<'_>> for ChanType {
 }
 
 #[derive(Debug)]
-struct ModePair {
-    opcode: u8,
-    arg: u32,
+pub struct ModePair {
+    pub opcode: u8,
+    pub arg: u32,
 }
 
 #[derive(Debug)]
 pub struct Pty {
     // or could we put String into packets::Pty and serialize modes there...
-    term: String<MAX_TERM>,
-    cols: u32,
-    rows: u32,
-    width: u32,
-    height: u32,
+    pub term: String<MAX_TERM>,
+    pub cols: u32,
+    pub rows: u32,
+    pub width: u32,
+    pub height: u32,
     // TODO: perhaps we need something serializable here
-    modes: Vec<ModePair, { termmodes::NUM_MODES }>,
+    pub modes: Vec<ModePair, { termmodes::NUM_MODES }>,
 }
 
 pub(crate) type ExecString = heapless::String<MAX_EXEC>;
@@ -310,8 +310,15 @@ impl Req {
         let want_reply = self.details.want_reply();
         let ty = match &self.details {
             ReqDetails::Shell => ChannelReqType::Shell,
-            ReqDetails::Pty(_pty) => {
-                todo!("serialize modes")
+            ReqDetails::Pty(pty) => {
+                ChannelReqType::Pty(packets::Pty {
+                    term: TextString(pty.term.as_bytes()),
+                    cols: pty.cols,
+                    rows: pty.rows,
+                    width: pty.width,
+                    height: pty.height,
+                    modes: BinString(&[]),
+                })
             }
             ReqDetails::Exec(cmd) => {
                 ChannelReqType::Exec(packets::Exec { command: cmd.as_str().into() })
