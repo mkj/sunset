@@ -18,6 +18,8 @@ use channel::ChanEventMaker;
 pub struct Runner<'a> {
     conn: Conn<'a>,
 
+    behaviour: Behaviour<'a>,
+
     /// Binary packet handling to and from the network buffer
     traffic: Traffic<'a>,
 
@@ -32,6 +34,7 @@ impl<'a> Runner<'a> {
     /// `iobuf` must be sized to fit the largest SSH packet allowed.
     pub fn new_client(
         iobuf: &'a mut [u8],
+        behaviour: Behaviour<'a>,
     ) -> Result<Runner<'a>, Error> {
         let conn = Conn::new_client()?;
         let runner = Runner {
@@ -40,6 +43,7 @@ impl<'a> Runner<'a> {
             keys: KeyState::new_cleartext(),
             output_waker: None,
             input_waker: None,
+            behaviour,
         };
 
         Ok(runner)
@@ -69,7 +73,7 @@ impl<'a> Runner<'a> {
     /// Optionally returns `Event` which provides channel or session
     /// event to the application.
     /// [`done_payload()`] must be called after any `Ok` result.
-    pub async fn progress<'f>(&'f mut self, b: &mut Behaviour<'_>) -> Result<Option<Event<'f>>, Error> {
+    pub async fn progress<'f>(&'f mut self) -> Result<Option<Event<'f>>, Error> {
         let em = if let Some(payload) = self.traffic.payload() {
             // Lifetimes here are a bit subtle.
             // `payload` has self.traffic lifetime, used until `handle_payload`
@@ -78,7 +82,7 @@ impl<'a> Runner<'a> {
             // by the send_packet().
             // After that progress() can perform more send_packet() itself.
 
-            let d = self.conn.handle_payload(payload, &mut self.keys, b).await?;
+            let d = self.conn.handle_payload(payload, &mut self.keys, &mut self.behaviour).await?;
             self.traffic.handled_payload()?;
 
             if !d.resp.is_empty() || d.event.is_none() {
@@ -118,7 +122,7 @@ impl<'a> Runner<'a> {
             }
         } else {
             trace!("no em, conn progress");
-            self.conn.progress(&mut self.traffic, &mut self.keys, b).await?;
+            self.conn.progress(&mut self.traffic, &mut self.keys, &mut self.behaviour).await?;
             self.wake();
             None
         };

@@ -19,18 +19,15 @@ use core::ops::DerefMut;
 use std::sync::Arc;
 
 use door_sshproto as door;
-use door::{Behaviour, AsyncCliBehaviour, Runner, Result, Event, ChanEvent};
-// use door_sshproto::client::*;
+use door::{Runner, Result, Event, ChanEvent};
 
 use pretty_hex::PrettyHex;
 
 pub(crate) struct Inner<'a> {
     pub runner: Runner<'a>,
-    // TODO: perhaps behaviour can move to runner? unsure of lifetimes.
-    behaviour: Behaviour<'a>,
 
-    pub(crate) chan_read_wakers: HashMap<(u32, Option<u32>), Waker>,
-    pub(crate) chan_write_wakers: HashMap<(u32, Option<u32>), Waker>,
+    pub chan_read_wakers: HashMap<(u32, Option<u32>), Waker>,
+    pub chan_write_wakers: HashMap<(u32, Option<u32>), Waker>,
 }
 
 pub struct AsyncDoor<'a> {
@@ -43,10 +40,10 @@ pub struct AsyncDoor<'a> {
 }
 
 impl<'a> AsyncDoor<'a> {
-    pub fn new(runner: Runner<'a>, behaviour: Behaviour<'a>) -> Self {
+    pub fn new(runner: Runner<'a>) -> Self {
         let chan_read_wakers = HashMap::new();
         let chan_write_wakers = HashMap::new();
-        let inner = Arc::new(Mutex::new(Inner { runner, behaviour,
+        let inner = Arc::new(Mutex::new(Inner { runner,
             chan_read_wakers, chan_write_wakers }));
         let progress_notify = Arc::new(TokioNotify::new());
         Self { inner, progress_notify }
@@ -70,7 +67,7 @@ impl<'a> AsyncDoor<'a> {
         let res = {
             let mut inner = self.inner.lock().await;
             let inner = inner.deref_mut();
-            let ev = inner.runner.progress(&mut inner.behaviour).await?;
+            let ev = inner.runner.progress().await?;
             let r = if let Some(ev) = ev {
                 let r = match ev {
                     Event::Channel(ChanEvent::Eof { num }) => {
