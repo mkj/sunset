@@ -439,6 +439,7 @@ impl Channel {
         let send = self.send.as_mut().trap()?;
         if self.pending_adjust > self.full_window / 2 {
             let adjust = self.pending_adjust as u32;
+            self.pending_adjust = 0;
             let p = packets::ChannelWindowAdjust { num: send.num, adjust }.into();
             Ok(Some(p))
         } else {

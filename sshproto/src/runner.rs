@@ -183,6 +183,7 @@ impl<'a> Runner<'a> {
     ) -> Result<Option<usize>> {
         let len = self.ready_channel_send(chan);
         let len = match len {
+            Some(l) if l == 0 => return Ok(Some(0)),
             Some(l) => l,
             None => return Ok(None),
         };

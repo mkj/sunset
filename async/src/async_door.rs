@@ -404,13 +404,17 @@ fn chan_poll_write<'a>(
     trace!("chan write");
 
     let mut p = poll_lock(door.inner.clone(), cx, lock_fut);
-    let runner = match p {
-        Poll::Ready(ref mut i) => &mut i.runner,
+    let inner = match p {
+        Poll::Ready(ref mut i) => i,
         Poll::Pending => return Poll::Pending,
     };
+    let runner = &mut inner.runner;
 
     match runner.channel_send(chan, ext, buf) {
-        Ok(Some(l)) if l == 0 => Poll::Pending,
+        Ok(Some(l)) if l == 0 => {
+            inner.chan_write_wakers.insert((chan, ext), cx.waker().clone());
+            Poll::Pending
+        }
         Ok(Some(l)) => Poll::Ready(Ok(l)),
         // return 0 for EOF
         Ok(None) => Poll::Ready(Ok(0)),
