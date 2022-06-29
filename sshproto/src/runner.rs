@@ -74,7 +74,7 @@ impl<'a> Runner<'a> {
     /// event to the application.
     /// [`done_payload()`] must be called after any `Ok` result.
     pub async fn progress<'f>(&'f mut self) -> Result<Option<Event<'f>>, Error> {
-        let em = if let Some(payload) = self.traffic.payload() {
+        let em = if let Some((payload, seq)) = self.traffic.payload() {
             // Lifetimes here are a bit subtle.
             // `payload` has self.traffic lifetime, used until `handle_payload`
             // completes.
@@ -82,7 +82,7 @@ impl<'a> Runner<'a> {
             // by the send_packet().
             // After that progress() can perform more send_packet() itself.
 
-            let d = self.conn.handle_payload(payload, &mut self.keys, &mut self.behaviour).await?;
+            let d = self.conn.handle_payload(payload, seq, &mut self.keys, &mut self.behaviour).await?;
             self.traffic.handled_payload()?;
 
             if !d.resp.is_empty() || d.event.is_none() {
@@ -248,6 +248,11 @@ impl<'a> Runner<'a> {
         // minimum of buffer space and channel window available
         let buf_space = self.traffic.send_allowed(&self.keys);
         self.conn.channels.send_allowed(chan).map(|s| s.min(buf_space))
+    }
+
+    pub fn term_window_change(&self, chan: u32, wc: packets::WinChange) -> Result<()> {
+        todo!();
+        // self.conn.channels.term_window_change(chan, wc)
     }
 
     // pub fn chan_pending(&self) -> bool {

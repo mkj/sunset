@@ -8,29 +8,43 @@ use libc::{ioctl, winsize, termios, tcgetattr, tcsetattr };
 use door_sshproto as door;
 use door::{Behaviour, AsyncCliBehaviour, Runner, Result, Pty};
 use door::config::*;
+use door::packets::WinChange;
 
-
-pub fn current_pty() -> Result<Pty, IoError> {
-    let mut term = heapless::String::<MAX_TERM>::new();
-    let t = std::env::var("TERM").unwrap_or(DEFAULT_TERM.into());
-    // XXX error
-    term.push_str(&t).expect("TERM fits buffer");
-
+/// Returns the size of the current terminal
+pub fn win_size() -> Result<WinChange, IoError> {
     let mut ws = winsize { ws_row: 0, ws_col: 0, ws_xpixel: 0, ws_ypixel: 0 };
     let r = unsafe { ioctl(libc::STDIN_FILENO, libc::TIOCGWINSZ, &mut ws) };
     if r != 0 {
         return Err(IoError::last_os_error())
     }
 
-    info!("rows {} cols {}", ws.ws_row, ws.ws_col);
-
-    Ok(Pty {
-        term,
+    Ok(WinChange {
         rows: ws.ws_row as u32,
         cols: ws.ws_col as u32,
         width: ws.ws_xpixel as u32,
         height: ws.ws_ypixel as u32,
-        modes: heapless::Vec::new(),
+    })
+}
+
+/// Returns a `Pty` describing the current terminal.
+pub fn current_pty() -> Result<Pty, IoError> {
+    let mut term = heapless::String::<MAX_TERM>::new();
+    let t = std::env::var("TERM").unwrap_or(DEFAULT_TERM.into());
+    // XXX error
+    term.push_str(&t).expect("TERM fits buffer");
+
+    let wc = win_size()?;
+
+    // TODO modes
+    let modes = heapless::Vec::new();
+
+    Ok(Pty {
+        term,
+        rows: wc.rows,
+        cols: wc.cols,
+        width: wc.width,
+        height: wc.height,
+        modes,
     })
 
 }

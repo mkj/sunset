@@ -178,11 +178,22 @@ impl<'a> Conn<'a> {
     /// We queue response packets that can be sent (written into the same buffer)
     /// after `handle_payload()` runs.
     pub(crate) async fn handle_payload<'p>(
-        &mut self, payload: &'p [u8], keys: &mut KeyState, b: &mut Behaviour<'_>,
+        &mut self, payload: &'p [u8], seq: u32,
+        keys: &mut KeyState, b: &mut Behaviour<'_>,
     ) -> Result<Dispatched<'_>, Error> {
-        let p = sshwire::packet_from_bytes(payload, &self.parse_ctx)?;
-        let r = self.dispatch_packet(p, keys, b).await;
-        r
+        let r = sshwire::packet_from_bytes(payload, &self.parse_ctx);
+        match r {
+            Ok(p) => self.dispatch_packet(p, keys, b).await,
+            Err(Error::UnknownPacket { number }) => {
+                trace!("Unimplemented packet type {number}");
+                let p: Packet = packets::Unimplemented { seq }.into();
+                let mut resp = RespPackets::new();
+                // unwrap is OK, single packet has space
+                resp.push(p.into()).unwrap();
+                Ok(Dispatched { resp, event: None })
+            }
+            Err(e) => return Err(e),
+        }
     }
 
     async fn dispatch_packet<'p>(

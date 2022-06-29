@@ -17,6 +17,30 @@ use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use crate::*;
 use async_door::{Inner, poll_lock};
 
+pub struct Channel<'a> {
+    chan: u32,
+    door: AsyncDoor<'a>,
+}
+
+impl<'a> Channel<'a> {
+    /// Should be called by a SSH client when the local terminal changes size
+    /// (`SIGWINCH` is received). Only applicable to client session
+    /// channels with a pty.
+    pub async fn term_window_change(&self) {
+        let wc = match pty::win_size() {
+            Ok(wc) => wc,
+            Err(e) => {
+                warn!("Failed getting window size: {e}");
+                return;
+            }
+        };
+
+        // TODO: also need to wait for spare output buffer
+        self.door.inner.lock().await
+        .runner.term_window_change(self.chan, wc);
+    }
+}
+
 pub struct ChanInOut<'a> {
     chan: u32,
     door: AsyncDoor<'a>,

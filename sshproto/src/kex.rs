@@ -128,10 +128,14 @@ impl KexHash {
     }
 
     /// Fill everything except K.
-    /// q_c and q_s need to be padded as mpint (extra 0x00 if high bit set)
-    /// for ecdsa and DH modes, but not for curve25519.
     fn prefinish(&mut self, host_key: &PubKey, q_c: &[u8], q_s: &[u8]) -> Result<()> {
         hash_ser_length(&mut self.hash_ctx, host_key)?;
+
+        // TODO: q_c and q_s need to be padded as mpint (extra 0x00 if high bit set)
+        // for ecdsa and DH modes, but not for curve25519.
+        // Hack test for ed25519 algo
+        assert_eq!(q_c.len(), 32);
+
         self.hash_slice(q_c);
         self.hash_slice(q_s);
         Ok(())
@@ -493,11 +497,10 @@ impl<'a> KexOutput {
     // server only
     pub fn make_kexdhreply(&'a self) -> Result<Packet<'a>> {
         let q_s = BinString(self.pubkey.as_ref().trap()?);
-        // TODO
+        // TODO real signature
         let k_s = Blob(PubKey::Ed25519(packets::Ed25519PubKey{ key: BinString(&[]) }));
         let sig = Blob(Signature::Ed25519(packets::Ed25519Sig{ sig: BinString(&[]) }));
         Ok(packets::KexDHReply { k_s, q_s, sig }.into())
-        // then sign it.
     }
 }
 
@@ -534,7 +537,7 @@ impl KexCurve25519 {
         algos: &mut Algos, theirs: &[u8], kex_hash: KexHash,
         sess_id: &Option<SessId>,
     ) -> Result<KexOutput> {
-        #[warn(irrefutable_let_patterns)] // until we have other algos
+        #[allow(irrefutable_let_patterns)] // until we have other algos
         let kex = if let SharedSecret::KexCurve25519(k) = &mut algos.kex {
             k
         } else {

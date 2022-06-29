@@ -62,6 +62,10 @@ impl KeyState {
         self.keys = keys
     }
 
+    pub fn recv_seq(&self) -> u32 {
+        self.seq_decrypt.0
+    }
+
     /// Decrypts the first block in the buffer, returning the length.
     pub fn decrypt_first_block(&mut self, buf: &mut [u8]) -> Result<u32, Error> {
         self.keys.decrypt_first_block(buf, self.seq_decrypt.0)

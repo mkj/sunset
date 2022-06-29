@@ -41,7 +41,7 @@ enum TrafState {
     /// Whole encrypted packet has been read
     ReadComplete { len: usize },
     /// Decrypted complete input payload
-    InPayload { len: usize },
+    InPayload { len: usize, seq: u32 },
     /// Decrypted complete input payload. It has been dispatched by handle_payload(),
     /// remains "borrowed" for use by a progress() Event.
     BorrowPayload { len: usize },
@@ -164,27 +164,21 @@ impl<'a> Traffic<'a> {
         Ok(inlen)
     }
 
-    /// Returns a reference to the decrypted payload buffer if ready.
-    /// For a given payload should be called once initially to pass to handle_payload(),
-    /// with borrow=false. Subsequent calls will only return the payload if borrow=false,
-    /// used for borrowing the payload for Event.
-    // TODO: get rid of the bool and make two functions. need to figure naming.
-    // "payload_reborrow()"?
-    pub(crate) fn payload(&mut self) -> Option<&[u8]> {
-        let p = match self.state {
-            | TrafState::InPayload { len, .. }
+    /// Returns a reference to the decrypted payload buffer if ready,
+    /// and the `seq` of that packet.
+    pub(crate) fn payload(&mut self) -> Option<(&[u8], u32)> {
+        match self.state {
+            | TrafState::InPayload { len, seq }
             => {
                 let payload = &self.buf[SSH_PAYLOAD_START..SSH_PAYLOAD_START + len];
-                Some(payload)
+                Some((payload, seq))
             }
             _ => None,
-        };
-        trace!("traf 2 {:?}", self.state);
-        p
+        }
     }
 
     pub(crate) fn payload_reborrow(&mut self) -> Option<&[u8]> {
-        let p = match self.state {
+        match self.state {
             | TrafState::InPayload { len, .. }
             | TrafState::BorrowPayload { len, .. }
             => {
@@ -192,16 +186,14 @@ impl<'a> Traffic<'a> {
                 Some(payload)
             }
             _ => None,
-        };
-        trace!("traf 2 {:?}", self.state);
-        p
+        }
     }
 
     /// Called when `payload()` has been handled once, can still be
     /// `payload_reborrow()`ed later.
     pub(crate) fn handled_payload(&mut self) -> Result<(), Error> {
         match self.state {
-            | TrafState::InPayload { len }
+            | TrafState::InPayload { len, .. }
             | TrafState::BorrowPayload { len }
             => {
                 self.state = TrafState::BorrowPayload { len };
@@ -348,8 +340,9 @@ impl<'a> Traffic<'a> {
 
         if let TrafState::ReadComplete { len } = self.state {
             let w = &mut self.buf[0..len];
+            let seq = keys.recv_seq();
             let payload_len = keys.decrypt(w)?;
-            self.state = TrafState::InPayload { len: payload_len }
+            self.state = TrafState::InPayload { len: payload_len, seq }
         }
 
         Ok(buf.len() - r.len())

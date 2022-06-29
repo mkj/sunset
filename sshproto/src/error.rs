@@ -26,19 +26,20 @@ pub enum Error {
     /// Not a UTF8 string
     BadString,
 
-    /// Not a valid SSH ascii string
+    /// Not a valid SSH ASCII string
     BadName,
 
-    /// Decryption failure or integrity mismatch
+    /// Key exchange incorrect
+    BadKex,
+
+    /// Decryption failed
     BadDecrypt,
 
     /// Signature is incorrect
     BadSig,
 
-    /// Key exchange incorrect
-    BadKex,
-
-    // Signature doesn't match key type
+    // TODO: should this just be badsig? as long as we catch UnknownMethod first
+    /// Signature doesn't match key type
     SigMismatch,
 
     /// Error in received SSH protocol
@@ -96,6 +97,7 @@ pub enum Error {
     /// Program bug
     Bug,
 
+    // TODO remove this
     OtherBug { location: snafu::Location },
 }
 
