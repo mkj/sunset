@@ -31,15 +31,16 @@ pub struct Runner<'a> {
 }
 
 impl<'a> Runner<'a> {
-    /// `iobuf` must be sized to fit the largest SSH packet allowed.
+    /// `inbuf` must be sized to fit the largest SSH packet allowed.
     pub fn new_client(
-        iobuf: &'a mut [u8],
+        inbuf: &'a mut [u8],
+        outbuf: &'a mut [u8],
         behaviour: Behaviour<'a>,
     ) -> Result<Runner<'a>, Error> {
         let conn = Conn::new_client()?;
         let runner = Runner {
             conn,
-            traffic: traffic::Traffic::new(iobuf),
+            traffic: traffic::Traffic::new(outbuf, inbuf),
             keys: KeyState::new_cleartext(),
             output_waker: None,
             input_waker: None,

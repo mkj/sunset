@@ -30,9 +30,11 @@ pub struct SSHClient<'a> {
 }
 
 impl<'a> SSHClient<'a> {
-    pub fn new(buf: &'a mut [u8], behaviour: Box<dyn AsyncCliBehaviour+Send>) -> Result<Self> {
+    pub fn new(inbuf: &'a mut [u8],
+        outbuf: &'a mut [u8],
+        behaviour: Box<dyn AsyncCliBehaviour+Send>) -> Result<Self> {
         let b = Behaviour::new_async_client(behaviour);
-        let runner = Runner::new_client(buf, b)?;
+        let runner = Runner::new_client(inbuf, outbuf, b)?;
         let door = AsyncDoor::new(runner);
         Ok(Self {
             door

@@ -141,14 +141,16 @@ async fn run(args: &Args) -> Result<()> {
 
     let work = vec![0; 3000];
     // TODO: better lifetime rather than leaking
-    let work = Box::leak(Box::new(work));
+    let work = Box::leak(Box::new(work)).as_mut_slice();
+    let tx = vec![0; 3000];
+    let tx = Box::leak(Box::new(tx)).as_mut_slice();
 
     let mut cli = door_async::CmdlineClient::new(args.username.as_ref().unwrap());
     for i in &args.identityfile {
         cli.add_authkey(read_key(&i).with_context(|| format!("loading key {i}"))?);
     }
 
-    let mut door = SSHClient::new(work.as_mut_slice(), Box::new(cli))?;
+    let mut door = SSHClient::new(work, tx, Box::new(cli))?;
     let mut s = door.socket();
 
     moro::async_scope!(|scope| {
