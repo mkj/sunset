@@ -1,6 +1,6 @@
 //! SSH protocol packets. A [`Packet`] can be encoded/decoded to the
 //! SSH Binary Packet Protocol using [`crate::sshwire`].
-//!
+
 use core::borrow::BorrowMut;
 use core::cell::Cell;
 use core::fmt;
@@ -592,7 +592,7 @@ impl ParseContext {
     }
 }
 
-// we have repeated `match` statements for the various packet types, use a macro
+/// We have repeated `match` statements for the various packet types, use a macro
 macro_rules! messagetypes {
     (
         $( ( $message_num:literal, $SpecificPacketVariant:ident, $SpecificPacketType:ty, $SSH_MESSAGE_NAME:ident ), )*

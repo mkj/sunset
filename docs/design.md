@@ -69,5 +69,5 @@ between async and non-async traits, hiding that from the main code. Eventually `
 
 ## Async
 
-The majority of packet dispatch handling isn't async, it just returns Ready straight away. Becaues of that we just have a Tokio `Mutex` which occassionally
+The majority of packet dispatch handling isn't async, it just returns Ready straight away. Because of that we just have a Tokio `Mutex` which occassionally
 holds the mutex across the `.await` boundary - it should seldom be contended.

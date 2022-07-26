@@ -1,3 +1,7 @@
+//! SSH wire format reading/writing.
+//! Used in conjunction with [`sshwire_derive`] and the [`packet`](crate::packets) format
+//! definitions.
+
 #[allow(unused_imports)]
 use {
     crate::error::{Error, Result, TrapBug},
@@ -15,7 +19,7 @@ use ascii::{AsAsciiStr, AsciiChar, AsciiStr};
 use crate::*;
 use packets::{Packet, ParseContext};
 
-
+/// A generic destination for serializing, used similarly to `serde::Serializer`
 pub trait SSHSink {
     fn push(&mut self, v: &[u8]) -> WireResult<()>;
     fn ctx(&self) -> Option<&ParseContext> {
@@ -23,12 +27,14 @@ pub trait SSHSink {
     }
 }
 
+/// A generic source for a packet, used similarly to `serde::Deserializer`
 pub trait SSHSource<'de> {
     fn take(&mut self, len: usize) -> WireResult<&'de [u8]>;
     fn pos(&self) -> usize;
     fn ctx(&self) -> &ParseContext;
 }
 
+/// Encodes the type in SSH wire format
 pub trait SSHEncode {
     fn enc<S>(&self, s: &mut S) -> WireResult<()> where S: SSHSink;
 }
@@ -117,6 +123,7 @@ where
     Ok(s.pos)
 }
 
+/// Hashes the SSH wire format representation of `value`, with a `u32` length prefix.
 pub fn hash_ser_length<T>(hash_ctx: &mut impl digest::DynDigest,
     value: &T) -> Result<()>
 where
@@ -127,6 +134,7 @@ where
     hash_ser(hash_ctx, None, value)
 }
 
+/// Hashes the SSH wire format representation of `value`
 pub fn hash_ser<T>(hash_ctx: &mut impl digest::DynDigest,
     parse_ctx: Option<&ParseContext>,
     value: &T) -> Result<()>
@@ -331,7 +339,7 @@ impl<'de> SSHDecode<'de> for TextString<'de> {
     }
 }
 
-/// A wrapper for a u32 prefixed data structure `B`, such as a public key blob
+/// A wrapper for a `u32` length prefixed data structure `B`, such as a public key blob
 pub struct Blob<B>(pub B);
 
 impl<B> AsRef<B> for Blob<B> {
@@ -372,6 +380,7 @@ impl<'de, B: SSHDecode<'de>> SSHDecode<'de> for Blob<B> {
         let pos1 = s.pos();
         let inner = SSHDecode::dec(s)?;
         let pos2 = s.pos();
+        // Sanity check the length matched
         if (pos2 - pos1) == len as usize {
             Ok(Blob(inner))
         } else {

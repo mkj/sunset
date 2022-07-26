@@ -86,4 +86,5 @@ pub trait BlockCliBehaviour {
 }
 
 pub trait BlockServBehaviour {
+    fn hostkeys(&self) -> BhResult<&[&sign::SignKey]>;
 }

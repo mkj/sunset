@@ -1,3 +1,4 @@
+//! Helpers for async file descriptor IO
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
 

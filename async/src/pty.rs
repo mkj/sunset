@@ -1,3 +1,4 @@
+//! Code to manipulate PTYs
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
 

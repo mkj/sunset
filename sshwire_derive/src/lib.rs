@@ -1,3 +1,5 @@
+//! Used in conjunction with `sshwire.rs` and `packets.rs`
+
 use std::collections::HashSet;
 
 use proc_macro::Delimiter;

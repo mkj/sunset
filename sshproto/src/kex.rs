@@ -27,7 +27,6 @@ use behaviour::{CliBehaviour, Behaviour, ServBehaviour};
 const MAX_SESSID: usize = 32;
 pub type SessId = heapless::Vec<u8, MAX_SESSID>;
 
-// #[cfg(test)]
 use pretty_hex::PrettyHex;
 
 const EMPTY_LOCALNAMES: LocalNames = LocalNames(&[]);
@@ -404,7 +403,6 @@ impl SharedSecret {
 
     fn make_kexdhinit(&self) -> Result<Packet> {
         let q_c = self.pubkey();
-        trace!("pubkey ours {:?}", self.pubkey().hex_dump());
         let q_c = BinString(q_c);
         Ok(packets::KexDHInit { q_c }.into())
     }

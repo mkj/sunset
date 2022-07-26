@@ -112,7 +112,6 @@ pub struct CliBehaviour<'a> {
     pub inner: &'a mut (dyn async_behaviour::AsyncCliBehaviour + Send),
     #[cfg(not(feature = "std"))]
     pub inner: &'a mut dyn block_behaviour::BlockCliBehaviour,
-    // pub phantom: core::marker::PhantomData<&'a ()>,
 }
 
 // wraps everything in AsyncCliBehaviour
@@ -190,8 +189,18 @@ pub struct ServBehaviour<'a> {
 
 #[cfg(feature = "std")]
 impl<'a> ServBehaviour<'a> {
-
+    pub(crate) async fn hostkeys(&self) -> BhResult<&[&sign::SignKey]> {
+        self.inner.hostkeys().await
+    }
 }
+
+#[cfg(not(feature = "std"))]
+impl<'a> ServBehaviour<'a> {
+    pub(crate) async fn hostkeys(&self) -> BhResult<&[&sign::SignKey]> {
+        self.inner.hostkeys()
+    }
+}
+
 /// A stack-allocated string to store responses for usernames or passwords.
 // 100 bytes is an arbitrary size.
 pub type ResponseString = heapless::String<100>;

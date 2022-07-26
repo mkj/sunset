@@ -100,4 +100,5 @@ pub trait AsyncCliBehaviour: Sync+Send {
 // #[async_trait(?Send)]
 #[async_trait]
 pub trait AsyncServBehaviour: Sync+Send {
+    async fn hostkeys(&self) -> BhResult<&[&sign::SignKey]>;
 }
