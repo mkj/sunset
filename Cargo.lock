@@ -457,12 +457,12 @@ dependencies = [
 [[package]]
 name = "futures"
 version = "0.4.0-alpha.0"
-source = "git+https://github.com/rust-lang/futures-rs#7f2603402a1ffbf6ad3a31f15598b72216bec242"
+source = "git+https://github.com/rust-lang/futures-rs?rev=8b0f812f53ada0d0aeb74abc32be22ab9dafae05#8b0f812f53ada0d0aeb74abc32be22ab9dafae05"
 dependencies = [
  "futures-channel 0.4.0-alpha.0",
  "futures-core 1.0.0-alpha.0",
  "futures-executor 0.4.0-alpha.0",
- "futures-io 0.3.21 (git+https://github.com/rust-lang/futures-rs)",
+ "futures-io 0.3.21 (git+https://github.com/rust-lang/futures-rs?rev=8b0f812f53ada0d0aeb74abc32be22ab9dafae05)",
  "futures-sink 0.4.0-alpha.0",
  "futures-task 0.4.0-alpha.0",
  "futures-util 0.4.0-alpha.0",
@@ -481,7 +481,7 @@ dependencies = [
 [[package]]
 name = "futures-channel"
 version = "0.4.0-alpha.0"
-source = "git+https://github.com/rust-lang/futures-rs#7f2603402a1ffbf6ad3a31f15598b72216bec242"
+source = "git+https://github.com/rust-lang/futures-rs?rev=8b0f812f53ada0d0aeb74abc32be22ab9dafae05#8b0f812f53ada0d0aeb74abc32be22ab9dafae05"
 dependencies = [
  "futures-core 1.0.0-alpha.0",
  "futures-sink 0.4.0-alpha.0",
@@ -496,7 +496,7 @@ checksum = "0c09fd04b7e4073ac7156a9539b57a484a8ea920f79c7c675d05d289ab6110d3"
 [[package]]
 name = "futures-core"
 version = "1.0.0-alpha.0"
-source = "git+https://github.com/rust-lang/futures-rs#7f2603402a1ffbf6ad3a31f15598b72216bec242"
+source = "git+https://github.com/rust-lang/futures-rs?rev=8b0f812f53ada0d0aeb74abc32be22ab9dafae05#8b0f812f53ada0d0aeb74abc32be22ab9dafae05"
 
 [[package]]
 name = "futures-executor"
@@ -512,7 +512,7 @@ dependencies = [
 [[package]]
 name = "futures-executor"
 version = "0.4.0-alpha.0"
-source = "git+https://github.com/rust-lang/futures-rs#7f2603402a1ffbf6ad3a31f15598b72216bec242"
+source = "git+https://github.com/rust-lang/futures-rs?rev=8b0f812f53ada0d0aeb74abc32be22ab9dafae05#8b0f812f53ada0d0aeb74abc32be22ab9dafae05"
 dependencies = [
  "futures-core 1.0.0-alpha.0",
  "futures-task 0.4.0-alpha.0",
@@ -528,7 +528,7 @@ checksum = "fc4045962a5a5e935ee2fdedaa4e08284547402885ab326734432bed5d12966b"
 [[package]]
 name = "futures-io"
 version = "0.3.21"
-source = "git+https://github.com/rust-lang/futures-rs#7f2603402a1ffbf6ad3a31f15598b72216bec242"
+source = "git+https://github.com/rust-lang/futures-rs?rev=8b0f812f53ada0d0aeb74abc32be22ab9dafae05#8b0f812f53ada0d0aeb74abc32be22ab9dafae05"
 
 [[package]]
 name = "futures-macro"
@@ -544,7 +544,7 @@ dependencies = [
 [[package]]
 name = "futures-macro"
 version = "0.4.0-alpha.0"
-source = "git+https://github.com/rust-lang/futures-rs#7f2603402a1ffbf6ad3a31f15598b72216bec242"
+source = "git+https://github.com/rust-lang/futures-rs?rev=8b0f812f53ada0d0aeb74abc32be22ab9dafae05#8b0f812f53ada0d0aeb74abc32be22ab9dafae05"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -560,7 +560,7 @@ checksum = "21163e139fa306126e6eedaf49ecdb4588f939600f0b1e770f4205ee4b7fa868"
 [[package]]
 name = "futures-sink"
 version = "0.4.0-alpha.0"
-source = "git+https://github.com/rust-lang/futures-rs#7f2603402a1ffbf6ad3a31f15598b72216bec242"
+source = "git+https://github.com/rust-lang/futures-rs?rev=8b0f812f53ada0d0aeb74abc32be22ab9dafae05#8b0f812f53ada0d0aeb74abc32be22ab9dafae05"
 
 [[package]]
 name = "futures-task"
@@ -571,7 +571,7 @@ checksum = "57c66a976bf5909d801bbef33416c41372779507e7a6b3a5e25e4749c58f776a"
 [[package]]
 name = "futures-task"
 version = "0.4.0-alpha.0"
-source = "git+https://github.com/rust-lang/futures-rs#7f2603402a1ffbf6ad3a31f15598b72216bec242"
+source = "git+https://github.com/rust-lang/futures-rs?rev=8b0f812f53ada0d0aeb74abc32be22ab9dafae05#8b0f812f53ada0d0aeb74abc32be22ab9dafae05"
 
 [[package]]
 name = "futures-util"
@@ -594,11 +594,11 @@ dependencies = [
 [[package]]
 name = "futures-util"
 version = "0.4.0-alpha.0"
-source = "git+https://github.com/rust-lang/futures-rs#7f2603402a1ffbf6ad3a31f15598b72216bec242"
+source = "git+https://github.com/rust-lang/futures-rs?rev=8b0f812f53ada0d0aeb74abc32be22ab9dafae05#8b0f812f53ada0d0aeb74abc32be22ab9dafae05"
 dependencies = [
  "futures-channel 0.4.0-alpha.0",
  "futures-core 1.0.0-alpha.0",
- "futures-io 0.3.21 (git+https://github.com/rust-lang/futures-rs)",
+ "futures-io 0.3.21 (git+https://github.com/rust-lang/futures-rs?rev=8b0f812f53ada0d0aeb74abc32be22ab9dafae05)",
  "futures-macro 0.4.0-alpha.0",
  "futures-sink 0.4.0-alpha.0",
  "futures-task 0.4.0-alpha.0",
