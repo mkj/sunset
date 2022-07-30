@@ -606,7 +606,7 @@ pub(crate) mod tests {
         }).into();
         let mut pw = ResponseString::new();
         pw.push_str("123").unwrap();
-        ctx.cli_auth_type = Some(cliauth::AuthType::Password);
+        ctx.cli_auth_type = Some(auth::AuthType::Password);
         test_roundtrip_context(&p, &ctx);
 
         // PkOk is a more interesting case because the PubKey inside it is also
@@ -618,7 +618,7 @@ pub(crate) mod tests {
             })),
         }).into();
         let s = sign::tests::make_ed25519_signkey();
-        ctx.cli_auth_type = Some(cliauth::AuthType::PubKey);
+        ctx.cli_auth_type = Some(auth::AuthType::PubKey);
         test_roundtrip_context(&p, &ctx);
     }
 }

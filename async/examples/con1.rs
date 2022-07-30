@@ -161,14 +161,14 @@ async fn run(args: &Args) -> Result<()> {
                 let ev = door.progress(|ev| {
                     trace!("progress event {ev:?}");
                     let e = match ev {
-                        Event::Authenticated => Some(Event::Authenticated),
+                        Event::CliAuthed => Some(Event::CliAuthed),
                         _ => None,
                     };
                     Ok(e)
                 }).await.context("progress loop")?;
 
                 match ev {
-                    Some(Event::Authenticated) => {
+                    Some(Event::CliAuthed) => {
                         let mut raw_pty_guard = None;
                         info!("Opening a new session channel");
                         let (cmd, pty) = if args.cmd.is_empty() {

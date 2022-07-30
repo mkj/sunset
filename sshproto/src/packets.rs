@@ -139,8 +139,8 @@ impl<'de: 'a, 'a> SSHDecode<'de> for Userauth60<'a> {
     fn dec<S>(s: &mut S) -> WireResult<Self>
     where S: SSHSource<'de> {
         match s.ctx().cli_auth_type {
-            Some(cliauth::AuthType::Password) => Ok(Self::PwChangeReq(SSHDecode::dec(s)?)),
-            Some(cliauth::AuthType::PubKey) => Ok(Self::PkOk(SSHDecode::dec(s)?)),
+            Some(auth::AuthType::Password) => Ok(Self::PwChangeReq(SSHDecode::dec(s)?)),
+            Some(auth::AuthType::PubKey) => Ok(Self::PkOk(SSHDecode::dec(s)?)),
             _ => {
                 trace!("Wrong packet state for userauth60");
                 return Err(WireError::PacketWrong)
@@ -580,7 +580,7 @@ impl core::fmt::Display for Unknown<'_> {
 /// Use this so the parser can select the correct enum variant to decode.
 #[derive(Default, Clone, Debug)]
 pub struct ParseContext {
-    pub cli_auth_type: Option<cliauth::AuthType>,
+    pub cli_auth_type: Option<auth::AuthType>,
 
     // Used by sign_encode()
     pub method_pubkey_force_sig_bool: bool,

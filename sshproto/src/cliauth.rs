@@ -20,17 +20,12 @@ use sign::{SignKey, OwnedSig};
 use sshnames::*;
 use sshwire::{BinString, Blob};
 use kex::SessId;
+use auth::AuthType;
 
 // pub for packets::ParseContext
 pub enum Req {
     Password(ResponseString),
     PubKey { key: SignKey },
-}
-
-#[derive(Clone, Debug)]
-pub enum AuthType {
-    Password,
-    PubKey,
 }
 
 pub(crate) enum AuthState {

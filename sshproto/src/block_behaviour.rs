@@ -87,4 +87,10 @@ pub trait BlockCliBehaviour {
 
 pub trait BlockServBehaviour {
     fn hostkeys(&self) -> BhResult<&[&sign::SignKey]>;
+
+    // fn authmethods(&self) -> [AuthMethod];
+
+    fn auth_password(&self, user: &str, password: &str) -> bool;
+
+
 }

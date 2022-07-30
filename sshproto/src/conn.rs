@@ -95,12 +95,12 @@ enum ConnState {
 #[derive(Debug)]
 pub enum Event<'a> {
     Channel(ChanEvent<'a>),
-    Authenticated,
+    CliAuthed,
 }
 
 pub(crate) enum EventMaker {
     Channel(ChanEventMaker),
-    Authenticated,
+    CliAuthed,
 }
 
 impl<'a> Conn<'a> {
@@ -319,7 +319,7 @@ impl<'a> Conn<'a> {
                     if matches!(self.state, ConnState::PreAuth) {
                         self.state = ConnState::Authed;
                         cli.auth_success(&mut resp, &mut self.parse_ctx, &mut b.client()?).await?;
-                        event = Some(EventMaker::Authenticated);
+                        event = Some(EventMaker::CliAuthed);
                     } else {
                         debug!("Received UserauthSuccess unrequested")
                     }
@@ -381,7 +381,7 @@ impl<'a> Conn<'a> {
                 let c = cev.make(p.trap()?);
                 c.map(|c| Event::Channel(c))
             }
-            EventMaker::Authenticated => Some(Event::Authenticated),
+            EventMaker::CliAuthed => Some(Event::CliAuthed),
         };
         Ok(r)
     }

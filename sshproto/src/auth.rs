@@ -31,3 +31,9 @@ pub(crate) struct AuthSigMsg<'a> {
     pub u: packets::UserauthRequest<'a>,
 }
 
+#[derive(Clone, Debug)]
+pub enum AuthType {
+    Password,
+    PubKey,
+}
+

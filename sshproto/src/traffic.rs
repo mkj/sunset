@@ -21,10 +21,10 @@ pub(crate) struct Traffic<'a> {
     /// Should be sized to fit the largest packet allowed for input, or
     /// sequence of packets to be sent at once (see [`conn::MAX_RESPONSES`]).
     /// Contains ciphertext or cleartext, encrypted/decrypted in-place.
-    /// When reading only contains a single SSH packet at a time.
     /// Writing may contain multiple SSH packets to write out, encrypted
     /// in-place as they are written to `buf`.
     tx_buf: &'a mut [u8],
+    /// Only contains a single SSH packet at a time.
     rx_buf: &'a mut [u8],
 
     tx_state: TxState,

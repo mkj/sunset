@@ -101,4 +101,25 @@ pub trait AsyncCliBehaviour: Sync+Send {
 #[async_trait]
 pub trait AsyncServBehaviour: Sync+Send {
     async fn hostkeys(&self) -> BhResult<&[&sign::SignKey]>;
+
+    // TODO: or return a slice of enums
+    async fn have_auth_password(&self, username: &str) -> bool;
+    async fn have_auth_pubkey(&self, username: &str) -> bool;
+
+
+    #[allow(unused)]
+    // TODO: change password
+    async fn auth_password(&self, username: &str, password: &str) -> bool {
+        false
+    }
+
+    /// Returns true if the pubkey can be used to log in.
+    /// TODO: allow returning pubkey restriction options
+    #[allow(unused)]
+    async fn auth_pubkey(&self, username: &str, pubkey: &sign::SignKey) -> bool {
+        false
+    }
+
+    /// Returns whether a session can be opened
+    async fn open_session(&self) -> bool;
 }
