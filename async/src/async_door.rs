@@ -19,7 +19,7 @@ use core::ops::DerefMut;
 use std::sync::Arc;
 
 use door_sshproto as door;
-use door::{Runner, Result, Event, ChanEvent};
+use door::{Runner, Result, Event, ChanEvent, Behaviour};
 
 use pretty_hex::PrettyHex;
 
@@ -59,7 +59,9 @@ impl<'a> AsyncDoor<'a> {
         AsyncDoorSocket::new(self)
     }
 
-    pub async fn progress<F, R>(&mut self, f: F)
+    pub async fn progress<F, R>(&mut self,
+        b: &mut Behaviour<'_>,
+        f: F)
         -> Result<Option<R>>
         where F: FnOnce(door::Event) -> Result<Option<R>> {
         trace!("progress");
@@ -67,7 +69,7 @@ impl<'a> AsyncDoor<'a> {
         let res = {
             let mut inner = self.inner.lock().await;
             let inner = inner.deref_mut();
-            let ev = inner.runner.progress().await?;
+            let ev = inner.runner.progress(b).await?;
             let r = if let Some(ev) = ev {
                 let r = match ev {
                     Event::Channel(ChanEvent::Eof { num }) => {

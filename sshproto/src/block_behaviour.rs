@@ -35,7 +35,6 @@ impl BlockCliServ<'_>
         };
         let c = ServBehaviour {
             inner: *c,
-            phantom: core::marker::PhantomData::default(),
         };
         Ok(c)
     }

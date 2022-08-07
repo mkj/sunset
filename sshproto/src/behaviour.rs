@@ -47,7 +47,7 @@ pub type ReplyChannel = bhtokio::ReplyChannel;
 
 pub struct Behaviour<'a> {
     #[cfg(feature = "std")]
-    inner: crate::async_behaviour::AsyncCliServ,
+    inner: crate::async_behaviour::AsyncCliServ<'a>,
     #[cfg(not(feature = "std"))]
     inner: crate::block_behaviour::BlockCliServ<'a>,
 
@@ -55,15 +55,15 @@ pub struct Behaviour<'a> {
 }
 
 #[cfg(feature = "std")]
-impl Behaviour<'_> {
-    pub fn new_async_client(b: Box<dyn async_behaviour::AsyncCliBehaviour + Send>) -> Self {
+impl<'a> Behaviour<'a> {
+    pub fn new_async_client(b: &'a mut (dyn AsyncCliBehaviour + Send)) -> Self {
         Self {
             inner: async_behaviour::AsyncCliServ::Client(b),
             phantom: PhantomData::default(),
         }
     }
 
-    pub fn new_async_server(b: Box<dyn async_behaviour::AsyncServBehaviour + Send>) -> Self {
+    pub fn new_async_server(b: &'a mut (dyn AsyncServBehaviour + Send)) -> Self {
         Self {
             inner: async_behaviour::AsyncCliServ::Server(b),
             phantom: PhantomData::default(),
@@ -86,14 +86,12 @@ impl<'a> Behaviour<'a>
     pub fn new_blocking_client(b: &'a mut dyn BlockCliBehaviour) -> Self {
         Self {
             inner: block_behaviour::BlockCliServ::Client(b),
-            phantom: PhantomData::default(),
         }
     }
 
     pub fn new_blocking_server(b: &'a mut dyn BlockServBehaviour) -> Self {
         Self {
             inner: block_behaviour::BlockCliServ::Server(b),
-            phantom: PhantomData::default(),
         }
     }
 
@@ -184,7 +182,6 @@ pub struct ServBehaviour<'a> {
     pub inner: &'a mut dyn async_behaviour::AsyncServBehaviour,
     #[cfg(not(feature = "std"))]
     pub inner: &'a mut dyn block_behaviour::BlockServBehaviour,
-    pub phantom: core::marker::PhantomData<&'a ()>,
 }
 
 #[cfg(feature = "std")]

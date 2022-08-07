@@ -9,24 +9,23 @@ use {
 };
 
 use async_trait::async_trait;
-use std::boxed::Box;
 
 use crate::{*, conn::RespPackets};
 use behaviour::*;
 
-pub(crate) enum AsyncCliServ {
-    Client(Box<dyn AsyncCliBehaviour + Send>),
-    Server(Box<dyn AsyncServBehaviour + Send>),
+pub(crate) enum AsyncCliServ<'a> {
+    Client(&'a mut (dyn AsyncCliBehaviour + Send)),
+    Server(&'a mut (dyn AsyncServBehaviour + Send)),
 }
 
-impl AsyncCliServ {
+impl<'a> AsyncCliServ<'a> {
     pub fn client(&mut self) -> Result<CliBehaviour> {
         let c = match self {
             Self::Client(c) => c,
             _ => Error::bug_msg("Not client")?,
         };
         let c = CliBehaviour {
-            inner: c.as_mut(),
+            inner: *c,
         };
         Ok(c)
     }
@@ -37,8 +36,7 @@ impl AsyncCliServ {
             _ => Error::bug_msg("Not server")?,
         };
         let c = ServBehaviour {
-            inner: c.as_mut(),
-            phantom: core::marker::PhantomData::default(),
+            inner: *c,
         };
         Ok(c)
     }

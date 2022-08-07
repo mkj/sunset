@@ -145,12 +145,13 @@ async fn run(args: &Args) -> Result<()> {
     let tx = vec![0; 3000];
     let tx = Box::leak(Box::new(tx)).as_mut_slice();
 
+    // cli is a Behaviour
     let mut cli = door_async::CmdlineClient::new(args.username.as_ref().unwrap());
     for i in &args.identityfile {
         cli.add_authkey(read_key(&i).with_context(|| format!("loading key {i}"))?);
     }
 
-    let mut door = SSHClient::new(work, tx, Box::new(cli))?;
+    let mut door = SSHClient::new(work, tx)?;
     let mut s = door.socket();
 
     moro::async_scope!(|scope| {
@@ -158,7 +159,7 @@ async fn run(args: &Args) -> Result<()> {
 
         scope.spawn(async {
             loop {
-                let ev = door.progress(|ev| {
+                let ev = door.progress(&mut cli, |ev| {
                     trace!("progress event {ev:?}");
                     let e = match ev {
                         Event::CliAuthed => Some(Event::CliAuthed),

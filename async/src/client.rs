@@ -31,10 +31,8 @@ pub struct SSHClient<'a> {
 
 impl<'a> SSHClient<'a> {
     pub fn new(inbuf: &'a mut [u8],
-        outbuf: &'a mut [u8],
-        behaviour: Box<dyn AsyncCliBehaviour+Send>) -> Result<Self> {
-        let b = Behaviour::new_async_client(behaviour);
-        let runner = Runner::new_client(inbuf, outbuf, b)?;
+        outbuf: &'a mut [u8]) -> Result<Self> {
+        let runner = Runner::new_client(inbuf, outbuf)?;
         let door = AsyncDoor::new(runner);
         Ok(Self {
             door
@@ -45,10 +43,17 @@ impl<'a> SSHClient<'a> {
         self.door.socket()
     }
 
-    pub async fn progress<F, R>(&mut self, f: F)
+    /// Takes a closure to run on the "output" of the progress call.
+    /// (This output can't be returned directly since it refers
+    /// to contents of `Self` and would hit lifetime issues).
+    pub async fn progress<F, R>(&mut self,
+        behaviour: &mut (dyn AsyncCliBehaviour+Send),
+        f: F)
         -> Result<Option<R>>
         where F: FnOnce(door::Event) -> Result<Option<R>> {
-        self.door.progress(f).await
+
+        let mut b = Behaviour::new_async_client(behaviour);
+        self.door.progress(&mut b, f).await
     }
 
     // TODO: return a Channel object that gives events like WinChange or exit status
