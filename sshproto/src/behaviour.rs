@@ -9,7 +9,6 @@ use core::task::{Waker,Poll};
 use core::future::Future;
 use core::mem;
 use core::fmt;
-use core::marker::PhantomData;
 
 use heapless::spsc::{Queue,Producer,Consumer};
 
@@ -50,8 +49,6 @@ pub struct Behaviour<'a> {
     inner: crate::async_behaviour::AsyncCliServ<'a>,
     #[cfg(not(feature = "std"))]
     inner: crate::block_behaviour::BlockCliServ<'a>,
-
-    pub phantom: PhantomData<&'a ()>,
 }
 
 #[cfg(feature = "std")]
@@ -59,14 +56,12 @@ impl<'a> Behaviour<'a> {
     pub fn new_async_client(b: &'a mut (dyn AsyncCliBehaviour + Send)) -> Self {
         Self {
             inner: async_behaviour::AsyncCliServ::Client(b),
-            phantom: PhantomData::default(),
         }
     }
 
     pub fn new_async_server(b: &'a mut (dyn AsyncServBehaviour + Send)) -> Self {
         Self {
             inner: async_behaviour::AsyncCliServ::Server(b),
-            phantom: PhantomData::default(),
         }
     }
 

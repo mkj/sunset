@@ -7,7 +7,6 @@ use {
 };
 
 use core::fmt;
-use core::marker::PhantomData;
 
 use sha2::Sha256;
 use digest::Digest;

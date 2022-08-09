@@ -4,7 +4,6 @@
 use core::borrow::BorrowMut;
 use core::cell::Cell;
 use core::fmt;
-use core::marker::PhantomData;
 #[allow(unused_imports)]
 use {
     crate::error::{Error, Result, TrapBug},
