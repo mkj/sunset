@@ -1,5 +1,7 @@
-//! SSH protocol packets. A [`Packet`] can be encoded/decoded to the
-//! SSH Binary Packet Protocol using [`crate::sshwire`].
+//! SSH protocol packets.
+//!
+//! A [`Packet`] can be encoded/decoded to the
+//! SSH Binary Packet Protocol using [`sshwire`].
 
 use core::borrow::BorrowMut;
 use core::cell::Cell;

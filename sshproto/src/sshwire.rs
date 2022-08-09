@@ -58,6 +58,7 @@ pub trait SSHDecodeEnum<'de>: Sized {
 }
 
 /// A subset of [`Error`] for `SSHEncode` and `SSHDecode`.
+///
 /// Compiled code size is very sensitive to the size of this
 /// enum so we avoid unused elements.
 #[derive(Debug)]
@@ -239,7 +240,7 @@ pub fn hash_mpint(hash_ctx: &mut dyn digest::DynDigest, m: &[u8]) {
 
 ///////////////////////////////////////////////
 
-/// A SSH style binary string. Serialized as 32 bit length followed by the bytes
+/// A SSH style binary string. Serialized as `u32` length followed by the bytes
 /// of the slice.
 /// Application API
 #[derive(Clone,PartialEq)]
@@ -275,12 +276,13 @@ impl<'de> SSHDecode<'de> for BinString<'de> {
 }
 
 /// A text string that may be presented to a user or used
-/// for things such as a password, username, exec command, tcp hostname, etc.
+/// for things such as a password, username, exec command, TCP hostname, etc.
+///
 /// The SSH protocol defines it to be UTF-8, though
-/// in some applications it could be treated as ascii-only.
+/// in some applications it could be treated as ASCII-only.
 /// The library treats it as an opaque `&[u8]`, leaving
-/// decoding to the `Behaviour`.
-
+/// decoding to the [`Behaviour`].
+///
 /// Note that SSH protocol identifiers in `Packet` etc
 /// are `&str` rather than `TextString`, and always defined as ASCII.
 /// Application API
@@ -288,8 +290,8 @@ impl<'de> SSHDecode<'de> for BinString<'de> {
 pub struct TextString<'a>(pub &'a [u8]);
 
 impl<'a> TextString<'a> {
-    /// Returns the utf8 decoded string, using [`core::str::from_utf8`]
-    /// Don't call this if you are avoiding including utf8 routines in
+    /// Returns the UTF-8 decoded string, using [`core::str::from_utf8`]
+    /// Don't call this if you are avoiding including UTF-8 routines in
     /// the binary.
     pub fn as_str(&self) -> Result<&'a str> {
         core::str::from_utf8(self.0).map_err(|_| Error::BadString)
@@ -484,7 +486,7 @@ impl<'de> SSHDecode<'de> for u32 {
     }
 }
 
-/// Decodes a SSH name string. Must be ascii
+/// Decodes a SSH name string. Must be ASCII
 /// without control characters. RFC4251 section 6.
 pub fn try_as_ascii<'a>(t: &'a [u8]) -> WireResult<&'a AsciiStr> {
     let n = t.as_ascii_str().map_err(|_| WireError::BadName)?;

@@ -58,7 +58,7 @@ impl<'a> SSHClient<'a> {
 
     // TODO: return a Channel object that gives events like WinChange or exit status
     // TODO: move to SimpleClient or something?
-    pub async fn open_client_session_nopty(&mut self, exec: Option<&str>)
+    pub async fn open_session_nopty(&mut self, exec: Option<&str>)
     -> Result<(ChanInOut<'a>, ChanExtIn<'a>)> {
         let chan = self.door.with_runner(|runner| {
             runner.open_client_session(exec, None)
@@ -69,7 +69,7 @@ impl<'a> SSHClient<'a> {
         Ok((cstd, cerr))
     }
 
-    pub async fn open_client_session_pty(&mut self, exec: Option<&str>)
+    pub async fn open_session_pty(&mut self, exec: Option<&str>)
     -> Result<ChanInOut<'a>> {
 
         // XXX error handling

@@ -20,6 +20,7 @@ use conn::RespPackets;
 use sshwire::TextString;
 
 // TODO: "Bh" is an ugly abbreviation. Naming is hard.
+// How about SSHApp instead? CliApp, ServApp?
 
 // TODO: probably want a special Result here. They probably all want
 // Result, it can return an error or other options like Disconnect?
@@ -29,9 +30,6 @@ pub type BhResult<T> = core::result::Result<T, BhError>;
 pub enum BhError {
     Fail,
 }
-
-#[cfg(feature = "tokio-queue")]
-pub type ReplyChannel = bhtokio::ReplyChannel;
 
 // TODO: once async functions in traits work with no_std, this can all be reworked
 // to probably have Behaviour as a trait not a struct.
@@ -70,6 +68,7 @@ impl<'a> Behaviour<'a> {
     pub(crate) fn client(&mut self) -> Result<CliBehaviour> {
         self.inner.client()
     }
+
     pub(crate) fn server(&mut self) -> Result<ServBehaviour> {
         self.inner.server()
     }

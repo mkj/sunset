@@ -136,6 +136,12 @@ async fn run(args: &Args) -> Result<()> {
     info!("running main");
     trace!("tracing main");
 
+    let (cmd, wantpty) = if args.cmd.is_empty() {
+        (None, true)
+    } else {
+        (Some(args.cmd.join(" ")), false)
+    };
+
     // Connect to a peer
     let mut stream = TcpStream::connect((args.host.as_str(), args.port)).await?;
 
@@ -145,21 +151,22 @@ async fn run(args: &Args) -> Result<()> {
     let tx = vec![0; 3000];
     let tx = Box::leak(Box::new(tx)).as_mut_slice();
 
-    // cli is a Behaviour
-    let mut cli = door_async::CmdlineClient::new(args.username.as_ref().unwrap());
+    // app is a Behaviour
+    let mut app = door_async::CmdlineClient::new(args.username.as_ref().unwrap());
     for i in &args.identityfile {
-        cli.add_authkey(read_key(&i).with_context(|| format!("loading key {i}"))?);
+        app.add_authkey(read_key(&i).with_context(|| format!("loading key {i}"))?);
     }
 
-    let mut door = SSHClient::new(work, tx)?;
-    let mut s = door.socket();
+    let mut cli = SSHClient::new(work, tx)?;
+    let mut s = cli.socket();
+
 
     moro::async_scope!(|scope| {
         scope.spawn(tokio::io::copy_bidirectional(&mut stream, &mut s));
 
         scope.spawn(async {
             loop {
-                let ev = door.progress(&mut cli, |ev| {
+                let ev = cli.progress(&mut app, |ev| {
                     trace!("progress event {ev:?}");
                     let e = match ev {
                         Event::CliAuthed => Some(Event::CliAuthed),
@@ -172,41 +179,34 @@ async fn run(args: &Args) -> Result<()> {
                     Some(Event::CliAuthed) => {
                         let mut raw_pty_guard = None;
                         info!("Opening a new session channel");
-                        let (cmd, pty) = if args.cmd.is_empty() {
-                            (None, true)
-                        } else {
-                            (Some(args.cmd.join(" ")), false)
-                        };
-                        let (mut io, mut err) = if pty {
+                        let (mut io, mut errpair) = if wantpty {
                             raw_pty_guard = Some(raw_pty()?);
-                            let io = door.open_client_session_pty(cmd.as_deref()).await
+                            let io = cli.open_session_pty(cmd.as_deref()).await
                                 .context("Opening session")?;
                             (io, None)
                         } else {
-                            let (io, err) = door.open_client_session_nopty(cmd.as_deref()).await
+                            let (io, err) = cli.open_session_nopty(cmd.as_deref()).await
                                 .context("Opening session")?;
-                            (io, Some(err))
+                            let errpair = (err, door_async::stderr()?);
+                            (io, Some(errpair))
                         };
+
                         let mut i = door_async::stdin()?;
                         let mut o = door_async::stdout()?;
-                        let mut e = if err.is_some() {
-                            Some(door_async::stderr()?)
-                        } else {
-                            None
-                        };
                         let mut io2 = io.clone();
                         scope.spawn(async move {
                             moro::async_scope!(|scope| {
                                 scope.spawn(tokio::io::copy(&mut io, &mut o));
                                 scope.spawn(tokio::io::copy(&mut i, &mut io2));
-                                if let Some(ref mut err) = err {
-                                    scope.spawn(tokio::io::copy(err, e.as_mut().unwrap()));
+                                if let Some(ref mut ep) = errpair {
+                                    let (err, e) = ep;
+                                    scope.spawn(tokio::io::copy(err, e));
                                 }
                             }).await;
                             drop(raw_pty_guard);
                             Ok::<_, anyhow::Error>(())
                         });
-                        // TODO: handle channel completion
+                        // TODO: handle channel completion or open failure
                     }
                     Some(_) => unreachable!(),
                     None => {},

@@ -87,9 +87,17 @@ pub trait BlockCliBehaviour {
 pub trait BlockServBehaviour {
     fn hostkeys(&self) -> BhResult<&[&sign::SignKey]>;
 
+    fn have_auth_password(&self, username: &str) -> bool;
+    fn have_auth_pubkey(&self, username: &str) -> bool;
+
     // fn authmethods(&self) -> [AuthMethod];
 
     fn auth_password(&self, user: &str, password: &str) -> bool;
 
+    /// Returns whether a session channel can be opened
+    fn open_session(&self) -> BhResult<bool>;
 
+    fn open_tcp_forwarded(&self, ) -> BhResult<bool>;
+
+    fn open_tcp_direct(&self) -> BhResult<bool>;
 }

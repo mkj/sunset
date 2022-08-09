@@ -23,7 +23,7 @@ pub enum Error {
     /// Input buffer ran out
     RanOut,
 
-    /// Not a UTF8 string
+    /// Not a UTF-8 string
     BadString,
 
     /// Not a valid SSH ASCII string
