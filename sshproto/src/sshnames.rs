@@ -55,7 +55,11 @@ pub const SSH_AUTHMETHOD_INTERACTIVE: &str = "keyboard-interactive";
 pub const SSH_EXTENDED_DATA_STDERR: u32 = 1;
 
 /// [RFC4254](https://tools.ietf.org/html/rfc4254)
-pub const SSH_OPEN_ADMINISTRATIVELY_PROHIBITED: u32 = 1;
-pub const SSH_OPEN_CONNECT_FAILED: u32 = 2;
-pub const SSH_OPEN_UNKNOWN_CHANNEL_TYPE: u32 = 3;
-pub const SSH_OPEN_RESOURCE_SHORTAGE: u32 = 4;
+#[allow(non_camel_case_types)]
+pub enum ChanFail {
+    SSH_OPEN_ADMINISTRATIVELY_PROHIBITED = 1,
+    SSH_OPEN_CONNECT_FAILED = 2,
+    SSH_OPEN_UNKNOWN_CHANNEL_TYPE = 3,
+    SSH_OPEN_RESOURCE_SHORTAGE = 4,
+}
+

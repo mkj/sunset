@@ -359,12 +359,12 @@ pub struct RSA256Sig<'a> {
 
 #[derive(Debug, SSHEncode, SSHDecode)]
 pub struct ChannelOpen<'a> {
-    // channel_type is implicit in ch below
-    #[sshwire(variant_name = ch)]
+    // channel_type is implicit in ty below
+    #[sshwire(variant_name = ty)]
     pub num: u32,
     pub initial_window: u32,
     pub max_packet: u32,
-    pub ch: ChannelOpenType<'a>,
+    pub ty: ChannelOpenType<'a>,
 }
 
 #[derive(Debug, SSHEncode, SSHDecode)]
@@ -796,7 +796,7 @@ mod tests {
             num: 111,
             initial_window: 50000,
             max_packet: 20000,
-            ch: ChannelOpenType::DirectTcpip(DirectTcpip {
+            ty: ChannelOpenType::DirectTcpip(DirectTcpip {
                 address: "localhost".into(),
                 port: 4444,
                 origin: "somewhere".into(),
@@ -809,7 +809,7 @@ mod tests {
             num: 0,
             initial_window: 899,
             max_packet: 14,
-            ch: ChannelOpenType::Session,
+            ty: ChannelOpenType::Session,
         });
         test_roundtrip(&p);
     }
@@ -821,7 +821,7 @@ mod tests {
             num: 0,
             initial_window: 899,
             max_packet: 14,
-            ch: ChannelOpenType::Session,
+            ty: ChannelOpenType::Session,
         });
         let mut buf1 = vec![88; 1000];
         let l = write_ssh(&mut buf1, &p).unwrap();
@@ -842,7 +842,7 @@ mod tests {
             num: 0,
             initial_window: 200000,
             max_packet: 88200,
-            ch: ChannelOpenType::Unknown(Unknown(b"audio-stream"))
+            ty: ChannelOpenType::Unknown(Unknown(b"audio-stream"))
         });
         let mut buf1 = vec![88; 1000];
         write_ssh(&mut buf1, &p).unwrap();

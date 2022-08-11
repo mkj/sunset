@@ -82,6 +82,10 @@ pub trait BlockCliBehaviour {
         info!("Got banner:\n{:?}", banner.escape_default());
     }
     // TODO: postauth channel callbacks
+
+    fn open_tcp_forwarded(&self, chan: u32) -> channel::ChanOpened;
+
+    fn open_tcp_direct(&self, chan: u32) -> channel::ChanOpened;
 }
 
 pub trait BlockServBehaviour {
@@ -94,10 +98,10 @@ pub trait BlockServBehaviour {
 
     fn auth_password(&self, user: &str, password: &str) -> bool;
 
-    /// Returns whether a session channel can be opened
-    fn open_session(&self) -> BhResult<bool>;
+    /// Returns whether a session can be opened
+    fn open_session(&self, chan: u32) -> channel::ChanOpened;
 
-    fn open_tcp_forwarded(&self, ) -> BhResult<bool>;
+    fn open_tcp_forwarded(&self, chan: u32) -> channel::ChanOpened;
 
-    fn open_tcp_direct(&self) -> BhResult<bool>;
+    fn open_tcp_direct(&self, chan: u32) -> channel::ChanOpened;
 }

@@ -10,8 +10,18 @@ use heapless::{Deque, String, Vec};
 
 use crate::{conn::RespPackets, *};
 use config::*;
-use packets::{ChannelReqType, ChannelRequest, Packet, ChannelOpenType, ChannelData, ChannelDataExt};
+use packets::{ChannelReqType, ChannelRequest, Packet, ChannelOpen, ChannelOpenType, ChannelData, ChannelDataExt};
 use sshwire::{BinString, TextString};
+use sshnames::*;
+
+pub enum ChanOpened {
+    Success,
+
+    /// A channel open response will be sent later
+    Defer,
+
+    Failure(ChanFail),
+}
 
 pub(crate) struct Channels {
     ch: [Option<Channel>; config::MAX_CHANNELS],
@@ -35,22 +45,14 @@ impl Channels {
         ty: packets::ChannelOpenType<'b>,
         init_req: InitReqs,
     ) -> Result<(&Channel, Packet<'b>)> {
-        // first available channel
-        let num = self
-            .ch
-            .iter()
-            .enumerate()
-            .find_map(
-                |(i, ch)| if ch.as_ref().is_none() { Some(i as u32) } else { None },
-            )
-            .ok_or(Error::NoChannels)?;
+        let num = self.unused_chan()?;
 
         let chan = Channel::new(num, (&ty).into(), init_req);
         let p = packets::ChannelOpen {
             num,
             initial_window: chan.recv.window as u32,
             max_packet: chan.recv.max_packet as u32,
-            ch: ty,
+            ty,
         }
         .into();
         let ch = &mut self.ch[num as usize];
@@ -58,7 +60,8 @@ impl Channels {
         Ok((ch.as_ref().unwrap(), p))
     }
 
-    pub(crate) fn get(&self, num: u32) -> Result<&Channel> {
+    /// Returns a `Channel` for a local number, any state.
+    pub fn get_any(&self, num: u32) -> Result<&Channel> {
         self.ch
             .get(num as usize)
             // out of range
@@ -68,14 +71,31 @@ impl Channels {
             .ok_or(Error::BadChannel)
     }
 
-    pub(crate) fn get_mut(&mut self, num: u32) -> Result<&mut Channel> {
-        self.ch
+    /// Returns a `Channel` for a local number. Excludes `InOpen` state.
+    pub fn get(&self, num: u32) -> Result<&Channel> {
+        let ch = self.get_any(num)?;
+
+        if matches!(ch.state, ChanState::InOpen) {
+            Err(Error::BadChannel)
+        } else {
+            Ok(ch)
+        }
+    }
+
+    pub fn get_mut(&mut self, num: u32) -> Result<&mut Channel> {
+        let ch = self.ch
             .get_mut(num as usize)
             // out of range
             .ok_or(Error::BadChannel)?
             .as_mut()
             // unused channel
-            .ok_or(Error::BadChannel)
+            .ok_or(Error::BadChannel)?;
+
+        if matches!(ch.state, ChanState::InOpen) {
+            Err(Error::BadChannel)
+        } else {
+            Ok(ch)
+        }
     }
 
     fn remove(&mut self, num: u32) -> Result<()> {
@@ -83,6 +103,31 @@ impl Channels {
         *self.ch.get_mut(num as usize).ok_or(Error::BadChannel)? = None;
         Err(Error::otherbug())
         // Ok(())
+    }
+
+    /// Returns the first available channel
+    fn unused_chan(&self) -> Result<u32> {
+        self.ch.iter().enumerate()
+            .find_map(
+                |(i, ch)| if ch.as_ref().is_none() { Some(i as u32) } else { None },
+            )
+            .ok_or(Error::NoChannels)
+    }
+
+    /// Creates a new channel in InOpen state.
+    fn reserve_chan(&mut self, co: &ChannelOpen<'_>) -> Result<&mut Channel> {
+        let num = self.unused_chan()?;
+        let mut chan = Channel::new(num, (&co.ty).into(), Vec::new());
+        chan.send = Some(ChanDir {
+            num: co.num,
+            max_packet: co.max_packet as usize,
+            window: co.initial_window as usize,
+            });
+        chan.state = ChanState::InOpen;
+
+        let ch = &mut self.ch[num as usize];
+        *ch = Some(chan);
+        Ok(ch.as_mut().unwrap())
     }
 
     /// Returns the channel data packet to send, and the length of data consumed.
@@ -129,16 +174,103 @@ impl Channels {
         self.get(num).map_or(Some(0), |c| c.send_allowed())
     }
 
-    // incoming packet handling
+    pub fn channel_open(&mut self, p: &ChannelOpen<'_>,
+        resp: &mut RespPackets<'_>,
+        b: &mut Behaviour<'_>,
+        ) -> Result<Option<ChanEventMaker>> {
+        let mut failure = None;
+        let open_res = match &p.ty {
+            ChannelOpenType::Session => {
+                // only server should receive session opens
+                let bserv = b.server().map_err(|_| Error::SSHProtoError)?;
+
+                match self.reserve_chan(p) {
+                    Ok(ch) => {
+                        let r = bserv.open_session(ch.recv.num);
+                        Some((ch, r))
+                    }
+                    Err(_) => {
+                        failure = Some(ChanFail::SSH_OPEN_RESOURCE_SHORTAGE);
+                        None
+                    },
+                }
+            }
+            ChannelOpenType::ForwardedTcpip(t) => {
+                match self.reserve_chan(p) {
+                    Ok(ch) => {
+                        let r = b.open_tcp_forwarded(ch.recv.num);
+                        Some((ch, r))
+                    }
+                    Err(_) => {
+                        failure = Some(ChanFail::SSH_OPEN_RESOURCE_SHORTAGE);
+                        None
+                    },
+                }
+
+            }
+            ChannelOpenType::DirectTcpip(t) => {
+                match self.reserve_chan(p) {
+                    Ok(ch) => {
+                        let r = b.open_tcp_direct(ch.recv.num);
+                        Some((ch, r))
+                    }
+                    Err(_) => {
+                        failure = Some(ChanFail::SSH_OPEN_RESOURCE_SHORTAGE);
+                        None
+                    },
+                }
+            }
+            ChannelOpenType::Unknown(u) => {
+                debug!("Rejecting unknown channel type '{u}'");
+                failure = Some(ChanFail::SSH_OPEN_UNKNOWN_CHANNEL_TYPE);
+                None
+            }
+        };
+
+        match open_res {
+            Some((ch, r)) => {
+                match r {
+                    ChanOpened::Success => {
+                        ch.open_done();
+                    },
+                    ChanOpened::Failure(f) => {
+                        failure = Some(f);
+                    }
+                    ChanOpened::Defer => {
+                        // application will reply later
+                    }
+                }
+            }
+            _ => ()
+        }
+
+        if let Some(reason) = failure {
+            let r = packets::ChannelOpenFailure {
+                num: p.num,
+                reason: reason as u32,
+                desc: "".into(),
+                lang: "",
+            };
+            let r: Packet = r.into();
+            resp.push(r.into()).trap()?;
+        }
+
+        Ok(None)
+    }
+
+    /// Incoming packet handling
+    // TODO: protocol errors etc should perhaps be less fatal,
+    // ssh implementations are usually imperfect.
     pub async fn dispatch(
         &mut self,
         packet: Packet<'_>,
         resp: &mut RespPackets<'_>,
+        b: &mut Behaviour<'_>,
     ) -> Result<Option<ChanEventMaker>> {
         trace!("chan dispatch");
         let r = match packet {
-            Packet::ChannelOpen(_p) => {
-                todo!();
+            Packet::ChannelOpen(p) => {
+                self.channel_open(&p, resp, b)
             }
             Packet::ChannelOpenConfirmation(p) => {
                 let ch = self.get_mut(p.num)?;
@@ -166,6 +298,7 @@ impl Channels {
             Packet::ChannelOpenFailure(p) => {
                 let ch = self.get(p.num)?;
                 if ch.send.is_some() {
+                    // TODO: or just warn?
                     Err(Error::SSHProtoError)
                 } else {
                     self.remove(p.num);
@@ -356,8 +489,11 @@ pub struct ChanDir {
     window: usize,
 }
 
-pub enum ChanState {
-    /// init_req are the request messages to be sent once the ChannelOpenConfirmation
+enum ChanState {
+    /// An incoming channel open request that has not yet been responded to,
+    /// should not be used
+    InOpen,
+    /// `init_req` are the request messages to be sent once the ChannelOpenConfirmation
     /// is received
     // TODO: this is wasting half a kB. where else could we store it? could
     // the Behaviour own it? Or we don't store them here, just callback to the Behaviour.
@@ -365,10 +501,12 @@ pub enum ChanState {
     Normal,
 
     RecvEof,
+
+    // TODO: recvclose state probably shouldn't be possible, we remove it straight away?
     RecvClose,
 }
 
-pub struct Channel {
+pub(crate) struct Channel {
     ty: ChanType,
     state: ChanState,
     sent_eof: bool,
@@ -377,7 +515,7 @@ pub struct Channel {
     last_req: heapless::Deque<ReqKind, MAX_OUTSTANDING_REQS>,
 
     recv: ChanDir,
-    // filled after confirmation
+    // filled after confirmation when we initiate the channel
     send: Option<ChanDir>,
 
     /// Accumulated bytes for the next window adjustment (inbound data direction)
@@ -404,6 +542,7 @@ impl Channel {
             full_window: config::DEFAULT_WINDOW,
         }
     }
+
     fn request(&mut self, req: ReqDetails, resp: &mut RespPackets) -> Result<()> {
         let num = self.send.as_ref().trap()?.num;
         let r = Req { num, details: req };
@@ -413,6 +552,11 @@ impl Channel {
 
     pub(crate) fn number(&self) -> u32 {
         self.recv.num
+    }
+
+    fn open_done(&mut self) {
+        debug_assert!(matches!(self.state, ChanState::InOpen));
+        self.state = ChanState::Normal
     }
 
     fn finished_input(&mut self, len: usize ) {

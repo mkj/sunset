@@ -93,6 +93,11 @@ pub trait AsyncCliBehaviour: Sync+Send {
         info!("Got banner:\n{:?}", banner.escape_default());
     }
     // TODO: postauth channel callbacks
+
+    // TODO: do we want this to be async? probably not.
+    fn open_tcp_forwarded(&self, chan: u32) -> channel::ChanOpened;
+
+    fn open_tcp_direct(&self, chan: u32) -> channel::ChanOpened;
 }
 
 // #[async_trait(?Send)]
@@ -101,8 +106,8 @@ pub trait AsyncServBehaviour: Sync+Send {
     async fn hostkeys(&self) -> BhResult<&[&sign::SignKey]>;
 
     // TODO: or return a slice of enums
-    async fn have_auth_password(&self, username: &str) -> bool;
-    async fn have_auth_pubkey(&self, username: &str) -> bool;
+    fn have_auth_password(&self, username: &str) -> bool;
+    fn have_auth_pubkey(&self, username: &str) -> bool;
 
 
     #[allow(unused)]
@@ -119,5 +124,9 @@ pub trait AsyncServBehaviour: Sync+Send {
     }
 
     /// Returns whether a session can be opened
-    async fn open_session(&self) -> bool;
+    fn open_session(&self, chan: u32) -> channel::ChanOpened;
+
+    fn open_tcp_forwarded(&self, chan: u32) -> channel::ChanOpened;
+
+    fn open_tcp_direct(&self, chan: u32) -> channel::ChanOpened;
 }

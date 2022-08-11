@@ -44,9 +44,9 @@ pub enum BhError {
 
 pub struct Behaviour<'a> {
     #[cfg(feature = "std")]
-    inner: crate::async_behaviour::AsyncCliServ<'a>,
+    inner: async_behaviour::AsyncCliServ<'a>,
     #[cfg(not(feature = "std"))]
-    inner: crate::block_behaviour::BlockCliServ<'a>,
+    inner: block_behaviour::BlockCliServ<'a>,
 }
 
 #[cfg(feature = "std")]
@@ -72,6 +72,32 @@ impl<'a> Behaviour<'a> {
     pub(crate) fn server(&mut self) -> Result<ServBehaviour> {
         self.inner.server()
     }
+
+    pub(crate) fn is_client(&self) -> bool {
+        matches!(self.inner, async_behaviour::AsyncCliServ::Client(_))
+    }
+
+    pub(crate) fn is_server(&self) -> bool {
+        !self.is_client()
+    }
+
+    /// Calls either client or server
+    pub(crate) fn open_tcp_forwarded(&mut self, chan: u32) -> channel::ChanOpened {
+        if self.is_client() {
+            self.client().unwrap().open_tcp_forwarded(chan)
+        } else {
+            self.server().unwrap().open_tcp_forwarded(chan)
+        }
+    }
+
+    /// Calls either client or server
+    pub(crate) fn open_tcp_direct(&mut self, chan: u32) -> channel::ChanOpened {
+        if self.is_client() {
+            self.client().unwrap().open_tcp_direct(chan)
+        } else {
+            self.server().unwrap().open_tcp_direct(chan)
+        }
+    }
 }
 
 #[cfg(not(feature = "std"))]
@@ -94,8 +120,35 @@ impl<'a> Behaviour<'a>
     pub(crate) fn client(&mut self) -> Result<CliBehaviour> {
         self.inner.client()
     }
+
     pub(crate) fn server(&mut self) -> Result<ServBehaviour> {
         self.inner.server()
+    }
+
+    pub(crate) fn is_client(&mut self) -> bool {
+        matches!(self.inner, block_behaviour::BlockCliServ::Client(_))
+    }
+
+    pub(crate) fn is_server(&mut self) -> bool {
+        !self.is_client()
+    }
+
+    /// Calls either client or server
+    pub(crate) fn open_tcp_forwarded(&mut self, chan: u32) -> channel::ChanOpened {
+        if self.is_client() {
+            self.client().unwrap().open_tcp_forwarded(chan)
+        } else {
+            self.server().unwrap().open_tcp_forwarded(chan)
+        }
+    }
+
+    /// Calls either client or server
+    pub(crate) fn open_tcp_direct(&mut self, chan: u32) -> channel::ChanOpened {
+        if self.is_client() {
+            self.client().unwrap().open_tcp_direct(chan)
+        } else {
+            self.server().unwrap().open_tcp_direct(chan)
+        }
     }
 }
 
@@ -136,9 +189,17 @@ impl<'a> CliBehaviour<'a> {
         self.inner.show_banner(banner, language).await;
         Ok(())
     }
+
+    pub(crate) fn open_tcp_forwarded(&self, chan: u32) -> channel::ChanOpened {
+        self.inner.open_tcp_forwarded(chan)
+    }
+
+    pub(crate) fn open_tcp_direct(&self, chan: u32) -> channel::ChanOpened {
+        self.inner.open_tcp_direct(chan)
+    }
 }
 
-// no-std blocking variant
+// no_std blocking variant
 #[cfg(not(feature = "std"))]
 impl<'a> CliBehaviour<'a> {
     pub(crate) async fn username(&mut self) -> BhResult<ResponseString>{
@@ -169,6 +230,14 @@ impl<'a> CliBehaviour<'a> {
         self.inner.show_banner(banner, language);
         Ok(())
     }
+
+    pub(crate) fn open_tcp_forwarded(&self, chan: u32) -> channel::ChanOpened {
+        self.inner.open_tcp_forwarded(chan)
+    }
+
+    pub(crate) fn open_tcp_direct(&self, chan: u32) -> channel::ChanOpened {
+        self.inner.open_tcp_direct(chan)
+    }
 }
 
 pub struct ServBehaviour<'a> {
@@ -183,12 +252,51 @@ impl<'a> ServBehaviour<'a> {
     pub(crate) async fn hostkeys(&self) -> BhResult<&[&sign::SignKey]> {
         self.inner.hostkeys().await
     }
+
+    pub(crate) fn have_auth_password(&self, username: &str) -> bool {
+        self.inner.have_auth_password(username)
+    }
+    pub(crate) fn have_auth_pubkey(&self, username: &str) -> bool {
+        self.inner.have_auth_pubkey(username)
+    }
+
+    // fn authmethods(&self) -> [AuthMethod];
+
+    pub(crate) async fn auth_password(&self, user: &str, password: &str) -> bool {
+        self.inner.auth_password(user, password).await
+    }
+
+    /// Returns whether a session channel can be opened
+    pub(crate) fn open_session(&self, chan: u32) -> channel::ChanOpened {
+        self.inner.open_session(chan)
+    }
+
+    pub(crate) fn open_tcp_forwarded(&self, chan: u32) -> channel::ChanOpened {
+        self.inner.open_tcp_forwarded(chan)
+    }
+
+    pub(crate) fn open_tcp_direct(&self, chan: u32) -> channel::ChanOpened {
+        self.inner.open_tcp_direct(chan)
+    }
 }
 
 #[cfg(not(feature = "std"))]
 impl<'a> ServBehaviour<'a> {
     pub(crate) async fn hostkeys(&self) -> BhResult<&[&sign::SignKey]> {
         self.inner.hostkeys()
+    }
+
+    /// Returns whether a session channel can be opened
+    pub(crate) fn open_session(&self, chan: u32) -> channel::ChanOpened {
+        self.inner.open_session(chan)
+    }
+
+    pub(crate) fn open_tcp_forwarded(&self, chan: u32) -> channel::ChanOpened {
+        self.inner.open_tcp_forwarded(chan)
+    }
+
+    pub(crate) fn open_tcp_direct(&self, chan: u32) -> channel::ChanOpened {
+        self.inner.open_tcp_direct(chan)
     }
 }
 

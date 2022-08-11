@@ -18,7 +18,7 @@ use encrypt::KeyState;
 use packets::{Packet,ParseContext};
 use server::Server;
 use traffic::{Traffic,PacketMaker};
-use channel::{Channel, Channels, ChanEvent, ChanEventMaker};
+use channel::{Channels, ChanEvent, ChanEventMaker};
 use config::MAX_CHANNELS;
 use kex::SessId;
 
@@ -359,7 +359,7 @@ impl<'a> Conn<'a> {
             | Packet::ChannelFailure(_)
             // TODO: maybe needs a conn or cliserv argument.
             => {
-                let chev = self.channels.dispatch(packet, &mut resp).await?;
+                let chev = self.channels.dispatch(packet, &mut resp, b).await?;
                 event = chev.map(|c| EventMaker::Channel(c))
            }
         };
