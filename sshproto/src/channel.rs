@@ -8,7 +8,7 @@ use core::mem;
 
 use heapless::{Deque, String, Vec};
 
-use crate::{conn::RespPackets, *};
+use crate::{conn::RespPackets, *, packets::ChannelOpenFailure};
 use config::*;
 use packets::{ChannelReqType, ChannelRequest, Packet, ChannelOpen, ChannelOpenType, ChannelData, ChannelDataExt};
 use sshwire::{BinString, TextString};
@@ -31,6 +31,27 @@ pub(crate) struct Channels {
 }
 
 pub(crate) type InitReqs = Vec<ReqDetails, MAX_INIT_REQS>;
+
+// for dispatch_open_inner()
+enum DispatchOpenError {
+    Error(Error),
+    Failure(ChanFail),
+}
+
+impl From<Error> for DispatchOpenError {
+    fn from(e: Error) -> Self {
+        match e {
+            Error::NoChannels => Self::Failure(ChanFail::SSH_OPEN_RESOURCE_SHORTAGE),
+            e => Self::Error(e)
+        }
+    }
+}
+
+impl From<ChanFail> for DispatchOpenError {
+    fn from(f: ChanFail) -> Self {
+        Self::Failure(f)
+    }
+}
 
 impl Channels {
     pub fn new() -> Self {
@@ -174,82 +195,82 @@ impl Channels {
         self.get(num).map_or(Some(0), |c| c.send_allowed())
     }
 
-    pub fn channel_open(&mut self, p: &ChannelOpen<'_>,
+    fn dispatch_open(&mut self, p: &ChannelOpen<'_>,
         resp: &mut RespPackets<'_>,
         b: &mut Behaviour<'_>,
         ) -> Result<()> {
-        let mut failure = None;
-        let open_res = match &p.ty {
-            ChannelOpenType::Session => {
-                // only server should receive session opens
-                let bserv = b.server().map_err(|_| Error::SSHProtoError)?;
 
-                match self.reserve_chan(p) {
-                    Ok(ch) => {
-                        let r = bserv.open_session(ch.recv.num);
-                        Some((ch, r))
-                    }
-                    Err(_) => {
-                        failure = Some(ChanFail::SSH_OPEN_RESOURCE_SHORTAGE);
-                        None
-                    },
-                }
-            }
-            ChannelOpenType::ForwardedTcpip(t) => {
-                match self.reserve_chan(p) {
-                    Ok(ch) => {
-                        let r = b.open_tcp_forwarded(ch.recv.num);
-                        Some((ch, r))
-                    }
-                    Err(_) => {
-                        failure = Some(ChanFail::SSH_OPEN_RESOURCE_SHORTAGE);
-                        None
-                    },
-                }
+        match self.dispatch_open_inner(p, resp, b) {
+            Err(DispatchOpenError::Failure(f)) => {
+                let r = packets::ChannelOpenFailure {
+                    num: p.num,
+                    reason: f as u32,
+                    desc: "".into(),
+                    lang: "",
+                };
+                let r: Packet = r.into();
+                resp.push(r.into()).trap()?;
+                Ok(())
+            },
+            Err(DispatchOpenError::Error(e)) => Err(e),
+            Ok(()) => Ok(())
+        }
+    }
 
-            }
-            ChannelOpenType::DirectTcpip(t) => {
-                match self.reserve_chan(p) {
-                    Ok(ch) => {
-                        let r = b.open_tcp_direct(ch.recv.num);
-                        Some((ch, r))
-                    }
-                    Err(_) => {
-                        failure = Some(ChanFail::SSH_OPEN_RESOURCE_SHORTAGE);
-                        None
-                    },
-                }
-            }
+    // the caller will send failure messages if required
+    fn dispatch_open_inner(&mut self, p: &ChannelOpen<'_>,
+        resp: &mut RespPackets<'_>,
+        b: &mut Behaviour<'_>,
+        ) -> Result<(), DispatchOpenError> {
+
+        if b.is_client() && matches!(p.ty, ChannelOpenType::Session) {
+            // only server should receive session opens
+            return Err(Error::SSHProtoError.into());
+        }
+
+        // get a channel
+        let ch = match &p.ty {
             ChannelOpenType::Unknown(u) => {
                 debug!("Rejecting unknown channel type '{u}'");
-                failure = Some(ChanFail::SSH_OPEN_UNKNOWN_CHANNEL_TYPE);
-                None
+                return Err(ChanFail::SSH_OPEN_UNKNOWN_CHANNEL_TYPE.into());
+            }
+            _ => {
+                self.reserve_chan(p)?
             }
         };
 
-        if let Some((ch, r)) = open_res {
-            match r {
-                ChanOpened::Success => {
-                    ch.open_done();
-                },
-                ChanOpened::Failure(f) => {
-                    failure = Some(f);
-                }
-                ChanOpened::Defer => {
-                    // application will reply later
-                }
-            }
-        }
+        // beware that a reserved channel must be cleaned up on failure
 
-        if let Some(reason) = failure {
-            let r = packets::ChannelOpenFailure {
-                num: p.num,
-                reason: reason as u32,
-                desc: "".into(),
-                lang: "",
-            };
-            let r: Packet = r.into();
-            resp.push(r.into()).trap()?;
+        // run the Behaviour function
+        let r = match &p.ty {
+            ChannelOpenType::Session => {
+                // unwrap: earlier test ensures b.server() succeeds
+                let bserv = b.server().unwrap();
+                bserv.open_session(ch.recv.num)
+            }
+            ChannelOpenType::ForwardedTcpip(t) => {
+                b.open_tcp_forwarded(ch.recv.num, t)
+            }
+            ChannelOpenType::DirectTcpip(t) => {
+                b.open_tcp_direct(ch.recv.num, t)
+            }
+            ChannelOpenType::Unknown(_) => {
+                unreachable!()
+            }
+        };
+
+        match r {
+            ChanOpened::Success => {
+                resp.push(ch.open_done().into()).trap()?
+            },
+            ChanOpened::Failure(f) => {
+                let n = ch.recv.num;
+                self.remove(n);
+                return Err(f.into())
+            }
+            ChanOpened::Defer => {
+                // application will reply later
+            }
         }
 
         Ok(())
@@ -267,7 +288,7 @@ impl Channels {
         trace!("chan dispatch");
         let r = match packet {
             Packet::ChannelOpen(p) => {
-                self.channel_open(&p, resp, b)
+                self.dispatch_open(&p, resp, b)
                 .map(|_| None)
             }
 
@@ -490,8 +511,9 @@ pub struct ChanDir {
 }
 
 enum ChanState {
-    /// An incoming channel open request that has not yet been responded to,
-    /// should not be used
+    /// An incoming channel open request that has not yet been responded to.
+    ///
+    /// Not to be used for normal channel messages
     InOpen,
     /// `init_req` are the request messages to be sent once the ChannelOpenConfirmation
     /// is received
@@ -515,7 +537,7 @@ pub(crate) struct Channel {
     last_req: heapless::Deque<ReqKind, MAX_OUTSTANDING_REQS>,
 
     recv: ChanDir,
-    // filled after confirmation when we initiate the channel
+    /// populated in all states except `Opening`
     send: Option<ChanDir>,
 
     /// Accumulated bytes for the next window adjustment (inbound data direction)
@@ -554,9 +576,19 @@ impl Channel {
         self.recv.num
     }
 
-    fn open_done(&mut self) {
+    /// Returns an open confirmation reply packet to send.
+    /// Must be called with state of `InOpen`.
+    fn open_done<'p>(&mut self) -> Packet<'p> {
         debug_assert!(matches!(self.state, ChanState::InOpen));
-        self.state = ChanState::Normal
+
+        self.state = ChanState::Normal;
+        packets::ChannelOpenConfirmation {
+            num: self.recv.num,
+            // unwrap: state is InOpen
+            sender_num: self.send.as_ref().unwrap().num,
+            initial_window: self.recv.window as u32,
+            max_packet: self.recv.max_packet as u32,
+        }.into()
     }
 
     fn finished_input(&mut self, len: usize ) {

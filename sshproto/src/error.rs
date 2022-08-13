@@ -42,7 +42,7 @@ pub enum Error {
     /// Signature doesn't match key type
     SigMismatch,
 
-    /// Error in received SSH protocol
+    /// Error in received SSH protocol. Will disconnect.
     SSHProtoError,
 
     /// Remote peer isn't SSH

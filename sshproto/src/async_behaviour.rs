@@ -11,6 +11,7 @@ use {
 use async_trait::async_trait;
 
 use crate::{*, conn::RespPackets};
+use packets::{ForwardedTcpip,DirectTcpip};
 use behaviour::*;
 
 pub(crate) enum AsyncCliServ<'a> {
@@ -95,9 +96,11 @@ pub trait AsyncCliBehaviour: Sync+Send {
     // TODO: postauth channel callbacks
 
     // TODO: do we want this to be async? probably not.
-    fn open_tcp_forwarded(&self, chan: u32) -> channel::ChanOpened;
+    fn open_tcp_forwarded(&self, chan: u32,
+        t: &ForwardedTcpip) -> channel::ChanOpened;
 
-    fn open_tcp_direct(&self, chan: u32) -> channel::ChanOpened;
+    fn open_tcp_direct(&self, chan: u32,
+        t: &DirectTcpip) -> channel::ChanOpened;
 }
 
 // #[async_trait(?Send)]
@@ -126,7 +129,9 @@ pub trait AsyncServBehaviour: Sync+Send {
     /// Returns whether a session can be opened
     fn open_session(&self, chan: u32) -> channel::ChanOpened;
 
-    fn open_tcp_forwarded(&self, chan: u32) -> channel::ChanOpened;
+    fn open_tcp_forwarded(&self, chan: u32,
+        t: &ForwardedTcpip) -> channel::ChanOpened;
 
-    fn open_tcp_direct(&self, chan: u32) -> channel::ChanOpened;
+    fn open_tcp_direct(&self, chan: u32,
+        t: &ForwardedTcpip) -> channel::ChanOpened;
 }

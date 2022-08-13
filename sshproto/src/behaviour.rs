@@ -13,7 +13,7 @@ use core::fmt;
 use heapless::spsc::{Queue,Producer,Consumer};
 
 use crate::*;
-use packets::{self,Packet};
+use packets::{self,Packet,ForwardedTcpip,DirectTcpip};
 use runner::{self,Runner};
 use channel::ChanMsg;
 use conn::RespPackets;
@@ -82,20 +82,22 @@ impl<'a> Behaviour<'a> {
     }
 
     /// Calls either client or server
-    pub(crate) fn open_tcp_forwarded(&mut self, chan: u32) -> channel::ChanOpened {
+    pub(crate) fn open_tcp_forwarded(&mut self, chan: u32,
+        t: &ForwardedTcpip) -> channel::ChanOpened {
         if self.is_client() {
-            self.client().unwrap().open_tcp_forwarded(chan)
+            self.client().unwrap().open_tcp_forwarded(chan, t)
         } else {
-            self.server().unwrap().open_tcp_forwarded(chan)
+            self.server().unwrap().open_tcp_forwarded(chan, t)
         }
     }
 
     /// Calls either client or server
-    pub(crate) fn open_tcp_direct(&mut self, chan: u32) -> channel::ChanOpened {
+    pub(crate) fn open_tcp_direct(&mut self, chan: u32,
+        t: &DirectTcpip) -> channel::ChanOpened {
         if self.is_client() {
-            self.client().unwrap().open_tcp_direct(chan)
+            self.client().unwrap().open_tcp_direct(chan, t)
         } else {
-            self.server().unwrap().open_tcp_direct(chan)
+            self.server().unwrap().open_tcp_direct(chan, t)
         }
     }
 }
@@ -134,20 +136,22 @@ impl<'a> Behaviour<'a>
     }
 
     /// Calls either client or server
-    pub(crate) fn open_tcp_forwarded(&mut self, chan: u32) -> channel::ChanOpened {
+    pub(crate) fn open_tcp_forwarded(&mut self, chan: u32,
+        t: &ForwardedTcpip) -> channel::ChanOpened {
         if self.is_client() {
-            self.client().unwrap().open_tcp_forwarded(chan)
+            self.client().unwrap().open_tcp_forwarded(chan, t)
         } else {
-            self.server().unwrap().open_tcp_forwarded(chan)
+            self.server().unwrap().open_tcp_forwarded(chan, t)
         }
     }
 
     /// Calls either client or server
-    pub(crate) fn open_tcp_direct(&mut self, chan: u32) -> channel::ChanOpened {
+    pub(crate) fn open_tcp_direct(&mut self, chan: u32,
+        t: &DirectTcpip) -> channel::ChanOpened {
         if self.is_client() {
-            self.client().unwrap().open_tcp_direct(chan)
+            self.client().unwrap().open_tcp_direct(chan, t)
         } else {
-            self.server().unwrap().open_tcp_direct(chan)
+            self.server().unwrap().open_tcp_direct(chan, t)
         }
     }
 }
@@ -190,12 +194,14 @@ impl<'a> CliBehaviour<'a> {
         Ok(())
     }
 
-    pub(crate) fn open_tcp_forwarded(&self, chan: u32) -> channel::ChanOpened {
-        self.inner.open_tcp_forwarded(chan)
+    pub(crate) fn open_tcp_forwarded(&self, chan: u32,
+        t: &ForwardedTcpip) -> channel::ChanOpened {
+        self.inner.open_tcp_forwarded(chan, t)
     }
 
-    pub(crate) fn open_tcp_direct(&self, chan: u32) -> channel::ChanOpened {
-        self.inner.open_tcp_direct(chan)
+    pub(crate) fn open_tcp_direct(&self, chan: u32,
+        t: &DirectTcpip) -> channel::ChanOpened {
+        self.inner.open_tcp_direct(chan, t)
     }
 }
 
@@ -231,12 +237,14 @@ impl<'a> CliBehaviour<'a> {
         Ok(())
     }
 
-    pub(crate) fn open_tcp_forwarded(&self, chan: u32) -> channel::ChanOpened {
-        self.inner.open_tcp_forwarded(chan)
+    pub(crate) fn open_tcp_forwarded(&self, chan: u32,
+        t: &ForwardedTcpip) -> channel::ChanOpened {
+        self.inner.open_tcp_forwarded(chan, t)
     }
 
-    pub(crate) fn open_tcp_direct(&self, chan: u32) -> channel::ChanOpened {
-        self.inner.open_tcp_direct(chan)
+    pub(crate) fn open_tcp_direct(&self, chan: u32,
+        t: &DirectTcpip) -> channel::ChanOpened {
+        self.inner.open_tcp_direct(chan, t)
     }
 }
 
@@ -271,12 +279,14 @@ impl<'a> ServBehaviour<'a> {
         self.inner.open_session(chan)
     }
 
-    pub(crate) fn open_tcp_forwarded(&self, chan: u32) -> channel::ChanOpened {
-        self.inner.open_tcp_forwarded(chan)
+    pub(crate) fn open_tcp_forwarded(&self, chan: u32,
+        t: &ForwardedTcpip) -> channel::ChanOpened {
+        self.inner.open_tcp_forwarded(chan, t)
     }
 
-    pub(crate) fn open_tcp_direct(&self, chan: u32) -> channel::ChanOpened {
-        self.inner.open_tcp_direct(chan)
+    pub(crate) fn open_tcp_direct(&self, chan: u32,
+        t: &DirectTcpip) -> channel::ChanOpened {
+        self.inner.open_tcp_direct(chan, t)
     }
 }
 
@@ -291,12 +301,14 @@ impl<'a> ServBehaviour<'a> {
         self.inner.open_session(chan)
     }
 
-    pub(crate) fn open_tcp_forwarded(&self, chan: u32) -> channel::ChanOpened {
-        self.inner.open_tcp_forwarded(chan)
+    pub(crate) fn open_tcp_forwarded(&self, chan: u32,
+        t: &ForwardedTcpip) -> channel::ChanOpened {
+        self.inner.open_tcp_forwarded(chan, t)
     }
 
-    pub(crate) fn open_tcp_direct(&self, chan: u32) -> channel::ChanOpened {
-        self.inner.open_tcp_direct(chan)
+    pub(crate) fn open_tcp_direct(&self, chan: u32,
+        t: &DirectTcpip) -> channel::ChanOpened {
+        self.inner.open_tcp_direct(chan, t)
     }
 }
 

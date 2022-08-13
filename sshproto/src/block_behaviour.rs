@@ -8,6 +8,7 @@ use {
 };
 
 use crate::{conn::RespPackets, *};
+use packets::{ForwardedTcpip,DirectTcpip};
 use behaviour::*;
 
 pub(crate) enum BlockCliServ<'a> {
@@ -83,9 +84,11 @@ pub trait BlockCliBehaviour {
     }
     // TODO: postauth channel callbacks
 
-    fn open_tcp_forwarded(&self, chan: u32) -> channel::ChanOpened;
+    fn open_tcp_forwarded(&self, chan: u32,
+        t: &ForwardedTcpip) -> channel::ChanOpened;
 
-    fn open_tcp_direct(&self, chan: u32) -> channel::ChanOpened;
+    fn open_tcp_direct(&self, chan: u32,
+        t: &DirectTcpip) -> channel::ChanOpened;
 }
 
 pub trait BlockServBehaviour {
@@ -101,7 +104,9 @@ pub trait BlockServBehaviour {
     /// Returns whether a session can be opened
     fn open_session(&self, chan: u32) -> channel::ChanOpened;
 
-    fn open_tcp_forwarded(&self, chan: u32) -> channel::ChanOpened;
+    fn open_tcp_forwarded(&self, chan: u32,
+        t: &ForwardedTcpip) -> channel::ChanOpened;
 
-    fn open_tcp_direct(&self, chan: u32) -> channel::ChanOpened;
+    fn open_tcp_direct(&self, chan: u32,
+        t: &DirectTcpip) -> channel::ChanOpened;
 }
