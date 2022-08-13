@@ -177,7 +177,7 @@ impl Channels {
     pub fn channel_open(&mut self, p: &ChannelOpen<'_>,
         resp: &mut RespPackets<'_>,
         b: &mut Behaviour<'_>,
-        ) -> Result<Option<ChanEventMaker>> {
+        ) -> Result<()> {
         let mut failure = None;
         let open_res = match &p.ty {
             ChannelOpenType::Session => {
@@ -227,21 +227,18 @@ impl Channels {
             }
         };
 
-        match open_res {
-            Some((ch, r)) => {
-                match r {
-                    ChanOpened::Success => {
-                        ch.open_done();
-                    },
-                    ChanOpened::Failure(f) => {
-                        failure = Some(f);
-                    }
-                    ChanOpened::Defer => {
-                        // application will reply later
-                    }
+        if let Some((ch, r)) = open_res {
+            match r {
+                ChanOpened::Success => {
+                    ch.open_done();
+                },
+                ChanOpened::Failure(f) => {
+                    failure = Some(f);
+                }
+                ChanOpened::Defer => {
+                    // application will reply later
                 }
             }
-            _ => ()
         }
 
         if let Some(reason) = failure {
@@ -255,7 +252,7 @@ impl Channels {
             resp.push(r.into()).trap()?;
         }
 
-        Ok(None)
+        Ok(())
     }
 
     /// Incoming packet handling
@@ -271,7 +268,9 @@ impl Channels {
         let r = match packet {
             Packet::ChannelOpen(p) => {
                 self.channel_open(&p, resp, b)
+                .map(|_| None)
             }
+
             Packet::ChannelOpenConfirmation(p) => {
                 let ch = self.get_mut(p.num)?;
                 match ch.state {
@@ -295,6 +294,7 @@ impl Channels {
                     _ => Err(Error::SSHProtoError),
                 }
             }
+
             Packet::ChannelOpenFailure(p) => {
                 let ch = self.get(p.num)?;
                 if ch.send.is_some() {
