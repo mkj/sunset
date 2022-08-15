@@ -12,6 +12,8 @@ use async_trait::async_trait;
 
 use crate::{*, conn::RespPackets};
 use packets::{ForwardedTcpip,DirectTcpip};
+use channel::ChanOpened;
+use sshnames::*;
 use behaviour::*;
 
 pub(crate) enum AsyncCliServ<'a> {
@@ -49,9 +51,9 @@ impl<'a> AsyncCliServ<'a> {
 // #[async_trait(?Send)]
 #[async_trait]
 pub trait AsyncCliBehaviour: Sync+Send {
-    /// Provide the username to use for authentication. Will only be called once
+    /// Provide the user to use for authentication. Will only be called once
     /// per session.
-    /// If the username needs to change a new connection should be made
+    /// If the user needs to change a new connection should be made
     /// – servers often have limits on authentication attempts.
     ///
     async fn username(&mut self) -> BhResult<ResponseString>;
@@ -62,7 +64,7 @@ pub trait AsyncCliBehaviour: Sync+Send {
 
     /// Get a password to use for authentication returning `Ok(true)`.
     /// Return `Ok(false)` to skip password authentication
-    // TODO: having the hostname and username is useful to build a prompt?
+    // TODO: having the hostname and user is useful to build a prompt?
     // or we could provide a full prompt as Args
     #[allow(unused)]
     async fn auth_password(&mut self, pwbuf: &mut ResponseString) -> BhResult<bool> {
@@ -95,43 +97,71 @@ pub trait AsyncCliBehaviour: Sync+Send {
     }
     // TODO: postauth channel callbacks
 
-    // TODO: do we want this to be async? probably not.
-    fn open_tcp_forwarded(&self, chan: u32,
-        t: &ForwardedTcpip) -> channel::ChanOpened;
+    #[allow(unused)]
+    fn open_tcp_forwarded(&self, chan: u32, t: &ForwardedTcpip) -> ChanOpened {
+        ChanOpened::Failure(ChanFail::SSH_OPEN_UNKNOWN_CHANNEL_TYPE)
+    }
 
-    fn open_tcp_direct(&self, chan: u32,
-        t: &DirectTcpip) -> channel::ChanOpened;
+    #[allow(unused)]
+    fn open_tcp_direct(&self, chan: u32, t: &DirectTcpip) -> ChanOpened {
+        ChanOpened::Failure(ChanFail::SSH_OPEN_UNKNOWN_CHANNEL_TYPE)
+    }
 }
 
 // #[async_trait(?Send)]
 #[async_trait]
 pub trait AsyncServBehaviour: Sync+Send {
-    async fn hostkeys(&self) -> BhResult<&[&sign::SignKey]>;
+    // TODO: load keys on demand?
+    // at present `async` isn't very useful here, since it can't load keys
+    // on demand. perhaps it should have a callback to get key types,
+    // then later request a single key.
+    // Also could make it take a closure to call with the key, lets it just
+    // be loaded on the stack rather than kept in memory for the whole lifetime.
+    async fn hostkeys(&self) -> BhResult<&[sign::SignKey]>;
 
     // TODO: or return a slice of enums
-    fn have_auth_password(&self, username: &str) -> bool;
-    fn have_auth_pubkey(&self, username: &str) -> bool;
+    fn have_auth_password(&self, user: &str) -> bool;
+    fn have_auth_pubkey(&self, user: &str) -> bool;
 
 
     #[allow(unused)]
     // TODO: change password
-    async fn auth_password(&self, username: &str, password: &str) -> bool {
+    async fn auth_password(&self, user: &str, password: &str) -> bool {
         false
     }
 
     /// Returns true if the pubkey can be used to log in.
     /// TODO: allow returning pubkey restriction options
     #[allow(unused)]
-    async fn auth_pubkey(&self, username: &str, pubkey: &sign::SignKey) -> bool {
+    async fn auth_pubkey(&self, user: &str, pubkey: &sign::SignKey) -> bool {
         false
     }
 
     /// Returns whether a session can be opened
     fn open_session(&self, chan: u32) -> channel::ChanOpened;
 
-    fn open_tcp_forwarded(&self, chan: u32,
-        t: &ForwardedTcpip) -> channel::ChanOpened;
+    #[allow(unused)]
+    fn open_tcp_forwarded(&self, chan: u32, t: &ForwardedTcpip) -> ChanOpened {
+        ChanOpened::Failure(ChanFail::SSH_OPEN_UNKNOWN_CHANNEL_TYPE)
+    }
 
-    fn open_tcp_direct(&self, chan: u32,
-        t: &ForwardedTcpip) -> channel::ChanOpened;
+    #[allow(unused)]
+    fn open_tcp_direct(&self, chan: u32, t: &DirectTcpip) -> ChanOpened {
+        ChanOpened::Failure(ChanFail::SSH_OPEN_UNKNOWN_CHANNEL_TYPE)
+    }
+
+    #[allow(unused)]
+    fn sess_req_shell(&self, chan: u32) -> bool {
+        false
+    }
+
+    #[allow(unused)]
+    fn sess_req_exec(&self, chan: u32, cmd: &str) -> bool {
+        false
+    }
+
+    #[allow(unused)]
+    fn sess_pty(&self, chan: u32, pty: &Pty) -> bool {
+        false
+    }
 }

@@ -10,6 +10,7 @@ use {
 use crate::{conn::RespPackets, *};
 use packets::{ForwardedTcpip,DirectTcpip};
 use behaviour::*;
+use sshnames::*;
 
 pub(crate) enum BlockCliServ<'a> {
     Client(&'a mut dyn BlockCliBehaviour),
@@ -84,29 +85,58 @@ pub trait BlockCliBehaviour {
     }
     // TODO: postauth channel callbacks
 
-    fn open_tcp_forwarded(&self, chan: u32,
-        t: &ForwardedTcpip) -> channel::ChanOpened;
+    #[allow(unused)]
+    fn open_tcp_forwarded(&self, chan: u32, t: &ForwardedTcpip) -> ChanOpened {
+        ChanOpened::Failure(ChanFail::SSH_OPEN_UNKNOWN_CHANNEL_TYPE)
+    }
 
-    fn open_tcp_direct(&self, chan: u32,
-        t: &DirectTcpip) -> channel::ChanOpened;
+    #[allow(unused)]
+    fn open_tcp_direct(&self, chan: u32, t: &DirectTcpip) -> ChanOpened {
+        ChanOpened::Failure(ChanFail::SSH_OPEN_UNKNOWN_CHANNEL_TYPE)
+    }
 }
 
 pub trait BlockServBehaviour {
-    fn hostkeys(&self) -> BhResult<&[&sign::SignKey]>;
+    fn hostkeys(&self) -> BhResult<&[sign::SignKey]>;
 
-    fn have_auth_password(&self, username: &str) -> bool;
-    fn have_auth_pubkey(&self, username: &str) -> bool;
+    fn have_auth_password(&self, user: &str) -> bool;
+    fn have_auth_pubkey(&self, user: &str) -> bool;
 
     // fn authmethods(&self) -> [AuthMethod];
 
-    fn auth_password(&self, user: &str, password: &str) -> bool;
+    fn auth_password(&self, user: &str, password: &str) -> bool {
+        false
+    }
+
+    fn auth_pubkey(&self, user: &str, pubkey: &sign::SignKey) -> bool {
+        false
+    }
 
     /// Returns whether a session can be opened
-    fn open_session(&self, chan: u32) -> channel::ChanOpened;
+    fn open_session(&self, chan: u32) -> ChanOpened;
 
-    fn open_tcp_forwarded(&self, chan: u32,
-        t: &ForwardedTcpip) -> channel::ChanOpened;
+    #[allow(unused)]
+    fn open_tcp_forwarded(&self, chan: u32, t: &ForwardedTcpip) -> ChanOpened {
+        ChanOpened::Failure(ChanFail::SSH_OPEN_UNKNOWN_CHANNEL_TYPE)
+    }
 
-    fn open_tcp_direct(&self, chan: u32,
-        t: &DirectTcpip) -> channel::ChanOpened;
+    #[allow(unused)]
+    fn open_tcp_direct(&self, chan: u32, t: &DirectTcpip) -> ChanOpened {
+        ChanOpened::Failure(ChanFail::SSH_OPEN_UNKNOWN_CHANNEL_TYPE)
+    }
+
+    #[allow(unused)]
+    fn sess_req_shell(&self, chan: u32) -> bool {
+        false
+    }
+
+    #[allow(unused)]
+    fn sess_req_exec(&self, chan: u32, cmd: &str) -> bool {
+        false
+    }
+
+    #[allow(unused)]
+    fn sess_pty(&self, chan: u32, pty: &Pty) -> bool {
+        false
+    }
 }

@@ -57,5 +57,5 @@ pub use conn::RespPackets;
 pub use sign::SignKey;
 pub use packets::PubKey;
 pub use error::{Error,Result};
-pub use channel::{ChanMsg, ChanMsgDetails, ChanEvent, Pty};
+pub use channel::{ChanMsg, ChanMsgDetails, ChanEvent, Pty, ChanOpened};
 pub use conn::Event;

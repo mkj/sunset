@@ -498,6 +498,8 @@ pub struct Exec<'a> {
     pub command: TextString<'a>,
 }
 
+/// The contents of a `"pty-req"` request. Note that most calls use [`channel::Pty`]
+/// rather than this struct.
 #[derive(Debug, SSHEncode, SSHDecode)]
 pub struct Pty<'a> {
     pub term: TextString<'a>,

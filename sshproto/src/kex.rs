@@ -492,7 +492,7 @@ impl<'a> KexOutput {
     }
 
     // server only
-    pub fn make_kexdhreply(&'a self) -> Result<Packet<'a>> {
+    pub fn make_kexdhreply(&'a self, b: &ServBehaviour) -> Result<Packet<'a>> {
         let q_s = BinString(self.pubkey.as_ref().trap()?);
         // TODO real signature
         let k_s = Blob(PubKey::Ed25519(packets::Ed25519PubKey{ key: BinString(&[]) }));
@@ -550,6 +550,9 @@ impl KexCurve25519 {
 
 #[cfg(test)]
 mod tests {
+    use async_trait::async_trait;
+    use pretty_hex::PrettyHex;
+
     use crate::encrypt;
     use crate::error::Error;
     use crate::ident::RemoteVersion;
@@ -557,7 +560,7 @@ mod tests {
     use crate::packets::{Packet,ParseContext};
     use crate::*;
     use crate::doorlog::init_test_log;
-    use pretty_hex::PrettyHex;
+
 
     use super::SSH_NAME_CURVE25519;
 
@@ -607,6 +610,28 @@ mod tests {
         sshwire::packet_from_bytes(&out_buf[..l], &ctx).unwrap()
     }
 
+    struct TestServBehaviour {
+        keys: Vec<SignKey>,
+    }
+
+    impl BlockServBehaviour for TestServBehaviour {
+        fn hostkeys(&self) -> BhResult<&[SignKey]> {
+            Ok(self.keys.as_slice())
+        }
+
+        fn have_auth_pubkey(&self, userame: &str) -> bool {
+            false
+        }
+
+        fn have_auth_password(&self, userame: &str) -> bool {
+            false
+        }
+
+        fn open_session(&self, chan: u32) -> ChanOpened {
+            ChanOpened::Success
+        }
+    }
+
     #[test]
     fn test_agree_kex() {
         init_test_log();
@@ -619,6 +644,13 @@ mod tests {
         serv_version.consume("SSH-2.0-door\r\n".as_bytes()).unwrap();
         let mut cli_version = RemoteVersion::new();
         cli_version.consume("SSH-2.0-door\r\n".as_bytes()).unwrap();
+
+        let mut sb = TestServBehaviour {
+            // TODO: put keys in
+            keys: vec![]
+        };
+        let mut sb = Behaviour::new_blocking_server(&mut sb);
+        let sb = &sb.server().unwrap();
 
         let mut cli = kex::Kex::new().unwrap();
         let mut serv = kex::Kex::new().unwrap();
@@ -636,7 +668,7 @@ mod tests {
         let ci = cli.make_kexdhinit().unwrap();
         let ci = if let Packet::KexDHInit(k) = ci { k } else { panic!() };
         let sout = serv.handle_kexdhinit(&ci, &None).unwrap();
-        let kexreply = sout.make_kexdhreply().unwrap();
+        let kexreply = sout.make_kexdhreply(sb).unwrap();
 
         let kexreply =
             if let Packet::KexDHReply(k) = kexreply { k } else { panic!() };

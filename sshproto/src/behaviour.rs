@@ -257,15 +257,15 @@ pub struct ServBehaviour<'a> {
 
 #[cfg(feature = "std")]
 impl<'a> ServBehaviour<'a> {
-    pub(crate) async fn hostkeys(&self) -> BhResult<&[&sign::SignKey]> {
+    pub(crate) async fn hostkeys(&self) -> BhResult<&[sign::SignKey]> {
         self.inner.hostkeys().await
     }
 
-    pub(crate) fn have_auth_password(&self, username: &str) -> bool {
-        self.inner.have_auth_password(username)
+    pub(crate) fn have_auth_password(&self, user: &str) -> bool {
+        self.inner.have_auth_password(user)
     }
-    pub(crate) fn have_auth_pubkey(&self, username: &str) -> bool {
-        self.inner.have_auth_pubkey(username)
+    pub(crate) fn have_auth_pubkey(&self, user: &str) -> bool {
+        self.inner.have_auth_pubkey(user)
     }
 
     // fn authmethods(&self) -> [AuthMethod];
@@ -288,11 +288,23 @@ impl<'a> ServBehaviour<'a> {
         t: &DirectTcpip) -> channel::ChanOpened {
         self.inner.open_tcp_direct(chan, t)
     }
+
+    pub(crate) fn sess_req_shell(&self, chan: u32) -> bool {
+        self.inner.sess_req_shell(chan)
+    }
+
+    pub(crate) fn sess_req_exec(&self, chan: u32, cmd: &str) -> bool {
+        self.inner.sess_req_exec(chan, cmd)
+    }
+
+    pub(crate) fn sess_pty(&self, chan: u32, pty: &Pty) -> bool {
+        self.inner.sess_pty(chan, pty)
+    }
 }
 
 #[cfg(not(feature = "std"))]
 impl<'a> ServBehaviour<'a> {
-    pub(crate) async fn hostkeys(&self) -> BhResult<&[&sign::SignKey]> {
+    pub(crate) fn hostkeys(&self) -> BhResult<&[sign::SignKey]> {
         self.inner.hostkeys()
     }
 
@@ -309,6 +321,18 @@ impl<'a> ServBehaviour<'a> {
     pub(crate) fn open_tcp_direct(&self, chan: u32,
         t: &DirectTcpip) -> channel::ChanOpened {
         self.inner.open_tcp_direct(chan, t)
+    }
+
+    pub(crate) fn sess_req_shell(&self, chan: u32) -> bool {
+        self.inner.sess_req_shell(chan)
+    }
+
+    pub(crate) fn sess_req_exec(&self, chan: u32, cmd: &str) -> bool {
+        self.inner.sess_req_exec(chan, cmd)
+    }
+
+    pub(crate) fn sess_pty(&self, chan: u32, pty: &Pty) -> bool {
+        self.inner.sess_pty(chan, pty)
     }
 }
 

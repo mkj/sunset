@@ -276,6 +276,24 @@ impl Channels {
         Ok(())
     }
 
+    pub fn dispatch_request(&mut self,
+        p: &packets::ChannelRequest,
+        resp: &mut RespPackets<'_>,
+        b: &mut Behaviour<'_>,
+        ) -> Result<()> {
+            let ch = match self.get(p.num) {
+                Ok(ch) => ch,
+                Err(Error::BadChannel) => {
+                    debug!("request {p:?} channel is unknown");
+                    return Ok(())
+                },
+                Err(e) => unreachable!(),
+            };
+
+
+            Ok(())
+    }
+
     /// Incoming packet handling
     // TODO: protocol errors etc should perhaps be less fatal,
     // ssh implementations are usually imperfect.
@@ -288,8 +306,8 @@ impl Channels {
         trace!("chan dispatch");
         let r = match packet {
             Packet::ChannelOpen(p) => {
-                self.dispatch_open(&p, resp, b)
-                .map(|_| None)
+                self.dispatch_open(&p, resp, b)?;
+                Ok(None)
             }
 
             Packet::ChannelOpenConfirmation(p) => {
@@ -322,7 +340,7 @@ impl Channels {
                     // TODO: or just warn?
                     Err(Error::SSHProtoError)
                 } else {
-                    self.remove(p.num);
+                    self.remove(p.num)?;
                     // TODO event
                     Ok(None)
                 }
@@ -333,7 +351,7 @@ impl Channels {
                 Ok(None)
             }
             Packet::ChannelData(p) => {
-                let ch = self.get(p.num)?;
+                self.get(p.num)?;
                 // TODO check we are expecting input
                 if self.pending_input.is_some() {
                     return Err(Error::bug())
@@ -343,7 +361,7 @@ impl Channels {
                 Ok(Some(ChanEventMaker::DataIn(di)))
             }
             Packet::ChannelDataExt(p) => {
-                let ch = self.get(p.num)?;
+                self.get(p.num)?;
                 // TODO check we are expecting input and ext is valid.
                 if self.pending_input.is_some() {
                     return Err(Error::bug())
@@ -354,7 +372,7 @@ impl Channels {
                 Ok(Some(ChanEventMaker::DataIn(di)))
             }
             Packet::ChannelEof(p) => {
-                let _ch = self.get(p.num)?;
+                self.get(p.num)?;
                 Ok(Some(ChanEventMaker::Eof { num: p.num }))
             }
             Packet::ChannelClose(_p) => {
@@ -363,15 +381,8 @@ impl Channels {
                 Ok(None)
             }
             Packet::ChannelRequest(p) => {
-                match self.get(p.num) {
-                    Ok(ch) => Ok(Some(ChanEventMaker::Req)),
-                    Err(ch) => {
-                        if p.want_reply {
-                            // TODO respond with an error
-                        }
-                        Ok(None)
-                    }
-                }
+                self.dispatch_request(&p, resp, b)?;
+                Ok(None)
             }
             Packet::ChannelSuccess(_p) => {
                 trace!("channel success, TODO");
@@ -416,6 +427,7 @@ pub struct ModePair {
     pub arg: u32,
 }
 
+// TODO: name confused with packets::Pty
 #[derive(Debug)]
 pub struct Pty {
     // or could we put String into packets::Pty and serialize modes there...

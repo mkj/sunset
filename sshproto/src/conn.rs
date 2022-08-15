@@ -78,7 +78,9 @@ enum ConnState {
     /// Binary packet protocol has started, KexInit not yet received
     PreKex,
     /// At any time between receiving KexInit and NewKeys.
-    /// Can occur multiple times during a session, at later key exchanges
+    ///
+    /// Can occur multiple times during a session, at later key exchanges.
+    /// Non-kex packets are not allowed during that time
     InKex {
         done_auth: bool,
         output: Option<kex::KexOutput>,
@@ -236,7 +238,7 @@ impl<'a> Conn<'a> {
                             let kex =
                                 core::mem::replace(&mut self.kex, kex::Kex::new()?);
                             *output = Some(kex.handle_kexdhinit(&p, &self.sess_id)?);
-                            let reply = output.as_ref().trap()?.make_kexdhreply()?;
+                            let reply = output.as_ref().trap()?.make_kexdhreply(&b.server()?)?;
                             resp.push(reply.into()).trap()?;
                         }
                     }
