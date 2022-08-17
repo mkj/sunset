@@ -110,6 +110,10 @@ impl<'a> Conn<'a> {
         Self::new(ClientServer::Client(client::Client::new()))
     }
 
+    pub fn new_server() -> Result<Self> {
+        Self::new(ClientServer::Server(server::Server::new()))
+    }
+
     fn new(cliserv: ClientServer) -> Result<Self, Error> {
         Ok(Conn {
             kex: kex::Kex::new()?,

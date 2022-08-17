@@ -42,6 +42,10 @@ pub enum BhError {
 // Permit impl Trait in type aliases
 // https://github.com/rust-lang/rust/issues/63063
 
+// TODO: another interim option would to split the async trait methods
+// into a separate trait (which impls the non-async trait) for a bit more
+// DRY.
+
 pub struct Behaviour<'a> {
     #[cfg(feature = "std")]
     inner: async_behaviour::AsyncCliServ<'a>,

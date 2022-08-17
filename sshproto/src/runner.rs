@@ -46,6 +46,22 @@ impl<'a> Runner<'a> {
         Ok(runner)
     }
 
+    pub fn new_server(
+        inbuf: &'a mut [u8],
+        outbuf: &'a mut [u8],
+    ) -> Result<Runner<'a>, Error> {
+        let conn = Conn::new_server()?;
+        let runner = Runner {
+            conn,
+            traffic: traffic::Traffic::new(outbuf, inbuf),
+            keys: KeyState::new_cleartext(),
+            output_waker: None,
+            input_waker: None,
+        };
+
+        Ok(runner)
+    }
+
     pub fn input(&mut self, buf: &[u8]) -> Result<usize, Error> {
         self.traffic.input(
             &mut self.keys,
