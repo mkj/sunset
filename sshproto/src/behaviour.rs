@@ -261,7 +261,7 @@ pub struct ServBehaviour<'a> {
 
 #[cfg(feature = "std")]
 impl<'a> ServBehaviour<'a> {
-    pub(crate) async fn hostkeys(&self) -> BhResult<&[sign::SignKey]> {
+    pub(crate) async fn hostkeys(&mut self) -> BhResult<&[sign::SignKey]> {
         self.inner.hostkeys().await
     }
 
@@ -274,34 +274,34 @@ impl<'a> ServBehaviour<'a> {
 
     // fn authmethods(&self) -> [AuthMethod];
 
-    pub(crate) async fn auth_password(&self, user: &str, password: &str) -> bool {
+    pub(crate) async fn auth_password(&mut self, user: &str, password: &str) -> bool {
         self.inner.auth_password(user, password).await
     }
 
     /// Returns whether a session channel can be opened
-    pub(crate) fn open_session(&self, chan: u32) -> channel::ChanOpened {
+    pub(crate) fn open_session(&mut self, chan: u32) -> channel::ChanOpened {
         self.inner.open_session(chan)
     }
 
-    pub(crate) fn open_tcp_forwarded(&self, chan: u32,
+    pub(crate) fn open_tcp_forwarded(&mut self, chan: u32,
         t: &ForwardedTcpip) -> channel::ChanOpened {
         self.inner.open_tcp_forwarded(chan, t)
     }
 
-    pub(crate) fn open_tcp_direct(&self, chan: u32,
+    pub(crate) fn open_tcp_direct(&mut self, chan: u32,
         t: &DirectTcpip) -> channel::ChanOpened {
         self.inner.open_tcp_direct(chan, t)
     }
 
-    pub(crate) fn sess_req_shell(&self, chan: u32) -> bool {
+    pub(crate) fn sess_req_shell(&mut self, chan: u32) -> bool {
         self.inner.sess_req_shell(chan)
     }
 
-    pub(crate) fn sess_req_exec(&self, chan: u32, cmd: &str) -> bool {
+    pub(crate) fn sess_req_exec(&mut self, chan: u32, cmd: &str) -> bool {
         self.inner.sess_req_exec(chan, cmd)
     }
 
-    pub(crate) fn sess_pty(&self, chan: u32, pty: &Pty) -> bool {
+    pub(crate) fn sess_pty(&mut self, chan: u32, pty: &Pty) -> bool {
         self.inner.sess_pty(chan, pty)
     }
 }

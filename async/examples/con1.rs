@@ -145,19 +145,15 @@ async fn run(args: &Args) -> Result<()> {
     // Connect to a peer
     let mut stream = TcpStream::connect((args.host.as_str(), args.port)).await?;
 
-    let work = vec![0; 3000];
-    // TODO: better lifetime rather than leaking
-    let work = Box::leak(Box::new(work)).as_mut_slice();
-    let tx = vec![0; 3000];
-    let tx = Box::leak(Box::new(tx)).as_mut_slice();
-
     // app is a Behaviour
     let mut app = door_async::CmdlineClient::new(args.username.as_ref().unwrap());
     for i in &args.identityfile {
         app.add_authkey(read_key(&i).with_context(|| format!("loading key {i}"))?);
     }
 
-    let mut cli = SSHClient::new(work, tx)?;
+    let mut rxbuf = vec![0; 3000];
+    let mut txbuf = vec![0; 3000];
+    let mut cli = SSHClient::new(&mut rxbuf, &mut txbuf)?;
     let mut s = cli.socket();
 
 

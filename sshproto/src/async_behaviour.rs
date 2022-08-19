@@ -117,7 +117,7 @@ pub trait AsyncServBehaviour: Sync+Send {
     // then later request a single key.
     // Also could make it take a closure to call with the key, lets it just
     // be loaded on the stack rather than kept in memory for the whole lifetime.
-    async fn hostkeys(&self) -> BhResult<&[sign::SignKey]>;
+    async fn hostkeys(&mut self) -> BhResult<&[sign::SignKey]>;
 
     // TODO: or return a slice of enums
     fn have_auth_password(&self, user: &str) -> bool;
@@ -126,42 +126,42 @@ pub trait AsyncServBehaviour: Sync+Send {
 
     #[allow(unused)]
     // TODO: change password
-    async fn auth_password(&self, user: &str, password: &str) -> bool {
+    async fn auth_password(&mut self, user: &str, password: &str) -> bool {
         false
     }
 
     /// Returns true if the pubkey can be used to log in.
     /// TODO: allow returning pubkey restriction options
     #[allow(unused)]
-    async fn auth_pubkey(&self, user: &str, pubkey: &sign::SignKey) -> bool {
+    async fn auth_pubkey(&mut self, user: &str, pubkey: &sign::SignKey) -> bool {
         false
     }
 
     /// Returns whether a session can be opened
-    fn open_session(&self, chan: u32) -> channel::ChanOpened;
+    fn open_session(&mut self, chan: u32) -> channel::ChanOpened;
 
     #[allow(unused)]
-    fn open_tcp_forwarded(&self, chan: u32, t: &ForwardedTcpip) -> ChanOpened {
+    fn open_tcp_forwarded(&mut self, chan: u32, t: &ForwardedTcpip) -> ChanOpened {
         ChanOpened::Failure(ChanFail::SSH_OPEN_UNKNOWN_CHANNEL_TYPE)
     }
 
     #[allow(unused)]
-    fn open_tcp_direct(&self, chan: u32, t: &DirectTcpip) -> ChanOpened {
+    fn open_tcp_direct(&mut self, chan: u32, t: &DirectTcpip) -> ChanOpened {
         ChanOpened::Failure(ChanFail::SSH_OPEN_UNKNOWN_CHANNEL_TYPE)
     }
 
     #[allow(unused)]
-    fn sess_req_shell(&self, chan: u32) -> bool {
+    fn sess_req_shell(&mut self, chan: u32) -> bool {
         false
     }
 
     #[allow(unused)]
-    fn sess_req_exec(&self, chan: u32, cmd: &str) -> bool {
+    fn sess_req_exec(&mut self, chan: u32, cmd: &str) -> bool {
         false
     }
 
     #[allow(unused)]
-    fn sess_pty(&self, chan: u32, pty: &Pty) -> bool {
+    fn sess_pty(&mut self, chan: u32, pty: &Pty) -> bool {
         false
     }
 }

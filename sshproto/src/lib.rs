@@ -58,4 +58,5 @@ pub use sign::SignKey;
 pub use packets::PubKey;
 pub use error::{Error,Result};
 pub use channel::{ChanMsg, ChanMsgDetails, ChanEvent, Pty, ChanOpened};
+pub use sshnames::{ChanFail};
 pub use conn::Event;

@@ -245,7 +245,7 @@ impl Channels {
         let r = match &p.ty {
             ChannelOpenType::Session => {
                 // unwrap: earlier test ensures b.server() succeeds
-                let bserv = b.server().unwrap();
+                let mut bserv = b.server().unwrap();
                 bserv.open_session(ch.recv.num)
             }
             ChannelOpenType::ForwardedTcpip(t) => {
