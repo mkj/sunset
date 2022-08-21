@@ -5,18 +5,11 @@ use {
 };
 
 use snafu::prelude::*;
-use core::task::{Waker,Poll};
-use core::future::Future;
-use core::mem;
-use core::fmt;
 
-use heapless::spsc::{Queue,Producer,Consumer};
-
-use crate::*;
-use packets::{self,Packet,ForwardedTcpip,DirectTcpip};
-use runner::{self,Runner};
-use channel::ChanMsg;
-use conn::RespPackets;
+use crate::{*, conn::RespPackets};
+use packets::{ForwardedTcpip,DirectTcpip};
+use channel::ChanOpened;
+use sshnames::*;
 use sshwire::TextString;
 
 // TODO: "Bh" is an ugly abbreviation. Naming is hard.
@@ -31,393 +24,188 @@ pub enum BhError {
     Fail,
 }
 
-// TODO: once async functions in traits work with no_std, this can all be reworked
-// to probably have Behaviour as a trait not a struct.
+/// A stack-allocated string to store responses for usernames or passwords.
+// 100 bytes is an arbitrary size.
+// TODO this might get replaced with something better
+pub type ResponseString = heapless::String<100>;
+
+// TODO: once async functions in traits work with no_std, some of the trait
+// methods could become async.
 //  Tracking Issue for static async fn in traits
 // https://github.com/rust-lang/rust/issues/91611
 
-// Even without no_std async functions in traits we could probably make Behaviour
-// a type alias to 'impl AsyncBehaviour" on std, and a wrapper struct on no_std.
-// That will require
-// Permit impl Trait in type aliases
-// https://github.com/rust-lang/rust/issues/63063
-
 // TODO: another interim option would to split the async trait methods
-// into a separate trait (which impls the non-async trait) for a bit more
-// DRY.
+// into a separate trait (which impls the non-async trait)
 
-pub struct Behaviour<'a> {
-    #[cfg(feature = "std")]
-    inner: async_behaviour::AsyncCliServ<'a>,
-    #[cfg(not(feature = "std"))]
-    inner: block_behaviour::BlockCliServ<'a>,
+pub enum Behaviour<'a> {
+    Client(&'a mut (dyn CliBehaviour + Send)),
+    Server(&'a mut (dyn ServBehaviour + Send)),
 }
 
-#[cfg(feature = "std")]
 impl<'a> Behaviour<'a> {
-    pub fn new_async_client(b: &'a mut (dyn AsyncCliBehaviour + Send)) -> Self {
-        Self {
-            inner: async_behaviour::AsyncCliServ::Client(b),
+    // TODO take and store a value not a reference
+    pub fn new_client(b: &'a mut (dyn CliBehaviour + Send)) -> Self {
+        Self::Client(b)
+    }
+
+    pub fn new_server(b: &'a mut (dyn ServBehaviour + Send)) -> Self {
+        Self::Server(b)
+    }
+
+    /// Calls either client or server
+    pub(crate) fn open_tcp_forwarded(&mut self, chan: u32,
+        t: &ForwardedTcpip) -> channel::ChanOpened {
+        if self.is_client() {
+            self.client().unwrap().open_tcp_forwarded(chan, t)
+        } else {
+            self.server().unwrap().open_tcp_forwarded(chan, t)
         }
     }
 
-    pub fn new_async_server(b: &'a mut (dyn AsyncServBehaviour + Send)) -> Self {
-        Self {
-            inner: async_behaviour::AsyncCliServ::Server(b),
+    /// Calls either client or server
+    pub(crate) fn open_tcp_direct(&mut self, chan: u32,
+        t: &DirectTcpip) -> channel::ChanOpened {
+        if self.is_client() {
+            self.client().unwrap().open_tcp_direct(chan, t)
+        } else {
+            self.server().unwrap().open_tcp_direct(chan, t)
         }
-    }
-
-    // TODO: or should we just pass CliBehaviour and ServBehaviour through runner,
-    // don't switch here at all
-    pub(crate) fn client(&mut self) -> Result<CliBehaviour> {
-        self.inner.client()
-    }
-
-    pub(crate) fn server(&mut self) -> Result<ServBehaviour> {
-        self.inner.server()
     }
 
     pub(crate) fn is_client(&self) -> bool {
-        matches!(self.inner, async_behaviour::AsyncCliServ::Client(_))
+        matches!(self, Self::Client(_))
     }
 
     pub(crate) fn is_server(&self) -> bool {
         !self.is_client()
     }
 
-    /// Calls either client or server
-    pub(crate) fn open_tcp_forwarded(&mut self, chan: u32,
-        t: &ForwardedTcpip) -> channel::ChanOpened {
-        if self.is_client() {
-            self.client().unwrap().open_tcp_forwarded(chan, t)
-        } else {
-            self.server().unwrap().open_tcp_forwarded(chan, t)
+
+    pub(crate) fn client(&mut self) -> Result<&mut dyn CliBehaviour> {
+        match self {
+            Self::Client(c) => Ok(*c),
+            _ => Error::bug_msg("Not client"),
         }
     }
 
-    /// Calls either client or server
-    pub(crate) fn open_tcp_direct(&mut self, chan: u32,
-        t: &DirectTcpip) -> channel::ChanOpened {
-        if self.is_client() {
-            self.client().unwrap().open_tcp_direct(chan, t)
-        } else {
-            self.server().unwrap().open_tcp_direct(chan, t)
+    pub(crate) fn server(&mut self) -> Result<&mut dyn ServBehaviour> {
+        match self {
+            Self::Server(c) => Ok(*c),
+            _ => Error::bug_msg("Not server"),
         }
     }
 }
 
-#[cfg(not(feature = "std"))]
-impl<'a> Behaviour<'a>
-{
-    pub fn new_blocking_client(b: &'a mut dyn BlockCliBehaviour) -> Self {
-        Self {
-            inner: block_behaviour::BlockCliServ::Client(b),
-        }
+// `Sync+Send` here is to allow for future changes to make async.
+pub trait CliBehaviour: Sync+Send {
+    /// Provide the user to use for authentication. Will only be called once
+    /// per session.
+    /// If the user needs to change a new connection should be made
+    /// – servers often have limits on authentication attempts.
+    ///
+    fn username(&mut self) -> BhResult<ResponseString>;
+
+    /// Whether to accept a hostkey for the server. The implementation
+    /// should compare the key with the key expected for the hostname used.
+    fn valid_hostkey(&mut self, key: &PubKey) -> BhResult<bool>;
+
+    /// Get a password to use for authentication returning `Ok(true)`.
+    /// Return `Ok(false)` to skip password authentication
+    // TODO: having the hostname and user is useful to build a prompt?
+    // or we could provide a full prompt as Args
+    #[allow(unused)]
+    fn auth_password(&mut self, pwbuf: &mut ResponseString) -> BhResult<bool> {
+        Ok(false)
     }
 
-    pub fn new_blocking_server(b: &'a mut dyn BlockServBehaviour) -> Self {
-        Self {
-            inner: block_behaviour::BlockCliServ::Server(b),
-        }
+    /// Get the next private key to authenticate with. Will not be called
+    /// again once returning `HookError::Skip`
+    /// The default implementation returns `HookError::Skip`
+    fn next_authkey(&mut self) -> BhResult<Option<sign::SignKey>> {
+        Ok(None)
     }
 
-    // TODO: or should we just pass CliBehaviour and ServBehaviour through runner,
-    // don't switch here at all
-    pub(crate) fn client(&mut self) -> Result<CliBehaviour> {
-        self.inner.client()
+    /// Called after authentication has succeeded
+    // TODO: perhaps this should be an eventstream not a behaviour?
+    fn authenticated(&mut self);
+
+    /// Show a banner sent from a server. Arguments are provided
+    /// by the server so could be hazardous, they should be escaped with
+    /// [`banner.escape_default()`](core::str::escape_default) or similar.
+    /// Language may be empty, is provided by the server.
+
+    /// This is a `Behaviour` method rather than an [`Event`] because
+    /// it must be displayed prior to other authentication
+    /// functions. `Events` may be handled asynchronously so wouldn't
+    /// guarantee that.
+    #[allow(unused)]
+    fn show_banner(&self, banner: TextString, language: TextString) {
     }
+    // TODO: postauth channel callbacks
 
-    pub(crate) fn server(&mut self) -> Result<ServBehaviour> {
-        self.inner.server()
-    }
-
-    pub(crate) fn is_client(&mut self) -> bool {
-        matches!(self.inner, block_behaviour::BlockCliServ::Client(_))
-    }
-
-    pub(crate) fn is_server(&mut self) -> bool {
-        !self.is_client()
-    }
-
-    /// Calls either client or server
-    pub(crate) fn open_tcp_forwarded(&mut self, chan: u32,
-        t: &ForwardedTcpip) -> channel::ChanOpened {
-        if self.is_client() {
-            self.client().unwrap().open_tcp_forwarded(chan, t)
-        } else {
-            self.server().unwrap().open_tcp_forwarded(chan, t)
-        }
-    }
-
-    /// Calls either client or server
-    pub(crate) fn open_tcp_direct(&mut self, chan: u32,
-        t: &DirectTcpip) -> channel::ChanOpened {
-        if self.is_client() {
-            self.client().unwrap().open_tcp_direct(chan, t)
-        } else {
-            self.server().unwrap().open_tcp_direct(chan, t)
-        }
-    }
-}
-
-pub struct CliBehaviour<'a> {
-    #[cfg(feature = "std")]
-    pub inner: &'a mut (dyn async_behaviour::AsyncCliBehaviour + Send),
-    #[cfg(not(feature = "std"))]
-    pub inner: &'a mut dyn block_behaviour::BlockCliBehaviour,
-}
-
-// wraps everything in AsyncCliBehaviour
-#[cfg(feature = "std")]
-impl<'a> CliBehaviour<'a> {
-    pub(crate) async fn username(&mut self) -> BhResult<ResponseString>{
-        self.inner.username().await
-    }
-
-    pub(crate) async fn valid_hostkey<'f>(&mut self, key: &PubKey<'f>) -> BhResult<bool> {
-        self.inner.valid_hostkey(key).await
+    #[allow(unused)]
+    fn open_tcp_forwarded(&self, chan: u32, t: &ForwardedTcpip) -> ChanOpened {
+        ChanOpened::Failure(ChanFail::SSH_OPEN_UNKNOWN_CHANNEL_TYPE)
     }
 
     #[allow(unused)]
-    pub(crate) async fn auth_password(&mut self, pwbuf: &mut ResponseString) -> BhResult<bool> {
-        self.inner.auth_password(pwbuf).await
-    }
-
-    pub(crate) async fn next_authkey(&mut self) -> BhResult<Option<sign::SignKey>> {
-        self.inner.next_authkey().await
-    }
-
-    pub(crate) async fn authenticated(&mut self) {
-        self.inner.authenticated().await
-    }
-
-    pub(crate) async fn show_banner(&self, banner: TextString<'_>, language: TextString<'_>) -> Result<()> {
-        let banner = banner.as_str().map_err(|e| { warn!("Bad banner {:?}", banner); e})?;
-        let language = language.as_str()?;
-        self.inner.show_banner(banner, language).await;
-        Ok(())
-    }
-
-    pub(crate) fn open_tcp_forwarded(&self, chan: u32,
-        t: &ForwardedTcpip) -> channel::ChanOpened {
-        self.inner.open_tcp_forwarded(chan, t)
-    }
-
-    pub(crate) fn open_tcp_direct(&self, chan: u32,
-        t: &DirectTcpip) -> channel::ChanOpened {
-        self.inner.open_tcp_direct(chan, t)
+    fn open_tcp_direct(&self, chan: u32, t: &DirectTcpip) -> ChanOpened {
+        ChanOpened::Failure(ChanFail::SSH_OPEN_UNKNOWN_CHANNEL_TYPE)
     }
 }
 
-// no_std blocking variant
-#[cfg(not(feature = "std"))]
-impl<'a> CliBehaviour<'a> {
-    pub(crate) async fn username(&mut self) -> BhResult<ResponseString>{
-        self.inner.username()
+pub trait ServBehaviour: Sync+Send {
+    // TODO: load keys on demand?
+    // at present `async` isn't very useful here, since it can't load keys
+    // on demand. perhaps it should have a callback to get key types,
+    // then later request a single key.
+    // Also could make it take a closure to call with the key, lets it just
+    // be loaded on the stack rather than kept in memory for the whole lifetime.
+    fn hostkeys(&mut self) -> BhResult<&[sign::SignKey]>;
+
+    // TODO: or return a slice of enums
+    fn have_auth_password(&self, user: &str) -> bool;
+    fn have_auth_pubkey(&self, user: &str) -> bool;
+
+
+    #[allow(unused)]
+    // TODO: change password
+    fn auth_password(&mut self, user: &str, password: &str) -> bool {
+        false
     }
 
-    pub(crate) async fn valid_hostkey<'f>(&mut self, key: &PubKey<'f>) -> BhResult<bool> {
-        self.inner.valid_hostkey(key)
+    /// Returns true if the pubkey can be used to log in.
+    /// TODO: allow returning pubkey restriction options
+    #[allow(unused)]
+    fn auth_pubkey(&mut self, user: &str, pubkey: &sign::SignKey) -> bool {
+        false
+    }
+
+    /// Returns whether a session can be opened
+    fn open_session(&mut self, chan: u32) -> channel::ChanOpened;
+
+    #[allow(unused)]
+    fn open_tcp_forwarded(&mut self, chan: u32, t: &ForwardedTcpip) -> ChanOpened {
+        ChanOpened::Failure(ChanFail::SSH_OPEN_UNKNOWN_CHANNEL_TYPE)
     }
 
     #[allow(unused)]
-    pub(crate) async fn auth_password(&mut self, pwbuf: &mut ResponseString) -> BhResult<bool> {
-        self.inner.auth_password(pwbuf)
+    fn open_tcp_direct(&mut self, chan: u32, t: &DirectTcpip) -> ChanOpened {
+        ChanOpened::Failure(ChanFail::SSH_OPEN_UNKNOWN_CHANNEL_TYPE)
     }
 
-    pub(crate) async fn next_authkey(&mut self) -> BhResult<Option<sign::SignKey>> {
-        self.inner.next_authkey()
+    #[allow(unused)]
+    fn sess_req_shell(&mut self, chan: u32) -> bool {
+        false
     }
 
-    pub(crate) async fn authenticated(&mut self) {
-        self.inner.authenticated()
+    #[allow(unused)]
+    fn sess_req_exec(&mut self, chan: u32, cmd: &str) -> bool {
+        false
     }
 
-    // TODO: make ascii/utf8 a feature
-    pub(crate) async fn show_banner(&self, banner: TextString<'_>, language: TextString<'_>) -> Result<()> {
-        let banner = banner.as_ascii().map_err(|e| { warn!("Bad banner {:?}", banner); e})?;
-        let language = language.as_ascii()?;
-        self.inner.show_banner(banner, language);
-        Ok(())
-    }
-
-    pub(crate) fn open_tcp_forwarded(&self, chan: u32,
-        t: &ForwardedTcpip) -> channel::ChanOpened {
-        self.inner.open_tcp_forwarded(chan, t)
-    }
-
-    pub(crate) fn open_tcp_direct(&self, chan: u32,
-        t: &DirectTcpip) -> channel::ChanOpened {
-        self.inner.open_tcp_direct(chan, t)
+    #[allow(unused)]
+    fn sess_pty(&mut self, chan: u32, pty: &Pty) -> bool {
+        false
     }
 }
-
-pub struct ServBehaviour<'a> {
-    #[cfg(feature = "std")]
-    pub inner: &'a mut dyn async_behaviour::AsyncServBehaviour,
-    #[cfg(not(feature = "std"))]
-    pub inner: &'a mut dyn block_behaviour::BlockServBehaviour,
-}
-
-#[cfg(feature = "std")]
-impl<'a> ServBehaviour<'a> {
-    pub(crate) async fn hostkeys(&mut self) -> BhResult<&[sign::SignKey]> {
-        self.inner.hostkeys().await
-    }
-
-    pub(crate) fn have_auth_password(&self, user: &str) -> bool {
-        self.inner.have_auth_password(user)
-    }
-    pub(crate) fn have_auth_pubkey(&self, user: &str) -> bool {
-        self.inner.have_auth_pubkey(user)
-    }
-
-    // fn authmethods(&self) -> [AuthMethod];
-
-    pub(crate) async fn auth_password(&mut self, user: &str, password: &str) -> bool {
-        self.inner.auth_password(user, password).await
-    }
-
-    /// Returns whether a session channel can be opened
-    pub(crate) fn open_session(&mut self, chan: u32) -> channel::ChanOpened {
-        self.inner.open_session(chan)
-    }
-
-    pub(crate) fn open_tcp_forwarded(&mut self, chan: u32,
-        t: &ForwardedTcpip) -> channel::ChanOpened {
-        self.inner.open_tcp_forwarded(chan, t)
-    }
-
-    pub(crate) fn open_tcp_direct(&mut self, chan: u32,
-        t: &DirectTcpip) -> channel::ChanOpened {
-        self.inner.open_tcp_direct(chan, t)
-    }
-
-    pub(crate) fn sess_req_shell(&mut self, chan: u32) -> bool {
-        self.inner.sess_req_shell(chan)
-    }
-
-    pub(crate) fn sess_req_exec(&mut self, chan: u32, cmd: &str) -> bool {
-        self.inner.sess_req_exec(chan, cmd)
-    }
-
-    pub(crate) fn sess_pty(&mut self, chan: u32, pty: &Pty) -> bool {
-        self.inner.sess_pty(chan, pty)
-    }
-}
-
-#[cfg(not(feature = "std"))]
-impl<'a> ServBehaviour<'a> {
-    pub(crate) fn hostkeys(&self) -> BhResult<&[sign::SignKey]> {
-        self.inner.hostkeys()
-    }
-
-    /// Returns whether a session channel can be opened
-    pub(crate) fn open_session(&self, chan: u32) -> channel::ChanOpened {
-        self.inner.open_session(chan)
-    }
-
-    pub(crate) fn open_tcp_forwarded(&self, chan: u32,
-        t: &ForwardedTcpip) -> channel::ChanOpened {
-        self.inner.open_tcp_forwarded(chan, t)
-    }
-
-    pub(crate) fn open_tcp_direct(&self, chan: u32,
-        t: &DirectTcpip) -> channel::ChanOpened {
-        self.inner.open_tcp_direct(chan, t)
-    }
-
-    pub(crate) fn sess_req_shell(&self, chan: u32) -> bool {
-        self.inner.sess_req_shell(chan)
-    }
-
-    pub(crate) fn sess_req_exec(&self, chan: u32, cmd: &str) -> bool {
-        self.inner.sess_req_exec(chan, cmd)
-    }
-
-    pub(crate) fn sess_pty(&self, chan: u32, pty: &Pty) -> bool {
-        self.inner.sess_pty(chan, pty)
-    }
-}
-
-/// A stack-allocated string to store responses for usernames or passwords.
-// 100 bytes is an arbitrary size.
-pub type ResponseString = heapless::String<100>;
-
-// // TODO sketchy api
-// pub enum BhQuery<'a> {
-//     Username(ResponseString),
-//     ValidHostkey(PubKey<'a>),
-//     Password(PubKey<'a>),
-// }
-
-// pub enum BhCommand {
-//     Session(),
-// }
-
-// // not derived since it can hold passwords etc
-// impl fmt::Debug for BhQuery<'_> {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         write!(f, "Query ...todo...")
-//     }
-// }
-
-// pub struct HookAskFut<'a> {
-//     mbox: &'a mut HookMailbox,
-// }
-
-// impl<'a> core::future::Future for HookAskFut<'a> {
-//     type Output = HookQuery;
-//     fn poll(self: core::pin::Pin<&mut Self>, cx: &mut core::task::Context<'_>) -> core::task::Poll<Self::Output> {
-//         let m = &mut self.get_mut().mbox;
-//         if let Some(reply) = m.reply.take() {
-//             Poll::Ready(reply)
-//         } else {
-//             m.reply_waker.take().map(|w| {
-//                 // this shouldn't happen?
-//                 warn!("existing waker");
-//                 w.wake()
-//             });
-//             m.reply_waker = Some(cx.waker().clone());
-//             Poll::Pending
-//         }
-//     }
-// }
-
-// impl core::future::Future for HookMailbox {
-//     type Output = HookQuery;
-//     fn poll(self: core::pin::Pin<&mut Self>, cx: &mut core::task::Context<'_>) -> core::task::Poll<Self::Output> {
-//         let m = self.get_mut();
-//         if let Some(reply) = m.reply.take() {
-//             Poll::Ready(reply)
-//         } else {
-//             m.reply_waker.take().map(|w| {
-//                 // this shouldn't happen?
-//                 warn!("existing waker");
-//                 w.wake()
-//             });
-//             m.reply_waker = Some(cx.waker().clone());
-//             Poll::Pending
-//         }
-//     }
-// }
-
-
-// struct HookCon<'a> {
-//     c: Consumer<'a, Query, 2>,
-// }
-
-// impl<'a> Future for HookCon<'a> {
-//     type Output = Query;
-//     fn poll(self: core::pin::Pin<&mut Self>, cx: &mut core::task::Context<'_>) -> Poll<Self::Output> {
-//         if let Some(r) = self.c.dequeue() {
-//             Poll::Ready(r)
-//         } else {
-//             // TODO
-//             // assert!(self.waker.is_none());
-//             // self.waker = Some(cx.waker().clone());
-//             Poll::Pending
-//         }
-//     }
-// }
-

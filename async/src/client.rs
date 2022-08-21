@@ -21,7 +21,7 @@ use crate::async_door::*;
 use crate::async_channel::*;
 
 use door_sshproto as door;
-use door::{Behaviour, AsyncCliBehaviour, Runner, Result};
+use door::{Behaviour, CliBehaviour, Runner, Result};
 use door::sshnames::SSH_EXTENDED_DATA_STDERR;
 use door::config::*;
 
@@ -47,13 +47,12 @@ impl<'a> SSHClient<'a> {
     /// (This output can't be returned directly since it refers
     /// to contents of `Self` and would hit lifetime issues).
     pub async fn progress<F, R>(&mut self,
-        behaviour: &mut (dyn AsyncCliBehaviour+Send),
+        b: &mut (dyn CliBehaviour+Send),
         f: F)
         -> Result<Option<R>>
         where F: FnOnce(door::Event) -> Result<Option<R>> {
 
-        let mut b = Behaviour::new_async_client(behaviour);
-        self.door.progress(&mut b, f).await
+        self.door.progress(b, f).await
     }
 
     // TODO: return a Channel object that gives events like WinChange or exit status

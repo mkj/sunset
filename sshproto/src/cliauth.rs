@@ -97,11 +97,11 @@ impl CliAuth {
     pub async fn start<'b>(
         &'b mut self,
         resp: &mut RespPackets<'b>,
-        mut b: CliBehaviour<'_>,
+        b: &mut dyn CliBehaviour,
     ) -> Result<()> {
         if let AuthState::Unstarted = self.state {
             self.state = AuthState::MethodQuery;
-            self.username = b.username().await?;
+            self.username = b.username()?;
 
             let p: Packet = packets::ServiceRequest {
                 name: SSH_SERVICE_USERAUTH,
@@ -120,10 +120,10 @@ impl CliAuth {
 
     async fn make_password_req(
         &mut self,
-        b: &mut CliBehaviour<'_>,
+        b: &mut dyn CliBehaviour,
     ) -> Result<Option<Req>> {
         let mut pw = ResponseString::new();
-        match b.auth_password(&mut pw).await {
+        match b.auth_password(&mut pw) {
             Err(_) => Err(Error::BehaviourError { msg: "No password returned" }),
             Ok(r) if r => Ok(Some(Req::Password(pw))),
             Ok(_) => Ok(None),
@@ -132,9 +132,9 @@ impl CliAuth {
 
     async fn make_pubkey_req(
         &mut self,
-        b: &mut CliBehaviour<'_>,
+        b: &mut dyn CliBehaviour,
     ) -> Result<Option<Req>> {
-        let k = b.next_authkey().await.map_err(|_| {
+        let k = b.next_authkey().map_err(|_| {
             self.try_pubkey = false;
             Error::BehaviourError { msg: "next_pubkey failed TODO" }
         })?;
@@ -251,7 +251,7 @@ impl CliAuth {
     pub async fn failure<'b>(
         &'b mut self,
         failure: &packets::UserauthFailure<'_>,
-        b: &mut CliBehaviour<'_>,
+        b: &mut dyn CliBehaviour,
         resp: &mut RespPackets<'b>,
         parse_ctx: &mut ParseContext,
     ) -> Result<()> {
@@ -292,10 +292,10 @@ impl CliAuth {
         Ok(())
     }
 
-    pub async fn success(&mut self, b: &mut CliBehaviour<'_>) -> Result<()> {
+    pub fn success(&mut self, b: &mut dyn CliBehaviour) -> Result<()> {
         // TODO: check current state? Probably just informational
         self.state = AuthState::Idle;
-        let _ = b.authenticated().await;
+        let _ = b.authenticated();
         // TODO errors
         Ok(())
     }

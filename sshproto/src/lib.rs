@@ -37,8 +37,6 @@ mod channel;
 mod runner;
 mod behaviour;
 mod termmodes;
-mod async_behaviour;
-mod block_behaviour;
 mod ssh_chapoly;
 
 pub mod packets;
@@ -46,11 +44,7 @@ pub mod sshwire;
 pub mod config;
 
 // Application API
-pub use behaviour::{Behaviour, BhError, BhResult, ResponseString};
-#[cfg(feature = "std")]
-pub use async_behaviour::{AsyncCliBehaviour,AsyncServBehaviour};
-#[cfg(not(feature = "std"))]
-pub use block_behaviour::{BlockCliBehaviour,BlockServBehaviour};
+pub use behaviour::{Behaviour, ServBehaviour, CliBehaviour, BhError, BhResult, ResponseString};
 
 pub use runner::Runner;
 pub use conn::RespPackets;

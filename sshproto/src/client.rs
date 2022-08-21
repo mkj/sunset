@@ -28,19 +28,17 @@ impl Client {
 
     // pub fn check_hostkey(hostkey: )
 
-    pub(crate) async fn auth_success(&mut self, resp: &mut RespPackets<'_>,
+    pub(crate) fn auth_success(&mut self, resp: &mut RespPackets<'_>,
         parse_ctx: &mut ParseContext,
-        b: &mut CliBehaviour<'_>) -> Result<()> {
+        b: &mut dyn CliBehaviour) -> Result<()> {
 
         parse_ctx.cli_auth_type = None;
         let p: Packet = packets::ServiceRequest { name: SSH_SERVICE_CONNECTION }.into();
         resp.push(p.into()).trap()?;
-        self.auth.success(b).await
+        self.auth.success(b)
     }
 
-    pub(crate) async fn banner(&mut self, banner: &packets::UserauthBanner<'_>, b: &mut CliBehaviour<'_>) {
-        if let Err(e) = b.show_banner(banner.message, banner.lang).await {
-            warn!("Banner not shown: {e}")
-        }
+    pub(crate) fn banner(&mut self, banner: &packets::UserauthBanner<'_>, b: &mut dyn CliBehaviour) {
+        b.show_banner(banner.message, banner.lang)
     }
 }

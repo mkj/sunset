@@ -242,7 +242,7 @@ impl<'a> Conn<'a> {
                             let kex =
                                 core::mem::replace(&mut self.kex, kex::Kex::new()?);
                             *output = Some(kex.handle_kexdhinit(&p, &self.sess_id)?);
-                            let reply = output.as_mut().trap()?.make_kexdhreply(&mut b.server()?).await?;
+                            let reply = output.as_mut().trap()?.make_kexdhreply(b.server()?).await?;
                             resp.push(reply.into()).trap()?;
                         }
                     }
@@ -258,7 +258,7 @@ impl<'a> Conn<'a> {
                             } else {
                                 let kex =
                                     core::mem::replace(&mut self.kex, kex::Kex::new()?);
-                                *output = Some(kex.handle_kexdhreply(&p, &self.sess_id, &mut b.client()?).await?);
+                                *output = Some(kex.handle_kexdhreply(&p, &self.sess_id, b.client()?).await?);
                                 resp.push(Packet::NewKeys(packets::NewKeys {}).into()).trap()?;
                             }
                         } else {
@@ -313,7 +313,7 @@ impl<'a> Conn<'a> {
             Packet::UserauthFailure(p) => {
                 // TODO: client only
                 if let ClientServer::Client(cli) = &mut self.cliserv {
-                    cli.auth.failure(&p, &mut b.client()?, &mut resp, &mut self.parse_ctx).await?;
+                    cli.auth.failure(&p, b.client()?, &mut resp, &mut self.parse_ctx).await?;
                 } else {
                     debug!("Received UserauthFailure as a server");
                     return Err(Error::SSHProtoError)
@@ -324,7 +324,7 @@ impl<'a> Conn<'a> {
                 if let ClientServer::Client(cli) = &mut self.cliserv {
                     if matches!(self.state, ConnState::PreAuth) {
                         self.state = ConnState::Authed;
-                        cli.auth_success(&mut resp, &mut self.parse_ctx, &mut b.client()?).await?;
+                        cli.auth_success(&mut resp, &mut self.parse_ctx, b.client()?)?;
                         event = Some(EventMaker::CliAuthed);
                     } else {
                         debug!("Received UserauthSuccess unrequested")
@@ -337,7 +337,7 @@ impl<'a> Conn<'a> {
             Packet::UserauthBanner(p) => {
                 // TODO: client only
                 if let ClientServer::Client(cli) = &mut self.cliserv {
-                    cli.banner(&p, &mut b.client()?).await;
+                    cli.banner(&p, b.client()?);
                 } else {
                     debug!("Received banner as a server");
                     return Err(Error::SSHProtoError)
