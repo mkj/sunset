@@ -170,11 +170,7 @@ fn run_session<'a, R: Send>(args: &'a Args, scope: &'a moro::Scope<'a, '_, R>, m
                 loop {
                     let ev = serv.progress(&mut app, |ev| {
                         trace!("progress event {ev:?}");
-                        let e = match ev {
-                            Event::CliAuthed => Some(Event::CliAuthed),
-                            _ => None,
-                        };
-                        Ok(e)
+                        Ok(Some(()))
                     }).await.context("progress loop")?;
                 }
                 #[allow(unreachable_code)]
@@ -188,7 +184,8 @@ fn run_session<'a, R: Send>(args: &'a Args, scope: &'a moro::Scope<'a, '_, R>, m
 }
 
 async fn run(args: &Args) -> Result<()> {
-    let listener = TcpListener::bind(("", args.port)).await?;
+    // TODO not localhost. also ipv6?
+    let listener = TcpListener::bind(("localhost", args.port)).await.context("Listening")?;
     moro::async_scope!(|scope| {
         scope.spawn(async {
             loop {
