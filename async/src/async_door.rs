@@ -59,6 +59,9 @@ impl<'a> AsyncDoor<'a> {
         AsyncDoorSocket::new(self)
     }
 
+    /// The `f` closure should return `Some` if the result should be returned
+    /// from `progress()`, or `None` to not do that.
+    /// XXX better docs, perhaps it won't take a closure anyway
     pub async fn progress<F, R>(&mut self,
         b: &mut Behaviour<'_>,
         f: F)

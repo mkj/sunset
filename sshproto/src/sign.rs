@@ -20,7 +20,7 @@ use core::mem::discriminant;
 
 // RSA requires alloc.
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum SigType {
     Ed25519,
     RSA256,
@@ -137,7 +137,14 @@ impl SignKey {
         k.try_into()
     }
 
-    pub(crate) fn sign_encode<'s>(&self, msg: &'s impl SSHEncode, parse_ctx: Option<&ParseContext>) -> Result<OwnedSig> {
+    /// Returns whether this `SignKey` can create a given signature type
+    pub(crate) fn can_sign(&self, sig_type: &SigType) -> bool {
+        match self {
+            SignKey::Ed25519(_) => matches!(sig_type, SigType::Ed25519),
+        }
+    }
+
+    pub(crate) fn sign<'s>(&self, msg: &'s impl SSHEncode, parse_ctx: Option<&ParseContext>) -> Result<OwnedSig> {
         match self {
             SignKey::Ed25519(k) => {
                 k.sign_parts(|h| {

@@ -445,7 +445,7 @@ impl SharedSecret {
             SharedSecret::KexCurve25519(ref k) => {
                 let pubkey: salty::agreement::PublicKey = k.ours.as_ref().trap()?.into();
                 let mut kex_out = KexCurve25519::secret(&mut algos, p.q_c.0, kex_hash, sess_id)?;
-                kex_out.pubkey = Some(pubkey.to_bytes());
+                kex_out.kex_pub = Some(pubkey.to_bytes());
                 kex_out
             }
         };
@@ -467,14 +467,17 @@ pub(crate) struct KexOutput {
     // storage for kex packet reply content that outlives Kex
     // in make_kexdhreply().
 
-    // TODO: this should become generic for other kex methods
-    pubkey: Option<[u8; 32]>,
+    /// ephemeral public key octet string
+    kex_pub: Option<[u8; 32]>,
+    // the negotiated signature type
+    sig_type: SigType,
+    sig: Option<sign::OwnedSig>,
 }
 
 impl fmt::Debug for KexOutput {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("KexOutput")
-            .field("pubkey", &self.pubkey.is_some())
+            .field("kex_pub", &self.kex_pub.is_some())
             .finish_non_exhaustive()
     }
 }
@@ -488,15 +491,19 @@ impl<'a> KexOutput {
         let sess_id = sess_id.as_ref().unwrap_or(&h);
         let keys = Keys::new_from(k, &h, &sess_id, algos)?;
 
-        Ok(KexOutput { h, keys, pubkey: None })
+        Ok(KexOutput { h, keys, kex_pub: None, sig_type: algos.hostsig, sig: None })
     }
 
     // server only
-    pub fn make_kexdhreply(&'a self, b: &ServBehaviour) -> Result<Packet<'a>> {
-        let q_s = BinString(self.pubkey.as_ref().trap()?);
-        // TODO real signature
-        let k_s = Blob(PubKey::Ed25519(packets::Ed25519PubKey{ key: BinString(&[]) }));
-        let sig = Blob(Signature::Ed25519(packets::Ed25519Sig{ sig: BinString(&[]) }));
+    pub async fn make_kexdhreply<'b>(&'a mut self, b: &'a mut ServBehaviour<'_>) -> Result<Packet<'a>> {
+        let q_s = BinString(self.kex_pub.as_ref().trap()?);
+
+        // hostkeys list must contain the signature type
+        let key = b.hostkeys().await?.iter().find(|k| k.can_sign(&self.sig_type)).trap()?;
+        let k_s = Blob(key.pubkey());
+        self.sig = Some(key.sign(&self.h.as_slice(), None)?);
+        let sig: Signature = self.sig.as_ref().unwrap().into();
+        let sig = Blob(sig);
         Ok(packets::KexDHReply { k_s, q_s, sig }.into())
     }
 }

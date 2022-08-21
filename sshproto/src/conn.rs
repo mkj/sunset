@@ -242,7 +242,7 @@ impl<'a> Conn<'a> {
                             let kex =
                                 core::mem::replace(&mut self.kex, kex::Kex::new()?);
                             *output = Some(kex.handle_kexdhinit(&p, &self.sess_id)?);
-                            let reply = output.as_ref().trap()?.make_kexdhreply(&b.server()?)?;
+                            let reply = output.as_mut().trap()?.make_kexdhreply(&mut b.server()?).await?;
                             resp.push(reply.into()).trap()?;
                         }
                     }
