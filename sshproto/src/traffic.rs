@@ -78,33 +78,6 @@ enum RxState {
     },
 }
 
-#[derive(Debug)]
-pub enum PacketMaker<'a> {
-    Packet(Packet<'a>),
-    ChanReq(channel::Req),
-}
-
-impl<'a> From<Packet<'a>> for PacketMaker<'a> {
-    fn from(p: Packet<'a>) -> Self {
-        PacketMaker::Packet(p)
-    }
-}
-
-impl From<channel::Req> for PacketMaker<'_> {
-    fn from(r: channel::Req) -> Self {
-        PacketMaker::ChanReq(r)
-    }
-}
-
-impl<'a> PacketMaker<'a> {
-    pub(crate) fn send_packet(self, traffic: &mut Traffic, keys: &mut KeyState) -> Result<()> {
-        match self {
-            Self::Packet(p) => traffic.send_packet(p, keys),
-            Self::ChanReq(r) => traffic.send_packet(r.packet()?, keys),
-        }
-    }
-}
-
 impl<'a> Traffic<'a> {
     pub fn new(rx_buf: &'a mut [u8], tx_buf: &'a mut [u8]) -> Self {
         Traffic { tx_buf, rx_buf,
@@ -414,4 +387,26 @@ impl<'a> Traffic<'a> {
         }
     }
 
+}
+
+pub(crate) struct TrafSend<'a> {
+    traffic: &'a mut Traffic<'a>,
+    keys: &'a mut KeyState,
+}
+
+impl<'a> TrafSend<'a> {
+    pub fn new(traffic: &mut Traffic, keys: &mut KeyState) -> Self {
+        Self {
+            traffic,
+            keys,
+        }
+    }
+
+    pub fn send<'p, P: Into<packets::Packet<'p>>>(&self, p: P) -> Result<()> {
+        self.traffic.send_packet(p.into(), self.keys)
+    }
+
+    pub fn rekey(&self, keys: encrypt::Keys) {
+        self.keys.rekey(keys)
+    }
 }

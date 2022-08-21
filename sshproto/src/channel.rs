@@ -8,9 +8,10 @@ use core::mem;
 
 use heapless::{Deque, String, Vec};
 
-use crate::{conn::RespPackets, *, packets::ChannelOpenFailure};
+use crate::*;
 use config::*;
-use packets::{ChannelReqType, ChannelRequest, Packet, ChannelOpen, ChannelOpenType, ChannelData, ChannelDataExt};
+use packets::{ChannelReqType, ChannelOpenFailure, ChannelRequest, Packet, ChannelOpen, ChannelOpenType, ChannelData, ChannelDataExt};
+use traffic::TrafSend;
 use sshwire::{BinString, TextString};
 use sshnames::*;
 
@@ -196,20 +197,18 @@ impl Channels {
     }
 
     fn dispatch_open(&mut self, p: &ChannelOpen<'_>,
-        resp: &mut RespPackets<'_>,
+        s: &TrafSend,
         b: &mut Behaviour<'_>,
         ) -> Result<()> {
 
-        match self.dispatch_open_inner(p, resp, b) {
+        match self.dispatch_open_inner(p, s, b) {
             Err(DispatchOpenError::Failure(f)) => {
-                let r = packets::ChannelOpenFailure {
+                s.send(packets::ChannelOpenFailure {
                     num: p.num,
                     reason: f as u32,
                     desc: "".into(),
                     lang: "",
-                };
-                let r: Packet = r.into();
-                resp.push(r.into()).trap()?;
+                })?;
                 Ok(())
             },
             Err(DispatchOpenError::Error(e)) => Err(e),
@@ -219,7 +218,7 @@ impl Channels {
 
     // the caller will send failure messages if required
     fn dispatch_open_inner(&mut self, p: &ChannelOpen<'_>,
-        resp: &mut RespPackets<'_>,
+        s: &TrafSend,
         b: &mut Behaviour<'_>,
         ) -> Result<(), DispatchOpenError> {
 
@@ -261,7 +260,7 @@ impl Channels {
 
         match r {
             ChanOpened::Success => {
-                resp.push(ch.open_done().into()).trap()?
+                s.send(ch.open_done())?;
             },
             ChanOpened::Failure(f) => {
                 let n = ch.recv.num;
@@ -278,8 +277,8 @@ impl Channels {
 
     pub fn dispatch_request(&mut self,
         p: &packets::ChannelRequest,
-        resp: &mut RespPackets<'_>,
-        b: &mut Behaviour<'_>,
+        _s: &TrafSend,
+        _b: &mut Behaviour<'_>,
         ) -> Result<()> {
             let ch = match self.get(p.num) {
                 Ok(ch) => ch,
@@ -300,13 +299,13 @@ impl Channels {
     pub async fn dispatch(
         &mut self,
         packet: Packet<'_>,
-        resp: &mut RespPackets<'_>,
+        s: &TrafSend<'_>,
         b: &mut Behaviour<'_>,
     ) -> Result<Option<ChanEventMaker>> {
         trace!("chan dispatch");
         let r = match packet {
             Packet::ChannelOpen(p) => {
-                self.dispatch_open(&p, resp, b)?;
+                self.dispatch_open(&p, s, b)?;
                 Ok(None)
             }
 
@@ -324,7 +323,7 @@ impl Channels {
                                 window: p.initial_window as usize,
                             });
                             for r in init_req {
-                                ch.request(r, resp)?
+                                ch.request(r, s)?
                             }
                             ch.state = ChanState::Normal;
                         }
@@ -381,7 +380,7 @@ impl Channels {
                 Ok(None)
             }
             Packet::ChannelRequest(p) => {
-                self.dispatch_request(&p, resp, b)?;
+                self.dispatch_request(&p, s, b)?;
                 Ok(None)
             }
             Packet::ChannelSuccess(_p) => {
@@ -577,11 +576,10 @@ impl Channel {
         }
     }
 
-    fn request(&mut self, req: ReqDetails, resp: &mut RespPackets) -> Result<()> {
+    fn request(&mut self, req: ReqDetails, s: &TrafSend) -> Result<()> {
         let num = self.send.as_ref().trap()?.num;
         let r = Req { num, details: req };
-        resp.push(r.into()).trap()?;
-        Ok(())
+        s.send(r.packet()?)
     }
 
     pub(crate) fn number(&self) -> u32 {

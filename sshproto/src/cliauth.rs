@@ -12,8 +12,8 @@ use pretty_hex::PrettyHex;
 
 use crate::{packets::UserauthPkOk, *};
 use behaviour::CliBehaviour;
+use traffic::TrafSend;
 use client::*;
-use conn::RespPackets;
 use packets::{MessageNumber, AuthMethod, MethodPubKey, ParseContext, UserauthRequest};
 use packets::{Packet, Signature, Userauth60};
 use sign::{SignKey, OwnedSig};
@@ -96,24 +96,22 @@ impl CliAuth {
     // May be called multiple times
     pub async fn start<'b>(
         &'b mut self,
-        resp: &mut RespPackets<'b>,
+        s: &TrafSend<'_>,
         b: &mut dyn CliBehaviour,
     ) -> Result<()> {
         if let AuthState::Unstarted = self.state {
             self.state = AuthState::MethodQuery;
             self.username = b.username()?;
 
-            let p: Packet = packets::ServiceRequest {
+            s.send(packets::ServiceRequest {
                 name: SSH_SERVICE_USERAUTH,
-            }.into();
-            resp.push(p.into()).trap()?;
+            })?;
 
-            let p: Packet = packets::UserauthRequest {
+            s.send(packets::UserauthRequest {
                 username: self.username.as_str().into(),
                 service: SSH_SERVICE_CONNECTION,
                 method: packets::AuthMethod::None,
-            }.into();
-            resp.push(p.into()).trap()?;
+            })?;
         }
         Ok(())
     }
@@ -182,14 +180,14 @@ impl CliAuth {
     pub async fn auth60<'b>(
         &'b mut self,
         auth60: &packets::Userauth60<'_>,
-        resp: &mut RespPackets<'b>,
         sess_id: &SessId,
         parse_ctx: &mut ParseContext,
+        s: &TrafSend<'_>,
     ) -> Result<()> {
         parse_ctx.cli_auth_type = None;
 
         match auth60 {
-            Userauth60::PkOk(pkok) => self.auth_pkok(pkok, resp, sess_id, parse_ctx),
+            Userauth60::PkOk(pkok) => self.auth_pkok(pkok, sess_id, parse_ctx, s),
             _ => todo!(),
         }
     }
@@ -197,9 +195,9 @@ impl CliAuth {
     fn auth_pkok<'b>(
         &'b mut self,
         pkok: &UserauthPkOk<'_>,
-        resp: &mut RespPackets<'b>,
         sess_id: &SessId,
         parse_ctx: &mut ParseContext,
+        s: &TrafSend<'_>,
     ) -> Result<()> {
         // We are only sending keys one at a time so they shouldn't
         // get out of sync. In future we could change it to send
@@ -237,7 +235,7 @@ impl CliAuth {
                         let rsig = &*rsig;
                         *psig = Some(Blob(rsig.into()))
                     }
-                    resp.push(p.into()).trap()?;
+                    s.send(p)?;
                     return Ok(());
                 }
             }
@@ -251,9 +249,9 @@ impl CliAuth {
     pub async fn failure<'b>(
         &'b mut self,
         failure: &packets::UserauthFailure<'_>,
-        b: &mut dyn CliBehaviour,
-        resp: &mut RespPackets<'b>,
         parse_ctx: &mut ParseContext,
+        s: &TrafSend<'_>,
+        b: &mut dyn CliBehaviour,
     ) -> Result<()> {
         parse_ctx.cli_auth_type = None;
         // TODO: look at existing self.state, handle the failure.
@@ -287,7 +285,7 @@ impl CliAuth {
 
         if let AuthState::Request { last_req, .. } = &self.state {
             let p = last_req.req_packet(&self.username, parse_ctx)?;
-            resp.push(p.into()).trap()?;
+            s.send(p)?;
         }
         Ok(())
     }

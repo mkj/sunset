@@ -14,6 +14,7 @@ use digest::Digest;
 use crate::*;
 use encrypt::{Cipher, Integ, Keys};
 use ident::RemoteVersion;
+use traffic::TrafSend;
 use namelist::LocalNames;
 use packets::{Packet, PubKey, Signature};
 use sign::SigType;
@@ -198,11 +199,11 @@ impl Kex {
         Ok(Kex { our_cookie, algos: None, kex_hash: None })
     }
 
-    /// Returns `Option<Packet>` with an optional kexdhinit message to send
     pub fn handle_kexinit(
-        &mut self, is_client: bool, algo_conf: &AlgoConfig,
-        remote_version: &RemoteVersion, p: &packets::Packet,
-    ) -> Result<Option<Packet>> {
+        &mut self, p: &packets::Packet, is_client: bool, algo_conf: &AlgoConfig,
+        remote_version: &RemoteVersion,
+        s: &TrafSend,
+    ) -> Result<()> {
         let remote_kexinit =
             if let Packet::KexInit(k) = p { k } else { return Err(Error::bug()) };
         let algos = Self::algo_negotiation(is_client, remote_kexinit, algo_conf)?;
@@ -212,10 +213,12 @@ impl Kex {
         self.algos = Some(algos);
 
         if is_client {
-            Ok(Some(self.algos.as_ref().trap()?.kex.make_kexdhinit()?))
-        } else {
-            Ok(None)
+            // unwrap safe: was just set
+            let p = self.algos.as_ref().unwrap().kex.make_kexdhinit()?;
+            s.send(p)?;
         }
+
+        Ok(())
     }
 
     pub fn maybe_discard_packet(&mut self) -> bool {
@@ -226,8 +229,8 @@ impl Kex {
         }
     }
 
-    pub fn make_kexinit<'a>(&self, conf: &'a AlgoConfig) -> packets::Packet<'a> {
-        packets::KexInit {
+    pub fn send_kexinit<'a>(&self, conf: &'a AlgoConfig, s: &TrafSend) -> Result<()> {
+        s.send(packets::KexInit {
             cookie: self.our_cookie,
             kex: (&conf.kexs).into(),
             hostkey: (&conf.hostsig).into(),
@@ -241,7 +244,7 @@ impl Kex {
             lang_s2c: (&EMPTY_LOCALNAMES).into(),
             first_follows: false,
             reserved: 0,
-        }.into()
+        })
     }
 
     fn make_kexdhinit(&self) -> Result<Packet> {
@@ -252,27 +255,32 @@ impl Kex {
         algos.kex.make_kexdhinit()
     }
 
-    // returns packet to send, and kex output
-    // consumes self.
+    // returns kex output, consumes self.
     pub fn handle_kexdhinit<'a>(
         self, p: &packets::KexDHInit, sess_id: &Option<SessId>,
+        s: &TrafSend, b: &mut dyn ServBehaviour,
     ) -> Result<KexOutput> {
         if self.algos.as_ref().trap()?.is_client {
             return Err(Error::bug());
         }
-        SharedSecret::handle_kexdhinit(self, p, sess_id)
+        let kex_out = SharedSecret::handle_kexdhinit(self, p, sess_id, s, b)?;
+        s.send(packets::NewKeys {})?;
+        Ok(kex_out)
     }
 
     // returns packet to send, and H exchange hash.
     // consumes self.
     pub async fn handle_kexdhreply<'f>(
         self, p: &packets::KexDHReply<'f>, sess_id: &Option<SessId>,
+        s: &TrafSend<'_>,
         b: &mut dyn CliBehaviour,
     ) -> Result<KexOutput> {
         if !self.algos.as_ref().trap()?.is_client {
             return Err(Error::bug());
         }
-        SharedSecret::handle_kexdhreply(self, p, sess_id, b).await
+        let kex_out = SharedSecret::handle_kexdhreply(self, p, sess_id, b).await?;
+        s.send(packets::NewKeys {})?;
+        Ok(kex_out)
     }
 
     /// Perform SSH algorithm negotiation
@@ -434,6 +442,7 @@ impl SharedSecret {
     // server only. consumes kex.
     fn handle_kexdhinit<'a>(
         mut kex: Kex, p: &packets::KexDHInit, sess_id: &Option<SessId>,
+        s: &TrafSend, b: &mut dyn ServBehaviour,
     ) -> Result<KexOutput> {
         // let mut algos = kex.algos.take().trap()?;
         let mut algos = kex.algos.trap()?;
@@ -441,19 +450,32 @@ impl SharedSecret {
         // TODO
         let fake_hostkey = PubKey::Ed25519(packets::Ed25519PubKey{ key: BinString(&[]) });
         kex_hash.prefinish(&fake_hostkey, p.q_c.0, algos.kex.pubkey())?;
-        let kex_out = match algos.kex {
+        let (kex_pub, kex_out) = match algos.kex {
             SharedSecret::KexCurve25519(ref k) => {
                 let pubkey: salty::agreement::PublicKey = k.ours.as_ref().trap()?.into();
-                let mut kex_out = KexCurve25519::secret(&mut algos, p.q_c.0, kex_hash, sess_id)?;
-                kex_out.kex_pub = Some(pubkey.to_bytes());
-                kex_out
+                let kex_out = KexCurve25519::secret(&mut algos, p.q_c.0, kex_hash, sess_id)?;
+                (&pubkey.to_bytes(), kex_out)
             }
         };
 
+        kex.send_kexdhreply(kex_pub, s, b)?;
         Ok(kex_out)
     }
 
-    fn pubkey<'a>(&'a self) -> &'a [u8] {
+    // server only
+    pub fn send_kexdhreply(&self, kex_pub: &[u8], s: &TrafSend, b: &mut dyn ServBehaviour) -> Result<()> {
+        let q_s = BinString(kex_pub);
+
+        // hostkeys list must contain the signature type
+        let key = b.hostkeys()?.iter().find(|k| k.can_sign(&self.algos.hostsig)).trap()?;
+        let k_s = Blob(key.pubkey());
+        self.sig = Some(key.sign(&self.h.as_slice(), None)?);
+        let sig: Signature = self.sig.as_ref().unwrap().into();
+        let sig = Blob(sig);
+        Ok(packets::KexDHReply { k_s, q_s, sig }.into())
+    }
+
+    fn pubkey(&self) -> &[u8] {
         match self {
             SharedSecret::KexCurve25519(k) => k.pubkey(),
         }
@@ -491,21 +513,9 @@ impl<'a> KexOutput {
         let sess_id = sess_id.as_ref().unwrap_or(&h);
         let keys = Keys::new_from(k, &h, &sess_id, algos)?;
 
-        Ok(KexOutput { h, keys, kex_pub: None, sig_type: algos.hostsig, sig: None })
+        Ok(KexOutput { h, keys })
     }
 
-    // server only
-    pub async fn make_kexdhreply<'b>(&'a mut self, b: &'a mut dyn ServBehaviour) -> Result<Packet<'a>> {
-        let q_s = BinString(self.kex_pub.as_ref().trap()?);
-
-        // hostkeys list must contain the signature type
-        let key = b.hostkeys()?.iter().find(|k| k.can_sign(&self.sig_type)).trap()?;
-        let k_s = Blob(key.pubkey());
-        self.sig = Some(key.sign(&self.h.as_slice(), None)?);
-        let sig: Signature = self.sig.as_ref().unwrap().into();
-        let sig = Blob(sig);
-        Ok(packets::KexDHReply { k_s, q_s, sig }.into())
-    }
 }
 
 pub(crate) struct KexCurve25519 {

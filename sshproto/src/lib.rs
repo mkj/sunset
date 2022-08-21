@@ -47,7 +47,6 @@ pub mod config;
 pub use behaviour::{Behaviour, ServBehaviour, CliBehaviour, BhError, BhResult, ResponseString};
 
 pub use runner::Runner;
-pub use conn::RespPackets;
 pub use sign::SignKey;
 pub use packets::PubKey;
 pub use error::{Error,Result};

@@ -6,7 +6,7 @@ use {
 
 use snafu::prelude::*;
 
-use crate::{*, conn::RespPackets};
+use crate::*;
 use packets::{ForwardedTcpip,DirectTcpip};
 use channel::ChanOpened;
 use sshnames::*;

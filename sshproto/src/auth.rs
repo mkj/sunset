@@ -10,7 +10,6 @@ use heapless::{String, Vec};
 use crate::*;
 use behaviour::CliBehaviour;
 use client::*;
-use conn::RespPackets;
 use packets::ParseContext;
 use packets::{Packet, Signature, Userauth60};
 use sign::SignKey;

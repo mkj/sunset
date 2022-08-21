@@ -10,7 +10,7 @@ use pretty_hex::PrettyHex;
 
 use crate::{*, channel::ChanEvent};
 use encrypt::KeyState;
-use traffic::Traffic;
+use traffic::{Traffic, TrafSend};
 
 use conn::{Conn, Dispatched, EventMaker, Event};
 use channel::ChanEventMaker;
@@ -95,15 +95,14 @@ impl<'a> Runner<'a> {
             // by the send_packet().
             // After that progress() can perform more send_packet() itself.
 
-            let d = self.conn.handle_payload(payload, seq, &mut self.keys, behaviour).await?;
+            // TODO matt aug: trafsend should be constructed by traffic.split_send() or something.
+            let s = TrafSend::new(&mut self.traffic, &mut self.keys);
+            let d = self.conn.handle_payload(payload, seq, &s, behaviour).await?;
             self.traffic.handled_payload()?;
 
-            if !d.resp.is_empty() || d.event.is_none() {
+            if d.event.is_none() {
                 // switch to using the buffer for output.
                 self.traffic.done_payload()?;
-            }
-            for r in d.resp {
-                r.send_packet(&mut self.traffic, &mut self.keys)?;
             }
 
             d.event

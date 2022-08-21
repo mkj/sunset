@@ -8,9 +8,9 @@ use snafu::prelude::*;
 
 use crate::{*, packets::ChannelOpen};
 use packets::{Packet, PubKey, ParseContext};
+use traffic::TrafSend;
 use sshnames::*;
 use cliauth::CliAuth;
-use conn::RespPackets;
 use sign::SignKey;
 use behaviour::CliBehaviour;
 use heapless::String;
@@ -28,13 +28,13 @@ impl Client {
 
     // pub fn check_hostkey(hostkey: )
 
-    pub(crate) fn auth_success(&mut self, resp: &mut RespPackets<'_>,
+    pub(crate) fn auth_success(&mut self,
         parse_ctx: &mut ParseContext,
+        s: &TrafSend,
         b: &mut dyn CliBehaviour) -> Result<()> {
 
         parse_ctx.cli_auth_type = None;
-        let p: Packet = packets::ServiceRequest { name: SSH_SERVICE_CONNECTION }.into();
-        resp.push(p.into()).trap()?;
+        s.send(packets::ServiceRequest { name: SSH_SERVICE_CONNECTION })?;
         self.auth.success(b)
     }
 

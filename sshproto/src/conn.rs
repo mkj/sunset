@@ -17,19 +17,10 @@ use client::Client;
 use encrypt::KeyState;
 use packets::{Packet,ParseContext};
 use server::Server;
-use traffic::{Traffic,PacketMaker};
+use traffic::{Traffic, TrafSend};
 use channel::{Channels, ChanEvent, ChanEventMaker};
 use config::MAX_CHANNELS;
 use kex::SessId;
-
-// TODO a max value needs to be analysed
-pub(crate) const MAX_RESPONSES: usize = 4;
-
-pub type RespPackets<'a> = heapless::Vec<PacketMaker<'a>, MAX_RESPONSES>;
-
-pub(crate) enum Handled<'a> {
-    Response(RespPackets<'a>),
-}
 
 /// The core state of a SSH instance.
 pub struct Conn<'a> {
@@ -133,13 +124,12 @@ impl<'a> Conn<'a> {
         b: &mut Behaviour<'_>,
     ) -> Result<(), Error> {
         debug!("progress conn state {:?}", self.state);
-        let mut resp = RespPackets::new();
+        let s = TrafSend::new(traffic, keys);
         match self.state {
             ConnState::SendIdent => {
                 traffic.send_version(ident::OUR_VERSION)?;
-                let p = self.kex.make_kexinit(&self.algo_conf);
+                let p = self.kex.send_kexinit(&self.algo_conf, &s)?;
                 // TODO: first_follows would have a second packet here
-                resp.push(p.into()).trap()?;
                 self.state = ConnState::ReceiveIdent
             }
             ConnState::ReceiveIdent => {
@@ -152,7 +142,7 @@ impl<'a> Conn<'a> {
                 // and backpressure. can_output() should have a size check?
                 if traffic.can_output() {
                     if let ClientServer::Client(cli) = &mut self.cliserv {
-                        cli.auth.start(&mut resp, b.client()?).await?;
+                        cli.auth.start(&s, b.client()?).await?;
                     }
                 }
                 // send userauth request
@@ -161,9 +151,6 @@ impl<'a> Conn<'a> {
             _ => {
                 // TODO
             }
-        }
-        for r in resp {
-            r.send_packet(traffic, keys)?;
         }
 
         // TODO: if keys.seq > MAX_REKEY then we must rekey for security.
@@ -185,30 +172,27 @@ impl<'a> Conn<'a> {
     /// after `handle_payload()` runs.
     pub(crate) async fn handle_payload<'p>(
         &mut self, payload: &'p [u8], seq: u32,
-        keys: &mut KeyState, b: &mut Behaviour<'_>,
-    ) -> Result<Dispatched<'_>, Error> {
+        s: &TrafSend<'_>,
+        b: &mut Behaviour<'_>,
+    ) -> Result<Dispatched, Error> {
         let r = sshwire::packet_from_bytes(payload, &self.parse_ctx);
         match r {
-            Ok(p) => self.dispatch_packet(p, keys, b).await,
+            Ok(p) => self.dispatch_packet(p, s, b).await,
             Err(Error::UnknownPacket { number }) => {
                 trace!("Unimplemented packet type {number}");
-                let p: Packet = packets::Unimplemented { seq }.into();
-                let mut resp = RespPackets::new();
-                // unwrap is OK, single packet has space
-                resp.push(p.into()).unwrap();
-                Ok(Dispatched { resp, event: None })
+                s.send(packets::Unimplemented { seq })?;
+                Ok(Dispatched { event: None })
             }
             Err(e) => return Err(e),
         }
     }
 
     async fn dispatch_packet<'p>(
-        &mut self, packet: Packet<'p>, keys: &mut KeyState, b: &mut Behaviour<'_>,
-    ) -> Result<Dispatched<'_>, Error> {
+        &mut self, packet: Packet<'p>, s: &TrafSend<'_>, b: &mut Behaviour<'_>,
+    ) -> Result<Dispatched, Error> {
         // TODO: perhaps could consolidate packet allowed checks into a separate function
         // to run first?
         trace!("Incoming {packet:#?}");
-        let mut resp = RespPackets::new();
         let mut event = None;
         match packet {
             Packet::KexInit(_) => {
@@ -220,14 +204,12 @@ impl<'a> Conn<'a> {
                     output: None,
                 };
                 let r = self.kex.handle_kexinit(
+                    &packet,
                     self.cliserv.is_client(),
                     &self.algo_conf,
                     &self.remote_version,
-                    &packet,
+                    s,
                 )?;
-                if let Some(r) = r {
-                    resp.push(r.into()).trap()?;
-                }
             }
             Packet::KexDHInit(p) => {
                 match self.state {
@@ -241,9 +223,7 @@ impl<'a> Conn<'a> {
                         } else {
                             let kex =
                                 core::mem::replace(&mut self.kex, kex::Kex::new()?);
-                            *output = Some(kex.handle_kexdhinit(&p, &self.sess_id)?);
-                            let reply = output.as_mut().trap()?.make_kexdhreply(b.server()?).await?;
-                            resp.push(reply.into()).trap()?;
+                            *output = Some(kex.handle_kexdhinit(&p, &self.sess_id, s, b.server()?)?);
                         }
                     }
                     _ => return Err(Error::PacketWrong),
@@ -258,8 +238,7 @@ impl<'a> Conn<'a> {
                             } else {
                                 let kex =
                                     core::mem::replace(&mut self.kex, kex::Kex::new()?);
-                                *output = Some(kex.handle_kexdhreply(&p, &self.sess_id, b.client()?).await?);
-                                resp.push(Packet::NewKeys(packets::NewKeys {}).into()).trap()?;
+                                *output = Some(kex.handle_kexdhreply(&p, &self.sess_id, s, b.client()?).await?);
                             }
                         } else {
                             // TODO: client/server validity checks should move somewhere more general
@@ -274,7 +253,7 @@ impl<'a> Conn<'a> {
                     ConnState::InKex { done_auth, ref mut output } => {
                         // NewKeys shouldn't be received before kexdhinit/kexdhreply
                         let output = output.take().ok_or(Error::PacketWrong)?;
-                        keys.rekey(output.keys);
+                        s.rekey(output.keys);
                         self.sess_id.get_or_insert(output.h);
                         self.state = if done_auth {
                             ConnState::Authed
@@ -313,7 +292,7 @@ impl<'a> Conn<'a> {
             Packet::UserauthFailure(p) => {
                 // TODO: client only
                 if let ClientServer::Client(cli) = &mut self.cliserv {
-                    cli.auth.failure(&p, b.client()?, &mut resp, &mut self.parse_ctx).await?;
+                    cli.auth.failure(&p, &mut self.parse_ctx, s, b.client()?).await?;
                 } else {
                     debug!("Received UserauthFailure as a server");
                     return Err(Error::SSHProtoError)
@@ -324,7 +303,7 @@ impl<'a> Conn<'a> {
                 if let ClientServer::Client(cli) = &mut self.cliserv {
                     if matches!(self.state, ConnState::PreAuth) {
                         self.state = ConnState::Authed;
-                        cli.auth_success(&mut resp, &mut self.parse_ctx, b.client()?)?;
+                        cli.auth_success(&mut self.parse_ctx, s, b.client()?)?;
                         event = Some(EventMaker::CliAuthed);
                     } else {
                         debug!("Received UserauthSuccess unrequested")
@@ -346,7 +325,7 @@ impl<'a> Conn<'a> {
             Packet::Userauth60(p) => {
                 // TODO: client only
                 if let ClientServer::Client(cli) = &mut self.cliserv {
-                    cli.auth.auth60(&p, &mut resp, self.sess_id.as_ref().trap()?, &mut self.parse_ctx).await?;
+                    cli.auth.auth60(&p, self.sess_id.as_ref().trap()?, &mut self.parse_ctx, s).await?;
                 } else {
                     debug!("Received userauth60 as a server");
                     return Err(Error::SSHProtoError)
@@ -365,11 +344,11 @@ impl<'a> Conn<'a> {
             | Packet::ChannelFailure(_)
             // TODO: maybe needs a conn or cliserv argument.
             => {
-                let chev = self.channels.dispatch(packet, &mut resp, b).await?;
+                let chev = self.channels.dispatch(packet, s, b).await?;
                 event = chev.map(|c| EventMaker::Channel(c))
            }
         };
-        Ok(Dispatched { resp, event })
+        Ok(Dispatched { event })
     }
 
     /// creates an `Event` that borrows data from the payload. Some `Event` variants don't
@@ -394,13 +373,8 @@ impl<'a> Conn<'a> {
 
 }
 
-// pub(crate) struct Dispatched<'r, 'e> {
-//     pub resp: RespPackets<'r>,
-//     pub event: Option<Event<'e>>,
-// }
-
-pub(crate) struct Dispatched<'r> {
-    pub resp: RespPackets<'r>,
+// TODO: delete this
+pub(crate) struct Dispatched {
     pub event: Option<EventMaker>,
 }
 
