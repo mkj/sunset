@@ -134,15 +134,15 @@ impl CliAuth {
         &mut self,
         b: &mut CliBehaviour<'_>,
     ) -> Result<Option<Req>> {
-        let pk = b.next_authkey().await.map_err(|_| {
+        let k = b.next_authkey().await.map_err(|_| {
             self.try_pubkey = false;
             Error::BehaviourError { msg: "next_pubkey failed TODO" }
         })?;
-        let pk = pk.map(|pk| Req::PubKey { key: pk });
-        if pk.is_none() {
+        let k = k.map(|k| Req::PubKey { key: k });
+        if k.is_none() {
             self.try_pubkey = false;
         }
-        Ok(pk)
+        Ok(k)
     }
 
     pub fn auth_sig_msg(
@@ -173,7 +173,7 @@ impl CliAuth {
             };
             let mut ctx = ParseContext::default();
             ctx.method_pubkey_force_sig_bool = true;
-            key.sign_encode(&msg, Some(&ctx))
+            key.sign(&msg, Some(&ctx))
         } else {
             Err(Error::bug())
         }
