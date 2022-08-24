@@ -17,7 +17,7 @@ use client::Client;
 use encrypt::KeyState;
 use packets::{Packet,ParseContext};
 use server::Server;
-use traffic::{Traffic, TrafSend};
+use traffic::TrafSend;
 use channel::{Channels, ChanEvent, ChanEventMaker};
 use config::MAX_CHANNELS;
 use kex::SessId;
@@ -120,15 +120,15 @@ impl<'a> Conn<'a> {
 
     /// Updates `ConnState` and sends any packets required to progress the connection state.
     pub(crate) async fn progress<'b>(
-        &mut self, traffic: &mut Traffic<'b>, keys: &mut KeyState,
+        &mut self,
+        s: &mut TrafSend<'_>,
         b: &mut Behaviour<'_>,
     ) -> Result<(), Error> {
         debug!("progress conn state {:?}", self.state);
-        let s = TrafSend::new(traffic, keys);
         match self.state {
             ConnState::SendIdent => {
-                traffic.send_version(ident::OUR_VERSION)?;
-                let p = self.kex.send_kexinit(&self.algo_conf, &s)?;
+                s.send_version(ident::OUR_VERSION)?;
+                let p = self.kex.send_kexinit(&self.algo_conf, s)?;
                 // TODO: first_follows would have a second packet here
                 self.state = ConnState::ReceiveIdent
             }
@@ -140,9 +140,9 @@ impl<'a> Conn<'a> {
             ConnState::PreAuth => {
                 // TODO. need to figure how we'll do "unbounded" responses
                 // and backpressure. can_output() should have a size check?
-                if traffic.can_output() {
+                if s.can_output() {
                     if let ClientServer::Client(cli) = &mut self.cliserv {
-                        cli.auth.start(&s, b.client()?).await?;
+                        cli.auth.start(s, b.client()?).await?;
                     }
                 }
                 // send userauth request
@@ -167,12 +167,12 @@ impl<'a> Conn<'a> {
         }
     }
 
-    /// Consumes an input payload which is a view into [`traffic::Traffic::buf`].
+    /// Consumes an input payload which is a view into [`traffic::Traffic::rxbuf`].
     /// We queue response packets that can be sent (written into the same buffer)
     /// after `handle_payload()` runs.
     pub(crate) async fn handle_payload<'p>(
         &mut self, payload: &'p [u8], seq: u32,
-        s: &TrafSend<'_>,
+        s: &mut TrafSend<'_>,
         b: &mut Behaviour<'_>,
     ) -> Result<Dispatched, Error> {
         let r = sshwire::packet_from_bytes(payload, &self.parse_ctx);
@@ -188,7 +188,7 @@ impl<'a> Conn<'a> {
     }
 
     async fn dispatch_packet<'p>(
-        &mut self, packet: Packet<'p>, s: &TrafSend<'_>, b: &mut Behaviour<'_>,
+        &mut self, packet: Packet<'p>, s: &mut TrafSend<'_>, b: &mut Behaviour<'_>,
     ) -> Result<Dispatched, Error> {
         // TODO: perhaps could consolidate packet allowed checks into a separate function
         // to run first?

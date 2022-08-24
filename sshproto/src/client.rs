@@ -30,7 +30,7 @@ impl Client {
 
     pub(crate) fn auth_success(&mut self,
         parse_ctx: &mut ParseContext,
-        s: &TrafSend,
+        s: &mut TrafSend,
         b: &mut dyn CliBehaviour) -> Result<()> {
 
         parse_ctx.cli_auth_type = None;

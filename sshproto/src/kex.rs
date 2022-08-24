@@ -202,7 +202,7 @@ impl Kex {
     pub fn handle_kexinit(
         &mut self, p: &packets::Packet, is_client: bool, algo_conf: &AlgoConfig,
         remote_version: &RemoteVersion,
-        s: &TrafSend,
+        s: &mut TrafSend,
     ) -> Result<()> {
         let remote_kexinit =
             if let Packet::KexInit(k) = p { k } else { return Err(Error::bug()) };
@@ -229,8 +229,8 @@ impl Kex {
         }
     }
 
-    pub fn send_kexinit<'a>(&self, conf: &'a AlgoConfig, s: &TrafSend) -> Result<()> {
-        s.send(packets::KexInit {
+    fn make_kexinit<'a>(&self, conf: &'a AlgoConfig) -> Packet<'a> {
+        packets::KexInit {
             cookie: self.our_cookie,
             kex: (&conf.kexs).into(),
             hostkey: (&conf.hostsig).into(),
@@ -244,7 +244,11 @@ impl Kex {
             lang_s2c: (&EMPTY_LOCALNAMES).into(),
             first_follows: false,
             reserved: 0,
-        })
+        }.into()
+    }
+
+    pub fn send_kexinit(&self, conf: &AlgoConfig, s: &mut TrafSend) -> Result<()> {
+        s.send(self.make_kexinit(conf))
     }
 
     fn make_kexdhinit(&self) -> Result<Packet> {
@@ -256,9 +260,9 @@ impl Kex {
     }
 
     // returns kex output, consumes self.
-    pub fn handle_kexdhinit<'a>(
+    pub fn handle_kexdhinit(
         self, p: &packets::KexDHInit, sess_id: &Option<SessId>,
-        s: &TrafSend, b: &mut dyn ServBehaviour,
+        s: &mut TrafSend, b: &mut dyn ServBehaviour,
     ) -> Result<KexOutput> {
         if self.algos.as_ref().trap()?.is_client {
             return Err(Error::bug());
@@ -272,7 +276,7 @@ impl Kex {
     // consumes self.
     pub async fn handle_kexdhreply<'f>(
         self, p: &packets::KexDHReply<'f>, sess_id: &Option<SessId>,
-        s: &TrafSend<'_>,
+        s: &mut TrafSend<'_>,
         b: &mut dyn CliBehaviour,
     ) -> Result<KexOutput> {
         if !self.algos.as_ref().trap()?.is_client {
@@ -442,7 +446,7 @@ impl SharedSecret {
     // server only. consumes kex.
     fn handle_kexdhinit<'a>(
         mut kex: Kex, p: &packets::KexDHInit, sess_id: &Option<SessId>,
-        s: &TrafSend, b: &mut dyn ServBehaviour,
+        s: &mut TrafSend, b: &mut dyn ServBehaviour,
     ) -> Result<KexOutput> {
         // let mut algos = kex.algos.take().trap()?;
         let mut algos = kex.algos.trap()?;
@@ -450,29 +454,28 @@ impl SharedSecret {
         // TODO
         let fake_hostkey = PubKey::Ed25519(packets::Ed25519PubKey{ key: BinString(&[]) });
         kex_hash.prefinish(&fake_hostkey, p.q_c.0, algos.kex.pubkey())?;
-        let (kex_pub, kex_out) = match algos.kex {
-            SharedSecret::KexCurve25519(ref k) => {
-                let pubkey: salty::agreement::PublicKey = k.ours.as_ref().trap()?.into();
+        let (kex_out, kex_pub) = match algos.kex {
+            SharedSecret::KexCurve25519(_) => {
                 let kex_out = KexCurve25519::secret(&mut algos, p.q_c.0, kex_hash, sess_id)?;
-                (&pubkey.to_bytes(), kex_out)
+                (kex_out, algos.kex.pubkey())
             }
         };
 
-        kex.send_kexdhreply(kex_pub, s, b)?;
+        Self::send_kexdhreply(&kex_out, kex_pub, algos.hostsig, s, b)?;
         Ok(kex_out)
     }
 
     // server only
-    pub fn send_kexdhreply(&self, kex_pub: &[u8], s: &TrafSend, b: &mut dyn ServBehaviour) -> Result<()> {
+    pub fn send_kexdhreply(ko: &KexOutput, kex_pub: &[u8], sig_type: SigType, s: &mut TrafSend, b: &mut dyn ServBehaviour) -> Result<()> {
         let q_s = BinString(kex_pub);
 
         // hostkeys list must contain the signature type
-        let key = b.hostkeys()?.iter().find(|k| k.can_sign(&self.algos.hostsig)).trap()?;
+        let key = b.hostkeys()?.iter().find(|k| k.can_sign(&sig_type)).trap()?;
         let k_s = Blob(key.pubkey());
-        self.sig = Some(key.sign(&self.h.as_slice(), None)?);
-        let sig: Signature = self.sig.as_ref().unwrap().into();
+        let sig = key.sign(&ko.h.as_slice(), None)?;
+        let sig: Signature = (&sig).into();
         let sig = Blob(sig);
-        Ok(packets::KexDHReply { k_s, q_s, sig }.into())
+        s.send(packets::KexDHReply { k_s, q_s, sig })
     }
 
     fn pubkey(&self) -> &[u8] {
@@ -485,21 +488,11 @@ impl SharedSecret {
 pub(crate) struct KexOutput {
     pub h: SessId,
     pub keys: Keys,
-
-    // storage for kex packet reply content that outlives Kex
-    // in make_kexdhreply().
-
-    /// ephemeral public key octet string
-    kex_pub: Option<[u8; 32]>,
-    // the negotiated signature type
-    sig_type: SigType,
-    sig: Option<sign::OwnedSig>,
 }
 
 impl fmt::Debug for KexOutput {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("KexOutput")
-            .field("kex_pub", &self.kex_pub.is_some())
             .finish_non_exhaustive()
     }
 }
@@ -519,7 +512,9 @@ impl<'a> KexOutput {
 }
 
 pub(crate) struct KexCurve25519 {
+    // Initialised in `new()`, cleared after deriving the secret
     ours: Option<salty::agreement::SecretKey>,
+    // TODO: it would be nice to avoid having to store this separately, but seems difficult
     pubkey: [u8; 32],
 }
 
@@ -537,17 +532,17 @@ impl KexCurve25519 {
         let mut s = [0u8; 32];
         random::fill_random(s.as_mut_slice())?;
         // TODO: check that pure random bytes are OK
-        let ours = salty::agreement::SecretKey::from_seed(&s);
+        let ours = salty::agreement::SecretKey::from_seed(&mut s);
         let pubkey: salty::agreement::PublicKey = (&ours).into();
         let pubkey = pubkey.to_bytes();
         Ok(KexCurve25519 { ours: Some(ours), pubkey })
     }
 
-    fn pubkey<'a>(&'a self) -> &'a [u8] {
-        self.pubkey.as_slice()
+    fn pubkey(&self) -> &[u8] {
+        &self.pubkey
     }
 
-    fn secret<'a>(
+    fn secret(
         algos: &mut Algos, theirs: &[u8], kex_hash: KexHash,
         sess_id: &Option<SessId>,
     ) -> Result<KexOutput> {
@@ -649,6 +644,26 @@ mod tests {
         }
     }
 
+    // struct BlankTrafSend {
+    //     buf: Vec<u8>,
+    //     keys: encrypt::KeyState,
+    // }
+
+    // impl BlankTrafSend {
+    //     fn new() -> Self {
+    //         Self {
+    //             buf: vec![0u8, 3000],
+    //             keys: encrypt::KeyState::new_cleartext(),
+    //         }
+    //     }
+
+    //     fn sender(&mut self) -> traffic::TrafSend {
+    //         let mut t = traffic::TrafOut::new(&mut self.buf);
+    //         t.sender(&mut self.keys)
+    //     }
+    // }
+
+
     #[test]
     fn test_agree_kex() {
         init_test_log();
@@ -679,12 +694,18 @@ mod tests {
         let ci = cli.make_kexinit(&cli_conf);
         let ci = reencode(&mut bufc, ci, &ctx);
 
-        serv.handle_kexinit(false, &serv_conf, &cli_version, &ci).unwrap();
-        cli.handle_kexinit(true, &cli_conf, &serv_version, &si).unwrap();
+        // TODO fix this
 
-        let ci = cli.make_kexdhinit().unwrap();
-        let ci = if let Packet::KexDHInit(k) = ci { k } else { panic!() };
-        let sout = serv.handle_kexdhinit(&ci, &None).unwrap();
+        // let ts = BlankTrafSend::new();
+        // let s = ts.sender();
+        // serv.handle_kexinit(&ci, false, &serv_conf, &cli_version, &mut s).unwrap();
+        // cli.handle_kexinit(&si, true, &cli_conf, &serv_version, &mut s).unwrap();
+
+        // let ci = cli.make_kexdhinit().unwrap();
+        // let ci = if let Packet::KexDHInit(k) = ci { k } else { panic!() };
+        // let sout = serv.handle_kexdhinit(&ci, &None, &mut s, sb).unwrap();
+
+
         // let kexreply = sout.make_kexdhreply(sb);
 
         // let kexreply =

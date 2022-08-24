@@ -10,7 +10,7 @@ use pretty_hex::PrettyHex;
 
 use crate::{*, channel::ChanEvent};
 use encrypt::KeyState;
-use traffic::{Traffic, TrafSend};
+use traffic::{TrafIn, TrafOut, TrafSend};
 
 use conn::{Conn, Dispatched, EventMaker, Event};
 use channel::ChanEventMaker;
@@ -18,8 +18,10 @@ use channel::ChanEventMaker;
 pub struct Runner<'a> {
     conn: Conn<'a>,
 
-    /// Binary packet handling to and from the network buffer
-    traffic: Traffic<'a>,
+    /// Binary packet handling from the network buffer
+    traf_in: TrafIn<'a>,
+    /// Binary packet handling to the network buffer
+    traf_out: TrafOut<'a>,
 
     /// Current encryption/integrity keys
     keys: KeyState,
@@ -37,7 +39,8 @@ impl<'a> Runner<'a> {
         let conn = Conn::new_client()?;
         let runner = Runner {
             conn,
-            traffic: traffic::Traffic::new(outbuf, inbuf),
+            traf_in: TrafIn::new(inbuf),
+            traf_out: TrafOut::new(outbuf),
             keys: KeyState::new_cleartext(),
             output_waker: None,
             input_waker: None,
@@ -53,7 +56,8 @@ impl<'a> Runner<'a> {
         let conn = Conn::new_server()?;
         let runner = Runner {
             conn,
-            traffic: traffic::Traffic::new(outbuf, inbuf),
+            traf_in: TrafIn::new(inbuf),
+            traf_out: TrafOut::new(outbuf),
             keys: KeyState::new_cleartext(),
             output_waker: None,
             input_waker: None,
@@ -63,7 +67,7 @@ impl<'a> Runner<'a> {
     }
 
     pub fn input(&mut self, buf: &[u8]) -> Result<usize, Error> {
-        self.traffic.input(
+        self.traf_in.input(
             &mut self.keys,
             &mut self.conn.remote_version,
             buf,
@@ -72,7 +76,7 @@ impl<'a> Runner<'a> {
 
     /// Write any pending output to the wire, returning the size written
     pub fn output(&mut self, buf: &mut [u8]) -> Result<usize, Error> {
-        let r = self.traffic.output(buf);
+        let r = self.traf_out.output(buf);
         if r > 0 {
             trace!("output() wake");
             self.wake();
@@ -87,7 +91,8 @@ impl<'a> Runner<'a> {
     /// event to the application.
     /// [`done_payload()`] must be called after any `Ok` result.
     pub async fn progress<'f>(&'f mut self, behaviour: &mut Behaviour<'_>) -> Result<Option<Event<'f>>, Error> {
-        let em = if let Some((payload, seq)) = self.traffic.payload() {
+        let mut s = self.traf_out.sender(&mut self.keys);
+        let em = if let Some((payload, seq)) = self.traf_in.payload() {
             // Lifetimes here are a bit subtle.
             // `payload` has self.traffic lifetime, used until `handle_payload`
             // completes.
@@ -95,14 +100,12 @@ impl<'a> Runner<'a> {
             // by the send_packet().
             // After that progress() can perform more send_packet() itself.
 
-            // TODO matt aug: trafsend should be constructed by traffic.split_send() or something.
-            let s = TrafSend::new(&mut self.traffic, &mut self.keys);
-            let d = self.conn.handle_payload(payload, seq, &s, behaviour).await?;
-            self.traffic.handled_payload()?;
+            let d = self.conn.handle_payload(payload, seq, &mut s, behaviour).await?;
+            self.traf_in.handled_payload()?;
 
             if d.event.is_none() {
                 // switch to using the buffer for output.
-                self.traffic.done_payload()?;
+                self.traf_in.done_payload()?;
             }
 
             d.event
@@ -121,20 +124,19 @@ impl<'a> Runner<'a> {
             match em {
                 EventMaker::Channel(ChanEventMaker::DataIn(di)) => {
                     trace!("chanmaaker {di:?}");
-                    self.traffic.done_payload()?;
-                    self.traffic.set_channel_input(di)?;
+                    self.traf_in.done_payload()?;
+                    self.traf_in.set_channel_input(di)?;
                     // TODO: channel wakers
                     None
                 }
                 _ => {
                     // Some(payload) is only required for some variants in make_event()
-                    let payload = self.traffic.payload_reborrow();
-                    self.conn.make_event(payload, em)?
+                    panic!("delete this codepath")
                 }
             }
         } else {
             trace!("no em, conn progress");
-            self.conn.progress(&mut self.traffic, &mut self.keys, behaviour).await?;
+            self.conn.progress(&mut s, behaviour).await?;
             self.wake();
             None
         };
@@ -144,7 +146,7 @@ impl<'a> Runner<'a> {
     }
 
     pub fn done_payload(&mut self) -> Result<()> {
-        self.traffic.done_payload()?;
+        self.traf_in.done_payload()?;
         self.wake();
         Ok(())
     }
@@ -184,7 +186,7 @@ impl<'a> Runner<'a> {
         }
         let (ch, p) = self.conn.channels.open(packets::ChannelOpenType::Session, init_req)?;
         let chan = ch.number();
-        self.traffic.send_packet(p, &mut self.keys)?;
+        self.traf_out.send_packet(p, &mut self.keys)?;
         self.wake();
         Ok(chan)
     }
@@ -207,7 +209,7 @@ impl<'a> Runner<'a> {
         let len = len.min(buf.len());
 
         let p = self.conn.channels.send_data(chan, ext, &buf[..len])?;
-        self.traffic.send_packet(p, &mut self.keys)?;
+        self.traf_out.send_packet(p, &mut self.keys)?;
         self.wake();
         Ok(Some(len))
     }
@@ -220,11 +222,11 @@ impl<'a> Runner<'a> {
         buf: &mut [u8],
     ) -> Result<usize> {
         trace!("runner chan in");
-        let (len, complete) = self.traffic.channel_input(chan, ext, buf);
+        let (len, complete) = self.traf_in.channel_input(chan, ext, buf);
         if complete {
             let p = self.conn.channels.finished_input(chan)?;
             if let Some(p) = p {
-                self.traffic.send_packet(p, &mut self.keys)?;
+                self.traf_out.send_packet(p, &mut self.keys)?;
             }
             self.wake();
         }
@@ -232,11 +234,11 @@ impl<'a> Runner<'a> {
     }
 
     pub fn ready_input(&self) -> bool {
-        self.conn.initial_sent() && self.traffic.ready_input()
+        self.conn.initial_sent() && self.traf_in.ready_input()
     }
 
     pub fn output_pending(&self) -> bool {
-        self.traffic.output_pending()
+        self.traf_out.output_pending()
     }
 
     pub fn set_input_waker(&mut self, waker: Waker) {
@@ -248,7 +250,7 @@ impl<'a> Runner<'a> {
     }
 
     pub fn ready_channel_input(&self) -> Option<(u32, Option<u32>)> {
-        self.traffic.ready_channel_input()
+        self.traf_in.ready_channel_input()
     }
 
     pub fn channel_eof(&self, chan: u32) -> bool {
@@ -258,7 +260,7 @@ impl<'a> Runner<'a> {
     // Returns None on channel closed
     pub fn ready_channel_send(&self, chan: u32) -> Option<usize> {
         // minimum of buffer space and channel window available
-        let buf_space = self.traffic.send_allowed(&self.keys);
+        let buf_space = self.traf_out.send_allowed(&self.keys);
         self.conn.channels.send_allowed(chan).map(|s| s.min(buf_space))
     }
 

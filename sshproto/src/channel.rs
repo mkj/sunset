@@ -197,7 +197,7 @@ impl Channels {
     }
 
     fn dispatch_open(&mut self, p: &ChannelOpen<'_>,
-        s: &TrafSend,
+        s: &mut TrafSend,
         b: &mut Behaviour<'_>,
         ) -> Result<()> {
 
@@ -218,7 +218,7 @@ impl Channels {
 
     // the caller will send failure messages if required
     fn dispatch_open_inner(&mut self, p: &ChannelOpen<'_>,
-        s: &TrafSend,
+        s: &mut TrafSend,
         b: &mut Behaviour<'_>,
         ) -> Result<(), DispatchOpenError> {
 
@@ -277,7 +277,7 @@ impl Channels {
 
     pub fn dispatch_request(&mut self,
         p: &packets::ChannelRequest,
-        _s: &TrafSend,
+        _s: &mut TrafSend,
         _b: &mut Behaviour<'_>,
         ) -> Result<()> {
             let ch = match self.get(p.num) {
@@ -299,7 +299,7 @@ impl Channels {
     pub async fn dispatch(
         &mut self,
         packet: Packet<'_>,
-        s: &TrafSend<'_>,
+        s: &mut TrafSend<'_>,
         b: &mut Behaviour<'_>,
     ) -> Result<Option<ChanEventMaker>> {
         trace!("chan dispatch");
@@ -576,7 +576,7 @@ impl Channel {
         }
     }
 
-    fn request(&mut self, req: ReqDetails, s: &TrafSend) -> Result<()> {
+    fn request(&mut self, req: ReqDetails, s: &mut TrafSend) -> Result<()> {
         let num = self.send.as_ref().trap()?.num;
         let r = Req { num, details: req };
         s.send(r.packet()?)
