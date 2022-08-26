@@ -10,6 +10,7 @@ use heapless::{Deque, String, Vec};
 
 use crate::*;
 use config::*;
+use conn::Dispatched;
 use packets::{ChannelReqType, ChannelOpenFailure, ChannelRequest, Packet, ChannelOpen, ChannelOpenType, ChannelData, ChannelDataExt};
 use traffic::TrafSend;
 use sshwire::{BinString, TextString};
@@ -293,20 +294,18 @@ impl Channels {
             Ok(())
     }
 
-    /// Incoming packet handling
-    // TODO: protocol errors etc should perhaps be less fatal,
-    // ssh implementations are usually imperfect.
-    pub async fn dispatch(
+    // Some returned errors will be caught by caller and returned as SSH messages
+    async fn dispatch_inner(
         &mut self,
         packet: Packet<'_>,
         s: &mut TrafSend<'_>,
         b: &mut Behaviour<'_>,
-    ) -> Result<Option<ChanEventMaker>> {
+    ) -> Result<Dispatched> {
         trace!("chan dispatch");
+        let mut disp = Dispatched(None);
         let r = match packet {
             Packet::ChannelOpen(p) => {
                 self.dispatch_open(&p, s, b)?;
-                Ok(None)
             }
 
             Packet::ChannelOpenConfirmation(p) => {
@@ -327,9 +326,8 @@ impl Channels {
                             }
                             ch.state = ChanState::Normal;
                         }
-                        Ok(None)
                     }
-                    _ => Err(Error::SSHProtoError),
+                    _ => return Err(Error::SSHProtoError),
                 }
             }
 
@@ -337,17 +335,15 @@ impl Channels {
                 let ch = self.get(p.num)?;
                 if ch.send.is_some() {
                     // TODO: or just warn?
-                    Err(Error::SSHProtoError)
+                    return Err(Error::SSHProtoError)
                 } else {
                     self.remove(p.num)?;
                     // TODO event
-                    Ok(None)
                 }
             }
             Packet::ChannelWindowAdjust(p) => {
                 let send = self.get_mut(p.num)?.send.as_mut().trap()?;
                 send.window = send.window.saturating_add(p.adjust as usize);
-                Ok(None)
             }
             Packet::ChannelData(p) => {
                 self.get(p.num)?;
@@ -357,7 +353,7 @@ impl Channels {
                 }
                 self.pending_input = Some(PendInput { chan: p.num, len: p.data.0.len() });
                 let di = DataIn { num: p.num, ext: None, offset: p.data_offset(), len: p.data.0.len() };
-                Ok(Some(ChanEventMaker::DataIn(di)))
+                disp = Dispatched(Some(di));
             }
             Packet::ChannelDataExt(p) => {
                 self.get(p.num)?;
@@ -368,38 +364,48 @@ impl Channels {
                 self.pending_input = Some(PendInput { chan: p.num, len: p.data.0.len() });
                 let di = DataIn { num: p.num, ext: Some(p.code), offset: p.data_offset(), len: p.data.0.len() };
                 trace!("{di:?}");
-                Ok(Some(ChanEventMaker::DataIn(di)))
             }
             Packet::ChannelEof(p) => {
                 self.get(p.num)?;
-                Ok(Some(ChanEventMaker::Eof { num: p.num }))
             }
             Packet::ChannelClose(_p) => {
                 // todo!();
                 error!("ignoring channel close");
-                Ok(None)
             }
             Packet::ChannelRequest(p) => {
                 self.dispatch_request(&p, s, b)?;
-                Ok(None)
             }
             Packet::ChannelSuccess(_p) => {
                 trace!("channel success, TODO");
-                Ok(None)
             }
             Packet::ChannelFailure(_p) => {
                 todo!();
             }
-            _ => Error::bug_msg("unreachable")
+            _ => Error::bug_msg("unreachable")?
         };
+        Ok(disp)
+    }
+
+    /// Incoming packet handling
+    // TODO: protocol errors etc should perhaps be less fatal,
+    // ssh implementations are usually imperfect.
+    pub async fn dispatch(
+        &mut self,
+        packet: Packet<'_>,
+        s: &mut TrafSend<'_>,
+        b: &mut Behaviour<'_>,
+    ) -> Result<Dispatched> {
+
+        let r = self.dispatch_inner(packet, s, b).await;
+
         match r {
             Err(Error::BadChannel) => {
                 warn!("Ignoring bad channel number");
-                Ok(None)
+                Ok(Dispatched(None))
             }
-            Ok(ev) => Ok(ev),
             // TODO: close channel on error? or on SSHProtoError?
             Err(any) => Err(any),
+            Ok(disp) => Ok(disp),
         }
     }
 }

@@ -405,7 +405,7 @@ impl<'a> TrafOut<'a> {
     }
 
 
-    pub fn sender(&mut self, keys: &'a mut KeyState) -> TrafSend {
+    pub fn sender(&'a mut self, keys: &'a mut KeyState) -> TrafSend {
         TrafSend::new(self, keys)
     }
 

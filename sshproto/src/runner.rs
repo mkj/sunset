@@ -12,7 +12,7 @@ use crate::{*, channel::ChanEvent};
 use encrypt::KeyState;
 use traffic::{TrafIn, TrafOut, TrafSend};
 
-use conn::{Conn, Dispatched, EventMaker, Event};
+use conn::{Conn, Dispatched};
 use channel::ChanEventMaker;
 
 pub struct Runner<'a> {
@@ -84,15 +84,23 @@ impl<'a> Runner<'a> {
         Ok(r)
     }
 
+    pub async fn progress(&mut self, b: &mut Behaviour<'_>) -> Result<()> {
+        let done = self.progress_inner(b).await?;
+
+        if done {
+            self.wake();
+        }
+        Ok(())
+    }
+
 
     /// Drives connection progress, handling received payload and sending
     /// other packets as required. This must be polled/awaited regularly.
     /// Optionally returns `Event` which provides channel or session
     /// event to the application.
     /// [`done_payload()`] must be called after any `Ok` result.
-    pub async fn progress<'f>(&'f mut self, behaviour: &mut Behaviour<'_>) -> Result<Option<Event<'f>>, Error> {
-        let mut s = self.traf_out.sender(&mut self.keys);
-        let em = if let Some((payload, seq)) = self.traf_in.payload() {
+    pub async fn progress_inner(&'a mut self, behaviour: &mut Behaviour<'_>) -> Result<bool> {
+        if let Some((payload, seq)) = self.traf_in.payload() {
             // Lifetimes here are a bit subtle.
             // `payload` has self.traffic lifetime, used until `handle_payload`
             // completes.
@@ -100,49 +108,21 @@ impl<'a> Runner<'a> {
             // by the send_packet().
             // After that progress() can perform more send_packet() itself.
 
+            let mut s = self.traf_out.sender(&mut self.keys);
+
             let d = self.conn.handle_payload(payload, seq, &mut s, behaviour).await?;
-            self.traf_in.handled_payload()?;
 
-            if d.event.is_none() {
-                // switch to using the buffer for output.
+            if let Some(d) = d.0 {
+                self.traf_in.handled_payload()?;
+                self.traf_in.set_channel_input(d)?;
+                false
+            } else {
                 self.traf_in.done_payload()?;
+                self.conn.progress(&mut s, behaviour).await?;
+                true
             }
 
-            d.event
-        } else {
-            None
-        };
-
-        // We split return values into Event/EventMaker to work around
-        // the payload borrow range extending too long.
-        // Polonius would solve this. We can't use polonius-the-crab
-        // because we're calling async functions.
-        // "Borrow checker extends borrow range in code with early return"
-        // https://github.com/rust-lang/rust/issues/54663
-        let ev = if let Some(em) = em {
-            trace!("em");
-            match em {
-                EventMaker::Channel(ChanEventMaker::DataIn(di)) => {
-                    trace!("chanmaaker {di:?}");
-                    self.traf_in.done_payload()?;
-                    self.traf_in.set_channel_input(di)?;
-                    // TODO: channel wakers
-                    None
-                }
-                _ => {
-                    // Some(payload) is only required for some variants in make_event()
-                    panic!("delete this codepath")
-                }
-            }
-        } else {
-            trace!("no em, conn progress");
-            self.conn.progress(&mut s, behaviour).await?;
-            self.wake();
-            None
-        };
-        trace!("prog event {ev:?}");
-
-        Ok(ev)
+        }
     }
 
     pub fn done_payload(&mut self) -> Result<()> {

@@ -96,6 +96,8 @@ pub(crate) enum EventMaker {
     CliAuthed,
 }
 
+pub(crate) struct Dispatched(pub Option<channel::DataIn>);
+
 impl<'a> Conn<'a> {
     pub fn new_client() -> Result<Self> {
         Self::new(ClientServer::Client(client::Client::new()))
@@ -181,7 +183,7 @@ impl<'a> Conn<'a> {
             Err(Error::UnknownPacket { number }) => {
                 trace!("Unimplemented packet type {number}");
                 s.send(packets::Unimplemented { seq })?;
-                Ok(Dispatched { event: None })
+                Ok(Dispatched(None))
             }
             Err(e) => return Err(e),
         }
@@ -193,7 +195,7 @@ impl<'a> Conn<'a> {
         // TODO: perhaps could consolidate packet allowed checks into a separate function
         // to run first?
         trace!("Incoming {packet:#?}");
-        let mut event = None;
+        let mut disp = Dispatched(None);
         match packet {
             Packet::KexInit(_) => {
                 if matches!(self.state, ConnState::InKex { .. }) {
@@ -304,7 +306,6 @@ impl<'a> Conn<'a> {
                     if matches!(self.state, ConnState::PreAuth) {
                         self.state = ConnState::Authed;
                         cli.auth_success(&mut self.parse_ctx, s, b.client()?)?;
-                        event = Some(EventMaker::CliAuthed);
                     } else {
                         debug!("Received UserauthSuccess unrequested")
                     }
@@ -344,38 +345,11 @@ impl<'a> Conn<'a> {
             | Packet::ChannelFailure(_)
             // TODO: maybe needs a conn or cliserv argument.
             => {
-                let chev = self.channels.dispatch(packet, s, b).await?;
-                event = chev.map(|c| EventMaker::Channel(c))
+                disp = self.channels.dispatch(packet, s, b).await?;
            }
         };
-        Ok(Dispatched { event })
+        Ok(disp)
     }
-
-    /// creates an `Event` that borrows data from the payload. Some `Event` variants don't
-    /// require payload data, the payload is not required in that case.
-    /// Those variants are allowed to return `resp` packets from `dispatch()`
-    pub(crate) fn make_event<'p>(&mut self, payload: Option<&'p [u8]>, ev: EventMaker)
-            -> Result<Option<Event<'p>>> {
-        let p = payload.map(|pl| sshwire::packet_from_bytes(pl, &self.parse_ctx)).transpose()?;
-        let r = match ev {
-            EventMaker::Channel(ChanEventMaker::DataIn(_)) => {
-                // caller should have handled it instead
-                return Err(Error::bug())
-            }
-            EventMaker::Channel(cev) => {
-                let c = cev.make(p.trap()?);
-                c.map(|c| Event::Channel(c))
-            }
-            EventMaker::CliAuthed => Some(Event::CliAuthed),
-        };
-        Ok(r)
-    }
-
-}
-
-// TODO: delete this
-pub(crate) struct Dispatched {
-    pub event: Option<EventMaker>,
 }
 
 #[cfg(test)]
