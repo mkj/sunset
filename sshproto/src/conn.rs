@@ -123,7 +123,7 @@ impl<'a> Conn<'a> {
     /// Updates `ConnState` and sends any packets required to progress the connection state.
     pub(crate) async fn progress<'b>(
         &mut self,
-        s: &mut TrafSend<'_>,
+        s: &mut TrafSend<'_, '_>,
         b: &mut Behaviour<'_>,
     ) -> Result<(), Error> {
         debug!("progress conn state {:?}", self.state);
@@ -174,7 +174,7 @@ impl<'a> Conn<'a> {
     /// after `handle_payload()` runs.
     pub(crate) async fn handle_payload<'p>(
         &mut self, payload: &'p [u8], seq: u32,
-        s: &mut TrafSend<'_>,
+        s: &mut TrafSend<'_, '_>,
         b: &mut Behaviour<'_>,
     ) -> Result<Dispatched, Error> {
         let r = sshwire::packet_from_bytes(payload, &self.parse_ctx);
@@ -190,7 +190,7 @@ impl<'a> Conn<'a> {
     }
 
     async fn dispatch_packet<'p>(
-        &mut self, packet: Packet<'p>, s: &mut TrafSend<'_>, b: &mut Behaviour<'_>,
+        &mut self, packet: Packet<'p>, s: &mut TrafSend<'_, '_>, b: &mut Behaviour<'_>,
     ) -> Result<Dispatched, Error> {
         // TODO: perhaps could consolidate packet allowed checks into a separate function
         // to run first?
@@ -350,6 +350,27 @@ impl<'a> Conn<'a> {
         };
         Ok(disp)
     }
+
+    /// creates an `Event` that borrows data from the payload. Some `Event` variants don't
+    /// require payload data, the payload is not required in that case.
+    /// Those variants are allowed to return `resp` packets from `dispatch()`
+    pub(crate) fn make_event<'p>(&mut self, payload: Option<&'p [u8]>, ev: EventMaker)
+            -> Result<Option<Event<'p>>> {
+        let p = payload.map(|pl| sshwire::packet_from_bytes(pl, &self.parse_ctx)).transpose()?;
+        let r = match ev {
+            EventMaker::Channel(ChanEventMaker::DataIn(_)) => {
+                // caller should have handled it instead
+                return Err(Error::bug())
+            }
+            EventMaker::Channel(cev) => {
+                let c = cev.make(p.trap()?);
+                c.map(|c| Event::Channel(c))
+            }
+            EventMaker::CliAuthed => Some(Event::CliAuthed),
+        };
+        Ok(r)
+    }
+
 }
 
 #[cfg(test)]

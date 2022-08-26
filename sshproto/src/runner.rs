@@ -84,22 +84,12 @@ impl<'a> Runner<'a> {
         Ok(r)
     }
 
-    pub async fn progress(&mut self, b: &mut Behaviour<'_>) -> Result<()> {
-        let done = self.progress_inner(b).await?;
-
-        if done {
-            self.wake();
-        }
-        Ok(())
-    }
-
-
     /// Drives connection progress, handling received payload and sending
     /// other packets as required. This must be polled/awaited regularly.
     /// Optionally returns `Event` which provides channel or session
     /// event to the application.
     /// [`done_payload()`] must be called after any `Ok` result.
-    pub async fn progress_inner(&'a mut self, behaviour: &mut Behaviour<'_>) -> Result<bool> {
+    pub async fn progress(&mut self, behaviour: &mut Behaviour<'_>) -> Result<()> {
         if let Some((payload, seq)) = self.traf_in.payload() {
             // Lifetimes here are a bit subtle.
             // `payload` has self.traffic lifetime, used until `handle_payload`
@@ -109,20 +99,19 @@ impl<'a> Runner<'a> {
             // After that progress() can perform more send_packet() itself.
 
             let mut s = self.traf_out.sender(&mut self.keys);
-
             let d = self.conn.handle_payload(payload, seq, &mut s, behaviour).await?;
 
             if let Some(d) = d.0 {
                 self.traf_in.handled_payload()?;
                 self.traf_in.set_channel_input(d)?;
-                false
             } else {
                 self.traf_in.done_payload()?;
                 self.conn.progress(&mut s, behaviour).await?;
-                true
+                self.wake();
             }
-
         }
+
+        Ok(())
     }
 
     pub fn done_payload(&mut self) -> Result<()> {

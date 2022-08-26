@@ -7,7 +7,7 @@ use std::io::Error as IoError;
 use libc::{ioctl, winsize, termios, tcgetattr, tcsetattr };
 
 use door_sshproto as door;
-use door::{Behaviour, AsyncCliBehaviour, Runner, Result, Pty};
+use door::{Behaviour, Runner, Result, Pty};
 use door::config::*;
 use door::packets::WinChange;
 

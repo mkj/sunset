@@ -276,7 +276,7 @@ impl Kex {
     // consumes self.
     pub async fn handle_kexdhreply<'f>(
         self, p: &packets::KexDHReply<'f>, sess_id: &Option<SessId>,
-        s: &mut TrafSend<'_>,
+        s: &mut TrafSend<'_, '_>,
         b: &mut dyn CliBehaviour,
     ) -> Result<KexOutput> {
         if !self.algos.as_ref().trap()?.is_client {

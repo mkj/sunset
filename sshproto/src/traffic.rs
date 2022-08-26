@@ -405,20 +405,20 @@ impl<'a> TrafOut<'a> {
     }
 
 
-    pub fn sender(&'a mut self, keys: &'a mut KeyState) -> TrafSend {
+    pub fn sender<'s>(&'s mut self, keys: &'s mut KeyState) -> TrafSend<'s, 'a> {
         TrafSend::new(self, keys)
     }
 
 }
 
 /// Convenience to pass TrafOut with keys
-pub(crate) struct TrafSend<'a> {
-    keys: &'a mut KeyState,
-    out: &'a mut TrafOut<'a>,
+pub(crate) struct TrafSend<'s, 'a> {
+    out: &'s mut TrafOut<'a>,
+    keys: &'s mut KeyState,
 }
 
-impl<'a> TrafSend<'a> {
-    fn new(out: &'a mut TrafOut<'a>, keys: &'a mut KeyState) -> Self {
+impl<'s, 'a> TrafSend<'s, 'a> {
+    fn new<'f>(out: &'s mut TrafOut<'a>, keys: &'s mut KeyState) -> Self {
         Self {
             out,
             keys,
@@ -442,3 +442,4 @@ impl<'a> TrafSend<'a> {
         self.out.can_output()
     }
 }
+

@@ -298,7 +298,7 @@ impl Channels {
     async fn dispatch_inner(
         &mut self,
         packet: Packet<'_>,
-        s: &mut TrafSend<'_>,
+        s: &mut TrafSend<'_, '_>,
         b: &mut Behaviour<'_>,
     ) -> Result<Dispatched> {
         trace!("chan dispatch");
@@ -392,7 +392,7 @@ impl Channels {
     pub async fn dispatch(
         &mut self,
         packet: Packet<'_>,
-        s: &mut TrafSend<'_>,
+        s: &mut TrafSend<'_, '_>,
         b: &mut Behaviour<'_>,
     ) -> Result<Dispatched> {
 

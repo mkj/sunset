@@ -96,7 +96,7 @@ impl CliAuth {
     // May be called multiple times
     pub async fn start<'b>(
         &'b mut self,
-        s: &mut TrafSend<'_>,
+        s: &mut TrafSend<'_, '_>,
         b: &mut dyn CliBehaviour,
     ) -> Result<()> {
         if let AuthState::Unstarted = self.state {
@@ -182,7 +182,7 @@ impl CliAuth {
         auth60: &packets::Userauth60<'_>,
         sess_id: &SessId,
         parse_ctx: &mut ParseContext,
-        s: &mut TrafSend<'_>,
+        s: &mut TrafSend<'_, '_>,
     ) -> Result<()> {
         parse_ctx.cli_auth_type = None;
 
@@ -197,7 +197,7 @@ impl CliAuth {
         pkok: &UserauthPkOk<'_>,
         sess_id: &SessId,
         parse_ctx: &mut ParseContext,
-        s: &mut TrafSend<'_>,
+        s: &mut TrafSend<'_, '_>,
     ) -> Result<()> {
         // We are only sending keys one at a time so they shouldn't
         // get out of sync. In future we could change it to send
@@ -250,7 +250,7 @@ impl CliAuth {
         &'b mut self,
         failure: &packets::UserauthFailure<'_>,
         parse_ctx: &mut ParseContext,
-        s: &mut TrafSend<'_>,
+        s: &mut TrafSend<'_, '_>,
         b: &mut dyn CliBehaviour,
     ) -> Result<()> {
         parse_ctx.cli_auth_type = None;

@@ -52,7 +52,8 @@ impl<'a> SSHClient<'a> {
         -> Result<Option<R>>
         where F: FnOnce(door::Event) -> Result<Option<R>> {
 
-        self.door.progress(b, f).await
+        let mut b = Behaviour::new_client(b);
+        self.door.progress(&mut b, f).await
     }
 
     // TODO: return a Channel object that gives events like WinChange or exit status

@@ -6,7 +6,7 @@ use core::str::FromStr;
 use door::SignKey;
 use door_sshproto as door;
 use door_sshproto::{BhError, BhResult};
-use door_sshproto::{ChanMsg, ChanMsgDetails, Error, RespPackets, Result, Runner};
+use door_sshproto::{ChanMsg, ChanMsgDetails, Error, Result, Runner};
 
 use std::collections::VecDeque;
 
@@ -37,21 +37,21 @@ impl CmdlineClient {
 
 // #[async_trait(?Send)]
 #[async_trait]
-impl door::AsyncCliBehaviour for CmdlineClient {
-    async fn username(&mut self) -> BhResult<door::ResponseString> {
+impl door::CliBehaviour for CmdlineClient {
+    fn username(&mut self) -> BhResult<door::ResponseString> {
         door::ResponseString::from_str(&self.username).map_err(|_| BhError::Fail)
     }
 
-    async fn valid_hostkey(&mut self, key: &door::PubKey) -> BhResult<bool> {
+    fn valid_hostkey(&mut self, key: &door::PubKey) -> BhResult<bool> {
         trace!("valid_hostkey for {key:?}");
         Ok(true)
     }
 
-    async fn next_authkey(&mut self) -> BhResult<Option<door::SignKey>> {
+    fn next_authkey(&mut self) -> BhResult<Option<door::SignKey>> {
         Ok(self.authkeys.pop_front())
     }
 
-    async fn auth_password(
+    fn auth_password(
         &mut self,
         pwbuf: &mut door::ResponseString,
     ) -> BhResult<bool> {
@@ -68,7 +68,7 @@ impl door::AsyncCliBehaviour for CmdlineClient {
         }
     }
 
-    async fn authenticated(&mut self) {
+    fn authenticated(&mut self) {
         info!("Authentication succeeded");
         self.auth_done = true;
     }
