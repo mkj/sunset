@@ -23,6 +23,7 @@ use door::{Runner, Result, Event, ChanEvent, Behaviour};
 
 use pretty_hex::PrettyHex;
 
+#[derive(Debug)]
 pub(crate) struct Inner<'a> {
     pub runner: Runner<'a>,
 
@@ -62,43 +63,30 @@ impl<'a> AsyncDoor<'a> {
     /// The `f` closure should return `Some` if the result should be returned
     /// from `progress()`, or `None` to not do that.
     /// XXX better docs, perhaps it won't take a closure anyway
-    pub async fn progress<F, R>(&mut self,
-        b: &mut Behaviour<'_>,
-        f: F)
-        -> Result<Option<R>>
-        where F: FnOnce(door::Event) -> Result<Option<R>> {
+    pub async fn progress(&mut self,
+        b: &mut Behaviour<'_>)
+        -> Result<()> {
         trace!("progress");
         let mut wakers = Vec::new();
-        let res = {
+
+        // scoped lock
+        {
             let mut inner = self.inner.lock().await;
+            trace!("locked progress");
             let inner = inner.deref_mut();
-            let ev = inner.runner.progress(b).await?;
-            let r = if let Some(ev) = ev {
-                let r = match ev {
-                    Event::Channel(ChanEvent::Eof { num }) => {
-                        // TODO
-                        Ok(None)
-                    },
-                    _ => f(ev),
-                };
-                trace!("async prog done payload");
-                r
-            } else {
-                Ok(None)
-            };
-            inner.runner.done_payload()?;
+            inner.runner.progress(b).await?;
 
             if let Some(ce) = inner.runner.ready_channel_input() {
                 inner.chan_read_wakers.remove(&ce)
                 .map(|w| wakers.push(w));
             }
 
-            // Pending https://github.com/rust-lang/rust/issues/59618
-            // HashMap::drain_filter
+            // Pending HashMap::drain_filter
+            // https://github.com/rust-lang/rust/issues/59618
             // TODO: untested.
             // TODO: fairness? Also it's not clear whether progress notify
             // will always get woken by runner.wake() to update this...
-            inner.chan_write_wakers.retain(|(ch, ext), w| {
+            inner.chan_write_wakers.retain(|(ch, _ext), w| {
                 match inner.runner.ready_channel_send(*ch) {
                     Some(n) if n > 0 => {
                         wakers.push(w.clone());
@@ -107,25 +95,21 @@ impl<'a> AsyncDoor<'a> {
                     _ => true
                 }
             });
-
-            r
-        };
-        // lock is dropped before waker or notify
+        }
 
         for w in wakers {
             trace!("woken {w:?}");
             w.wake()
         }
 
-        // TODO: currently this is only woken by incoming data, should it
-        // also wake internally from runner or conn? It runs once at start
-        // to kick off the outgoing handshake at least.
-        if let Ok(None) = res {
-            trace!("progress wait");
-            self.progress_notify.notified().await;
-            trace!("progress awaited");
-        }
-        res
+        // // TODO: currently this is only woken by incoming data, should it
+        // // also wake internally from runner or conn? It runs once at start
+        // // to kick off the outgoing handshake at least.
+        trace!("progress wait");
+        self.progress_notify.notified().await;
+        trace!("progress awaited");
+
+        Ok(())
     }
 
     pub async fn with_runner<F, R>(&mut self, f: F) -> R
@@ -147,6 +131,7 @@ pub(crate) fn poll_lock<'a>(inner: Arc<Mutex<Inner<'a>>>, cx: &mut Context<'_>,
         Poll::Ready(_) => None,
         Poll::Pending => Some(g),
     };
+    trace!("poll_lock returned {:?}", p);
     p
 }
 
@@ -207,7 +192,7 @@ impl<'a> AsyncWrite for AsyncDoorSocket<'a> {
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<Result<usize, IoError>> {
-        trace!("poll_write");
+        trace!("poll_write {}", buf.len());
 
         let mut p = poll_lock(self.door.inner.clone(), cx, &mut self.write_lock_fut);
 
@@ -228,6 +213,7 @@ impl<'a> AsyncWrite for AsyncDoorSocket<'a> {
                 .map_err(|e| IoError::new(std::io::ErrorKind::Other, e));
             Poll::Ready(r)
         } else {
+            trace!("not ready");
             runner.set_input_waker(cx.waker().clone());
             Poll::Pending
         };

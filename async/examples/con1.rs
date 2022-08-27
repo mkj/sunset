@@ -162,51 +162,44 @@ async fn run(args: &Args) -> Result<()> {
 
         scope.spawn(async {
             loop {
-                let ev = cli.progress(&mut app, |ev| {
-                    trace!("progress event {ev:?}");
-                    let e = match ev {
-                        Event::CliAuthed => Some(Event::CliAuthed),
-                        _ => None,
-                    };
-                    Ok(e)
-                }).await.context("progress loop")?;
+                cli.progress(&mut app).await.context("progress loop")?;
 
-                match ev {
-                    Some(Event::CliAuthed) => {
-                        let mut raw_pty_guard = None;
-                        info!("Opening a new session channel");
-                        let (mut io, mut errpair) = if wantpty {
-                            raw_pty_guard = Some(raw_pty()?);
-                            let io = cli.open_session_pty(cmd.as_deref()).await
-                                .context("Opening session")?;
-                            (io, None)
-                        } else {
-                            let (io, err) = cli.open_session_nopty(cmd.as_deref()).await
-                                .context("Opening session")?;
-                            let errpair = (err, door_async::stderr()?);
-                            (io, Some(errpair))
-                        };
+                // match ev {
+                //     Some(Event::CliAuthed) => {
+                //         let mut raw_pty_guard = None;
+                //         info!("Opening a new session channel");
+                //         let (mut io, mut errpair) = if wantpty {
+                //             raw_pty_guard = Some(raw_pty()?);
+                //             let io = cli.open_session_pty(cmd.as_deref()).await
+                //                 .context("Opening session")?;
+                //             (io, None)
+                //         } else {
+                //             let (io, err) = cli.open_session_nopty(cmd.as_deref()).await
+                //                 .context("Opening session")?;
+                //             let errpair = (err, door_async::stderr()?);
+                //             (io, Some(errpair))
+                //         };
 
-                        let mut i = door_async::stdin()?;
-                        let mut o = door_async::stdout()?;
-                        let mut io2 = io.clone();
-                        scope.spawn(async move {
-                            moro::async_scope!(|scope| {
-                                scope.spawn(tokio::io::copy(&mut io, &mut o));
-                                scope.spawn(tokio::io::copy(&mut i, &mut io2));
-                                if let Some(ref mut ep) = errpair {
-                                    let (err, e) = ep;
-                                    scope.spawn(tokio::io::copy(err, e));
-                                }
-                            }).await;
-                            drop(raw_pty_guard);
-                            Ok::<_, anyhow::Error>(())
-                        });
-                        // TODO: handle channel completion or open failure
-                    }
-                    Some(_) => unreachable!(),
-                    None => {},
-                }
+                //         let mut i = door_async::stdin()?;
+                //         let mut o = door_async::stdout()?;
+                //         let mut io2 = io.clone();
+                //         scope.spawn(async move {
+                //             moro::async_scope!(|scope| {
+                //                 scope.spawn(tokio::io::copy(&mut io, &mut o));
+                //                 scope.spawn(tokio::io::copy(&mut i, &mut io2));
+                //                 if let Some(ref mut ep) = errpair {
+                //                     let (err, e) = ep;
+                //                     scope.spawn(tokio::io::copy(err, e));
+                //                 }
+                //             }).await;
+                //             drop(raw_pty_guard);
+                //             Ok::<_, anyhow::Error>(())
+                //         });
+                //         // TODO: handle channel completion or open failure
+                //     }
+                //     Some(_) => unreachable!(),
+                //     None => {},
+                // }
             }
             #[allow(unreachable_code)]
             Ok::<_, anyhow::Error>(())

@@ -6,10 +6,11 @@ use {
     log::{debug, error, info, log, trace, warn},
 };
 
-use aes::cipher::{BlockSizeUser, KeyIvInit, KeySizeUser, StreamCipher};
+use aes::{cipher::{BlockSizeUser, KeyIvInit, KeySizeUser, StreamCipher}, Aes256};
 use core::num::Wrapping;
 use pretty_hex::PrettyHex;
 use core::fmt;
+use core::fmt::Debug;
 
 use hmac::{Hmac, Mac};
 use sha2::Digest as Sha2DigestForTrait;
@@ -39,6 +40,7 @@ const MAX_KEY_LEN: usize = 64;
 
 /// Stateful [`Keys`], stores a sequence number as well, a single instance
 /// is kept for the entire session.
+#[derive(Debug)]
 pub(crate) struct KeyState {
     keys: Keys,
     // Packet sequence numbers. These must be transferred to subsequent KeyState
@@ -126,6 +128,7 @@ impl KeyState {
     }
 }
 
+#[derive(Debug)]
 pub(crate) struct Keys {
     pub(crate) enc: EncKey,
     pub(crate) dec: DecKey,
@@ -527,6 +530,17 @@ pub(crate) enum EncKey {
     NoCipher,
 }
 
+impl Debug for EncKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let n = match self {
+            Self::ChaPoly(_) => "ChaPoly",
+            Self::Aes256Ctr(_) => "Aes256Ctr",
+            Self::NoCipher => "NoCipher",
+        };
+        f.write_fmt(format_args!("EncKey::{n}"))
+    }
+}
+
 // TODO: could probably unify EncKey and DecKey as "CipherKey".
 // Ring had sealing/opening keys which are separate, but RustCrypto
 // uses the same structs in both directions.
@@ -567,6 +581,17 @@ pub(crate) enum DecKey {
     // AesGcm256
     // AesCtr256
     NoCipher,
+}
+
+impl Debug for DecKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let n = match self {
+            Self::ChaPoly(_) => "ChaPoly",
+            Self::Aes256Ctr(_) => "Aes256Ctr",
+            Self::NoCipher => "NoCipher",
+        };
+        f.write_fmt(format_args!("DecKey::{n}"))
+    }
 }
 
 impl DecKey {
@@ -640,6 +665,17 @@ pub(crate) enum IntegKey {
     // aesgcm?
     // Sha2Hmac ?
     NoInteg,
+}
+
+impl Debug for IntegKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let n = match self {
+            Self::ChaPoly => "ChaPoly",
+            Self::HmacSha256(_) => "HmacSha256",
+            Self::NoInteg => "NoInteg",
+        };
+        f.write_fmt(format_args!("IntegKey::{n}"))
+    }
 }
 
 impl IntegKey {

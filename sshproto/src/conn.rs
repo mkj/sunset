@@ -161,6 +161,7 @@ impl<'a> Conn<'a> {
     }
 
     pub(crate) fn initial_sent(&self) -> bool {
+        trace!("initial_sent state {:?}", self.state);
         match self.state {
             | ConnState::SendIdent
             | ConnState::SendFirstKexInit

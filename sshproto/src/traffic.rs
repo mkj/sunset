@@ -97,6 +97,7 @@ impl<'a> TrafIn<'a> {
     }
 
     pub fn ready_input(&self) -> bool {
+        trace!("ready_input state {:?}", self.state);
         match self.state {
             RxState::Idle
             | RxState::ReadInitial { .. }

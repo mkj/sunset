@@ -30,6 +30,18 @@ pub struct Runner<'a> {
     input_waker: Option<Waker>,
 }
 
+impl core::fmt::Debug for Runner<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Runner")
+        .field("keys", &self.keys)
+        .field("output_waker", &self.output_waker)
+        .field("input_waker", &self.input_waker)
+        .finish_non_exhaustive()
+    }
+}
+
+
+
 impl<'a> Runner<'a> {
     /// `inbuf` must be sized to fit the largest SSH packet allowed.
     pub fn new_client(
@@ -90,26 +102,24 @@ impl<'a> Runner<'a> {
     /// event to the application.
     /// [`done_payload()`] must be called after any `Ok` result.
     pub async fn progress(&mut self, behaviour: &mut Behaviour<'_>) -> Result<()> {
+        let mut s = self.traf_out.sender(&mut self.keys);
+        // Handle incoming packets
         if let Some((payload, seq)) = self.traf_in.payload() {
-            // Lifetimes here are a bit subtle.
-            // `payload` has self.traffic lifetime, used until `handle_payload`
-            // completes.
-            // The `resp` from handle_payload() references self.conn, consumed
-            // by the send_packet().
-            // After that progress() can perform more send_packet() itself.
-
-            let mut s = self.traf_out.sender(&mut self.keys);
             let d = self.conn.handle_payload(payload, seq, &mut s, behaviour).await?;
 
             if let Some(d) = d.0 {
+                // incoming channel data, we haven't finished with payload
+                trace!("handle_payload chan input");
                 self.traf_in.handled_payload()?;
                 self.traf_in.set_channel_input(d)?;
             } else {
+                // other packets have been completed
+                trace!("handle_payload done");
                 self.traf_in.done_payload()?;
-                self.conn.progress(&mut s, behaviour).await?;
-                self.wake();
             }
         }
+        self.conn.progress(&mut s, behaviour).await?;
+        self.wake();
 
         Ok(())
     }

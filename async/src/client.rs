@@ -46,14 +46,11 @@ impl<'a> SSHClient<'a> {
     /// Takes a closure to run on the "output" of the progress call.
     /// (This output can't be returned directly since it refers
     /// to contents of `Self` and would hit lifetime issues).
-    pub async fn progress<F, R>(&mut self,
-        b: &mut (dyn CliBehaviour+Send),
-        f: F)
-        -> Result<Option<R>>
-        where F: FnOnce(door::Event) -> Result<Option<R>> {
+    pub async fn progress(&mut self,
+        b: &mut (dyn CliBehaviour+Send)) -> Result<()> {
 
         let mut b = Behaviour::new_client(b);
-        self.door.progress(&mut b, f).await
+        self.door.progress(&mut b).await
     }
 
     // TODO: return a Channel object that gives events like WinChange or exit status
