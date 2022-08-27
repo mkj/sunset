@@ -43,7 +43,7 @@ pub enum Behaviour<'a> {
 }
 
 impl<'a> Behaviour<'a> {
-    // TODO take and store a value not a reference
+    // TODO: make these From<>
     pub fn new_client(b: &'a mut (dyn CliBehaviour + Send)) -> Self {
         Self::Client(b)
     }
@@ -164,20 +164,25 @@ pub trait ServBehaviour: Sync+Send {
     fn hostkeys(&mut self) -> BhResult<&[sign::SignKey]>;
 
     // TODO: or return a slice of enums
-    fn have_auth_password(&self, user: &str) -> bool;
-    fn have_auth_pubkey(&self, user: &str) -> bool;
+    fn have_auth_password(&self, username: TextString) -> bool;
+    fn have_auth_pubkey(&self, username: TextString) -> bool;
 
+    #[allow(unused)]
+    /// Return true to allow the user to log in with no authentication
+    fn auth_unchallenged(&mut self, username: TextString) -> bool {
+        false
+    }
 
     #[allow(unused)]
     // TODO: change password
-    fn auth_password(&mut self, user: &str, password: &str) -> bool {
+    fn auth_password(&mut self, username: TextString, password: TextString) -> bool {
         false
     }
 
     /// Returns true if the pubkey can be used to log in.
     /// TODO: allow returning pubkey restriction options
     #[allow(unused)]
-    fn auth_pubkey(&mut self, user: &str, pubkey: &sign::SignKey) -> bool {
+    fn auth_pubkey(&mut self, username: TextString, pubkey: &PubKey) -> bool {
         false
     }
 

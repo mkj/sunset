@@ -115,9 +115,8 @@ impl DemoServer {
     }
 }
 
-#[async_trait]
-impl AsyncServBehaviour for DemoServer {
-    async fn hostkeys(&mut self) -> BhResult<&[SignKey]> {
+impl ServBehaviour for DemoServer {
+    fn hostkeys(&mut self) -> BhResult<&[SignKey]> {
         Ok(&self.keys)
     }
 
@@ -130,7 +129,7 @@ impl AsyncServBehaviour for DemoServer {
         false
     }
 
-    async fn auth_password(&mut self, user: &str, password: &str) -> bool {
+    fn auth_password(&mut self, user: &str, password: &str) -> bool {
         user == "matt" && password == "pw"
     }
 
@@ -168,10 +167,7 @@ fn run_session<'a, R: Send>(args: &'a Args, scope: &'a moro::Scope<'a, '_, R>, m
 
             scope.spawn(async {
                 loop {
-                    let ev = serv.progress(&mut app, |ev| {
-                        trace!("progress event {ev:?}");
-                        Ok(Some(()))
-                    }).await.context("progress loop")?;
+                    let ev = serv.progress(&mut app).await.context("progress loop")?;
                 }
                 #[allow(unreachable_code)]
                 Ok::<_, anyhow::Error>(())

@@ -75,9 +75,6 @@ enum RxState {
     ReadComplete { len: usize },
     /// Decrypted complete input payload
     InPayload { len: usize, seq: u32 },
-    /// Decrypted complete input payload. It has been dispatched by handle_payload(),
-    /// remains "borrowed" for use by a progress() Event.
-    BorrowPayload { len: usize },
     /// Decrypted incoming channel data
     InChannelData {
         /// channel number
@@ -104,7 +101,6 @@ impl<'a> TrafIn<'a> {
             | RxState::Read { .. } => true,
             RxState::ReadComplete { .. }
             | RxState::InPayload { .. }
-            | RxState::BorrowPayload { .. }
             | RxState::InChannelData { .. }
             => false,
         }
@@ -130,38 +126,10 @@ impl<'a> TrafIn<'a> {
         Ok(inlen)
     }
 
-    pub(crate) fn payload_reborrow(&mut self) -> Option<&[u8]> {
-        match self.state {
-            | RxState::InPayload { len, .. }
-            | RxState::BorrowPayload { len, .. }
-            => {
-                let payload = &self.buf[SSH_PAYLOAD_START..SSH_PAYLOAD_START + len];
-                Some(payload)
-            }
-            _ => None,
-        }
-    }
-
-    /// Called when `payload()` has been handled once, can still be
-    /// `payload_reborrow()`ed later.
-    pub(crate) fn handled_payload(&mut self) -> Result<(), Error> {
-        match self.state {
-            | RxState::InPayload { len, .. }
-            | RxState::BorrowPayload { len }
-            => {
-                self.state = RxState::BorrowPayload { len };
-                Ok(())
-            }
-            _ => Err(Error::bug())
-        }
-    }
-
     /// Called when `payload()` and `payload_reborrow()` are complete.
     pub(crate) fn done_payload(&mut self) -> Result<(), Error> {
         match self.state {
-            | RxState::InPayload { .. }
-            | RxState::BorrowPayload { .. }
-            => {
+            RxState::InPayload { .. } => {
                 self.state = RxState::Idle;
                 Ok(())
             }
@@ -257,14 +225,14 @@ impl<'a> TrafIn<'a> {
     pub fn set_channel_input(&mut self, di: channel::DataIn) -> Result<()> {
         trace!("traf chan input state {:?}", self.state);
         match self.state {
-            RxState::Idle => {
+            RxState::InPayload { .. } => {
                 let idx = SSH_PAYLOAD_START + di.offset;
                 self.state = RxState::InChannelData { chan: di.num, ext: di.ext, idx, len: idx + di.len };
                 // error!("set input {:?}", self.state);
-                trace!("all buf {:?}", self.buf[..32].hex_dump());
-                trace!("set chan input offset {} idx {} {:?}",
-                    di.offset, idx,
-                    self.buf[idx..idx + di.len].hex_dump());
+                // trace!("all buf {:?}", self.buf[..32].hex_dump());
+                // trace!("set chan input offset {} idx {} {:?}",
+                //     di.offset, idx,
+                //     self.buf[idx..idx + di.len].hex_dump());
                 Ok(())
             }
             _ => Err(Error::bug()),

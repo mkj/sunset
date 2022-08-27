@@ -64,8 +64,10 @@ impl<'a> Runner<'a> {
     pub fn new_server(
         inbuf: &'a mut [u8],
         outbuf: &'a mut [u8],
+        // TODO: can probably get rid of b argument here (and in callees)
+        b: &mut dyn ServBehaviour,
     ) -> Result<Runner<'a>, Error> {
-        let conn = Conn::new_server()?;
+        let conn = Conn::new_server(b)?;
         let runner = Runner {
             conn,
             traf_in: TrafIn::new(inbuf),
@@ -110,7 +112,6 @@ impl<'a> Runner<'a> {
             if let Some(d) = d.0 {
                 // incoming channel data, we haven't finished with payload
                 trace!("handle_payload chan input");
-                self.traf_in.handled_payload()?;
                 self.traf_in.set_channel_input(d)?;
             } else {
                 // other packets have been completed
@@ -118,6 +119,7 @@ impl<'a> Runner<'a> {
                 self.traf_in.done_payload()?;
             }
         }
+
         self.conn.progress(&mut s, behaviour).await?;
         self.wake();
 

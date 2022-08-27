@@ -38,10 +38,6 @@ pub enum Error {
     /// Signature is incorrect
     BadSig,
 
-    // TODO: should this just be badsig? as long as we catch UnknownMethod first
-    /// Signature doesn't match key type
-    SigMismatch,
-
     /// Error in received SSH protocol. Will disconnect.
     SSHProtoError,
 
@@ -148,7 +144,7 @@ impl Error {
     /// Like [`bug()`] but with a message
     /// The message can be used instead of a code comment, is logged at `debug` level.
     #[cold]
-    pub fn bug_args(args: Arguments) -> Error {
+    pub fn bug_fmt(args: Arguments) -> Error {
         // Easier to track the source of errors in development,
         // but release builds shouldn't panic.
         if cfg!(debug_assertions) {
@@ -172,12 +168,12 @@ impl Error {
     #[cold]
     /// TODO: is the generic `T` going to make it bloat?
     pub fn bug_msg<T>(msg: &str) -> Result<T, Error> {
-        Err(Self::bug_args(format_args!("{}", msg)))
+        Err(Self::bug_fmt(format_args!("{}", msg)))
     }
 
     #[cold]
     pub fn bug_err_msg(msg: &str) -> Error {
-        Self::bug_args(format_args!("{}", msg))
+        Self::bug_fmt(format_args!("{}", msg))
     }
 
 }
@@ -209,7 +205,7 @@ impl<T, E> TrapBug<T> for Result<T, E> {
         if let Ok(i) = self {
             Ok(i)
         } else {
-            Err(Error::bug_args(args))
+            Err(Error::bug_fmt(args))
         }
     }
 }
@@ -228,7 +224,7 @@ impl<T> TrapBug<T> for Option<T> {
         if let Some(i) = self {
             Ok(i)
         } else {
-            Err(Error::bug_args(args))
+            Err(Error::bug_fmt(args))
         }
     }
 }

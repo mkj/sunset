@@ -233,7 +233,7 @@ impl Kex {
         packets::KexInit {
             cookie: self.our_cookie,
             kex: (&conf.kexs).into(),
-            hostkey: (&conf.hostsig).into(),
+            hostsig: (&conf.hostsig).into(),
             cipher_c2s: (&conf.ciphers).into(),
             cipher_s2c: (&conf.ciphers).into(),
             mac_c2s: (&conf.macs).into(),
@@ -311,14 +311,14 @@ impl Kex {
         };
 
         let hostsig_method = p
-            .hostkey
+            .hostsig
             .first_match(is_client, &conf.hostsig)?
             .ok_or(Error::AlgoNoMatch { algo: "hostkey" })?;
         let hostsig = SigType::from_name(hostsig_method)?;
         let goodguess_hostkey = if kexguess2 {
-            p.hostkey.first() == hostsig_method
+            p.hostsig.first() == hostsig_method
         } else {
-            p.hostkey.first() == conf.hostsig.first()
+            p.hostsig.first() == conf.hostsig.first()
         };
 
         // Switch between client/server tx/rx
@@ -434,6 +434,7 @@ impl SharedSecret {
             }
         };
 
+        // TODO: error message on signature failure.
         algos.hostsig.verify(&p.k_s.0, kex_out.h.as_ref(), &p.sig.0)?;
         debug!("Hostkey signature is valid");
         if matches!(b.valid_hostkey(&p.k_s.0), Ok(true)) {
@@ -448,12 +449,12 @@ impl SharedSecret {
         mut kex: Kex, p: &packets::KexDHInit, sess_id: &Option<SessId>,
         s: &mut TrafSend, b: &mut dyn ServBehaviour,
     ) -> Result<KexOutput> {
-        // let mut algos = kex.algos.take().trap()?;
         let mut algos = kex.algos.trap()?;
+        // hostkeys list must contain the signature type
+        let hostkey = b.hostkeys()?.iter().find(|k| k.can_sign(algos.hostsig)).trap()?;
+
         let mut kex_hash = kex.kex_hash.take().trap()?;
-        // TODO
-        let fake_hostkey = PubKey::Ed25519(packets::Ed25519PubKey{ key: BinString(&[]) });
-        kex_hash.prefinish(&fake_hostkey, p.q_c.0, algos.kex.pubkey())?;
+        kex_hash.prefinish(&hostkey.pubkey(), p.q_c.0, algos.kex.pubkey())?;
         let (kex_out, kex_pub) = match algos.kex {
             SharedSecret::KexCurve25519(_) => {
                 let kex_out = KexCurve25519::secret(&mut algos, p.q_c.0, kex_hash, sess_id)?;
@@ -461,18 +462,16 @@ impl SharedSecret {
             }
         };
 
-        Self::send_kexdhreply(&kex_out, kex_pub, algos.hostsig, s, b)?;
+        Self::send_kexdhreply(&kex_out, kex_pub, hostkey, s)?;
         Ok(kex_out)
     }
 
     // server only
-    pub fn send_kexdhreply(ko: &KexOutput, kex_pub: &[u8], sig_type: SigType, s: &mut TrafSend, b: &mut dyn ServBehaviour) -> Result<()> {
+    pub fn send_kexdhreply(ko: &KexOutput, kex_pub: &[u8], hostkey: &SignKey, s: &mut TrafSend) -> Result<()> {
         let q_s = BinString(kex_pub);
 
-        // hostkeys list must contain the signature type
-        let key = b.hostkeys()?.iter().find(|k| k.can_sign(&sig_type)).trap()?;
-        let k_s = Blob(key.pubkey());
-        let sig = key.sign(&ko.h.as_slice(), None)?;
+        let k_s = Blob(hostkey.pubkey());
+        let sig = hostkey.sign(&ko.h.as_slice(), None)?;
         let sig: Signature = (&sig).into();
         let sig = Blob(sig);
         s.send(packets::KexDHReply { k_s, q_s, sig })
@@ -573,7 +572,6 @@ mod tests {
     use crate::*;
     use crate::doorlog::init_test_log;
 
-
     use super::SSH_NAME_CURVE25519;
 
     #[test]
@@ -631,11 +629,11 @@ mod tests {
             Ok(self.keys.as_slice())
         }
 
-        fn have_auth_pubkey(&self, userame: &str) -> bool {
+        fn have_auth_pubkey(&self, userame: TextString) -> bool {
             false
         }
 
-        fn have_auth_password(&self, userame: &str) -> bool {
+        fn have_auth_password(&self, userame: TextString) -> bool {
             false
         }
 

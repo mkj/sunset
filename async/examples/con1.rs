@@ -145,15 +145,20 @@ async fn run(args: &Args) -> Result<()> {
     // Connect to a peer
     let mut stream = TcpStream::connect((args.host.as_str(), args.port)).await?;
 
+    let mut rxbuf = vec![0; 3000];
+    let mut txbuf = vec![0; 3000];
+    let mut cli = SSHClient::new(&mut rxbuf, &mut txbuf)?;
+
     // app is a Behaviour
-    let mut app = door_async::CmdlineClient::new(args.username.as_ref().unwrap());
+    let mut app = door_async::CmdlineClient::new(
+        args.username.as_ref().unwrap(),
+        cmd,
+        wantpty,
+        );
     for i in &args.identityfile {
         app.add_authkey(read_key(&i).with_context(|| format!("loading key {i}"))?);
     }
 
-    let mut rxbuf = vec![0; 3000];
-    let mut txbuf = vec![0; 3000];
-    let mut cli = SSHClient::new(&mut rxbuf, &mut txbuf)?;
     let mut s = cli.socket();
 
 
@@ -163,6 +168,8 @@ async fn run(args: &Args) -> Result<()> {
         scope.spawn(async {
             loop {
                 cli.progress(&mut app).await.context("progress loop")?;
+
+                app.progress(&mut cli).await?;
 
                 // match ev {
                 //     Some(Event::CliAuthed) => {

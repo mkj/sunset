@@ -32,7 +32,7 @@ pub fn current_pty() -> Result<Pty, IoError> {
     let mut term = heapless::String::<MAX_TERM>::new();
     let t = std::env::var("TERM").unwrap_or(DEFAULT_TERM.into());
     // XXX error
-    term.push_str(&t).expect("TERM fits buffer");
+    term.push_str(&t).expect("$TERM is too long");
 
     let wc = win_size()?;
 

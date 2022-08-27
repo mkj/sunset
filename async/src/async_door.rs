@@ -131,7 +131,6 @@ pub(crate) fn poll_lock<'a>(inner: Arc<Mutex<Inner<'a>>>, cx: &mut Context<'_>,
         Poll::Ready(_) => None,
         Poll::Pending => Some(g),
     };
-    trace!("poll_lock returned {:?}", p);
     p
 }
 

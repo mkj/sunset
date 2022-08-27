@@ -32,7 +32,11 @@ use sshwire::{SSHEncodeEnum, SSHDecodeEnum};
 pub struct KexInit<'a> {
     pub cookie: [u8; 16],
     pub kex: NameList<'a>,
-    pub hostkey: NameList<'a>, // is actually a signature type, not a key type
+    /// A list of signature algorithms
+    ///
+    /// RFC4253 refers to this as the host key algorithms, but actually they
+    /// are signature algorithms.
+    pub hostsig: NameList<'a>,
     pub cipher_c2s: NameList<'a>,
     pub cipher_s2c: NameList<'a>,
     pub mac_c2s: NameList<'a>,

@@ -12,32 +12,85 @@ use std::collections::VecDeque;
 
 use async_trait::async_trait;
 
-/// Command line interface SSH client behaviour
-pub struct CmdlineClient {
-    auth_done: bool,
-    main_ch: Option<u32>,
-    authkeys: VecDeque<SignKey>,
-    username: String,
+use crate::*;
+use crate::{raw_pty, RawPtyGuard, SSHClient, ChanInOut, ChanExtIn};
+
+enum CmdlineState<'a> {
+    PreAuth,
+    Authed,
+    // TODO split sending the channel open and the request strings
+    _ChanOpen,
+    _ChanReq,
+    Ready { io: ChanInOut<'a>, extin: Option<ChanExtIn<'a>> },
 }
 
-impl CmdlineClient {
-    pub fn new(username: &impl AsRef<str>) -> Self {
+/// Command line interface SSH client behaviour
+pub struct CmdlineClient<'a> {
+    state: CmdlineState<'a>,
+    main_ch: Option<u32>,
+    pty_guard: Option<RawPtyGuard>,
+
+    authkeys: VecDeque<SignKey>,
+    username: String,
+    cmd: Option<String>,
+    want_pty: bool,
+}
+
+impl<'a> CmdlineClient<'a> {
+    pub fn new(username: impl AsRef<str>, cmd: Option<impl AsRef<str>>, want_pty: bool) -> Self {
         CmdlineClient {
-            auth_done: false,
+            state: CmdlineState::PreAuth,
             main_ch: None,
+            pty_guard: None,
+
             authkeys: VecDeque::new(),
             username: username.as_ref().into(),
+            // TODO: shorthand for this?
+            cmd: cmd.map(|c| c.as_ref().into()),
+            want_pty,
         }
+    }
+
+    pub async fn progress(&mut self, cli: &mut SSHClient<'a>) -> Result<()> {
+        match self.state {
+            CmdlineState::Authed => {
+                info!("Opening a new session channel");
+                self.open_session(cli).await?;
+            }
+            | CmdlineState::PreAuth => (),
+            | CmdlineState::Ready {..} => (),
+            _ => todo!(),
+        }
+        Ok(())
+
     }
 
     pub fn add_authkey(&mut self, k: SignKey) {
         self.authkeys.push_back(k)
     }
+
+    async fn open_session(&mut self, cli: &mut SSHClient<'a>) -> Result<()> {
+        debug_assert!(matches!(self.state, CmdlineState::Authed));
+
+        // TODO expect
+        // self.pty_guard = Some(raw_pty().expect("raw pty"));
+
+        let cmd = self.cmd.as_ref().map(|s| s.as_str());
+        let (io, extin) = if self.want_pty {
+            let io = cli.open_session_pty(cmd).await?;
+            (io, None)
+        } else {
+            let (io, extin) = cli.open_session_nopty(cmd).await?;
+            (io, Some(extin))
+        };
+        self.state = CmdlineState::Ready { io, extin };
+        Ok(())
+    }
 }
 
 // #[async_trait(?Send)]
 #[async_trait]
-impl door::CliBehaviour for CmdlineClient {
+impl door::CliBehaviour for CmdlineClient<'_> {
     fn username(&mut self) -> BhResult<door::ResponseString> {
         door::ResponseString::from_str(&self.username).map_err(|_| BhError::Fail)
     }
@@ -69,66 +122,12 @@ impl door::CliBehaviour for CmdlineClient {
     }
 
     fn authenticated(&mut self) {
-        info!("Authentication succeeded");
-        self.auth_done = true;
+        match self.state {
+            CmdlineState::PreAuth => {
+                info!("Authentication succeeded");
+                self.state = CmdlineState::Authed;
+            }
+            _ => warn!("Unexpected auth response")
+        }
     }
-    // }
-
-    // impl door::BlockCliBehaviour for CmdlineClient {
-    //     fn chan_handler<'f>(&mut self, resp: &mut RespPackets, chan_msg: ChanMsg<'f>) -> Result<()> {
-    //         if Some(chan_msg.num) != self.main_ch {
-    //             return Err(Error::SSHProtoError)
-    //         }
-
-    //         match chan_msg.msg {
-    //             ChanMsgDetails::Data(buf) => {
-    //                 let _ = std::io::stdout().write_all(buf);
-    //             },
-    //             ChanMsgDetails::ExtData{..} => {
-    //             }
-    //             ChanMsgDetails::Req{..} => {
-    //             }
-    //             _ => {}
-    //         }
-    //         Ok(())
-    //     }
-
-    //     fn progress(&mut self, runner: &mut Runner) -> Result<()> {
-    //         if self.auth_done {
-    //             if self.main_ch.is_none() {
-    //                 let ch = runner.open_client_session(Some("cowsay it works"), false)?;
-    //                 self.main_ch = Some(ch);
-    //             }
-    //         }
-    //         Ok(())
-    //     }
-
-    //     fn username(&mut self) -> BhResult<door::ResponseString> {
-    //         // TODO unwrap
-    //         let mut p = door::ResponseString::new();
-    //         p.push_str("matt").unwrap();
-    //         Ok(p)
-    //     }
-
-    //     fn valid_hostkey(&mut self, key: &door::PubKey) -> BhResult<bool> {
-    //         trace!("valid_hostkey for {key:?}");
-    //         Ok(true)
-    //     }
-
-    //     fn auth_password(&mut self, pwbuf: &mut door::ResponseString) -> BhResult<bool> {
-    //         let pw = rpassword::prompt_password("password: ").map_err(|e| {
-    //             warn!("read_password failed {e:}");
-    //             BhError::Fail
-    //         })?;
-    //         if pwbuf.push_str(&pw).is_err() {
-    //             Err(BhError::Fail)
-    //         } else {
-    //             Ok(true)
-    //         }
-    //     }
-
-    //     fn authenticated(&mut self) {
-    //         info!("Authentication succeeded");
-    //         self.auth_done = true;
-    //     }
 }

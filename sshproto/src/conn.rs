@@ -103,8 +103,10 @@ impl<'a> Conn<'a> {
         Self::new(ClientServer::Client(client::Client::new()))
     }
 
-    pub fn new_server() -> Result<Self> {
-        Self::new(ClientServer::Server(server::Server::new()))
+    pub fn new_server(
+        b: &mut dyn ServBehaviour,
+        ) -> Result<Self> {
+        Self::new(ClientServer::Server(server::Server::new(b)))
     }
 
     fn new(cliserv: ClientServer) -> Result<Self, Error> {
@@ -267,9 +269,13 @@ impl<'a> Conn<'a> {
                     _ => return Err(Error::PacketWrong),
                 }
             }
-            Packet::ServiceRequest(_p) => {
-                // TODO: this is server only
-                todo!("service request");
+            Packet::ServiceRequest(p) => {
+                if let ClientServer::Server(serv) = &mut self.cliserv {
+                    serv.service_request(&p, s)?;
+                } else {
+                    debug!("Server sent a service request");
+                    return Err(Error::SSHProtoError)
+                }
             }
             Packet::ServiceAccept(p) => {
                 // Don't need to do anything, if a request failed the server disconnects
@@ -288,12 +294,15 @@ impl<'a> Conn<'a> {
                 // TODO: SSH2_DISCONNECT_BY_APPLICATION is normal, sent by openssh client.
                 info!("Received disconnect: {:?}", p.desc);
             }
-            Packet::UserauthRequest(_p) => {
-                // TODO: this is server only
-                todo!("userauth request");
+            Packet::UserauthRequest(p) => {
+                if let ClientServer::Server(serv) = &mut self.cliserv {
+                    serv.auth.request(p, s, b.server()?)?;
+                } else {
+                    debug!("Server sent an auth request");
+                    return Err(Error::SSHProtoError)
+                }
             }
             Packet::UserauthFailure(p) => {
-                // TODO: client only
                 if let ClientServer::Client(cli) = &mut self.cliserv {
                     cli.auth.failure(&p, &mut self.parse_ctx, s, b.client()?).await?;
                 } else {
@@ -302,7 +311,6 @@ impl<'a> Conn<'a> {
                 }
             }
             Packet::UserauthSuccess(_) => {
-                // TODO: client only
                 if let ClientServer::Client(cli) = &mut self.cliserv {
                     if matches!(self.state, ConnState::PreAuth) {
                         self.state = ConnState::Authed;

@@ -13,5 +13,5 @@ pub const MAX_EXEC: usize = 200;
 // Unsure if this is specified somewhere
 pub const MAX_TERM: usize = 32;
 
-pub const DEFAULT_TERM: &str = "vt220";
+pub const DEFAULT_TERM: &str = "xterm";
 

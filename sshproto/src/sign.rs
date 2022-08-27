@@ -45,11 +45,12 @@ impl SigType {
         }
     }
 
+    /// Returns `Ok(())` on success
     pub fn verify(
         &self, pubkey: &PubKey, message: &[u8], sig: &Signature) -> Result<()> {
 
         // Check that the signature type is known
-        let sig_type = sig.sig_type()?;
+        let sig_type = sig.sig_type().map_err(|_| Error::BadSig)?;
 
         // `self` is the expected signature type from kex/auth packet
         // This would also get caught by SignatureMismatch below
@@ -92,7 +93,7 @@ impl SigType {
                     sig.algorithm_name(),
                     pubkey.algorithm_name(),
                     );
-                Err(Error::SigMismatch)
+                Err(Error::BadSig)
             }
         }
     }
@@ -138,7 +139,7 @@ impl SignKey {
     }
 
     /// Returns whether this `SignKey` can create a given signature type
-    pub(crate) fn can_sign(&self, sig_type: &SigType) -> bool {
+    pub(crate) fn can_sign(&self, sig_type: SigType) -> bool {
         match self {
             SignKey::Ed25519(_) => matches!(sig_type, SigType::Ed25519),
         }

@@ -44,7 +44,9 @@ pub mod sshwire;
 pub mod config;
 
 // Application API
-pub use behaviour::{Behaviour, ServBehaviour, CliBehaviour, BhError, BhResult, ResponseString};
+pub use behaviour::{Behaviour, ServBehaviour, CliBehaviour,
+    BhError, BhResult, ResponseString};
+pub use sshwire::{TextString};
 
 pub use runner::Runner;
 pub use sign::SignKey;
