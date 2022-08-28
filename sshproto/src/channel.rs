@@ -410,6 +410,7 @@ impl Channels {
     }
 }
 
+#[derive(Clone, Copy)]
 pub enum ChanType {
     Session,
     Tcp,
@@ -546,7 +547,7 @@ enum ChanState {
 }
 
 pub(crate) struct Channel {
-    ty: ChanType,
+    pub ty: ChanType,
     state: ChanState,
     sent_eof: bool,
     sent_close: bool,

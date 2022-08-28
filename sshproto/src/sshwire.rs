@@ -132,13 +132,14 @@ where
 {
     let len: u32 = length_enc(value)?;
     hash_ctx.update(&len.to_be_bytes());
-    hash_ser(hash_ctx, None, value)
+    hash_ser(hash_ctx, value, None)
 }
 
 /// Hashes the SSH wire format representation of `value`
 pub fn hash_ser<T>(hash_ctx: &mut impl digest::DynDigest,
+    value: &T,
     parse_ctx: Option<&ParseContext>,
-    value: &T) -> Result<()>
+    ) -> Result<()>
 where
     T: SSHEncode,
 {

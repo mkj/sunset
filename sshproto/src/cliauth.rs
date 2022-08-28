@@ -164,11 +164,7 @@ impl CliAuth {
                 }),
             };
 
-            let msg = auth::AuthSigMsg {
-                sess_id: BinString(sess_id.as_ref()),
-                msg_num: MessageNumber::SSH_MSG_USERAUTH_REQUEST as u8,
-                u: sig_packet,
-            };
+            let msg = auth::AuthSigMsg::new(&sig_packet, sess_id);
             let mut ctx = ParseContext::default();
             ctx.method_pubkey_force_sig_bool = true;
             key.sign(&msg, Some(&ctx))

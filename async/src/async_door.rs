@@ -32,12 +32,9 @@ pub(crate) struct Inner<'a> {
 }
 
 pub struct AsyncDoor<'a> {
-    // Not contended much since the Runner is inherently single threaded anyway,
-    // using a single buffer for input/output.
     pub(crate) inner: Arc<Mutex<Inner<'a>>>,
 
     progress_notify: Arc<TokioNotify>,
-
 }
 
 impl<'a> AsyncDoor<'a> {

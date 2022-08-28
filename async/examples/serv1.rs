@@ -12,7 +12,7 @@ use std::{net::Ipv6Addr, io::Read};
 use std::path::Path;
 
 use door_sshproto::*;
-use door_async::{SSHServer, raw_pty};
+use door_async::*;
 
 use async_trait::async_trait;
 
@@ -98,8 +98,11 @@ fn read_key(p: &str) -> Result<SignKey> {
 }
 
 struct DemoServer {
+    keys: Vec<SignKey>,
+
     sess: Option<u32>,
-    keys: Vec<SignKey>
+    want_shell: bool,
+    shell_started: bool,
 }
 
 impl DemoServer {
@@ -111,6 +114,8 @@ impl DemoServer {
         Ok(Self {
             sess: None,
             keys,
+            want_shell: false,
+            shell_started: false,
         })
     }
 }
@@ -121,16 +126,16 @@ impl ServBehaviour for DemoServer {
     }
 
 
-    fn have_auth_password(&self, user: &str) -> bool {
+    fn have_auth_password(&self, user: TextString) -> bool {
         true
     }
 
-    fn have_auth_pubkey(&self, user: &str) -> bool {
+    fn have_auth_pubkey(&self, user: TextString) -> bool {
         false
     }
 
-    fn auth_password(&mut self, user: &str, password: &str) -> bool {
-        user == "matt" && password == "pw"
+    fn auth_password(&mut self, user: TextString, password: TextString) -> bool {
+        user.as_str().unwrap_or("") == "matt" && password.as_str().unwrap_or("") == "pw"
     }
 
     fn open_session(&mut self, chan: u32) -> ChanOpened {
@@ -142,12 +147,14 @@ impl ServBehaviour for DemoServer {
         }
     }
 
-    fn sess_req_shell(&mut self, _chan: u32) -> bool {
-        true
+    fn sess_req_shell(&mut self, chan: u32) -> bool {
+        let r = !self.want_shell && self.sess == Some(chan);
+        self.want_shell = true;
+        r
     }
 
-    fn sess_pty(&mut self, _chan: u32, _pty: &Pty) -> bool {
-        true
+    fn sess_pty(&mut self, chan: u32, _pty: &Pty) -> bool {
+        self.sess == Some(chan)
     }
 }
 
@@ -158,22 +165,40 @@ fn run_session<'a, R: Send>(args: &'a Args, scope: &'a moro::Scope<'a, '_, R>, m
         let mut app = DemoServer::new(&args.hostkey)?;
         let mut rxbuf = vec![0; 3000];
         let mut txbuf = vec![0; 3000];
-        let mut serv = SSHServer::new(&mut rxbuf, &mut txbuf)?;
+        let mut serv = SSHServer::new(&mut rxbuf, &mut txbuf, &mut app)?;
         let mut s = serv.socket();
 
-        moro::async_scope!(|scope| {
+        let w = moro::async_scope!(|scope| {
 
             scope.spawn(tokio::io::copy_bidirectional(&mut stream, &mut s));
 
-            scope.spawn(async {
+            let v = scope.spawn(async {
                 loop {
-                    let ev = serv.progress(&mut app).await.context("progress loop")?;
+                    serv.progress(&mut app).await.context("progress loop")?;
+                    if app.want_shell && !app.shell_started {
+
+                        if let Some(ch) = app.sess {
+                            let ch = ch.clone();
+                            let (mut inout, mut _ext) = serv.channel(ch).await?;
+                            let mut o = inout.clone();
+                            scope.spawn(async move {
+                                tokio::io::copy(&mut o, &mut inout).await?;
+                                error!("fell out of stdio loop");
+                                Ok::<_, anyhow::Error>(())
+                            });
+                        }
+
+                    }
                 }
                 #[allow(unreachable_code)]
                 Ok::<_, anyhow::Error>(())
-            });
-            Ok::<_, anyhow::Error>(())
-        }).await
+            }).await;
+
+            let r: () = scope.terminate(v).await;
+            Ok(())
+        }).await;
+        trace!("Finished session {:?}", w);
+        w
     });
     Ok(())
 
@@ -181,7 +206,7 @@ fn run_session<'a, R: Send>(args: &'a Args, scope: &'a moro::Scope<'a, '_, R>, m
 
 async fn run(args: &Args) -> Result<()> {
     // TODO not localhost. also ipv6?
-    let listener = TcpListener::bind(("localhost", args.port)).await.context("Listening")?;
+    let listener = TcpListener::bind(("127.6.6.6", args.port)).await.context("Listening")?;
     moro::async_scope!(|scope| {
         scope.spawn(async {
             loop {
@@ -191,8 +216,7 @@ async fn run(args: &Args) -> Result<()> {
             }
             #[allow(unreachable_code)]
             Ok::<_, anyhow::Error>(())
-        });
+        }).await
 
-    }).await;
-    Ok(())
+    }).await
 }

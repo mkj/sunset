@@ -602,7 +602,13 @@ impl ParseContext {
 /// We have repeated `match` statements for the various packet types, use a macro
 macro_rules! messagetypes {
     (
-        $( ( $message_num:literal, $SpecificPacketVariant:ident, $SpecificPacketType:ty, $SSH_MESSAGE_NAME:ident ), )*
+        $( ( $message_num:literal,
+            $SpecificPacketVariant:ident,
+            $SpecificPacketType:ty,
+            $SSH_MESSAGE_NAME:ident,
+            $category:ident
+            ),
+             )*
     ) => {
 
 
@@ -697,6 +703,16 @@ impl<'a> Packet<'a> {
             )*
         }
     }
+
+    pub fn category(&self) -> Category {
+        match self {
+            // eg
+            // Packet::KexInit() => Category::Kex,
+            $(
+            Packet::$SpecificPacketVariant(_) => Category::$category,
+            )*
+        }
+    }
 }
 
 $(
@@ -709,43 +725,56 @@ impl<'a> From<$SpecificPacketType> for Packet<'a> {
 
 } } // macro
 
-messagetypes![
-(1, Disconnect, Disconnect<'a>, SSH_MSG_DISCONNECT),
-(2, Ignore, Ignore, SSH_MSG_IGNORE),
-(3, Unimplemented, Unimplemented, SSH_MSG_UNIMPLEMENTED),
-(4, DebugPacket, DebugPacket<'a>, SSH_MSG_DEBUG),
-(5, ServiceRequest, ServiceRequest<'a>, SSH_MSG_SERVICE_REQUEST),
-(6, ServiceAccept, ServiceAccept<'a>, SSH_MSG_SERVICE_ACCEPT),
-(20, KexInit, KexInit<'a>, SSH_MSG_KEXINIT),
-(21, NewKeys, NewKeys, SSH_MSG_NEWKEYS),
-(30, KexDHInit, KexDHInit<'a>, SSH_MSG_KEXDH_INIT),
-(31, KexDHReply, KexDHReply<'a>, SSH_MSG_KEXDH_REPLY),
+pub enum Category {
+    /// Allowed at any time.
+    /// TODO: may need to limit some of these during KEX.
+    All,
+    /// After kexinit, before newkeys complete (other packets are not allowed during
+    /// that time).
+    Kex,
+    /// Post-kex
+    Auth,
+    /// Post-auth
+    Sess,
+}
 
-(50, UserauthRequest, UserauthRequest<'a>, SSH_MSG_USERAUTH_REQUEST),
-(51, UserauthFailure, UserauthFailure<'a>, SSH_MSG_USERAUTH_FAILURE),
-(52, UserauthSuccess, UserauthSuccess, SSH_MSG_USERAUTH_SUCCESS),
-(53, UserauthBanner, UserauthBanner<'a>, SSH_MSG_USERAUTH_BANNER),
+messagetypes![
+(1, Disconnect, Disconnect<'a>, SSH_MSG_DISCONNECT, All),
+(2, Ignore, Ignore, SSH_MSG_IGNORE, All),
+(3, Unimplemented, Unimplemented, SSH_MSG_UNIMPLEMENTED, All),
+(4, DebugPacket, DebugPacket<'a>, SSH_MSG_DEBUG, All),
+(5, ServiceRequest, ServiceRequest<'a>, SSH_MSG_SERVICE_REQUEST, Auth),
+(6, ServiceAccept, ServiceAccept<'a>, SSH_MSG_SERVICE_ACCEPT, Auth),
+(20, KexInit, KexInit<'a>, SSH_MSG_KEXINIT, All),
+(21, NewKeys, NewKeys, SSH_MSG_NEWKEYS, Kex),
+(30, KexDHInit, KexDHInit<'a>, SSH_MSG_KEXDH_INIT, Kex),
+(31, KexDHReply, KexDHReply<'a>, SSH_MSG_KEXDH_REPLY, Kex),
+
+(50, UserauthRequest, UserauthRequest<'a>, SSH_MSG_USERAUTH_REQUEST, Auth),
+(51, UserauthFailure, UserauthFailure<'a>, SSH_MSG_USERAUTH_FAILURE, Auth),
+(52, UserauthSuccess, UserauthSuccess, SSH_MSG_USERAUTH_SUCCESS, Auth),
+(53, UserauthBanner, UserauthBanner<'a>, SSH_MSG_USERAUTH_BANNER, Auth),
 // One of
 // SSH_MSG_USERAUTH_PASSWD_CHANGEREQ
 // SSH_MSG_USERAUTH_PK_OK
 // SSH_MSG_USERAUTH_INFO_REQUEST
-(60, Userauth60, Userauth60<'a>, SSH_MSG_USERAUTH_60),
+(60, Userauth60, Userauth60<'a>, SSH_MSG_USERAUTH_60, Auth),
 // (61, SSH_MSG_USERAUTH_INFO_RESPONSE),
 
 // (80            SSH_MSG_GLOBAL_REQUEST),
 // (81            SSH_MSG_REQUEST_SUCCESS),
 // (82            SSH_MSG_REQUEST_FAILURE),
-(90, ChannelOpen, ChannelOpen<'a>, SSH_MSG_CHANNEL_OPEN),
-(91, ChannelOpenConfirmation, ChannelOpenConfirmation, SSH_MSG_CHANNEL_OPEN_CONFIRMATION),
-(92, ChannelOpenFailure, ChannelOpenFailure<'a>, SSH_MSG_CHANNEL_OPEN_FAILURE),
-(93, ChannelWindowAdjust, ChannelWindowAdjust, SSH_MSG_CHANNEL_WINDOW_ADJUST),
-(94, ChannelData, ChannelData<'a>, SSH_MSG_CHANNEL_DATA),
-(95, ChannelDataExt, ChannelDataExt<'a>, SSH_MSG_CHANNEL_EXTENDED_DATA),
-(96, ChannelEof, ChannelEof, SSH_MSG_CHANNEL_EOF),
-(97, ChannelClose, ChannelClose, SSH_MSG_CHANNEL_CLOSE),
-(98, ChannelRequest, ChannelRequest<'a>, SSH_MSG_CHANNEL_REQUEST),
-(99, ChannelSuccess, ChannelSuccess, SSH_MSG_CHANNEL_SUCCESS),
-(100, ChannelFailure, ChannelFailure, SSH_MSG_CHANNEL_FAILURE),
+(90, ChannelOpen, ChannelOpen<'a>, SSH_MSG_CHANNEL_OPEN, Sess),
+(91, ChannelOpenConfirmation, ChannelOpenConfirmation, SSH_MSG_CHANNEL_OPEN_CONFIRMATION, Sess),
+(92, ChannelOpenFailure, ChannelOpenFailure<'a>, SSH_MSG_CHANNEL_OPEN_FAILURE, Sess),
+(93, ChannelWindowAdjust, ChannelWindowAdjust, SSH_MSG_CHANNEL_WINDOW_ADJUST, Sess),
+(94, ChannelData, ChannelData<'a>, SSH_MSG_CHANNEL_DATA, Sess),
+(95, ChannelDataExt, ChannelDataExt<'a>, SSH_MSG_CHANNEL_EXTENDED_DATA, Sess),
+(96, ChannelEof, ChannelEof, SSH_MSG_CHANNEL_EOF, Sess),
+(97, ChannelClose, ChannelClose, SSH_MSG_CHANNEL_CLOSE, Sess),
+(98, ChannelRequest, ChannelRequest<'a>, SSH_MSG_CHANNEL_REQUEST, Sess),
+(99, ChannelSuccess, ChannelSuccess, SSH_MSG_CHANNEL_SUCCESS, Sess),
+(100, ChannelFailure, ChannelFailure, SSH_MSG_CHANNEL_FAILURE, Sess),
 ];
 
 #[cfg(test)]

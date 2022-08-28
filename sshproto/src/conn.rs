@@ -192,13 +192,50 @@ impl<'a> Conn<'a> {
         }
     }
 
+    /// Check that a packet is received in the correct state
+    fn check_packet(&self, p: &Packet) -> Result<()> {
+        let r = match p.category() {
+            packets::Category::All => Ok(()),
+            packets::Category::Kex => {
+                match self.state {
+                    ConnState::InKex {..} => Ok(()),
+                    _ => Err(Error::SSHProtoError),
+                }
+            }
+            packets::Category::Auth => {
+                match self.state {
+                    | ConnState::PreAuth
+                    | ConnState::Authed
+                    => Ok(()),
+                    _ => Err(Error::SSHProtoError),
+                }
+            }
+            packets::Category::Sess => {
+                match self.state {
+                    ConnState::Authed
+                    => Ok(()),
+                    _ => Err(Error::SSHProtoError),
+                }
+            }
+        };
+
+        if r.is_err() {
+            error!("Received unexpected packet {}",
+                p.message_num() as u8);
+            debug!("state is {:?}", self.state);
+        }
+        r
+    }
+
     async fn dispatch_packet<'p>(
         &mut self, packet: Packet<'p>, s: &mut TrafSend<'_, '_>, b: &mut Behaviour<'_>,
     ) -> Result<Dispatched, Error> {
-        // TODO: perhaps could consolidate packet allowed checks into a separate function
-        // to run first?
+        // TODO: perhaps could consolidate packet client vs server checks
         trace!("Incoming {packet:#?}");
         let mut disp = Dispatched(None);
+
+        self.check_packet(&packet)?;
+
         match packet {
             Packet::KexInit(_) => {
                 if matches!(self.state, ConnState::InKex { .. }) {
@@ -296,7 +333,11 @@ impl<'a> Conn<'a> {
             }
             Packet::UserauthRequest(p) => {
                 if let ClientServer::Server(serv) = &mut self.cliserv {
-                    serv.auth.request(p, s, b.server()?)?;
+                    let sess_id = self.sess_id.as_ref().trap()?;
+                    let success = serv.auth.request(p, sess_id, s, b.server()?)?;
+                    if success {
+                        self.state = ConnState::Authed;
+                    }
                 } else {
                     debug!("Server sent an auth request");
                     return Err(Error::SSHProtoError)
@@ -335,7 +376,8 @@ impl<'a> Conn<'a> {
             Packet::Userauth60(p) => {
                 // TODO: client only
                 if let ClientServer::Client(cli) = &mut self.cliserv {
-                    cli.auth.auth60(&p, self.sess_id.as_ref().trap()?, &mut self.parse_ctx, s).await?;
+                    let sess_id = self.sess_id.as_ref().trap()?;
+                    cli.auth.auth60(&p, sess_id, &mut self.parse_ctx, s).await?;
                 } else {
                     debug!("Received userauth60 as a server");
                     return Err(Error::SSHProtoError)

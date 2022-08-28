@@ -172,6 +172,10 @@ impl<'a> Runner<'a> {
         Ok(chan)
     }
 
+    pub fn channel_type(&self, chan: u32) -> Result<channel::ChanType> {
+        self.conn.channels.get(chan).map(|c| c.ty)
+    }
+
     /// Send data from this application out the wire.
     /// Returns `Some` the length of `buf` consumed, or `None` on EOF
     pub fn channel_send(
