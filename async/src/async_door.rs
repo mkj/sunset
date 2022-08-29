@@ -73,10 +73,12 @@ impl<'a> AsyncDoor<'a> {
             let inner = inner.deref_mut();
             inner.runner.progress(b).await?;
 
+            trace!("pre wakers {:?}", inner.chan_read_wakers);
             if let Some(ce) = inner.runner.ready_channel_input() {
                 inner.chan_read_wakers.remove(&ce)
                 .map(|w| wakers.push(w));
             }
+            trace!("pos wakers {:?}", inner.chan_read_wakers);
 
             // Pending HashMap::drain_filter
             // https://github.com/rust-lang/rust/issues/59618

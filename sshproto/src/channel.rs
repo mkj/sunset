@@ -8,7 +8,7 @@ use core::mem;
 
 use heapless::{Deque, String, Vec};
 
-use crate::*;
+use crate::{*, sshwire::SSHEncodeEnum};
 use config::*;
 use conn::Dispatched;
 use packets::{ChannelReqType, ChannelOpenFailure, ChannelRequest, Packet, ChannelOpen, ChannelOpenType, ChannelData, ChannelDataExt};
@@ -16,12 +16,11 @@ use traffic::TrafSend;
 use sshwire::{BinString, TextString};
 use sshnames::*;
 
+/// The result of a channel open request.
 pub enum ChanOpened {
     Success,
-
-    /// A channel open response will be sent later
+    /// A channel open response will be sent later (for eg TCP open)
     Defer,
-
     Failure(ChanFail),
 }
 
@@ -83,7 +82,7 @@ impl Channels {
         Ok((ch.as_ref().unwrap(), p))
     }
 
-    /// Returns a `Channel` for a local number, any state.
+    /// Returns a `Channel` for a local number, any state including `InOpen`.
     pub fn get_any(&self, num: u32) -> Result<&Channel> {
         self.ch
             .get(num as usize)
@@ -246,13 +245,13 @@ impl Channels {
             ChannelOpenType::Session => {
                 // unwrap: earlier test ensures b.server() succeeds
                 let mut bserv = b.server().unwrap();
-                bserv.open_session(ch.recv.num)
+                bserv.open_session(ch.num())
             }
             ChannelOpenType::ForwardedTcpip(t) => {
-                b.open_tcp_forwarded(ch.recv.num, t)
+                b.open_tcp_forwarded(ch.num(), t)
             }
             ChannelOpenType::DirectTcpip(t) => {
-                b.open_tcp_direct(ch.recv.num, t)
+                b.open_tcp_direct(ch.num(), t)
             }
             ChannelOpenType::Unknown(_) => {
                 unreachable!()
@@ -261,11 +260,11 @@ impl Channels {
 
         match r {
             ChanOpened::Success => {
-                s.send(ch.open_done())?;
+                s.send(ch.open_done()?)?;
             },
             ChanOpened::Failure(f) => {
-                let n = ch.recv.num;
-                self.remove(n);
+                let n = ch.num();
+                self.remove(n)?;
                 return Err(f.into())
             }
             ChanOpened::Defer => {
@@ -278,20 +277,32 @@ impl Channels {
 
     pub fn dispatch_request(&mut self,
         p: &packets::ChannelRequest,
-        _s: &mut TrafSend,
-        _b: &mut Behaviour<'_>,
+        s: &mut TrafSend,
+        b: &mut Behaviour<'_>,
         ) -> Result<()> {
-            let ch = match self.get(p.num) {
-                Ok(ch) => ch,
-                Err(Error::BadChannel) => {
-                    debug!("request {p:?} channel is unknown");
-                    return Ok(())
-                },
-                Err(e) => unreachable!(),
+        if let Ok(ch) = self.get(p.num) {
+            // only servers accept requests
+            let success = if let Ok(b) = b.server() {
+                ch.dispatch_server_request(p, s, b).unwrap_or_else(|e| {
+                    debug!("Error in channel req handling for {p:?}, {e:?}");
+                    false
+                })
+            } else {
+                false
             };
 
-
-            Ok(())
+            if p.want_reply {
+                let num = ch.send_num()?;
+                if success {
+                    s.send(packets::ChannelSuccess { num })?;
+                } else {
+                    s.send(packets::ChannelFailure { num })?;
+                }
+            }
+        } else {
+            debug!("Ignoring request to unknown channel: {p:#?}");
+        }
+        Ok(())
     }
 
     // Some returned errors will be caught by caller and returned as SSH messages
@@ -583,29 +594,70 @@ impl Channel {
         }
     }
 
+    /// Local channel number
+    pub(crate) fn num(&self) -> u32 {
+        self.recv.num
+    }
+
+    /// Remote channel number, fails if channel is in progress opening
+    pub(crate) fn send_num(&self) -> Result<u32> {
+        Ok(self.send.as_ref().trap()?.num)
+    }
+
     fn request(&mut self, req: ReqDetails, s: &mut TrafSend) -> Result<()> {
         let num = self.send.as_ref().trap()?.num;
         let r = Req { num, details: req };
         s.send(r.packet()?)
     }
 
-    pub(crate) fn number(&self) -> u32 {
-        self.recv.num
-    }
-
     /// Returns an open confirmation reply packet to send.
     /// Must be called with state of `InOpen`.
-    fn open_done<'p>(&mut self) -> Packet<'p> {
+    fn open_done<'p>(&mut self) -> Result<Packet<'p>> {
         debug_assert!(matches!(self.state, ChanState::InOpen));
 
         self.state = ChanState::Normal;
-        packets::ChannelOpenConfirmation {
-            num: self.recv.num,
+        let p = packets::ChannelOpenConfirmation {
+            num: self.send_num()?,
             // unwrap: state is InOpen
             sender_num: self.send.as_ref().unwrap().num,
             initial_window: self.recv.window as u32,
             max_packet: self.recv.max_packet as u32,
-        }.into()
+        }.into();
+        Ok(p)
+    }
+
+    fn dispatch_server_request(&self,
+        p: &packets::ChannelRequest,
+        s: &mut TrafSend,
+        b: &mut dyn ServBehaviour,
+        ) -> Result<bool> {
+
+        if !matches!(self.ty, ChanType::Session) {
+            return Ok(false)
+        }
+
+        match &p.req {
+            ChannelReqType::Shell => {
+                Ok(b.sess_shell(self.num()))
+            }
+            ChannelReqType::Exec(ex) => {
+                Ok(b.sess_exec(self.num(), ex.command))
+            }
+            // TODO need to convert packet to channel Pty
+            // ChannelReqType::Pty(pty) => {
+            //     let cpty = pty.into();
+            //     Ok(b.sess_pty(self.num(), &cpty))
+            // }
+            _ => {
+                if let ChannelReqType::Unknown(u) = &p.req {
+                    warn!("Unknown channel req type \"{}\"", u)
+                } else {
+                    // OK unwrap: tested for Unknown
+                    warn!("Unhandled channel req \"{}\"", p.req.variant_name().unwrap())
+                };
+                Ok(false)
+            }
+        }
     }
 
     fn finished_input(&mut self, len: usize ) {
@@ -639,8 +691,6 @@ impl Channel {
             Ok(None)
         }
     }
-
-
 }
 
 pub struct ChanMsg {

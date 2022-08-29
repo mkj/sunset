@@ -200,12 +200,12 @@ pub trait ServBehaviour: Sync+Send {
     }
 
     #[allow(unused)]
-    fn sess_req_shell(&mut self, chan: u32) -> bool {
+    fn sess_shell(&mut self, chan: u32) -> bool {
         false
     }
 
     #[allow(unused)]
-    fn sess_req_exec(&mut self, chan: u32, cmd: &str) -> bool {
+    fn sess_exec(&mut self, chan: u32, cmd: TextString) -> bool {
         false
     }
 

@@ -591,11 +591,19 @@ pub struct ParseContext {
 
     // Used by sign_encode()
     pub method_pubkey_force_sig_bool: bool,
+
+    // Set to true if an unknown variant is encountered.
+    // Packet length checks should be omitted in that case.
+    pub(crate) seen_unknown: bool,
 }
 
 impl ParseContext {
     pub fn new() -> Self {
-        ParseContext { cli_auth_type: None, method_pubkey_force_sig_bool: false }
+        ParseContext {
+            cli_auth_type: None,
+            method_pubkey_force_sig_bool: false,
+            seen_unknown: false,
+        }
     }
 }
 

@@ -96,10 +96,11 @@ impl<'a> TrafIn<'a> {
     pub fn ready_input(&self) -> bool {
         trace!("ready_input state {:?}", self.state);
         match self.state {
-            RxState::Idle
+            | RxState::Idle
             | RxState::ReadInitial { .. }
-            | RxState::Read { .. } => true,
-            RxState::ReadComplete { .. }
+            | RxState::Read { .. }
+            => true,
+            | RxState::ReadComplete { .. }
             | RxState::InPayload { .. }
             | RxState::InChannelData { .. }
             => false,

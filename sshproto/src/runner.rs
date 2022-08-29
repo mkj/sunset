@@ -166,7 +166,7 @@ impl<'a> Runner<'a> {
             init_req.push(channel::ReqDetails::Shell).trap()?;
         }
         let (ch, p) = self.conn.channels.open(packets::ChannelOpenType::Session, init_req)?;
-        let chan = ch.number();
+        let chan = ch.num();
         self.traf_out.send_packet(p, &mut self.keys)?;
         self.wake();
         Ok(chan)

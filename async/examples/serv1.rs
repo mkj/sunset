@@ -147,9 +147,10 @@ impl ServBehaviour for DemoServer {
         }
     }
 
-    fn sess_req_shell(&mut self, chan: u32) -> bool {
+    fn sess_shell(&mut self, chan: u32) -> bool {
         let r = !self.want_shell && self.sess == Some(chan);
         self.want_shell = true;
+        trace!("req want shell");
         r
     }
 
@@ -176,6 +177,8 @@ fn run_session<'a, R: Send>(args: &'a Args, scope: &'a moro::Scope<'a, '_, R>, m
                 loop {
                     serv.progress(&mut app).await.context("progress loop")?;
                     if app.want_shell && !app.shell_started {
+                        trace!("make shell");
+                        app.shell_started = true;
 
                         if let Some(ch) = app.sess {
                             let ch = ch.clone();

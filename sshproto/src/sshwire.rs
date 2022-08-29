@@ -31,7 +31,7 @@ pub trait SSHSink {
 pub trait SSHSource<'de> {
     fn take(&mut self, len: usize) -> WireResult<&'de [u8]>;
     fn pos(&self) -> usize;
-    fn ctx(&self) -> &ParseContext;
+    fn ctx(&mut self) -> &mut ParseContext;
 }
 
 /// Encodes the type in SSH wire format
@@ -101,12 +101,16 @@ pub type WireResult<T> = core::result::Result<T, WireError>;
 
 /// Parses a [`Packet`] from a borrowed `&[u8]` byte buffer.
 pub fn packet_from_bytes<'a>(b: &'a [u8], ctx: &ParseContext) -> Result<Packet<'a>> {
-    let mut s = DecodeBytes { input: b, pos: 0, parse_ctx: ctx.clone() };
+    let ctx = ParseContext { seen_unknown: false, .. ctx.clone()};
+    let mut s = DecodeBytes { input: b, pos: 0, parse_ctx: ctx };
     let p = Packet::dec(&mut s)?;
-    if s.pos() == b.len() {
-        Ok(p)
-    } else {
+
+    if s.pos() != b.len() && !s.ctx().seen_unknown {
+        // No length check if the packet had an unknown variant
+        // - we skipped parsing the rest of the packet.
         Err(Error::WrongPacketLength)
+    } else {
+        Ok(p)
     }
 }
 
@@ -222,8 +226,8 @@ impl<'de> SSHSource<'de> for DecodeBytes<'de> {
         self.pos
     }
 
-    fn ctx(&self) -> &ParseContext {
-        &self.parse_ctx
+    fn ctx(&mut self) -> &mut ParseContext {
+        &mut self.parse_ctx
     }
 }
 

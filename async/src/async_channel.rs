@@ -99,6 +99,7 @@ impl<'a> AsyncRead for ChanInOut<'a> {
         cx: &mut Context<'_>,
         buf: &mut ReadBuf,
     ) -> Poll<Result<(), IoError>> {
+        trace!("poll read {}", self.chan);
         let this = self.deref_mut();
         chan_poll_read(&mut this.door, this.chan, None, cx, buf, &mut this.rlfut)
     }
@@ -162,6 +163,7 @@ impl<'a> AsyncWrite for ChanInOut<'a> {
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<Result<usize, IoError>> {
+        trace!("poll write {}", self.chan);
         let this = self.deref_mut();
         chan_poll_write(&mut this.door, this.chan, None, cx, buf, &mut this.wlfut)
     }
