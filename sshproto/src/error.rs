@@ -38,6 +38,9 @@ pub enum Error {
     /// Signature is incorrect
     BadSig,
 
+    /// Integer overflow in packet
+    BadNumber,
+
     /// Error in received SSH protocol. Will disconnect.
     SSHProtoError,
 

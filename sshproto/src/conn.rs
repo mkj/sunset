@@ -1,6 +1,6 @@
 #[allow(unused_imports)]
 use {
-    crate::error::{Error, Result, TrapBug},
+    crate::error::{*, Error, Result, TrapBug},
     log::{debug, error, info, log, trace, warn},
 };
 
@@ -163,7 +163,6 @@ impl<'a> Conn<'a> {
     }
 
     pub(crate) fn initial_sent(&self) -> bool {
-        trace!("initial_sent state {:?}", self.state);
         match self.state {
             | ConnState::SendIdent
             | ConnState::SendFirstKexInit
@@ -188,7 +187,10 @@ impl<'a> Conn<'a> {
                 s.send(packets::Unimplemented { seq })?;
                 Ok(Dispatched(None))
             }
-            Err(e) => return Err(e),
+            Err(e) => {
+                trace!("Error decoding packet: {e} {:#?}", payload.hex_dump());
+                return Err(e)
+            }
         }
     }
 
@@ -258,6 +260,7 @@ impl<'a> Conn<'a> {
                     ConnState::InKex { done_auth: _, ref mut output } => {
                         if self.cliserv.is_client() {
                             // TODO: client/server validity checks should move somewhere more general
+                            trace!("kexdhinit not server");
                             return Err(Error::SSHProtoError);
                         }
                         if self.kex.maybe_discard_packet() {
@@ -284,6 +287,7 @@ impl<'a> Conn<'a> {
                             }
                         } else {
                             // TODO: client/server validity checks should move somewhere more general
+                            trace!("Not kexdhreply not client");
                             return Err(Error::SSHProtoError);
                         }
                     }

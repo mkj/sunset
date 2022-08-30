@@ -383,15 +383,26 @@ impl<B: SSHEncode> SSHEncode for Blob<B> {
 impl<'de, B: SSHDecode<'de>> SSHDecode<'de> for Blob<B> {
     fn dec<S>(s: &mut S) -> WireResult<Self>
     where S: sshwire::SSHSource<'de> {
-        let len = u32::dec(s)?;
+        let len = u32::dec(s)? as usize;
         let pos1 = s.pos();
         let inner = SSHDecode::dec(s)?;
         let pos2 = s.pos();
+
         // Sanity check the length matched
-        if (pos2 - pos1) == len as usize {
+        let used_len = pos2 - pos1;
+        if used_len == len {
             Ok(Blob(inner))
         } else {
-            Err(WireError::SSHProtoError)
+            let extra = len.checked_sub(used_len).ok_or_else(|| {
+                trace!("inner consumed past length of SSH Blob. \
+                    Expected {} bytes, got {} bytes {}..{}",
+                    len, pos2-pos1, pos1, pos2);
+                WireError::SSHProtoError
+            })?;
+            // Skip over unconsumed bytes in the blob.
+            // This can occur with Unknown variants
+            s.take(extra)?;
+            Ok(Blob(inner))
         }
     }
 }

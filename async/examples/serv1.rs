@@ -69,9 +69,9 @@ fn setup_log(args: &Args) -> Result<()> {
     .add_filter_allow_str("door")
     .add_filter_allow_str("serv1")
     // not debugging these bits of the stack at present
-    // .add_filter_ignore_str("door_sshproto::traffic")
-    // .add_filter_ignore_str("door_sshproto::runner")
-    // .add_filter_ignore_str("door_async::async_door")
+    .add_filter_ignore_str("door_sshproto::traffic")
+    .add_filter_ignore_str("door_sshproto::runner")
+    .add_filter_ignore_str("door_async::async_door")
     .set_time_offset_to_local().expect("Couldn't get local timezone")
     .build();
 

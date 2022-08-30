@@ -233,6 +233,7 @@ impl Channels {
     ) -> Result<(), DispatchOpenError> {
         if b.is_client() && matches!(p.ty, ChannelOpenType::Session) {
             // only server should receive session opens
+            trace!("dispatch not server");
             return Err(Error::SSHProtoError.into());
         }
 
@@ -342,7 +343,10 @@ impl Channels {
                             ch.state = ChanState::Normal;
                         }
                     }
-                    _ => return Err(Error::SSHProtoError),
+                    _ => {
+                        trace!("Bad channel state");
+                        return Err(Error::SSHProtoError)
+                    }
                 }
             }
 
@@ -350,6 +354,7 @@ impl Channels {
                 let ch = self.get(p.num)?;
                 if ch.send.is_some() {
                     // TODO: or just warn?
+                    trace!("open failure late?");
                     return Err(Error::SSHProtoError);
                 } else {
                     self.remove(p.num)?;
