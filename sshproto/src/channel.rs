@@ -1,4 +1,4 @@
-    #[allow(unused_imports)]
+#[allow(unused_imports)]
 use {
     crate::error::{Error, Result, TrapBug},
     log::{debug, error, info, log, trace, warn},
@@ -8,13 +8,16 @@ use core::mem;
 
 use heapless::{Deque, String, Vec};
 
-use crate::{*, sshwire::SSHEncodeEnum};
+use crate::{sshwire::SSHEncodeEnum, *};
 use config::*;
 use conn::Dispatched;
-use packets::{ChannelReqType, ChannelOpenFailure, ChannelRequest, Packet, ChannelOpen, ChannelOpenType, ChannelData, ChannelDataExt};
-use traffic::TrafSend;
-use sshwire::{BinString, TextString};
+use packets::{
+    ChannelData, ChannelDataExt, ChannelOpen, ChannelOpenFailure, ChannelOpenType,
+    ChannelReqType, ChannelRequest, Packet,
+};
 use sshnames::*;
+use sshwire::{BinString, TextString};
+use traffic::TrafSend;
 
 /// The result of a channel open request.
 pub enum ChanOpened {
@@ -43,7 +46,7 @@ impl From<Error> for DispatchOpenError {
     fn from(e: Error) -> Self {
         match e {
             Error::NoChannels => Self::Failure(ChanFail::SSH_OPEN_RESOURCE_SHORTAGE),
-            e => Self::Error(e)
+            e => Self::Error(e),
         }
     }
 }
@@ -56,10 +59,7 @@ impl From<ChanFail> for DispatchOpenError {
 
 impl Channels {
     pub fn new() -> Self {
-        Channels {
-            ch: Default::default(),
-            pending_input: None,
-        }
+        Channels { ch: Default::default(), pending_input: None }
     }
 
     pub fn open<'b>(
@@ -105,7 +105,8 @@ impl Channels {
     }
 
     pub fn get_mut(&mut self, num: u32) -> Result<&mut Channel> {
-        let ch = self.ch
+        let ch = self
+            .ch
             .get_mut(num as usize)
             // out of range
             .ok_or(Error::BadChannel)?
@@ -129,7 +130,9 @@ impl Channels {
 
     /// Returns the first available channel
     fn unused_chan(&self) -> Result<u32> {
-        self.ch.iter().enumerate()
+        self.ch
+            .iter()
+            .enumerate()
             .find_map(
                 |(i, ch)| if ch.as_ref().is_none() { Some(i as u32) } else { None },
             )
@@ -144,7 +147,7 @@ impl Channels {
             num: co.num,
             max_packet: co.max_packet as usize,
             window: co.initial_window as usize,
-            });
+        });
         chan.state = ChanState::InOpen;
 
         let ch = &mut self.ch[num as usize];
@@ -154,11 +157,15 @@ impl Channels {
 
     /// Returns the channel data packet to send, and the length of data consumed.
     /// Caller has already checked valid length with send_allowed()
-    pub(crate) fn send_data<'b>(&mut self, num: u32, ext: Option<u32>, data: &'b [u8])
-            -> Result<Packet<'b>> {
+    pub(crate) fn send_data<'b>(
+        &mut self,
+        num: u32,
+        ext: Option<u32>,
+        data: &'b [u8],
+    ) -> Result<Packet<'b>> {
         let send = self.get_mut(num)?.send.as_mut().trap()?;
         if data.len() > send.max_packet || data.len() > send.window {
-            return Err(Error::bug())
+            return Err(Error::bug());
         }
         send.window -= data.len();
 
@@ -196,11 +203,12 @@ impl Channels {
         self.get(num).map_or(Some(0), |c| c.send_allowed())
     }
 
-    fn dispatch_open(&mut self, p: &ChannelOpen<'_>,
+    fn dispatch_open(
+        &mut self,
+        p: &ChannelOpen<'_>,
         s: &mut TrafSend,
         b: &mut Behaviour<'_>,
-        ) -> Result<()> {
-
+    ) -> Result<()> {
         match self.dispatch_open_inner(p, s, b) {
             Err(DispatchOpenError::Failure(f)) => {
                 s.send(packets::ChannelOpenFailure {
@@ -210,18 +218,19 @@ impl Channels {
                     lang: "",
                 })?;
                 Ok(())
-            },
+            }
             Err(DispatchOpenError::Error(e)) => Err(e),
-            Ok(()) => Ok(())
+            Ok(()) => Ok(()),
         }
     }
 
     // the caller will send failure messages if required
-    fn dispatch_open_inner(&mut self, p: &ChannelOpen<'_>,
+    fn dispatch_open_inner(
+        &mut self,
+        p: &ChannelOpen<'_>,
         s: &mut TrafSend,
         b: &mut Behaviour<'_>,
-        ) -> Result<(), DispatchOpenError> {
-
+    ) -> Result<(), DispatchOpenError> {
         if b.is_client() && matches!(p.ty, ChannelOpenType::Session) {
             // only server should receive session opens
             return Err(Error::SSHProtoError.into());
@@ -233,9 +242,7 @@ impl Channels {
                 debug!("Rejecting unknown channel type '{u}'");
                 return Err(ChanFail::SSH_OPEN_UNKNOWN_CHANNEL_TYPE.into());
             }
-            _ => {
-                self.reserve_chan(p)?
-            }
+            _ => self.reserve_chan(p)?,
         };
 
         // beware that a reserved channel must be cleaned up on failure
@@ -247,12 +254,8 @@ impl Channels {
                 let mut bserv = b.server().unwrap();
                 bserv.open_session(ch.num())
             }
-            ChannelOpenType::ForwardedTcpip(t) => {
-                b.open_tcp_forwarded(ch.num(), t)
-            }
-            ChannelOpenType::DirectTcpip(t) => {
-                b.open_tcp_direct(ch.num(), t)
-            }
+            ChannelOpenType::ForwardedTcpip(t) => b.open_tcp_forwarded(ch.num(), t),
+            ChannelOpenType::DirectTcpip(t) => b.open_tcp_direct(ch.num(), t),
             ChannelOpenType::Unknown(_) => {
                 unreachable!()
             }
@@ -261,11 +264,11 @@ impl Channels {
         match r {
             ChanOpened::Success => {
                 s.send(ch.open_done()?)?;
-            },
+            }
             ChanOpened::Failure(f) => {
                 let n = ch.num();
                 self.remove(n)?;
-                return Err(f.into())
+                return Err(f.into());
             }
             ChanOpened::Defer => {
                 // application will reply later
@@ -275,11 +278,12 @@ impl Channels {
         Ok(())
     }
 
-    pub fn dispatch_request(&mut self,
+    pub fn dispatch_request(
+        &mut self,
         p: &packets::ChannelRequest,
         s: &mut TrafSend,
         b: &mut Behaviour<'_>,
-        ) -> Result<()> {
+    ) -> Result<()> {
         if let Ok(ch) = self.get(p.num) {
             // only servers accept requests
             let success = if let Ok(b) = b.server() {
@@ -346,7 +350,7 @@ impl Channels {
                 let ch = self.get(p.num)?;
                 if ch.send.is_some() {
                     // TODO: or just warn?
-                    return Err(Error::SSHProtoError)
+                    return Err(Error::SSHProtoError);
                 } else {
                     self.remove(p.num)?;
                     // TODO event
@@ -360,20 +364,32 @@ impl Channels {
                 self.get(p.num)?;
                 // TODO check we are expecting input
                 if self.pending_input.is_some() {
-                    return Err(Error::bug())
+                    return Err(Error::bug());
                 }
-                self.pending_input = Some(PendInput { chan: p.num, len: p.data.0.len() });
-                let di = DataIn { num: p.num, ext: None, offset: p.data_offset(), len: p.data.0.len() };
+                self.pending_input =
+                    Some(PendInput { chan: p.num, len: p.data.0.len() });
+                let di = DataIn {
+                    num: p.num,
+                    ext: None,
+                    offset: p.data_offset(),
+                    len: p.data.0.len(),
+                };
                 disp = Dispatched(Some(di));
             }
             Packet::ChannelDataExt(p) => {
                 self.get(p.num)?;
                 // TODO check we are expecting input and ext is valid.
                 if self.pending_input.is_some() {
-                    return Err(Error::bug())
+                    return Err(Error::bug());
                 }
-                self.pending_input = Some(PendInput { chan: p.num, len: p.data.0.len() });
-                let di = DataIn { num: p.num, ext: Some(p.code), offset: p.data_offset(), len: p.data.0.len() };
+                self.pending_input =
+                    Some(PendInput { chan: p.num, len: p.data.0.len() });
+                let di = DataIn {
+                    num: p.num,
+                    ext: Some(p.code),
+                    offset: p.data_offset(),
+                    len: p.data.0.len(),
+                };
                 trace!("{di:?}");
             }
             Packet::ChannelEof(p) => {
@@ -392,7 +408,7 @@ impl Channels {
             Packet::ChannelFailure(_p) => {
                 todo!();
             }
-            _ => Error::bug_msg("unreachable")?
+            _ => Error::bug_msg("unreachable")?,
         };
         Ok(disp)
     }
@@ -406,7 +422,6 @@ impl Channels {
         s: &mut TrafSend<'_, '_>,
         b: &mut Behaviour<'_>,
     ) -> Result<Dispatched> {
-
         let r = self.dispatch_inner(packet, s, b).await;
 
         match r {
@@ -457,6 +472,21 @@ pub struct Pty {
     pub modes: Vec<ModePair, { termmodes::NUM_MODES }>,
 }
 
+impl TryFrom<&packets::Pty<'_>> for Pty {
+    type Error = Error;
+    fn try_from(p: &packets::Pty) -> Result<Self, Self::Error> {
+        warn!("TODO implement pty modes");
+        let term = p.term.as_ascii()?.try_into().map_err(|e| Error::BadString)?;
+        Ok(Pty {
+            term,
+            cols: p.cols,
+            rows: p.rows,
+            width: p.width,
+            height: p.height,
+            modes: Vec::new(),
+        })
+    }
+}
 pub(crate) type ExecString = heapless::String<MAX_EXEC>;
 
 /// Like a `packets::ChannelReqType` but with storage.
@@ -494,6 +524,7 @@ impl Req {
         let ty = match &self.details {
             ReqDetails::Shell => ChannelReqType::Shell,
             ReqDetails::Pty(pty) => {
+                warn!("TODO implement pty modes");
                 ChannelReqType::Pty(packets::Pty {
                     term: TextString(pty.term.as_bytes()),
                     cols: pty.cols,
@@ -548,7 +579,9 @@ enum ChanState {
     /// is received
     // TODO: this is wasting half a kB. where else could we store it? could
     // the Behaviour own it? Or we don't store them here, just callback to the Behaviour.
-    Opening { init_req: InitReqs },
+    Opening {
+        init_req: InitReqs,
+    },
     Normal,
 
     RecvEof,
@@ -622,56 +655,52 @@ impl Channel {
             sender_num: self.send.as_ref().unwrap().num,
             initial_window: self.recv.window as u32,
             max_packet: self.recv.max_packet as u32,
-        }.into();
+        }
+        .into();
         Ok(p)
     }
 
-    fn dispatch_server_request(&self,
+    fn dispatch_server_request(
+        &self,
         p: &packets::ChannelRequest,
         s: &mut TrafSend,
         b: &mut dyn ServBehaviour,
-        ) -> Result<bool> {
-
+    ) -> Result<bool> {
         if !matches!(self.ty, ChanType::Session) {
-            return Ok(false)
+            return Ok(false);
         }
 
         match &p.req {
-            ChannelReqType::Shell => {
-                Ok(b.sess_shell(self.num()))
+            ChannelReqType::Shell => Ok(b.sess_shell(self.num())),
+            ChannelReqType::Exec(ex) => Ok(b.sess_exec(self.num(), ex.command)),
+            ChannelReqType::Pty(pty) => {
+                let cpty = pty.try_into()?;
+                Ok(b.sess_pty(self.num(), &cpty))
             }
-            ChannelReqType::Exec(ex) => {
-                Ok(b.sess_exec(self.num(), ex.command))
-            }
-            // TODO need to convert packet to channel Pty
-            // ChannelReqType::Pty(pty) => {
-            //     let cpty = pty.into();
-            //     Ok(b.sess_pty(self.num(), &cpty))
-            // }
             _ => {
                 if let ChannelReqType::Unknown(u) = &p.req {
                     warn!("Unknown channel req type \"{}\"", u)
                 } else {
                     // OK unwrap: tested for Unknown
-                    warn!("Unhandled channel req \"{}\"", p.req.variant_name().unwrap())
+                    warn!(
+                        "Unhandled channel req \"{}\"",
+                        p.req.variant_name().unwrap()
+                    )
                 };
                 Ok(false)
             }
         }
     }
 
-    fn finished_input(&mut self, len: usize ) {
+    fn finished_input(&mut self, len: usize) {
         self.pending_adjust = self.pending_adjust.saturating_add(len)
     }
 
     fn have_recv_eof(&self) -> bool {
         match self.state {
-            |ChanState::RecvEof
-            |ChanState::RecvClose
-            => true,
+            ChanState::RecvEof | ChanState::RecvClose => true,
             _ => false,
         }
-
     }
 
     // None on close
@@ -723,12 +752,10 @@ pub enum ChanEvent<'a> {
 
     // TODO details
     // OpenRequest { },
-
     ReqPty { num: u32, want_reply: bool, pty: packets::Pty<'a> },
 
     Req { num: u32, req: ChannelReqType<'a> },
     // TODO closein/closeout/eof, etc. Should also return the exit status etc
-
     Eof { num: u32 },
 
     Close { num: u32 },
@@ -743,16 +770,21 @@ pub(crate) enum ChanEventMaker {
     /// by returning the offset into the payload buffer, used by `traffic`.
     DataIn(DataIn),
 
-    OpenSuccess { num: u32 },
+    OpenSuccess {
+        num: u32,
+    },
 
     // A ChannelRequest. Will be split into separate ChanEvent variants
     // for each type.
     Req,
     // TODO closein/closeout/eof, etc. Should also return the exit status etc
+    Eof {
+        num: u32,
+    },
 
-    Eof { num: u32 },
-
-    Close { num: u32 },
+    Close {
+        num: u32,
+    },
     // TODO: responses to a previous ChanMsg?
 }
 
@@ -767,9 +799,16 @@ impl ChanEventMaker {
             }
             Self::OpenSuccess { num } => Some(ChanEvent::OpenSuccess { num: *num }),
             Self::Req => {
-                if let Packet::ChannelRequest(ChannelRequest { num, want_reply, req }) = packet {
+                if let Packet::ChannelRequest(ChannelRequest {
+                    num,
+                    want_reply,
+                    req,
+                }) = packet
+                {
                     match req {
-                        ChannelReqType::Pty(pty) => Some(ChanEvent::ReqPty { num, want_reply, pty }),
+                        ChannelReqType::Pty(pty) => {
+                            Some(ChanEvent::ReqPty { num, want_reply, pty })
+                        }
                         _ => {
                             warn!("Unhandled {:?}", self);
                             None
@@ -784,7 +823,6 @@ impl ChanEventMaker {
             Self::Eof { num } => Some(ChanEvent::Eof { num: *num }),
             Self::Close { num } => Some(ChanEvent::Close { num: *num }),
         }
-
     }
 }
 

@@ -107,7 +107,7 @@ pub fn packet_from_bytes<'a>(b: &'a [u8], ctx: &ParseContext) -> Result<Packet<'
 
     if s.pos() != b.len() && !s.ctx().seen_unknown {
         // No length check if the packet had an unknown variant
-        // - we skipped parsing the rest of the packet.
+        // - it skipped parsing the remainder of the packet.
         Err(Error::WrongPacketLength)
     } else {
         Ok(p)
