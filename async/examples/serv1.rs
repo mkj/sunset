@@ -131,11 +131,24 @@ impl ServBehaviour for DemoServer {
     }
 
     fn have_auth_pubkey(&self, user: TextString) -> bool {
-        false
+        true
     }
 
     fn auth_password(&mut self, user: TextString, password: TextString) -> bool {
         user.as_str().unwrap_or("") == "matt" && password.as_str().unwrap_or("") == "pw"
+    }
+
+    fn auth_pubkey(&mut self, user: TextString, pubkey: &PubKey) -> bool {
+        if user.as_str().unwrap_or("") != "matt" {
+            return false
+        }
+
+        // key is tested1
+        pubkey.matches_openssh("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMkNdReJERy1rPGqdfTN73TnayPR+lTNhdZvOgkAOs5x")
+        .unwrap_or_else(|e| {
+            warn!("Failed loading openssh key: {e}");
+            false
+        })
     }
 
     fn open_session(&mut self, chan: u32) -> ChanOpened {

@@ -252,6 +252,22 @@ impl<'a> PubKey<'a> {
             PubKey::Unknown(u) => Err(u),
         }
     }
+
+    pub fn matches_openssh(&self, k: &str) -> Result<bool> {
+        let k = ssh_key::PublicKey::from_openssh(k)
+            .map_err(|_| {
+                Error::msg("Unsupported OpenSSH key")
+            })?;
+
+        let m = match (k.key_data(), self) {
+            (ssh_key::public::KeyData::Ed25519(kssh),
+                PubKey::Ed25519(kself)) => {
+                kssh.0 == kself.key.0
+            }
+            _ => false,
+        };
+        Ok(m)
+    }
 }
 
 
