@@ -10,7 +10,7 @@ keywords = ["ssh"]
 
 [workspace]
 members = [
-    "sshwire_derive",
+    "sshwire-derive",
     "async",
 ]
 
@@ -20,7 +20,7 @@ lto = "fat"
 debug = 1
 
 [dependencies]
-sshwire_derive = { version = "0.1", path = "sshwire_derive" }
+sunset-sshwire-derive = { version = "0.1", path = "sshwire-derive" }
 
 snafu = { version = "0.7", default-features = false, features = ["rust_1_46"] }
 # TODO: check that log macro calls disappear in no_std builds

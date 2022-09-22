@@ -2,6 +2,7 @@
 name = "sunset-async"
 version = "0.1.0"
 edition = "2021"
+repository = "https://github.com/mkj/sunset"
 
 [dependencies]
 sunset = { path = "..", features = ["std"] }

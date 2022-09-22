@@ -7,7 +7,7 @@ use {
 
 use ascii::{AsciiStr, AsciiChar::Comma};
 
-use sshwire_derive::{SSHEncode, SSHDecode};
+use sunset_sshwire_derive::{SSHEncode, SSHDecode};
 
 use crate::*;
 use sshwire::{SSHEncode, SSHDecode, SSHSource, SSHSink, BinString, WireResult};

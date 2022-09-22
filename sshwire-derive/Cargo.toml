@@ -1,7 +1,8 @@
 [package]
-name = "sshwire_derive"
+name = "sunset-sshwire-derive"
 version = "0.1.0"
 edition = "2021"
+repository = "https://github.com/mkj/sunset"
 
 [lib]
 proc-macro = true

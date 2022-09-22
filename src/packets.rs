@@ -15,7 +15,7 @@ use {
 use heapless::String;
 use pretty_hex::PrettyHex;
 
-use sshwire_derive::*;
+use sunset_sshwire_derive::*;
 
 use crate::*;
 use namelist::NameList;

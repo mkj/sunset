@@ -1264,13 +1264,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sshwire_derive"
-version = "0.1.0"
-dependencies = [
- "virtue",
-]
-
-[[package]]
 name = "stable_deref_trait"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1309,7 +1302,7 @@ dependencies = [
  "simplelog",
  "snafu",
  "ssh-key",
- "sshwire_derive",
+ "sunset-sshwire-derive",
 ]
 
 [[package]]
@@ -1331,6 +1324,13 @@ dependencies = [
  "snafu",
  "sunset",
  "tokio",
+]
+
+[[package]]
+name = "sunset-sshwire-derive"
+version = "0.1.0"
+dependencies = [
+ "virtue",
 ]
 
 [[package]]
