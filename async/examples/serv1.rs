@@ -7,6 +7,7 @@ use anyhow::{Context, Result, Error, bail};
 use pretty_hex::PrettyHex;
 
 use tokio::net::{TcpStream, TcpListener};
+use tokio::io::{AsyncReadExt,AsyncWriteExt};
 
 use std::{net::Ipv6Addr, io::Read};
 use std::path::Path;
@@ -172,6 +173,28 @@ impl ServBehaviour for DemoServer {
     }
 }
 
+
+async fn session_loop(inout: ChanInOut<'_>) -> Result<(), anyhow::Error> {
+    let mut o = inout.clone();
+    loop {
+        let mut b = [0u8];
+        o.read(&mut b).await?;
+        trace!("{b:?}");
+        if let Some(c) = char::from_u32(b[0] as u32) {
+            if c == '\r' {
+                o.write(&['\n' as u8]).await?;
+            }
+
+            if c == 'm' {
+                b[0] = 'M' as u8;
+            }
+            o.write(&b).await?;
+        } else {
+            o.write(&b).await?;
+        }
+    }
+}
+
 fn run_session<'a, R: Send>(args: &'a Args, scope: &'a moro::Scope<'a, '_, R>, mut stream: TcpStream) -> Result<()> {
     // app is a Behaviour
 
@@ -190,17 +213,13 @@ fn run_session<'a, R: Send>(args: &'a Args, scope: &'a moro::Scope<'a, '_, R>, m
                 loop {
                     serv.progress(&mut app).await.context("progress loop")?;
                     if app.want_shell && !app.shell_started {
-                        trace!("make shell");
                         app.shell_started = true;
 
                         if let Some(ch) = app.sess {
                             let ch = ch.clone();
-                            let (mut inout, mut _ext) = serv.channel(ch).await?;
-                            let mut o = inout.clone();
-                            scope.spawn(async move {
-                                tokio::io::copy(&mut o, &mut inout).await?;
-                                error!("fell out of stdio loop");
-                                Ok::<_, anyhow::Error>(())
+                            let (inout, mut _ext) = serv.channel(ch).await?;
+                            scope.spawn(async {
+                                session_loop(inout).await
                             });
                         }
 
