@@ -2,12 +2,12 @@
 
 mod client;
 mod server;
-mod async_door;
+mod async_sunset;
 mod async_channel;
 mod cmdline_client;
 mod pty;
 
-pub use async_door::AsyncDoor;
+pub use async_sunset::AsyncSunset;
 pub use client::SSHClient;
 pub use server::SSHServer;
 pub use cmdline_client::CmdlineClient;

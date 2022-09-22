@@ -333,57 +333,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fea41bba32d969b513997752735605054bc0dfa92b4c56bf1189f2e174be7a10"
 
 [[package]]
-name = "door-async"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "argh",
- "async-trait",
- "door-sshproto",
- "futures 0.4.0-alpha.0",
- "heapless",
- "libc",
- "log",
- "moro",
- "nix",
- "pretty-hex",
- "rpassword",
- "simplelog",
- "snafu",
- "tokio",
-]
-
-[[package]]
-name = "door-sshproto"
-version = "0.1.0"
-dependencies = [
- "aes",
- "anyhow",
- "ascii",
- "async-trait",
- "chacha20",
- "ctr",
- "digest 0.10.3",
- "heapless",
- "hmac",
- "log",
- "no-panic",
- "poly1305",
- "pretty-hex",
- "proptest",
- "rand",
- "rand_core 0.6.3",
- "salty",
- "serde_json",
- "sha2 0.10.2",
- "signature",
- "simplelog",
- "snafu",
- "ssh-key",
- "sshwire_derive",
-]
-
-[[package]]
 name = "ed25519"
 version = "1.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1332,6 +1281,57 @@ name = "subtle"
 version = "2.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6bdef32e8150c2a081110b42772ffe7d7c9032b606bc226c8260fd97e0976601"
+
+[[package]]
+name = "sunset"
+version = "0.1.0"
+dependencies = [
+ "aes",
+ "anyhow",
+ "ascii",
+ "async-trait",
+ "chacha20",
+ "ctr",
+ "digest 0.10.3",
+ "heapless",
+ "hmac",
+ "log",
+ "no-panic",
+ "poly1305",
+ "pretty-hex",
+ "proptest",
+ "rand",
+ "rand_core 0.6.3",
+ "salty",
+ "serde_json",
+ "sha2 0.10.2",
+ "signature",
+ "simplelog",
+ "snafu",
+ "ssh-key",
+ "sshwire_derive",
+]
+
+[[package]]
+name = "sunset-async"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "argh",
+ "async-trait",
+ "futures 0.4.0-alpha.0",
+ "heapless",
+ "libc",
+ "log",
+ "moro",
+ "nix",
+ "pretty-hex",
+ "rpassword",
+ "simplelog",
+ "snafu",
+ "sunset",
+ "tokio",
+]
 
 [[package]]
 name = "syn"

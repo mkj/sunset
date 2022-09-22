@@ -12,8 +12,8 @@ use tokio::io::{AsyncReadExt,AsyncWriteExt};
 use std::{net::Ipv6Addr, io::Read};
 use std::path::Path;
 
-use door_sshproto::*;
-use door_async::*;
+use sunset::*;
+use sunset_async::*;
 
 use async_trait::async_trait;
 
@@ -67,12 +67,12 @@ fn main() -> Result<()> {
 fn setup_log(args: &Args) -> Result<()> {
     let mut conf = simplelog::ConfigBuilder::new();
     let conf = conf
-    .add_filter_allow_str("door")
+    .add_filter_allow_str("sunset")
     .add_filter_allow_str("serv1")
     // not debugging these bits of the stack at present
-    .add_filter_ignore_str("door_sshproto::traffic")
-    .add_filter_ignore_str("door_sshproto::runner")
-    .add_filter_ignore_str("door_async::async_door")
+    .add_filter_ignore_str("sunset::traffic")
+    .add_filter_ignore_str("sunset::runner")
+    .add_filter_ignore_str("sunset_async::async_sunset")
     .set_time_offset_to_local().expect("Couldn't get local timezone")
     .build();
 

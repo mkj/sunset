@@ -18,8 +18,7 @@ use core::task::Waker;
 use core::ops::DerefMut;
 use std::sync::Arc;
 
-use door_sshproto as door;
-use door::{Runner, Result, Behaviour};
+use sunset::{Runner, Result, Behaviour};
 
 use pretty_hex::PrettyHex;
 
@@ -31,13 +30,13 @@ pub(crate) struct Inner<'a> {
     pub chan_write_wakers: HashMap<(u32, Option<u32>), Waker>,
 }
 
-pub struct AsyncDoor<'a> {
+pub struct AsyncSunset<'a> {
     pub(crate) inner: Arc<Mutex<Inner<'a>>>,
 
     progress_notify: Arc<TokioNotify>,
 }
 
-impl<'a> AsyncDoor<'a> {
+impl<'a> AsyncSunset<'a> {
     pub fn new(runner: Runner<'a>) -> Self {
         let chan_read_wakers = HashMap::new();
         let chan_write_wakers = HashMap::new();
@@ -53,8 +52,8 @@ impl<'a> AsyncDoor<'a> {
         }
     }
 
-    pub fn socket(&self) -> AsyncDoorSocket<'a> {
-        AsyncDoorSocket::new(self)
+    pub fn socket(&self) -> AsyncSunsetSocket<'a> {
+        AsyncSunsetSocket::new(self)
     }
 
     /// The `f` closure should return `Some` if the result should be returned
@@ -133,21 +132,21 @@ pub(crate) fn poll_lock<'a>(inner: Arc<Mutex<Inner<'a>>>, cx: &mut Context<'_>,
     p
 }
 
-pub struct AsyncDoorSocket<'a> {
-    door: AsyncDoor<'a>,
+pub struct AsyncSunsetSocket<'a> {
+    sunset: AsyncSunset<'a>,
 
     read_lock_fut: Option<OwnedMutexLockFuture<Inner<'a>>>,
     write_lock_fut: Option<OwnedMutexLockFuture<Inner<'a>>>,
 }
 
-impl<'a> AsyncDoorSocket<'a> {
-    fn new(door: &AsyncDoor<'a>) -> Self {
-        AsyncDoorSocket { door: door.private_clone(),
+impl<'a> AsyncSunsetSocket<'a> {
+    fn new(sunset: &AsyncSunset<'a>) -> Self {
+        AsyncSunsetSocket { sunset: sunset.private_clone(),
             read_lock_fut: None, write_lock_fut: None }
     }
 }
 
-impl<'a> AsyncRead for AsyncDoorSocket<'a> {
+impl<'a> AsyncRead for AsyncSunsetSocket<'a> {
     fn poll_read(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -155,7 +154,7 @@ impl<'a> AsyncRead for AsyncDoorSocket<'a> {
     ) -> Poll<Result<(), IoError>> {
         trace!("poll_read");
 
-        let mut p = poll_lock(self.door.inner.clone(), cx, &mut self.read_lock_fut);
+        let mut p = poll_lock(self.sunset.inner.clone(), cx, &mut self.read_lock_fut);
 
         let runner = match p {
             Poll::Ready(ref mut i) => &mut i.runner,
@@ -184,7 +183,7 @@ impl<'a> AsyncRead for AsyncDoorSocket<'a> {
     }
 }
 
-impl<'a> AsyncWrite for AsyncDoorSocket<'a> {
+impl<'a> AsyncWrite for AsyncSunsetSocket<'a> {
     fn poll_write(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -192,7 +191,7 @@ impl<'a> AsyncWrite for AsyncDoorSocket<'a> {
     ) -> Poll<Result<usize, IoError>> {
         trace!("poll_write {}", buf.len());
 
-        let mut p = poll_lock(self.door.inner.clone(), cx, &mut self.write_lock_fut);
+        let mut p = poll_lock(self.sunset.inner.clone(), cx, &mut self.write_lock_fut);
 
         let runner = match p {
             Poll::Ready(ref mut i) => &mut i.runner,
@@ -222,7 +221,7 @@ impl<'a> AsyncWrite for AsyncDoorSocket<'a> {
         if let Poll::Ready(_) = r {
             // TODO: only notify if packet traffic.payload().is_some() ?
             // Though we also are using progress() for other events.
-            self.door.progress_notify.notify_one();
+            self.sunset.progress_notify.notify_one();
             trace!("notify progress");
         }
         r

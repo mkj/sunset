@@ -6,10 +6,9 @@ use std::io::Error as IoError;
 
 use libc::{ioctl, winsize, termios, tcgetattr, tcsetattr };
 
-use door_sshproto as door;
-use door::{Behaviour, Runner, Result, Pty};
-use door::config::*;
-use door::packets::WinChange;
+use sunset::{Behaviour, Runner, Result, Pty};
+use sunset::config::*;
+use sunset::packets::WinChange;
 
 /// Returns the size of the current terminal
 pub fn win_size() -> Result<WinChange, IoError> {

@@ -400,7 +400,7 @@ impl Conn {
 
 #[cfg(test)]
 mod tests {
-    use crate::doorlog::*;
+    use crate::sunsetlog::*;
     use crate::conn::*;
     use crate::error::Error;
 }

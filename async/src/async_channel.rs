@@ -16,11 +16,11 @@ use futures::lock::{Mutex, OwnedMutexLockFuture, OwnedMutexGuard};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 use crate::*;
-use async_door::{Inner, poll_lock};
+use async_sunset::{Inner, poll_lock};
 
 pub struct Channel<'a> {
     chan: u32,
-    door: AsyncDoor<'a>,
+    sunset: AsyncSunset<'a>,
 }
 
 impl<'a> Channel<'a> {
@@ -37,14 +37,14 @@ impl<'a> Channel<'a> {
         };
 
         // TODO: also need to wait for spare output buffer
-        self.door.inner.lock().await
+        self.sunset.inner.lock().await
         .runner.term_window_change(self.chan, wc);
     }
 }
 
 pub struct ChanInOut<'a> {
     chan: u32,
-    door: AsyncDoor<'a>,
+    sunset: AsyncSunset<'a>,
 
     rlfut: Option<OwnedMutexLockFuture<Inner<'a>>>,
     wlfut: Option<OwnedMutexLockFuture<Inner<'a>>>,
@@ -53,7 +53,7 @@ pub struct ChanInOut<'a> {
 pub struct ChanExtIn<'a> {
     chan: u32,
     ext: u32,
-    door: AsyncDoor<'a>,
+    sunset: AsyncSunset<'a>,
 
     rlfut: Option<OwnedMutexLockFuture<Inner<'a>>>,
 }
@@ -61,15 +61,15 @@ pub struct ChanExtIn<'a> {
 pub struct ChanExtOut<'a> {
     chan: u32,
     ext: u32,
-    door: AsyncDoor<'a>,
+    sunset: AsyncSunset<'a>,
 
     wlfut: Option<OwnedMutexLockFuture<Inner<'a>>>,
 }
 
 impl<'a> ChanInOut<'a> {
-    pub(crate) fn new(chan: u32, door: &AsyncDoor<'a>) -> Self {
+    pub(crate) fn new(chan: u32, sunset: &AsyncSunset<'a>) -> Self {
         Self {
-            chan, door: door.private_clone(),
+            chan, sunset: sunset.private_clone(),
             rlfut: None, wlfut: None,
         }
     }
@@ -78,16 +78,16 @@ impl<'a> ChanInOut<'a> {
 impl Clone for ChanInOut<'_> {
     fn clone(&self) -> Self {
         Self {
-            chan: self.chan, door: self.door.private_clone(),
+            chan: self.chan, sunset: self.sunset.private_clone(),
             rlfut: None, wlfut: None,
         }
     }
 }
 
 impl<'a> ChanExtIn<'a> {
-    pub(crate) fn new(chan: u32, ext: u32, door: &AsyncDoor<'a>) -> Self {
+    pub(crate) fn new(chan: u32, ext: u32, sunset: &AsyncSunset<'a>) -> Self {
         Self {
-            chan, ext, door: door.private_clone(),
+            chan, ext, sunset: sunset.private_clone(),
             rlfut: None,
         }
     }
@@ -101,7 +101,7 @@ impl<'a> AsyncRead for ChanInOut<'a> {
     ) -> Poll<Result<(), IoError>> {
         trace!("poll read {}", self.chan);
         let this = self.deref_mut();
-        chan_poll_read(&mut this.door, this.chan, None, cx, buf, &mut this.rlfut)
+        chan_poll_read(&mut this.sunset, this.chan, None, cx, buf, &mut this.rlfut)
     }
 }
 
@@ -112,13 +112,13 @@ impl<'a> AsyncRead for ChanExtIn<'a> {
         buf: &mut ReadBuf,
     ) -> Poll<Result<(), IoError>> {
         let this = self.deref_mut();
-        chan_poll_read(&mut this.door, this.chan, Some(this.ext), cx, buf, &mut this.rlfut)
+        chan_poll_read(&mut this.sunset, this.chan, Some(this.ext), cx, buf, &mut this.rlfut)
     }
 }
 
 // Common for `ChanInOut` and `ChanExtIn`
 fn chan_poll_read<'a>(
-    door: &mut AsyncDoor<'a>,
+    sunset: &mut AsyncSunset<'a>,
     chan: u32,
     ext: Option<u32>,
     cx: &mut Context,
@@ -127,7 +127,7 @@ fn chan_poll_read<'a>(
 ) -> Poll<Result<(), IoError>> {
     trace!("chan read");
 
-    let mut p = poll_lock(door.inner.clone(), cx, lock_fut);
+    let mut p = poll_lock(sunset.inner.clone(), cx, lock_fut);
     let inner = match p {
         Poll::Ready(ref mut i) => i,
         Poll::Pending => {
@@ -165,7 +165,7 @@ impl<'a> AsyncWrite for ChanInOut<'a> {
     ) -> Poll<Result<usize, IoError>> {
         trace!("poll write {}", self.chan);
         let this = self.deref_mut();
-        chan_poll_write(&mut this.door, this.chan, None, cx, buf, &mut this.wlfut)
+        chan_poll_write(&mut this.sunset, this.chan, None, cx, buf, &mut this.wlfut)
     }
 
     fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), std::io::Error>> {
@@ -179,7 +179,7 @@ impl<'a> AsyncWrite for ChanInOut<'a> {
 }
 
 fn chan_poll_write<'a>(
-    door: &mut AsyncDoor<'a>,
+    sunset: &mut AsyncSunset<'a>,
     chan: u32,
     ext: Option<u32>,
     cx: &mut Context<'_>,
@@ -188,7 +188,7 @@ fn chan_poll_write<'a>(
 ) -> Poll<Result<usize, IoError>> {
     trace!("chan write");
 
-    let mut p = poll_lock(door.inner.clone(), cx, lock_fut);
+    let mut p = poll_lock(sunset.inner.clone(), cx, lock_fut);
     let inner = match p {
         Poll::Ready(ref mut i) => i,
         Poll::Pending => return Poll::Pending,

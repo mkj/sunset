@@ -1,6 +1,6 @@
 use crate::error::{Error,TrapBug};
 
-pub(crate) const OUR_VERSION: &[u8] = "SSH-2.0-door".as_bytes();
+pub(crate) const OUR_VERSION: &[u8] = "SSH-2.0-sunset".as_bytes();
 
 const SSH_PREFIX: &[u8] = "SSH-2.0-".as_bytes();
 
@@ -143,7 +143,7 @@ impl<'a> RemoteVersion {
 mod tests {
     use crate::ident;
     use crate::error::{Error,TrapBug};
-    use crate::doorlog::init_test_log;
+    use crate::sunsetlog::init_test_log;
     use proptest::prelude::*;
 
     fn test_version(v: &str, split: usize, expect: &str) -> Result<usize, Error> {

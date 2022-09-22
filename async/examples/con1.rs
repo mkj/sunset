@@ -10,8 +10,8 @@ use tokio::net::TcpStream;
 
 use std::{net::Ipv6Addr, io::Read};
 
-use door_sshproto::*;
-use door_async::{SSHClient, raw_pty};
+use sunset::*;
+use sunset_async::{SSHClient, raw_pty};
 
 use simplelog::*;
 
@@ -95,12 +95,12 @@ fn main() -> Result<()> {
 fn setup_log(args: &Args) -> Result<()> {
     let mut conf = simplelog::ConfigBuilder::new();
     let conf = conf
-    .add_filter_allow_str("door")
+    .add_filter_allow_str("sunset")
     .add_filter_allow_str("con1")
     // not debugging these bits of the stack at present
-    // .add_filter_ignore_str("door_sshproto::traffic")
-    // .add_filter_ignore_str("door_sshproto::runner")
-    // .add_filter_ignore_str("door_async::async_door")
+    // .add_filter_ignore_str("sunset::traffic")
+    // .add_filter_ignore_str("sunset::runner")
+    // .add_filter_ignore_str("sunset_async::async_sunset")
     .set_time_offset_to_local().expect("Couldn't get local timezone")
     .build();
 
@@ -150,7 +150,7 @@ async fn run(args: &Args) -> Result<()> {
     let mut cli = SSHClient::new(&mut rxbuf, &mut txbuf)?;
 
     // app is a Behaviour
-    let mut app = door_async::CmdlineClient::new(
+    let mut app = sunset_async::CmdlineClient::new(
         args.username.as_ref().unwrap(),
         cmd,
         wantpty,
@@ -183,12 +183,12 @@ async fn run(args: &Args) -> Result<()> {
                 //         } else {
                 //             let (io, err) = cli.open_session_nopty(cmd.as_deref()).await
                 //                 .context("Opening session")?;
-                //             let errpair = (err, door_async::stderr()?);
+                //             let errpair = (err, sunset_async::stderr()?);
                 //             (io, Some(errpair))
                 //         };
 
-                //         let mut i = door_async::stdin()?;
-                //         let mut o = door_async::stdout()?;
+                //         let mut i = sunset_async::stdin()?;
+                //         let mut o = sunset_async::stdout()?;
                 //         let mut io2 = io.clone();
                 //         scope.spawn(async move {
                 //             moro::async_scope!(|scope| {

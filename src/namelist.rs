@@ -195,7 +195,7 @@ mod tests {
     use crate::namelist::*;
     use pretty_hex::PrettyHex;
     use std::vec::Vec;
-    use crate::doorlog::init_test_log;
+    use crate::sunsetlog::init_test_log;
     use proptest::prelude::*;
 
     #[test]

@@ -185,7 +185,7 @@ pub(crate) mod tests {
     use sshnames::SSH_NAME_ED25519;
     use packets;
     use sign::*;
-    use doorlog::init_test_log;
+    use sunsetlog::init_test_log;
 
     pub(crate) fn make_ed25519_signkey() -> SignKey {
         let mut s = [0u8; 32];

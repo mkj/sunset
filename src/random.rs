@@ -8,11 +8,11 @@ use rand::{RngCore, Rng, CryptoRng};
 use core::num::Wrapping;
 
 #[cfg(feature = "getrandom")]
-pub type DoorRng = rand::rngs::OsRng;
+pub type SunsetRng = rand::rngs::OsRng;
 
 pub fn fill_random(buf: &mut [u8]) -> Result<(), Error> {
     // TODO: can this return an error?
-    let mut rng = DoorRng::default();
+    let mut rng = SunsetRng::default();
     rng.try_fill_bytes(buf)
         .map_err(|e| {
             debug!("RNG failed: {e:?}");

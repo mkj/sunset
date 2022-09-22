@@ -250,7 +250,7 @@ impl From<BhError> for Error {
 #[cfg(test)]
 pub(crate) mod tests {
     use crate::error::*;
-    use crate::doorlog::init_test_log;
+    use crate::sunsetlog::init_test_log;
     use crate::packets::Unknown;
     use proptest::prelude::*;
 

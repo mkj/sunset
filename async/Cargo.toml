@@ -1,11 +1,10 @@
 [package]
-name = "door-async"
+name = "sunset-async"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-door-sshproto = { path = "../sshproto", features = ["std"] }
-# door-sshproto = { path = "../sshproto", features = []}
+sunset = { path = "..", features = ["std"] }
 log = { version = "0.4", features = ["release_max_level_info"] }
 rpassword = "6.0"
 argh = "0.1"

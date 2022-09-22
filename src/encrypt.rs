@@ -698,7 +698,7 @@ impl IntegKey {
 
 #[cfg(test)]
 mod tests {
-    use crate::doorlog::*;
+    use crate::sunsetlog::*;
     use crate::encrypt::*;
     use crate::error::Error;
     use crate::sshnames::SSH_NAME_CURVE25519;

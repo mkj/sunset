@@ -803,7 +803,7 @@ messagetypes![
 
 #[cfg(test)]
 mod tests {
-    use crate::doorlog::init_test_log;
+    use crate::sunsetlog::init_test_log;
     use crate::packets::*;
     use crate::sshnames::*;
     use crate::sshwire::tests::{assert_serialize_equal, test_roundtrip};

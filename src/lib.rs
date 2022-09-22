@@ -31,7 +31,7 @@ mod servauth;
 // mod bhtokio;
 // mod bhnostd;
 
-pub mod doorlog;
+pub mod sunsetlog;
 mod auth;
 mod channel;
 mod runner;

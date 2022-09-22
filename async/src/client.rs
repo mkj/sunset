@@ -17,30 +17,29 @@ use core::task::{Context, Poll};
 use nix::fcntl::{fcntl, FcntlArg, OFlag};
 
 use crate::*;
-use crate::async_door::*;
+use crate::async_sunset::*;
 use crate::async_channel::*;
 
-use door_sshproto as door;
-use door::{Behaviour, CliBehaviour, Runner, Result};
-use door::sshnames::SSH_EXTENDED_DATA_STDERR;
-use door::config::*;
+use sunset::{Behaviour, CliBehaviour, Runner, Result};
+use sunset::sshnames::SSH_EXTENDED_DATA_STDERR;
+use sunset::config::*;
 
 pub struct SSHClient<'a> {
-    door: AsyncDoor<'a>,
+    sunset: AsyncSunset<'a>,
 }
 
 impl<'a> SSHClient<'a> {
     pub fn new(inbuf: &'a mut [u8],
         outbuf: &'a mut [u8]) -> Result<Self> {
         let runner = Runner::new_client(inbuf, outbuf)?;
-        let door = AsyncDoor::new(runner);
+        let sunset = AsyncSunset::new(runner);
         Ok(Self {
-            door
+            sunset
         })
     }
 
-    pub fn socket(&self) -> AsyncDoorSocket<'a> {
-        self.door.socket()
+    pub fn socket(&self) -> AsyncSunsetSocket<'a> {
+        self.sunset.socket()
     }
 
     /// Takes a closure to run on the "output" of the progress call.
@@ -50,19 +49,19 @@ impl<'a> SSHClient<'a> {
         b: &mut (dyn CliBehaviour+Send)) -> Result<()> {
 
         let mut b = Behaviour::new_client(b);
-        self.door.progress(&mut b).await
+        self.sunset.progress(&mut b).await
     }
 
     // TODO: return a Channel object that gives events like WinChange or exit status
     // TODO: move to SimpleClient or something?
     pub async fn open_session_nopty(&mut self, exec: Option<&str>)
     -> Result<(ChanInOut<'a>, ChanExtIn<'a>)> {
-        let chan = self.door.with_runner(|runner| {
+        let chan = self.sunset.with_runner(|runner| {
             runner.open_client_session(exec, None)
         }).await?;
 
-        let cstd = ChanInOut::new(chan, &self.door);
-        let cerr = ChanExtIn::new(chan, SSH_EXTENDED_DATA_STDERR, &self.door);
+        let cstd = ChanInOut::new(chan, &self.sunset);
+        let cerr = ChanExtIn::new(chan, SSH_EXTENDED_DATA_STDERR, &self.sunset);
         Ok((cstd, cerr))
     }
 
@@ -72,11 +71,11 @@ impl<'a> SSHClient<'a> {
         // XXX error handling
         let pty = pty::current_pty().expect("pty fetch");
 
-        let chan = self.door.with_runner(|runner| {
+        let chan = self.sunset.with_runner(|runner| {
             runner.open_client_session(exec, Some(pty))
         }).await?;
 
-        let cstd = ChanInOut::new(chan, &self.door);
+        let cstd = ChanInOut::new(chan, &self.sunset);
         Ok(cstd)
     }
 }

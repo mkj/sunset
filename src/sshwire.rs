@@ -549,7 +549,7 @@ impl<'de, const N: usize> SSHDecode<'de> for [u8; N] {
 #[cfg(test)]
 pub(crate) mod tests {
     use crate::*;
-    use doorlog::init_test_log;
+    use sunsetlog::init_test_log;
     use error::Error;
     use packets::*;
     use sshwire::*;

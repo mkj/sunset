@@ -3,10 +3,9 @@ use log::{debug, error, info, log, trace, warn};
 
 use core::str::FromStr;
 
-use door::SignKey;
-use door_sshproto as door;
-use door_sshproto::{BhError, BhResult};
-use door_sshproto::{ChanMsg, ChanMsgDetails, Error, Result, Runner};
+use sunset::SignKey;
+use sunset::{BhError, BhResult};
+use sunset::{ChanMsg, ChanMsgDetails, Error, Result, Runner};
 
 use std::collections::VecDeque;
 
@@ -90,23 +89,23 @@ impl<'a> CmdlineClient<'a> {
 
 // #[async_trait(?Send)]
 #[async_trait]
-impl door::CliBehaviour for CmdlineClient<'_> {
-    fn username(&mut self) -> BhResult<door::ResponseString> {
-        door::ResponseString::from_str(&self.username).map_err(|_| BhError::Fail)
+impl sunset::CliBehaviour for CmdlineClient<'_> {
+    fn username(&mut self) -> BhResult<sunset::ResponseString> {
+        sunset::ResponseString::from_str(&self.username).map_err(|_| BhError::Fail)
     }
 
-    fn valid_hostkey(&mut self, key: &door::PubKey) -> BhResult<bool> {
+    fn valid_hostkey(&mut self, key: &sunset::PubKey) -> BhResult<bool> {
         trace!("valid_hostkey for {key:?}");
         Ok(true)
     }
 
-    fn next_authkey(&mut self) -> BhResult<Option<door::SignKey>> {
+    fn next_authkey(&mut self) -> BhResult<Option<sunset::SignKey>> {
         Ok(self.authkeys.pop_front())
     }
 
     fn auth_password(
         &mut self,
-        pwbuf: &mut door::ResponseString,
+        pwbuf: &mut sunset::ResponseString,
     ) -> BhResult<bool> {
         let pw =
             rpassword::prompt_password(format!("password for {}: ", self.username))
