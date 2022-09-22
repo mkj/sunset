@@ -19,7 +19,7 @@ use core::ops::DerefMut;
 use std::sync::Arc;
 
 use door_sshproto as door;
-use door::{Runner, Result, Event, ChanEvent, Behaviour};
+use door::{Runner, Result, Behaviour};
 
 use pretty_hex::PrettyHex;
 

@@ -16,7 +16,7 @@ pub(crate) struct ServAuth {
 }
 
 impl ServAuth {
-    pub fn new(b: &mut dyn ServBehaviour) -> Self {
+    pub fn new(_b: &mut dyn ServBehaviour) -> Self {
         Self { authed: false }
     }
 

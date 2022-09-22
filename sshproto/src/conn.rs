@@ -18,7 +18,7 @@ use encrypt::KeyState;
 use packets::{Packet,ParseContext};
 use server::Server;
 use traffic::TrafSend;
-use channel::{Channels, ChanEvent, ChanEventMaker};
+use channel::Channels;
 use config::MAX_CHANNELS;
 use kex::{SessId, AlgoConfig};
 
@@ -84,18 +84,6 @@ enum ConnState {
     // Cleanup ??
 }
 
-// Application API
-#[derive(Debug)]
-pub enum Event<'a> {
-    Channel(ChanEvent<'a>),
-    CliAuthed,
-}
-
-pub(crate) enum EventMaker {
-    Channel(ChanEventMaker),
-    CliAuthed,
-}
-
 pub(crate) struct Dispatched(pub Option<channel::DataIn>);
 
 impl Conn {
@@ -135,7 +123,7 @@ impl Conn {
         match self.state {
             ConnState::SendIdent => {
                 s.send_version(ident::OUR_VERSION)?;
-                let p = self.kex.send_kexinit(&self.algo_conf, s)?;
+                self.kex.send_kexinit(&self.algo_conf, s)?;
                 // TODO: first_follows would have a second packet here
                 self.state = ConnState::ReceiveIdent
             }
@@ -250,7 +238,7 @@ impl Conn {
                     done_auth: matches!(self.state, ConnState::Authed),
                     output: None,
                 };
-                let r = self.kex.handle_kexinit(
+                self.kex.handle_kexinit(
                     &packet,
                     self.cliserv.is_client(),
                     &self.algo_conf,
@@ -280,7 +268,7 @@ impl Conn {
             Packet::KexDHReply(p) => {
                 match self.state {
                     ConnState::InKex { done_auth: _, ref mut output } => {
-                        if let ClientServer::Client(cli) = &mut self.cliserv {
+                        if let ClientServer::Client(_cli) = &mut self.cliserv {
                             if self.kex.maybe_discard_packet() {
                                 // ok
                             } else {
@@ -415,10 +403,5 @@ mod tests {
     use crate::doorlog::*;
     use crate::conn::*;
     use crate::error::Error;
-
-    // #[test]
-    // fn event_variants() {
-    //     // TODO sanity check event variants.
-    // }
 }
 

@@ -288,10 +288,6 @@ impl<'a> TrafOut<'a> {
         let (idx, len) = match self.state {
             TxState::Idle => (0, 0),
             TxState::Write { idx, len } => (idx, len),
-            _ => {
-                trace!("bad state {:?}", self.state);
-                Err(Error::bug())?
-            }
         };
 
         // Use the remainder of our buffer to write the packet. Payload starts

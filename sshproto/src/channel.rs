@@ -30,7 +30,7 @@ pub enum ChanOpened {
 pub(crate) struct Channels {
     ch: [Option<Channel>; config::MAX_CHANNELS],
 
-    /// The size of data last set with `ChanEvent::DataIn`.
+    /// The size of channel data last set with `DataIn`.
     pending_input: Option<PendInput>,
 }
 
@@ -252,7 +252,7 @@ impl Channels {
         let r = match &p.ty {
             ChannelOpenType::Session => {
                 // unwrap: earlier test ensures b.server() succeeds
-                let mut bserv = b.server().unwrap();
+                let bserv = b.server().unwrap();
                 bserv.open_session(ch.num())
             }
             ChannelOpenType::ForwardedTcpip(t) => b.open_tcp_forwarded(ch.num(), t),
@@ -319,7 +319,7 @@ impl Channels {
     ) -> Result<Dispatched> {
         trace!("chan dispatch");
         let mut disp = Dispatched(None);
-        let r = match packet {
+        match packet {
             Packet::ChannelOpen(p) => {
                 self.dispatch_open(&p, s, b)?;
             }
@@ -481,7 +481,7 @@ impl TryFrom<&packets::Pty<'_>> for Pty {
     type Error = Error;
     fn try_from(p: &packets::Pty) -> Result<Self, Self::Error> {
         warn!("TODO implement pty modes");
-        let term = p.term.as_ascii()?.try_into().map_err(|e| Error::BadString)?;
+        let term = p.term.as_ascii()?.try_into().map_err(|_| Error::BadString)?;
         Ok(Pty {
             term,
             cols: p.cols,
@@ -668,7 +668,7 @@ impl Channel {
     fn dispatch_server_request(
         &self,
         p: &packets::ChannelRequest,
-        s: &mut TrafSend,
+        _s: &mut TrafSend,
         b: &mut dyn ServBehaviour,
     ) -> Result<bool> {
         if !matches!(self.ty, ChanType::Session) {
@@ -747,88 +747,6 @@ pub(crate) struct DataIn {
     pub ext: Option<u32>,
     pub offset: usize,
     pub len: usize,
-}
-
-/// Application API
-#[derive(Debug)]
-pub enum ChanEvent<'a> {
-    // TODO: perhaps this one should go a level above since it isn't for existing channels?
-    OpenSuccess { num: u32 },
-
-    // TODO details
-    // OpenRequest { },
-    ReqPty { num: u32, want_reply: bool, pty: packets::Pty<'a> },
-
-    Req { num: u32, req: ChannelReqType<'a> },
-    // TODO closein/closeout/eof, etc. Should also return the exit status etc
-    Eof { num: u32 },
-
-    Close { num: u32 },
-    // TODO: responses to a previous ChanMsg?
-}
-
-/// An event returned from `Channel::dispatch()`.
-/// Most are propagated to the application, `DataIn is caught by `runner`
-#[derive(Debug)]
-pub(crate) enum ChanEventMaker {
-    /// Channel data is ready with `channel_input()`. This breaks the `Packet` abstraction
-    /// by returning the offset into the payload buffer, used by `traffic`.
-    DataIn(DataIn),
-
-    OpenSuccess {
-        num: u32,
-    },
-
-    // A ChannelRequest. Will be split into separate ChanEvent variants
-    // for each type.
-    Req,
-    // TODO closein/closeout/eof, etc. Should also return the exit status etc
-    Eof {
-        num: u32,
-    },
-
-    Close {
-        num: u32,
-    },
-    // TODO: responses to a previous ChanMsg?
-}
-
-impl ChanEventMaker {
-    // To be called on the same packet that created the ChanEventMaker.
-    pub fn make<'p>(&self, packet: Packet<'p>) -> Option<ChanEvent<'p>> {
-        match self {
-            // Datain is handled at the traffic level, not propagated as an Event
-            Self::DataIn(_) => {
-                debug!("DataIn should not be reached");
-                None
-            }
-            Self::OpenSuccess { num } => Some(ChanEvent::OpenSuccess { num: *num }),
-            Self::Req => {
-                if let Packet::ChannelRequest(ChannelRequest {
-                    num,
-                    want_reply,
-                    req,
-                }) = packet
-                {
-                    match req {
-                        ChannelReqType::Pty(pty) => {
-                            Some(ChanEvent::ReqPty { num, want_reply, pty })
-                        }
-                        _ => {
-                            warn!("Unhandled {:?}", self);
-                            None
-                        }
-                    }
-                } else {
-                    // TODO: return a bug result?
-                    warn!("Req event maker but not request packet");
-                    None
-                }
-            }
-            Self::Eof { num } => Some(ChanEvent::Eof { num: *num }),
-            Self::Close { num } => Some(ChanEvent::Close { num: *num }),
-        }
-    }
 }
 
 struct PendInput {

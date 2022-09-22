@@ -50,7 +50,6 @@ pub const SSH_AUTHMETHOD_PASSWORD: &str = "password";
 pub const SSH_AUTHMETHOD_PUBLICKEY: &str = "publickey";
 /// [RFC4256](https://tools.ietf.org/html/rfc4256)
 pub const SSH_AUTHMETHOD_INTERACTIVE: &str = "keyboard-interactive";
-pub(crate) const NUM_AUTHMETHOD: usize = 3;
 
 /// [RFC4254](https://tools.ietf.org/html/rfc4254)
 pub const SSH_EXTENDED_DATA_STDERR: u32 = 1;

@@ -46,12 +46,11 @@ pub mod config;
 // Application API
 pub use behaviour::{Behaviour, ServBehaviour, CliBehaviour,
     BhError, BhResult, ResponseString};
-pub use sshwire::{TextString};
+pub use sshwire::TextString;
 
 pub use runner::Runner;
 pub use sign::SignKey;
 pub use packets::PubKey;
 pub use error::{Error,Result};
-pub use channel::{ChanMsg, ChanMsgDetails, ChanEvent, Pty, ChanOpened};
-pub use sshnames::{ChanFail};
-pub use conn::Event;
+pub use channel::{ChanMsg, ChanMsgDetails, Pty, ChanOpened};
+pub use sshnames::ChanFail;

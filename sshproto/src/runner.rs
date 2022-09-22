@@ -8,12 +8,11 @@ use core::task::{Poll, Waker};
 
 use pretty_hex::PrettyHex;
 
-use crate::{*, channel::ChanEvent};
+use crate::*;
 use encrypt::KeyState;
 use traffic::{TrafIn, TrafOut, TrafSend};
 
 use conn::{Conn, Dispatched};
-use channel::ChanEventMaker;
 
 pub struct Runner<'a> {
     conn: Conn,
@@ -249,7 +248,7 @@ impl<'a> Runner<'a> {
         self.conn.channels.send_allowed(chan).map(|s| s.min(buf_space))
     }
 
-    pub fn term_window_change(&self, chan: u32, wc: packets::WinChange) -> Result<()> {
+    pub fn term_window_change(&self, _chan: u32, _wc: packets::WinChange) -> Result<()> {
         todo!();
         // self.conn.channels.term_window_change(chan, wc)
     }

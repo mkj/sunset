@@ -159,7 +159,7 @@ where
 {
     let mut s = EncodeLen { pos: 0 };
     value.enc(&mut s)?;
-    s.pos.try_into().map_err(|e| WireError::NoRoom)
+    s.pos.try_into().map_err(|_| WireError::NoRoom)
 }
 
 struct EncodeBytes<'a> {
