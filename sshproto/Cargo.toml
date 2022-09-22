@@ -57,5 +57,3 @@ async-trait = { version = "0.1" }
 
 serde_json = "1.0"
 
-[[example]]
-name = "kex1"
