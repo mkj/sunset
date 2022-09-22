@@ -591,7 +591,7 @@ pub(crate) mod tests {
         // hash_ser
         let mut hash_ctx = Sha256::new();
         hash_ctx.update(&(w1 as u32).to_be_bytes());
-        hash_ser(&mut hash_ctx, None, &input).unwrap();
+        hash_ser(&mut hash_ctx, &input, None).unwrap();
         let digest3 = hash_ctx.finalize();
         assert_eq!(digest3, digest2);
     }
