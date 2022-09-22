@@ -44,8 +44,6 @@ std = ["async-trait", "snafu/std"]
 # tokio-queue = ["dep:tokio"]
 
 getrandom = ["rand/getrandom"]
-# don't use this
-fakerandom = []
 
 [dev-dependencies]
 # toml = "0.5"
