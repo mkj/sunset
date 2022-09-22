@@ -2,6 +2,8 @@
 name = "sunset"
 version = "0.1.0"
 edition = "2021"
+description = "A SSH library suitable for embedded and larger programs"
+repository = "https://github.com/mkj/sunset"
 categories = ["network-programming", "no-std"]
 keywords = ["ssh"]
 
