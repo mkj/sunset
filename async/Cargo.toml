@@ -3,6 +3,8 @@ name = "sunset-async"
 version = "0.1.0"
 edition = "2021"
 repository = "https://github.com/mkj/sunset"
+license = "MPL-2.0"
+description = "Async wrapper for Sunset SSH"
 
 [dependencies]
 sunset = { path = "..", features = ["std"] }
