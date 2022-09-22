@@ -1,12 +1,18 @@
 //! Used in conjunction with `sshwire.rs` and `packets.rs`
+//!
+//! `SSHWIRE_DEBUG` environment variable can be set at build time
+//! to write generated files to the `target/` directory.
 
 use std::collections::HashSet;
+use std::env;
 
 use proc_macro::Delimiter;
 use virtue::generate::FnSelfArg;
 use virtue::parse::{Attribute, AttributeLocation, EnumBody, StructBody};
 use virtue::utils::{parse_tagged_attribute, ParsedAttribute};
 use virtue::prelude::*;
+
+const ENV_SSHWIRE_DEBUG: &'static str = &"SSHWIRE_DEBUG";
 
 #[proc_macro_derive(SSHEncode, attributes(sshwire))]
 pub fn derive_encode(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
@@ -31,7 +37,9 @@ fn encode_inner(input: TokenStream) -> Result<TokenStream> {
             encode_enum(&mut gen, &att, body)?;
         }
     }
-    gen.export_to_file("SSHEncode");
+    if env::var(ENV_SSHWIRE_DEBUG).is_ok() {
+        gen.export_to_file("SSHEncode");
+    }
     gen.finish()
 }
 
@@ -47,7 +55,9 @@ fn decode_inner(input: TokenStream) -> Result<TokenStream> {
             decode_enum(&mut gen, &att, body)?;
         }
     }
-    gen.export_to_file("SSHDecode");
+    if env::var(ENV_SSHWIRE_DEBUG).is_ok() {
+        gen.export_to_file("SSHDecode");
+    }
     gen.finish()
 }
 
