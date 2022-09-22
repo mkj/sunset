@@ -15,7 +15,7 @@ use crate::*;
 use encrypt::{Cipher, Integ, Keys};
 use ident::RemoteVersion;
 use traffic::TrafSend;
-use namelist::LocalNames;
+use namelist::{NameList,LocalNames};
 use packets::{Packet, PubKey, Signature};
 use sign::SigType;
 use sshnames::*;
@@ -29,40 +29,40 @@ pub type SessId = heapless::Vec<u8, MAX_SESSID>;
 
 use pretty_hex::PrettyHex;
 
-const EMPTY_LOCALNAMES: LocalNames = LocalNames(&[]);
-
 // TODO this will be configurable.
-const fixed_options_kex: LocalNames =
-    LocalNames(&[SSH_NAME_CURVE25519, SSH_NAME_CURVE25519_LIBSSH]);
-const fixed_options_hostsig: LocalNames = LocalNames(&[
+const fixed_options_kex: &[&'static str] =
+    &[SSH_NAME_CURVE25519, SSH_NAME_CURVE25519_LIBSSH];
+
+const fixed_options_hostsig: &[&'static str] = &[
     SSH_NAME_ED25519,
-    #[cfg(alloc)]
+    #[cfg(rsa)]
     SSH_NAME_RSA_SHA256,
-]);
+];
 
-const fixed_options_cipher: LocalNames =
-    LocalNames(&[SSH_NAME_CHAPOLY, SSH_NAME_AES256_CTR]);
-const fixed_options_mac: LocalNames = LocalNames(&[SSH_NAME_HMAC_SHA256]);
-const fixed_options_comp: LocalNames = LocalNames(&[SSH_NAME_NONE]);
+const fixed_options_cipher: &[&'static str] =
+    &[SSH_NAME_CHAPOLY, SSH_NAME_AES256_CTR];
+const fixed_options_mac: &[&'static str] = &[SSH_NAME_HMAC_SHA256];
+const fixed_options_comp: &[&'static str] = &[SSH_NAME_NONE];
 
-pub(crate) struct AlgoConfig<'a> {
-    kexs: LocalNames<'a>,
-    hostsig: LocalNames<'a>,
-    ciphers: LocalNames<'a>,
-    macs: LocalNames<'a>,
-    comps: LocalNames<'a>,
+pub(crate) struct AlgoConfig {
+    kexs: LocalNames,
+    hostsig: LocalNames,
+    ciphers: LocalNames,
+    macs: LocalNames,
+    comps: LocalNames,
 }
 
-impl<'a> AlgoConfig<'a> {
+impl AlgoConfig {
     /// Creates the standard algorithm configuration
     /// TODO: ext-info-s and ext-info-c
     pub fn new(_is_client: bool) -> Self {
         AlgoConfig {
-            kexs: fixed_options_kex,
-            hostsig: fixed_options_hostsig,
-            ciphers: fixed_options_cipher,
-            macs: fixed_options_mac,
-            comps: fixed_options_comp,
+            // OK unwrap: static arrays are < MAX_LOCAL_NAMES
+            kexs: fixed_options_kex.try_into().unwrap(),
+            hostsig: fixed_options_hostsig.try_into().unwrap(),
+            ciphers: fixed_options_cipher.try_into().unwrap(),
+            macs: fixed_options_mac.try_into().unwrap(),
+            comps: fixed_options_comp.try_into().unwrap(),
         }
     }
 }
@@ -240,8 +240,8 @@ impl Kex {
             mac_s2c: (&conf.macs).into(),
             comp_c2s: (&conf.comps).into(),
             comp_s2c: (&conf.comps).into(),
-            lang_c2s: (&EMPTY_LOCALNAMES).into(),
-            lang_s2c: (&EMPTY_LOCALNAMES).into(),
+            lang_c2s: NameList::empty(),
+            lang_s2c: NameList::empty(),
             first_follows: false,
             reserved: 0,
         }.into()
@@ -578,16 +578,16 @@ mod tests {
     #[test]
     fn test_name_match() {
         // check that the from_name() functions are complete
-        for k in kex::fixed_options_kex.0.iter() {
+        for k in kex::fixed_options_kex.iter() {
             kex::SharedSecret::from_name(k).unwrap();
         }
-        for k in kex::fixed_options_hostsig.0.iter() {
+        for k in kex::fixed_options_hostsig.iter() {
             sign::SigType::from_name(k).unwrap();
         }
-        for k in kex::fixed_options_cipher.0.iter() {
+        for k in kex::fixed_options_cipher.iter() {
             encrypt::Cipher::from_name(k).unwrap();
         }
-        for k in kex::fixed_options_mac.0.iter() {
+        for k in kex::fixed_options_mac.iter() {
             encrypt::Integ::from_name(k).unwrap();
         }
     }

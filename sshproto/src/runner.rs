@@ -16,7 +16,7 @@ use conn::{Conn, Dispatched};
 use channel::ChanEventMaker;
 
 pub struct Runner<'a> {
-    conn: Conn<'a>,
+    conn: Conn,
 
     /// Binary packet handling from the network buffer
     traf_in: TrafIn<'a>,

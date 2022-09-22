@@ -4,8 +4,6 @@ use {
     log::{debug, error, info, log, trace, warn},
 };
 
-use heapless::Vec;
-
 use crate::sshnames::*;
 use crate::*;
 use packets::{AuthMethod, Userauth60, UserauthPkOk};
@@ -88,8 +86,7 @@ impl ServAuth {
                 Ok(true)
             }
             AuthResp::Failure => {
-                let mut n: Vec<&'static str, NUM_AUTHMETHOD> = Vec::new();
-                let methods = self.avail_methods(username, &mut n, b);
+                let methods = self.avail_methods(username, b);
                 let methods = (&methods).into();
 
                 s.send(packets::UserauthFailure { methods, partial: false })?;
@@ -141,18 +138,17 @@ impl ServAuth {
     fn avail_methods<'f>(
         &self,
         user: TextString,
-        buf: &'f mut Vec<&'static str, NUM_AUTHMETHOD>,
         b: &mut dyn ServBehaviour,
-    ) -> namelist::LocalNames<'f> {
-        buf.clear();
+    ) -> namelist::LocalNames {
+        let mut l = namelist::LocalNames::new();
 
         // OK unwrap: buf is large enough
         if b.have_auth_password(user) {
-            buf.push(SSH_AUTHMETHOD_PASSWORD).unwrap()
+            l.0.push(SSH_AUTHMETHOD_PASSWORD).unwrap()
         }
         if b.have_auth_pubkey(user) {
-            buf.push(SSH_AUTHMETHOD_PUBLICKEY).unwrap()
+            l.0.push(SSH_AUTHMETHOD_PUBLICKEY).unwrap()
         }
-        buf.as_slice().into()
+        l
     }
 }

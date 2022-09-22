@@ -11,6 +11,15 @@ use sshwire_derive::{SSHEncode, SSHDecode};
 
 use crate::*;
 use sshwire::{SSHEncode, SSHDecode, SSHSource, SSHSink, BinString, WireResult};
+use heapless::Vec;
+
+// Used for lists of:
+// - algorithm names
+// - key types
+// - signature types
+// - auth types
+pub const MAX_LOCAL_NAMES: usize = 5;
+static EMPTY_LOCALNAMES: LocalNames = LocalNames::new();
 
 /// A comma separated string, can be decoded or encoded.
 /// Used for remote name lists.
@@ -22,14 +31,14 @@ pub struct StringNames<'a>(pub &'a AsciiStr);
 /// Deliberately `'static` since it should only come from hardcoded local strings
 /// `SSH_NAME_*` in [`crate::sshnames`]. We don't validate string contents.
 #[derive(Debug)]
-pub struct LocalNames<'a>(pub &'a [&'static str]);
+pub struct LocalNames(pub Vec<&'static str, MAX_LOCAL_NAMES>);
 
 /// The general form that can store either representation
 #[derive(SSHEncode, Debug)]
 #[sshwire(no_variant_names)]
 pub enum NameList<'a> {
     String(StringNames<'a>),
-    Local(LocalNames<'a>),
+    Local(&'a LocalNames),
 }
 
 impl<'de: 'a, 'a> SSHDecode<'de> for NameList<'a> {
@@ -42,10 +51,10 @@ impl<'de: 'a, 'a> SSHDecode<'de> for NameList<'a> {
 }
 
 /// Serialize the list of names with comma separators
-impl SSHEncode for LocalNames<'_> {
+impl SSHEncode for &LocalNames {
     fn enc<S>(&self, e: &mut S) -> WireResult<()>
     where S: sshwire::SSHSink {
-        let names = &self.0;
+        let names = self.0.as_slice();
         // space for names and commas
         let strlen = names.iter().map(|n| n.len()).sum::<usize>()
             + names.len().saturating_sub(1);
@@ -74,16 +83,18 @@ impl<'a> TryFrom<&'a str> for NameList<'a> {
     }
 }
 
-impl<'a> From<&'a [&'static str]> for LocalNames<'a> {
-    fn from(s: &'a [&'static str]) -> Self {
-        Self(s)
+impl TryFrom<&[&'static str]> for LocalNames {
+    type Error = ();
+    fn try_from(s: &[&'static str]) -> Result<Self, ()> {
+        Ok(Self(Vec::from_slice(s)?))
     }
 }
-impl<'a> From<&LocalNames<'a>> for NameList<'a> {
-    fn from(s: &LocalNames<'a>) -> Self {
-        NameList::Local(LocalNames(s.0))
+impl<'a> From<&'a LocalNames> for NameList<'a> {
+    fn from(s: &'a LocalNames) -> Self {
+        NameList::Local(s)
     }
 }
+
 
 impl<'a> NameList<'a> {
     /// Returns the first name in this namelist that matches, based on SSH priority.
@@ -123,6 +134,11 @@ impl<'a> NameList<'a> {
             NameList::Local(s) => s.first(),
         }
     }
+
+    /// Returns an empty `Local` variant
+    pub fn empty() -> Self {
+        Self::Local(&EMPTY_LOCALNAMES)
+    }
 }
 
 impl<'a> StringNames<'a> {
@@ -160,7 +176,11 @@ impl<'a> StringNames<'a> {
     }
 }
 
-impl<'a> LocalNames<'a> {
+impl LocalNames {
+    pub const fn new() -> Self {
+        Self(Vec::new())
+    }
+
     pub fn first(&self) -> &str {
         if self.0.len() == 0 {
             ""
@@ -182,9 +202,9 @@ mod tests {
     fn test_match() {
         let r1 = NameList::String("rho,cog".try_into().unwrap());
         let r2 = NameList::String("woe".try_into().unwrap());
-        let l1 = LocalNames(&["rho", "cog"]);
-        let l2 = LocalNames(&["cog", "rho"]);
-        let l3 = LocalNames(&["now", "woe"]);
+        let l1 = LocalNames::try_from(["rho", "cog"].as_slice()).unwrap();
+        let l2 = LocalNames::try_from(["cog", "rho"].as_slice()).unwrap();
+        let l3 = LocalNames::try_from(["now", "woe"].as_slice()).unwrap();
         assert_eq!(r1.first_match(true, &l1).unwrap(), Some("rho"));
         assert_eq!(r1.first_match(false, &l1).unwrap(), Some("rho"));
         assert_eq!(r1.first_match(true, &l2).unwrap(), Some("cog"));
@@ -207,7 +227,8 @@ mod tests {
             &[",", ","], // not really valid
         ];
         for t in tests.iter() {
-            let n = NameList::Local(LocalNames(t));
+            let n = LocalNames::try_from(*t).unwrap();
+            let n = NameList::Local(&n);
             let mut buf = vec![99; 30];
             let l = sshwire::write_ssh(&mut buf, &n).unwrap();
             buf.truncate(l);
@@ -227,7 +248,8 @@ mod tests {
         ];
 
         for t in tests.iter() {
-            let l = NameList::Local(LocalNames(t));
+            let l = LocalNames::try_from(*t).unwrap();
+            let l = NameList::Local(&l);
             let x = t.join(",");
             let s: NameList = x.as_str().try_into().unwrap();
             assert_eq!(l.first(), s.first());
@@ -255,5 +277,13 @@ mod tests {
         assert_eq!(n("zzz,boo", "zzz"), true);
         assert_eq!(n("zzz,boo", "boo"), true);
         assert_eq!(n("zzz,boo", "urp"), false);
+    }
+
+    #[test]
+    fn localnames_max_size() {
+        let s = vec!["one"; MAX_LOCAL_NAMES + 1];
+        LocalNames::try_from(s.as_slice()).unwrap_err();
+        let s = vec!["one"; MAX_LOCAL_NAMES];
+        LocalNames::try_from(s.as_slice()).unwrap();
     }
 }

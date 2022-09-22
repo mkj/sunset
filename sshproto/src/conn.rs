@@ -20,10 +20,10 @@ use server::Server;
 use traffic::TrafSend;
 use channel::{Channels, ChanEvent, ChanEventMaker};
 use config::MAX_CHANNELS;
-use kex::SessId;
+use kex::{SessId, AlgoConfig};
 
 /// The core state of a SSH instance.
-pub struct Conn<'a> {
+pub struct Conn {
     state: ConnState,
 
     /// Next kex to run
@@ -33,7 +33,7 @@ pub struct Conn<'a> {
 
     cliserv: ClientServer,
 
-    algo_conf: kex::AlgoConfig<'a>,
+    algo_conf: AlgoConfig,
 
     parse_ctx: ParseContext,
 
@@ -98,24 +98,27 @@ pub(crate) enum EventMaker {
 
 pub(crate) struct Dispatched(pub Option<channel::DataIn>);
 
-impl<'a> Conn<'a> {
+impl Conn {
     pub fn new_client() -> Result<Self> {
-        Self::new(ClientServer::Client(client::Client::new()))
+        let algo_conf = AlgoConfig::new(true);
+        Self::new(ClientServer::Client(client::Client::new()), algo_conf)
     }
 
     pub fn new_server(
         b: &mut dyn ServBehaviour,
         ) -> Result<Self> {
-        Self::new(ClientServer::Server(server::Server::new(b)))
+        // XXX
+        let algo_conf = AlgoConfig::new(false);
+        Self::new(ClientServer::Server(server::Server::new(b)), algo_conf)
     }
 
-    fn new(cliserv: ClientServer) -> Result<Self, Error> {
+    fn new(cliserv: ClientServer, algo_conf: AlgoConfig) -> Result<Self, Error> {
         Ok(Conn {
             kex: kex::Kex::new()?,
             sess_id: None,
             remote_version: ident::RemoteVersion::new(),
             state: ConnState::SendIdent,
-            algo_conf: kex::AlgoConfig::new(cliserv.is_client()),
+            algo_conf,
             cliserv,
             channels: Channels::new(),
             parse_ctx: ParseContext::new(),
