@@ -56,9 +56,14 @@ but the bigger problem is there's no way to insert a custom random number genera
 
 Instead switching to RustCrypto crates worked fairly easily, though perhaps a bit messier having
 to deal with `GenericArray` and `DynamicDigest` and types like that. At the time of writing `curve25519-dalek` etc
-are a bit behind on dependencies which is messy, but I assume that will sort itself out.
+are a bit behind on dependencies which is messy (the perennial problem of rust dependency traits),
+but I assume that will sort itself out.
+
+Edit: Now using Salty instaed of dalek, it's designed for microcontrollers.
 
 ## `Behaviour`
+
+(This is outdated, gave up on async `Behaviour` for the time being)
 
 At some points in packet handling some custom behaviour from the application is required. For example
 "is this hostkey valid?", "is this user's password correct?". Those need an immediate response,
