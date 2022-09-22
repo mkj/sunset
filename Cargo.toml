@@ -5,6 +5,7 @@ edition = "2021"
 description = "A SSH library suitable for embedded and larger programs"
 repository = "https://github.com/mkj/sunset"
 categories = ["network-programming", "no-std"]
+license-file = "LICENSE"
 keywords = ["ssh"]
 
 [workspace]
