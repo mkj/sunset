@@ -68,10 +68,11 @@ impl SigType {
                 let k: salty::PublicKey = k.try_into().map_err(|_| Error::BadKey)?;
                 let s: &[u8; 64] = s.sig.0.try_into().map_err(|_| Error::BadSig)?;
                 let s: salty::Signature = s.into();
-                k.verify_parts(&s, |h| {
-                    sshwire::hash_ser(h, msg, None).map_err(|_| salty::Error::ContextTooLong)
-                })
-                .map_err(|_| Error::BadSig)
+                todo!("get verify_parts upstream");
+                // k.verify_parts(&s, |h| {
+                //     sshwire::hash_ser(h, msg, None).map_err(|_| salty::Error::ContextTooLong)
+                // })
+                // .map_err(|_| Error::BadSig)
             }
 
             (SigType::RSA256, PubKey::RSA(_k), Signature::RSA256(_s)) => {
@@ -151,11 +152,12 @@ impl SignKey {
     pub(crate) fn sign(&self, msg: &impl SSHEncode, parse_ctx: Option<&ParseContext>) -> Result<OwnedSig> {
         match self {
             SignKey::Ed25519(k) => {
-                k.sign_parts(|h| {
-                    sshwire::hash_ser(h, msg, parse_ctx).map_err(|_| salty::Error::ContextTooLong)
-                })
-                .trap()
-                .map(|s| s.into())
+                todo!("get sign_parts upstream");
+                // k.sign_parts(|h| {
+                //     sshwire::hash_ser(h, msg, parse_ctx).map_err(|_| salty::Error::ContextTooLong)
+                // })
+                // .trap()
+                // .map(|s| s.into())
             }
         }
     }
