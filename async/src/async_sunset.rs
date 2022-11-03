@@ -170,7 +170,7 @@ impl<'a> AsyncRead for AsyncSunsetSocket<'a> {
         match r {
             Ok(0) => {
                 trace!("set output waker");
-                runner.set_output_waker(cx.waker().clone());
+                runner.set_output_waker(cx.waker());
                 Poll::Pending
             }
             Ok(sz) => {
@@ -211,7 +211,7 @@ impl<'a> AsyncWrite for AsyncSunsetSocket<'a> {
             Poll::Ready(r)
         } else {
             trace!("not ready");
-            runner.set_input_waker(cx.waker().clone());
+            runner.set_input_waker(cx.waker());
             Poll::Pending
         };
 
