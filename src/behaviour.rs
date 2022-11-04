@@ -39,7 +39,7 @@ pub type ResponseString = heapless::String<100>;
 
 pub enum Behaviour<'a> {
     Client(&'a mut (dyn CliBehaviour + Send)),
-    Server(&'a mut (dyn ServBehaviour + Send)),
+    Server(&'a mut (dyn ServBehaviour)),
 }
 
 impl<'a> Behaviour<'a> {
@@ -48,7 +48,7 @@ impl<'a> Behaviour<'a> {
         Self::Client(b)
     }
 
-    pub fn new_server(b: &'a mut (dyn ServBehaviour + Send)) -> Self {
+    pub fn new_server(b: &'a mut (dyn ServBehaviour)) -> Self {
         Self::Server(b)
     }
 

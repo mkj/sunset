@@ -1,0 +1,11 @@
+[package]
+name = "sunset-embassy"
+version = "0.2.0-alpha"
+edition = "2021"
+
+[dependencies]
+# embassy-time = { version = "0.1.0",  features = ["defmt", "defmt-timestamp-uptime"] }
+embassy-sync = { version = "0.1.0" }
+# embassy-futures = { version = "0.1.0" }
+
+sunset = { path = "../" }
