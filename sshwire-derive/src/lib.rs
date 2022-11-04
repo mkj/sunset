@@ -38,7 +38,7 @@ fn encode_inner(input: TokenStream) -> Result<TokenStream> {
         }
     }
     if env::var(ENV_SSHWIRE_DEBUG).is_ok() {
-        gen.export_to_file("SSHEncode");
+        gen.export_to_file("sshwire", "SSHEncode");
     }
     gen.finish()
 }
@@ -56,7 +56,7 @@ fn decode_inner(input: TokenStream) -> Result<TokenStream> {
         }
     }
     if env::var(ENV_SSHWIRE_DEBUG).is_ok() {
-        gen.export_to_file("SSHDecode");
+        gen.export_to_file("sshwire", "SSHDecode");
     }
     gen.finish()
 }

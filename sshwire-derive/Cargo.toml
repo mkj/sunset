@@ -10,4 +10,4 @@ description = "Derive macros for Sunset SSH packet encoder/decoder"
 proc-macro = true
 
 [dependencies]
-virtue = "0.0"
+virtue = "0.0.11"
