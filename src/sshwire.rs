@@ -635,7 +635,7 @@ pub(crate) mod tests {
                 key: BinString(&[0x11, 0x22, 0x33]),
             })),
         }).into();
-        let s = sign::tests::make_ed25519_signkey();
+        let s = SignKey::generate(KeyType::Ed25519).unwrap();
         ctx.cli_auth_type = Some(auth::AuthType::PubKey);
         test_roundtrip_context(&p, &ctx);
     }

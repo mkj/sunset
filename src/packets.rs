@@ -321,7 +321,9 @@ impl<'a> Signature<'a> {
     /// Returns the signature algorithm name for a public key.
     /// Returns (`Error::UnknownMethod`) if the PubKey is unknown
     /// Currently can return a unique signature name for a public key
-    /// since ssh-rsa isn't supported, only rsa-sha2-256 (as an example)
+    /// since ssh-rsa isn't supported, only rsa-sha2-256.
+    /// It's possible that in future there isn't a distinct signature
+    /// type for each key type.
     pub fn sig_name_for_pubkey(pubkey: &PubKey) -> Result<&'static str> {
         match pubkey {
             PubKey::Ed25519(_) => Ok(SSH_NAME_ED25519),
@@ -349,7 +351,7 @@ impl <'a> From<&'a OwnedSig> for Signature<'a> {
     fn from(s: &'a OwnedSig) -> Self {
         match s {
             OwnedSig::Ed25519(e) => Signature::Ed25519(Ed25519Sig { sig: BinString(e) }),
-            OwnedSig::RSA256 => todo!("sig from rsa"),
+            OwnedSig::_RSA256 => todo!("sig from rsa"),
         }
     }
 }
@@ -827,23 +829,28 @@ mod tests {
     fn roundtrip_authpubkey() {
         init_test_log();
         // with None sig
-        let s = sign::tests::make_ed25519_signkey();
+        let k = SignKey::generate(KeyType::Ed25519).unwrap();
         let p = UserauthRequest {
             username: "matt".into(),
             service: "conn".into(),
-            method: s.pubkey().try_into().unwrap(),
+            method: k.pubkey().try_into().unwrap(),
         }.into();
         test_roundtrip(&p);
 
-        // again with a near-genuine sig
-        let sig = Signature::Ed25519(Ed25519Sig {
-            sig: BinString("something".as_bytes()),
-        });
+        // again with a sig
+        let owned_sig = k.sign(&"hello", None).unwrap();
+        let sig: Signature = (&owned_sig).into();
+        let sig_algo = sig.algorithm_name().unwrap();
         let sig = Some(Blob(sig));
+        let method = AuthMethod::PubKey(MethodPubKey {
+            sig_algo,
+            pubkey: Blob(k.pubkey()),
+            sig,
+        });
         let p = UserauthRequest {
             username: "matt".into(),
             service: "conn",
-            method: s.pubkey().try_into().unwrap(),
+            method,
         }.into();
         test_roundtrip(&p);
     }

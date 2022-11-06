@@ -49,7 +49,7 @@ pub use behaviour::{Behaviour, ServBehaviour, CliBehaviour,
 pub use sshwire::TextString;
 
 pub use runner::Runner;
-pub use sign::SignKey;
+pub use sign::{SignKey, KeyType};
 pub use packets::PubKey;
 pub use error::{Error,Result};
 pub use channel::{ChanMsg, ChanMsgDetails, Pty, ChanOpened};

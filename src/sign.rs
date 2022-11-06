@@ -106,7 +106,7 @@ pub(crate) enum OwnedSig {
     // Signature doesn't let us borrow the inner bytes,
     // so we just store raw bytes here.
     Ed25519([u8; 64]),
-    RSA256, // TODO
+    _RSA256, // TODO
 }
 
 impl From<salty::Signature> for OwnedSig {
@@ -114,6 +114,12 @@ impl From<salty::Signature> for OwnedSig {
         OwnedSig::Ed25519(s.to_bytes())
     }
 
+}
+
+/// Signing key types.
+#[derive(Debug, Clone, Copy)]
+pub enum KeyType {
+    Ed25519,
 }
 
 /// A SSH signing key. This may hold the private part locally
@@ -124,6 +130,16 @@ pub enum SignKey {
 }
 
 impl SignKey {
+    pub fn generate(ty: KeyType) -> Result<Self> {
+        match ty {
+            KeyType::Ed25519 => {
+                let mut seed = [0u8; 32];
+                random::fill_random(seed.as_mut_slice())?;
+                Ok(Self::Ed25519((&seed).into()))
+            },
+        }
+    }
+
     pub fn pubkey(&self) -> PubKey {
         match self {
             SignKey::Ed25519(k) => {PubKey::Ed25519(Ed25519PubKey
@@ -151,12 +167,11 @@ impl SignKey {
     pub(crate) fn sign(&self, msg: &impl SSHEncode, parse_ctx: Option<&ParseContext>) -> Result<OwnedSig> {
         match self {
             SignKey::Ed25519(k) => {
-                todo!("get sign_parts upstream");
-                // k.sign_parts(|h| {
-                //     sshwire::hash_ser(h, msg, parse_ctx).map_err(|_| salty::Error::ContextTooLong)
-                // })
-                // .trap()
-                // .map(|s| s.into())
+                k.sign_parts(|h| {
+                    sshwire::hash_ser(h, msg, parse_ctx).map_err(|_| salty::Error::ContextTooLong)
+                })
+                .trap()
+                .map(|s| s.into())
             }
         }
     }
@@ -188,11 +203,5 @@ pub(crate) mod tests {
     use sign::*;
     use sunsetlog::init_test_log;
 
-    pub(crate) fn make_ed25519_signkey() -> SignKey {
-        let mut s = [0u8; 32];
-        random::fill_random(s.as_mut_slice()).unwrap();
-        let ed = salty::Keypair::from(&s);
-        sign::SignKey::Ed25519(ed)
-    }
-
+    // TODO: tests for sign()/verify() and invalid signatures
 }
