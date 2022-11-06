@@ -77,11 +77,12 @@ async-trait = { version = "0.1" }
 serde_json = "1.0"
 
 
+# embassy is not released yet
 [patch.crates-io]
-embassy-executor = { git = "https://github.com/embassy-rs/embassy", rev = "e7fdd500d8354a03fcd105c8298cf7b4798a4107" }
+# embassy-executor = { git = "https://github.com/embassy-rs/embassy", rev = "e7fdd500d8354a03fcd105c8298cf7b4798a4107" }
 embassy-time = { git = "https://github.com/embassy-rs/embassy", rev = "e7fdd500d8354a03fcd105c8298cf7b4798a4107" }
 embassy-futures = { git = "https://github.com/embassy-rs/embassy", rev = "e7fdd500d8354a03fcd105c8298cf7b4798a4107" }
 # embassy-sync = { git = "https://github.com/embassy-rs/embassy", rev = "e7fdd500d8354a03fcd105c8298cf7b4798a4107" }
-embassy-rp = { git = "https://github.com/embassy-rs/embassy", rev = "e7fdd500d8354a03fcd105c8298cf7b4798a4107" }
+# embassy-rp = { git = "https://github.com/embassy-rs/embassy", rev = "e7fdd500d8354a03fcd105c8298cf7b4798a4107" }
 embassy-net = { git = "https://github.com/embassy-rs/embassy", rev = "e7fdd500d8354a03fcd105c8298cf7b4798a4107" }
 embassy-sync = { path = "/home/matt/3rd/rs/embassy/embassy-sync" }
