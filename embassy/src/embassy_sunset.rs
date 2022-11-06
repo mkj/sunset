@@ -1,3 +1,8 @@
+#[allow(unused_imports)]
+use {
+    log::{debug, error, info, log, trace, warn},
+};
+
 use core::future::poll_fn;
 use core::task::Poll;
 
