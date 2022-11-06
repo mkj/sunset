@@ -1352,6 +1352,8 @@ name = "sunset-embassy"
 version = "0.2.0-alpha"
 dependencies = [
  "embassy-sync",
+ "log",
+ "pin-utils",
  "sunset",
 ]
 
