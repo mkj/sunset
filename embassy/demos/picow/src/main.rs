@@ -12,7 +12,7 @@ use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_net::tcp::TcpSocket;
 use embassy_net::{Stack, StackResources};
 use embassy_rp::gpio::{Flex, Level, Output};
-use embassy_futures::join::join3;
+use embassy_futures::join::join;
 use embassy_rp::peripherals::{PIN_23, PIN_24, PIN_25, PIN_29};
 use embedded_hal_async::spi::{ExclusiveDevice, SpiBusFlush, SpiBusRead, SpiBusWrite};
 use embedded_io::asynch::{Read, Write};
@@ -44,30 +44,6 @@ macro_rules! singleton {
         STATIC_CELL.init_with(move || $val)
     }};
 }
-
-// fn run() -> sunset::Result<()> {
-//     let mut x = [0u8; 500];
-
-//     let mut inbuf = [0u8; 1000];
-//     let mut outbuf = [0u8; 1000];
-//     let mut runner = sunset::Runner::new_server(&mut inbuf, &mut outbuf)?;
-//     let mut cli = SSHClient {};
-//     let mut cli = sunset::Behaviour::new_client(&mut cli);
-
-//     let mut pollctx = Context::from_waker(noop_waker_ref());
-
-//         runner.input(&x)?;
-//         let l = runner.progress(&mut cli);
-//         pin_mut!(l);
-//         let _ = l.poll(&mut pollctx);
-//         // runner.output(&mut x).unwrap();
-
-//         // tx.write(b'x').unwrap();
-//         // write!(tx, "{}", x[0]);
-
-//     Ok(())
-// }
-
 
 #[embassy_executor::task]
 async fn net_task(stack: &'static Stack<cyw43::NetDevice<'static>>) -> ! {
@@ -114,8 +90,8 @@ async fn main(spawner: Spawner) {
     let net_device = control.init(clm).await;
 
     //control.join_open(env!("WIFI_NETWORK")).await;
-    // control.join_wpa2(env!("WIFI_NETWORK"), env!("WIFI_PASSWORD")).await;
-    control.join_wpa2("WIFI_NETWORK", "WIFI_PASSWORD").await;
+    control.join_wpa2(env!("WIFI_NETWORK"), env!("WIFI_PASSWORD")).await;
+    //control.join_wpa2("WIFI_NETWORK", "WIFI_PASSWORD").await;
 
     let config = embassy_net::ConfigStrategy::Dhcp;
     //let config = embassy_net::ConfigStrategy::Static(embassy_net::Config {
@@ -166,32 +142,32 @@ async fn listener(stack: &'static Stack<cyw43::NetDevice<'static>>) -> ! {
 }
 
 struct DemoServer {
-    // keys: Vec<SignKey>,
+    keys: [SignKey; 1],
 
     sess: Option<u32>,
     want_shell: bool,
     shell_started: bool,
+
+    notify: Signal<NoopRawMutex, ()>,
 }
 
 impl DemoServer {
     fn new() -> Result<Self> {
-        // let keys = keyfiles.iter().map(|f| {
-        //     read_key(f).with_context(|| format!("loading key {f}"))
-        // }).collect::<Result<Vec<SignKey>>>()?;
+        let keys = [SignKey::generate(KeyType::Ed25519)?];
 
         Ok(Self {
             sess: None,
-            // keys,
+            keys,
             want_shell: false,
             shell_started: false,
+            notify: Signal::new(),
         })
     }
 }
 
 impl ServBehaviour for DemoServer {
     fn hostkeys(&mut self) -> BhResult<&[SignKey]> {
-        todo!()
-        // Ok(&self.keys)
+        Ok(&self.keys)
     }
 
 
@@ -200,6 +176,12 @@ impl ServBehaviour for DemoServer {
     }
 
     fn have_auth_pubkey(&self, user: TextString) -> bool {
+        true
+    }
+
+    fn auth_unchallenged(&mut self, username: TextString) -> bool {
+        let u = username.as_str().unwrap_or("mystery user");
+        info!("Allowing auth for user {}", u);
         true
     }
 
@@ -242,91 +224,24 @@ impl ServBehaviour for DemoServer {
 }
 
 async fn session(socket: &mut TcpSocket<'_>) -> sunset::Result<()> {
-        let mut app = DemoServer::new()?;
+    let mut app = DemoServer::new()?;
 
-        let mut ssh_rxbuf = [0; 1024];
-        let mut ssh_txbuf = [0; 1024];
-        let serv = SSHServer::new(&mut ssh_rxbuf, &mut ssh_txbuf, &mut app)?;
-        let serv = &serv;
+    let mut ssh_rxbuf = [0; 2000];
+    let mut ssh_txbuf = [0; 2000];
+    let serv = SSHServer::new(&mut ssh_rxbuf, &mut ssh_txbuf, &mut app)?;
+    let serv = &serv;
 
-        let app = Mutex::<NoopRawMutex, _>::new(app);
+    let app = Mutex::<NoopRawMutex, _>::new(app);
 
-        let (mut rsock, mut wsock) = socket.split();
+    let run = serv.run(socket, &app);
 
-        let tx = async {
-            loop {
-                // TODO: make sunset read directly from socket, no intermediate buffer.
-                let mut buf = [0; 1024];
-                let l = serv.read(&mut buf).await?;
-                let mut buf = &buf[..l];
-                while buf.len() > 0 {
-                    let n = wsock.write(buf).await.expect("TODO handle write error");
-                    buf = &buf[n..];
-                }
-            }
-            #[allow(unreachable_code)]
-            Ok::<_, sunset::Error>(())
-        };
+    let session = async {
+        loop {
+        }
+    };
 
-        let rx = async {
-            loop {
-                // TODO: make sunset read directly from socket, no intermediate buffer.
-                let mut buf = [0; 1024];
-                let l = rsock.read(&mut buf).await.expect("TODO handle read error");
-                let mut buf = &buf[..l];
-                while buf.len() > 0 {
-                    let n = serv.write(&buf).await?;
-                    buf = &buf[n..];
-                }
-            }
-            #[allow(unreachable_code)]
-            Ok::<_, sunset::Error>(())
-        };
+    // TODO: handle results
+    join(run, session).await;
 
-        let prog = async {
-            loop {
-                serv.progress(&app).await?;
-            }
-            #[allow(unreachable_code)]
-            Ok::<_, sunset::Error>(())
-        };
-        join3(rx, tx, prog).await;
-
-        Ok(())
+    Ok(())
 }
-
-        // info!("Received connection from {:?}", socket.remote_endpoint());
-
-        // #[embassy_executor::task]
-        // async fn from_wir(stack: &'static Stack<cyw43::NetDevice<'static>>) -> ! {
-        //     stack.run().await
-        // }
-
-        // spawner.spawn(sunset_task(runner)).unwrap();
-
-        // run().unwrap();
-
-        // loop {
-        //     let n = match socket.read(&mut buf).await {
-        //         Ok(0) => {
-        //             warn!("read EOF");
-        //             break;
-        //         }
-        //         Ok(n) => n,
-        //         Err(e) => {
-        //             warn!("read error: {:?}", e);
-        //             break;
-        //         }
-        //     };
-
-        //     info!("rxd {:02x}", &buf[..n]);
-
-        //     match socket.write(&buf[..n]).await {
-        //         Ok(_sz) => {}
-        //         Err(e) => {
-        //             warn!("write error: {:?}", e);
-        //             break;
-        //         }
-        //     };
-        // }
-

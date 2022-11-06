@@ -83,6 +83,7 @@ impl<'a> EmbassySunset<'a> {
             }
             // inner dropped
         }
+        warn!("progress unlocked");
 
         // idle until input is received
         // TODO do we also want to wake in other situations?

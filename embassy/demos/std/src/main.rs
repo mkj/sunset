@@ -43,29 +43,6 @@ macro_rules! singleton {
     }};
 }
 
-// fn run() -> sunset::Result<()> {
-//     let mut x = [0u8; 500];
-
-//     let mut inbuf = [0u8; 1000];
-//     let mut outbuf = [0u8; 1000];
-//     let mut runner = sunset::Runner::new_server(&mut inbuf, &mut outbuf)?;
-//     let mut cli = SSHClient {};
-//     let mut cli = sunset::Behaviour::new_client(&mut cli);
-
-//     let mut pollctx = Context::from_waker(noop_waker_ref());
-
-//         runner.input(&x)?;
-//         let l = runner.progress(&mut cli);
-//         pin_mut!(l);
-//         let _ = l.poll(&mut pollctx);
-//         // runner.output(&mut x).unwrap();
-
-//         // tx.write(b'x').unwrap();
-//         // write!(tx, "{}", x[0]);
-
-//     Ok(())
-// }
-
 #[embassy_executor::task]
 async fn net_task(stack: &'static Stack<TunTapDevice>) -> ! {
     stack.run().await
@@ -81,7 +58,6 @@ async fn main_task(spawner: Spawner) {
 
     // Init network device
     let device = TunTapDevice::new(opt_tap0).unwrap();
-
 
     let seed = OsRng.next_u64();
 
@@ -126,7 +102,7 @@ async fn listener(stack: &'static Stack<TunTapDevice>) -> ! {
 }
 
 struct DemoServer {
-    // keys: Vec<SignKey>,
+    keys: [SignKey; 1],
 
     sess: Option<u32>,
     want_shell: bool,
@@ -135,13 +111,12 @@ struct DemoServer {
 
 impl DemoServer {
     fn new() -> Result<Self> {
-        // let keys = keyfiles.iter().map(|f| {
-        //     read_key(f).with_context(|| format!("loading key {f}"))
-        // }).collect::<Result<Vec<SignKey>>>()?;
+
+        let keys = [SignKey::generate(KeyType::Ed25519)?];
 
         Ok(Self {
             sess: None,
-            // keys,
+            keys,
             want_shell: false,
             shell_started: false,
         })
@@ -150,8 +125,7 @@ impl DemoServer {
 
 impl ServBehaviour for DemoServer {
     fn hostkeys(&mut self) -> BhResult<&[SignKey]> {
-        todo!("hostkeys()")
-        // Ok(&self.keys)
+        Ok(&self.keys)
     }
 
 
@@ -160,6 +134,11 @@ impl ServBehaviour for DemoServer {
     }
 
     fn have_auth_pubkey(&self, user: TextString) -> bool {
+        false
+    }
+
+    fn auth_unchallenged(&mut self, username: TextString) -> bool {
+        info!("Allowing auth for user {:?}", username.as_str());
         true
     }
 
@@ -202,63 +181,16 @@ impl ServBehaviour for DemoServer {
 }
 
 async fn session(socket: &mut TcpSocket<'_>) -> sunset::Result<()> {
-        let mut app = DemoServer::new()?;
+    let mut app = DemoServer::new()?;
 
-        let mut ssh_rxbuf = [0; 4000];
-        let mut ssh_txbuf = [0; 4000];
-        let serv = SSHServer::new(&mut ssh_rxbuf, &mut ssh_txbuf, &mut app)?;
-        let serv = &serv;
+    let mut ssh_rxbuf = [0; 2000];
+    let mut ssh_txbuf = [0; 2000];
+    let serv = SSHServer::new(&mut ssh_rxbuf, &mut ssh_txbuf, &mut app)?;
+    let serv = &serv;
 
-        let app = Mutex::<NoopRawMutex, _>::new(app);
+    let app = Mutex::<NoopRawMutex, _>::new(app);
 
-        let (mut rsock, mut wsock) = socket.split();
-
-        let tx = async {
-            loop {
-                // TODO: make sunset read directly from socket, no intermediate buffer.
-                let mut buf = [0; 1024];
-                trace!("tx read");
-                let l = serv.read(&mut buf).await?;
-                trace!("tx read done");
-                let mut buf = &buf[..l];
-                while buf.len() > 0 {
-                    let n = wsock.write(buf).await.expect("TODO handle write error");
-                    buf = &buf[n..];
-                }
-                trace!("tx write done");
-            }
-            #[allow(unreachable_code)]
-            Ok::<_, sunset::Error>(())
-        };
-
-        let rx = async {
-            loop {
-                // TODO: make sunset read directly from socket, no intermediate buffer.
-                let mut buf = [0; 1024];
-                trace!("rx read");
-                let l = rsock.read(&mut buf).await.expect("TODO handle read error");
-                trace!("rx read done {l}");
-                let mut buf = &buf[..l];
-                while buf.len() > 0 {
-                    let n = serv.write(&buf).await?;
-                    buf = &buf[n..];
-                }
-                trace!("rx write done");
-            }
-            #[allow(unreachable_code)]
-            Ok::<_, sunset::Error>(())
-        };
-
-        let prog = async {
-            loop {
-                serv.progress(&app).await?;
-            }
-            #[allow(unreachable_code)]
-            Ok::<_, sunset::Error>(())
-        };
-        join3(rx, tx, prog).await;
-
-        Ok(())
+    serv.run(socket, &app).await
 }
 
 static EXECUTOR: StaticCell<Executor> = StaticCell::new();
