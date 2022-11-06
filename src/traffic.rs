@@ -334,19 +334,13 @@ impl<'a> TrafOut<'a> {
         }
     }
 
-    pub fn send_version(&mut self, buf: &[u8]) -> Result<(), Error> {
+    pub fn send_version(&mut self) -> Result<(), Error> {
         if !matches!(self.state, TxState::Idle) {
             return Err(Error::bug());
         }
 
-        if buf.len() + 2 > self.buf.len() {
-            return Err(Error::NoRoom);
-        }
-
-        self.buf[..buf.len()].copy_from_slice(buf);
-        self.buf[buf.len()] = ident::CR;
-        self.buf[buf.len()+1] = ident::LF;
-        self.state = TxState::Write { idx: 0, len: buf.len() + 2 };
+        let len = ident::write_version(&mut self.buf)?;
+        self.state = TxState::Write { idx: 0, len };
         Ok(())
     }
 
@@ -400,8 +394,8 @@ impl<'s, 'a> TrafSend<'s, 'a> {
         self.keys.rekey(keys)
     }
 
-    pub fn send_version(&mut self, buf: &[u8]) -> Result<(), Error> {
-        self.out.send_version(buf)
+    pub fn send_version(&mut self) -> Result<(), Error> {
+        self.out.send_version()
     }
 
     pub fn can_output(&self) -> bool {

@@ -122,7 +122,7 @@ impl Conn {
         debug!("progress conn state {:?}", self.state);
         match self.state {
             ConnState::SendIdent => {
-                s.send_version(ident::OUR_VERSION)?;
+                s.send_version()?;
                 self.kex.send_kexinit(&self.algo_conf, s)?;
                 // TODO: first_follows would have a second packet here
                 self.state = ConnState::ReceiveIdent

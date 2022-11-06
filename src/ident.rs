@@ -1,8 +1,8 @@
 use crate::error::{Error,TrapBug};
 
-pub(crate) const OUR_VERSION: &[u8] = "SSH-2.0-SunsetSSH".as_bytes();
+pub(crate) const OUR_VERSION: &[u8] = b"SSH-2.0-SunsetSSH-0.1";
 
-const SSH_PREFIX: &[u8] = "SSH-2.0-".as_bytes();
+pub(crate) const SSH_PREFIX: &[u8] = b"SSH-2.0-";
 
 // RFC4253 4.2 says max length 255 incl CR LF.
 // TODO find what's in the wild
@@ -11,6 +11,21 @@ const MAX_LINES: usize = 50;
 
 pub const CR: u8 = 0x0d;
 pub const LF: u8 = 0x0a;
+
+pub(crate) fn write_version(buf: &mut [u8]) -> Result<usize> {
+
+    let total_len = OUR_VERSION.len() + 2;
+    if total_len > buf.len() {
+        return Err(Error::NoRoom);
+    }
+
+    let (d, b) = buf.split_at_mut(OUR_VERSION.len());
+    d.copy_from_slice(OUR_VERSION);
+    b[0] = CR;
+    b[1] = LF;
+
+    return Ok(total_len)
+}
 
 /// Parses and stores the remove SSH version string
 pub struct RemoteVersion {
