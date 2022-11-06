@@ -349,7 +349,7 @@ impl <'a> From<&'a OwnedSig> for Signature<'a> {
     fn from(s: &'a OwnedSig) -> Self {
         match s {
             OwnedSig::Ed25519(e) => Signature::Ed25519(Ed25519Sig { sig: BinString(e) }),
-            OwnedSig::RSA256 => todo!(),
+            OwnedSig::RSA256 => todo!("sig from rsa"),
         }
     }
 }

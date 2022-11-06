@@ -27,7 +27,6 @@ pub struct EmbassySunset<'a> {
     pub(crate) inner: Mutex<NoopRawMutex, Inner<'a>>,
 
     progress_notify: Signal<NoopRawMutex, ()>,
-    lock_waker: WakerRegistration,
 }
 
 impl<'a> EmbassySunset<'a> {
@@ -44,7 +43,6 @@ impl<'a> EmbassySunset<'a> {
         Self {
             inner,
             progress_notify,
-            lock_waker: WakerRegistration::new(),
          }
     }
 
@@ -94,14 +92,13 @@ impl<'a> EmbassySunset<'a> {
 
     pub async fn read(&self, buf: &mut [u8]) -> Result<usize> {
         poll_fn(|cx| {
-
-            trace!("read locking");
+            // Attempt to lock .inner
             let i = self.inner.lock();
             pin_mut!(i);
             let r = match i.poll(cx) {
                 Poll::Ready(mut inner) => {
-                    warn!("read lock ready");
                     match inner.runner.output(buf) {
+                        // no output ready
                         Ok(0) => {
                             inner.runner.set_output_waker(cx.waker());
                             Poll::Pending
@@ -111,12 +108,10 @@ impl<'a> EmbassySunset<'a> {
                     }
                 }
                 Poll::Pending => {
-                    trace!("read lock pending");
+                    // .inner lock is busy
                     Poll::Pending
                 }
             };
-            trace!("read result {r:?}");
-
             r
         })
         .await
@@ -124,12 +119,10 @@ impl<'a> EmbassySunset<'a> {
 
     pub async fn write(&self, buf: &[u8]) -> Result<usize> {
         poll_fn(|cx| {
-            trace!("write locking");
             let i = self.inner.lock();
             pin_mut!(i);
             let r = match i.poll(cx) {
                 Poll::Ready(mut inner) => {
-                    warn!("write lock ready");
                     if inner.runner.ready_input() {
                         match inner.runner.input(buf) {
                             Ok(0) => {
@@ -144,14 +137,14 @@ impl<'a> EmbassySunset<'a> {
                     }
                 }
                 Poll::Pending => {
-                    trace!("write lock pending");
+                    // .inner lock is busy
                     Poll::Pending
                 }
             };
             if r.is_ready() {
+                // wake up .progress() to handle the input
                 self.progress_notify.signal(())
             }
-            trace!("write result {r:?}");
             r
         })
         .await

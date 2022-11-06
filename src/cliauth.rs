@@ -184,7 +184,7 @@ impl CliAuth {
 
         match auth60 {
             Userauth60::PkOk(pkok) => self.auth_pkok(pkok, sess_id, parse_ctx, s),
-            _ => todo!(),
+            Userauth60::PwChangeReq(_req) => todo!("pwchange"),
         }
     }
 

@@ -411,7 +411,7 @@ impl Channels {
                 trace!("channel success, TODO");
             }
             Packet::ChannelFailure(_p) => {
-                todo!();
+                todo!("ChannelFailure");
             }
             _ => Error::bug_msg("unreachable")?,
         };

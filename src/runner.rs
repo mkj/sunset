@@ -267,7 +267,7 @@ impl<'a> Runner<'a> {
     }
 
     pub fn term_window_change(&self, _chan: u32, _wc: packets::WinChange) -> Result<()> {
-        todo!();
+        todo!("term_window_change()");
         // self.conn.channels.term_window_change(chan, wc)
     }
 

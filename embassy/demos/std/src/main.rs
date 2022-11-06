@@ -150,7 +150,7 @@ impl DemoServer {
 
 impl ServBehaviour for DemoServer {
     fn hostkeys(&mut self) -> BhResult<&[SignKey]> {
-        todo!()
+        todo!("hostkeys()")
         // Ok(&self.keys)
     }
 
