@@ -3,13 +3,15 @@ use {
     log::{debug, error, info, log, trace, warn},
 };
 
-use core::future::poll_fn;
+use core::future::{poll_fn, Future};
 use core::task::Poll;
 
 use embassy_sync::waitqueue::WakerRegistration;
 use embassy_sync::mutex::Mutex;
 use embassy_sync::blocking_mutex::raw::{NoopRawMutex, RawMutex};
 use embassy_sync::signal::Signal;
+
+use pin_utils::pin_mut;
 
 use sunset::{Runner, Result, Behaviour, ServBehaviour, CliBehaviour};
 use sunset::config::MAX_CHANNELS;
@@ -25,6 +27,7 @@ pub struct EmbassySunset<'a> {
     pub(crate) inner: Mutex<NoopRawMutex, Inner<'a>>,
 
     progress_notify: Signal<NoopRawMutex, ()>,
+    lock_waker: WakerRegistration,
 }
 
 impl<'a> EmbassySunset<'a> {
@@ -41,6 +44,7 @@ impl<'a> EmbassySunset<'a> {
         Self {
             inner,
             progress_notify,
+            lock_waker: WakerRegistration::new(),
          }
     }
 
@@ -63,18 +67,23 @@ impl<'a> EmbassySunset<'a> {
         -> Result<()>
         where M: RawMutex, B: ServBehaviour
         {
-        let mut inner = self.inner.lock().await;
-        {
-            {
-                let mut b = b.lock().await;
-                // XXX: unsure why we need this explicit type
-                let b: &mut B = &mut b;
-                let mut b = Behaviour::new_server(b);
-                inner.runner.progress(&mut b).await?;
-                // b is dropped, allowing other users
-            }
 
-            self.wake_channels(&mut inner)
+        {
+            let mut inner = self.inner.lock().await;
+            {
+                {
+                    let mut b = b.lock().await;
+                    warn!("progress locked");
+                    // XXX: unsure why we need this explicit type
+                    let b: &mut B = &mut b;
+                    let mut b = Behaviour::new_server(b);
+                    inner.runner.progress(&mut b).await?;
+                    // b is dropped, allowing other users
+                }
+
+                self.wake_channels(&mut inner)
+            }
+            // inner dropped
         }
 
         // idle until input is received
@@ -85,8 +94,13 @@ impl<'a> EmbassySunset<'a> {
 
     pub async fn read(&self, buf: &mut [u8]) -> Result<usize> {
         poll_fn(|cx| {
-            let r = match self.inner.try_lock() {
-                Ok(mut inner) => {
+
+            trace!("read locking");
+            let i = self.inner.lock();
+            pin_mut!(i);
+            let r = match i.poll(cx) {
+                Poll::Ready(mut inner) => {
+                    warn!("read lock ready");
                     match inner.runner.output(buf) {
                         Ok(0) => {
                             inner.runner.set_output_waker(cx.waker());
@@ -96,8 +110,12 @@ impl<'a> EmbassySunset<'a> {
                         Err(e) => Poll::Ready(Err(e)),
                     }
                 }
-                Err(_) => Poll::Pending,
+                Poll::Pending => {
+                    trace!("read lock pending");
+                    Poll::Pending
+                }
             };
+            trace!("read result {r:?}");
 
             r
         })
@@ -106,8 +124,12 @@ impl<'a> EmbassySunset<'a> {
 
     pub async fn write(&self, buf: &[u8]) -> Result<usize> {
         poll_fn(|cx| {
-            let r = match self.inner.try_lock() {
-                Ok(mut inner) => {
+            trace!("write locking");
+            let i = self.inner.lock();
+            pin_mut!(i);
+            let r = match i.poll(cx) {
+                Poll::Ready(mut inner) => {
+                    warn!("write lock ready");
                     if inner.runner.ready_input() {
                         match inner.runner.input(buf) {
                             Ok(0) => {
@@ -121,12 +143,15 @@ impl<'a> EmbassySunset<'a> {
                         Poll::Pending
                     }
                 }
-                Err(_) => Poll::Pending,
+                Poll::Pending => {
+                    trace!("write lock pending");
+                    Poll::Pending
+                }
             };
-
             if r.is_ready() {
                 self.progress_notify.signal(())
             }
+            trace!("write result {r:?}");
             r
         })
         .await

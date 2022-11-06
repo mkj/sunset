@@ -1290,6 +1290,7 @@ version = "0.2.0-alpha"
 dependencies = [
  "embassy-sync 0.1.0",
  "log",
+ "pin-utils",
  "sunset",
 ]
 

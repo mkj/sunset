@@ -204,8 +204,8 @@ impl ServBehaviour for DemoServer {
 async fn session(socket: &mut TcpSocket<'_>) -> sunset::Result<()> {
         let mut app = DemoServer::new()?;
 
-        let mut ssh_rxbuf = [0; 1024];
-        let mut ssh_txbuf = [0; 1024];
+        let mut ssh_rxbuf = [0; 4000];
+        let mut ssh_txbuf = [0; 4000];
         let serv = SSHServer::new(&mut ssh_rxbuf, &mut ssh_txbuf, &mut app)?;
         let serv = &serv;
 
@@ -225,6 +225,7 @@ async fn session(socket: &mut TcpSocket<'_>) -> sunset::Result<()> {
                     let n = wsock.write(buf).await.expect("TODO handle write error");
                     buf = &buf[n..];
                 }
+                trace!("tx write done");
             }
             #[allow(unreachable_code)]
             Ok::<_, sunset::Error>(())
@@ -236,12 +237,13 @@ async fn session(socket: &mut TcpSocket<'_>) -> sunset::Result<()> {
                 let mut buf = [0; 1024];
                 trace!("rx read");
                 let l = rsock.read(&mut buf).await.expect("TODO handle read error");
-                trace!("rx read done");
+                trace!("rx read done {l}");
                 let mut buf = &buf[..l];
                 while buf.len() > 0 {
                     let n = serv.write(&buf).await?;
                     buf = &buf[n..];
                 }
+                trace!("rx write done");
             }
             #[allow(unreachable_code)]
             Ok::<_, sunset::Error>(())
@@ -265,6 +267,7 @@ fn main() {
     env_logger::builder()
         .filter_level(log::LevelFilter::Trace)
         .filter_module("async_io", log::LevelFilter::Info)
+        .filter_module("polling", log::LevelFilter::Info)
         .format_timestamp_nanos()
         .init();
 
