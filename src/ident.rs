@@ -1,4 +1,4 @@
-use crate::error::{Error,TrapBug};
+use crate::error::{Error,TrapBug, Result};
 
 pub(crate) const OUR_VERSION: &[u8] = b"SSH-2.0-SunsetSSH-0.1";
 
@@ -81,7 +81,7 @@ impl<'a> RemoteVersion {
     /// Reads the initial SSH stream to find the version string and returns
     /// the number of bytes consumed.
     /// Behaviour is undefined if called later after an error.
-    pub fn consume(&mut self, buf: &[u8]) -> Result<usize, Error> {
+    pub fn consume(&mut self, buf: &[u8]) -> Result<usize> {
         // consume input byte by byte, feeding through the states
         let mut taken = 0;
         for &b in buf {
@@ -157,11 +157,11 @@ impl<'a> RemoteVersion {
 #[rustfmt::skip]
 mod tests {
     use crate::ident;
-    use crate::error::{Error,TrapBug};
+    use crate::error::{Error,TrapBug,Result};
     use crate::sunsetlog::init_test_log;
     use proptest::prelude::*;
 
-    fn test_version(v: &str, split: usize, expect: &str) -> Result<usize, Error> {
+    fn test_version(v: &str, split: usize, expect: &str) -> Result<usize> {
         let mut r = ident::RemoteVersion::new();
 
         let split = split.min(v.len());
@@ -187,7 +187,7 @@ mod tests {
 
     #[test]
     /// check round trip of packet enums is right
-    fn version() -> Result<(), Error> {
+    fn version() -> Result<()> {
         let long = core::str::from_utf8(&[60u8; 300]).unwrap();
         // split input at various positions
         let splits = [

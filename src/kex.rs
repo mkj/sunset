@@ -672,9 +672,9 @@ mod tests {
         let serv_conf = kex::AlgoConfig::new(false);
         let mut serv_version = RemoteVersion::new();
         // needs to be hardcoded because that's what we send.
-        serv_version.consume("SSH-2.0-sunset\r\n".as_bytes()).unwrap();
+        serv_version.consume(b"SSH-2.0-sunset\r\n").unwrap();
         let mut cli_version = RemoteVersion::new();
-        cli_version.consume("SSH-2.0-sunset\r\n".as_bytes()).unwrap();
+        cli_version.consume(b"SSH-2.0-sunset\r\n").unwrap();
 
         let mut sb = TestServBehaviour {
             // TODO: put keys in

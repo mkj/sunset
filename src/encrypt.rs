@@ -800,7 +800,7 @@ mod tests {
                 // arbitrary keys
                 let h = SessId::from_slice(&Sha256::digest("some exchange hash".as_bytes())).unwrap();
                 let sess_id = SessId::from_slice(&Sha256::digest("some sessid".as_bytes())).unwrap();
-                let sharedkey = "hello".as_bytes();
+                let sharedkey = b"hello";
 
                 trace!("algos enc {algos:?}");
                 let newkeys = Keys::new_from(sharedkey, &h, &sess_id, &algos).unwrap();
@@ -835,9 +835,9 @@ mod tests {
             let mut keys = KeyState::new_cleartext();
             if let Some(algos) = algos {
                 // arbitrary keys
-                let h = SessId::from_slice(&Sha256::digest("some exchange hash".as_bytes())).unwrap();
-                let sess_id = SessId::from_slice(&Sha256::digest("some sessid".as_bytes())).unwrap();
-                let sharedkey = "hello".as_bytes();
+                let h = SessId::from_slice(&Sha256::digest(b"some exchange hash")).unwrap();
+                let sess_id = SessId::from_slice(&Sha256::digest(b"some sessid")).unwrap();
+                let sharedkey = b"hello";
                 let newkeys =
                     Keys::new_from(sharedkey, &h, &sess_id, &algos).unwrap();
 
