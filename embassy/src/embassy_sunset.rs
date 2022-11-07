@@ -10,6 +10,8 @@ use embassy_sync::waitqueue::WakerRegistration;
 use embassy_sync::mutex::Mutex;
 use embassy_sync::blocking_mutex::raw::{NoopRawMutex, RawMutex};
 use embassy_sync::signal::Signal;
+use embassy_futures::join::join3;
+use embassy_net::tcp::TcpSocket;
 
 use pin_utils::pin_mut;
 
@@ -46,6 +48,60 @@ impl<'a> EmbassySunset<'a> {
          }
     }
 
+    pub async fn run<M, B: ?Sized>(&self, socket: &mut TcpSocket<'_>,
+        b: &Mutex<M, B>) -> Result<()>
+        where
+            M: RawMutex,
+            for<'f> Behaviour<'f>: From<&'f mut B>
+    {
+        let (mut rsock, mut wsock) = socket.split();
+
+        let tx = async {
+            loop {
+                // TODO: make sunset read directly from socket, no intermediate buffer.
+                let mut buf = [0; 1024];
+                let l = self.read(&mut buf).await?;
+                let mut buf = &buf[..l];
+                while buf.len() > 0 {
+                    let n = wsock.write(buf).await.expect("TODO handle write error");
+                    buf = &buf[n..];
+                }
+            }
+            #[allow(unreachable_code)]
+            Ok::<_, sunset::Error>(())
+        };
+
+        let rx = async {
+            loop {
+                // TODO: make sunset read directly from socket, no intermediate buffer.
+                let mut buf = [0; 1024];
+                let l = rsock.read(&mut buf).await.expect("TODO handle read error");
+                let mut buf = &buf[..l];
+                while buf.len() > 0 {
+                    let n = self.write(&buf).await?;
+                    buf = &buf[n..];
+                }
+            }
+            #[allow(unreachable_code)]
+            Ok::<_, sunset::Error>(())
+        };
+
+        let prog = async {
+            loop {
+                self.progress(b).await?;
+            }
+            #[allow(unreachable_code)]
+            Ok::<_, sunset::Error>(())
+        };
+
+
+        // TODO: handle results
+        join3(rx, tx, prog).await;
+
+        Ok(())
+    }
+
+
     fn wake_channels(&self, inner: &mut Inner) {
 
             if let Some((chan, _ext)) = inner.runner.ready_channel_input() {
@@ -60,10 +116,12 @@ impl<'a> EmbassySunset<'a> {
     }
 
     // XXX could we have a concrete NoopRawMutex instead of M?
-    pub async fn progress_server<M, B>(&self,
+    pub async fn progress<M, B: ?Sized>(&self,
         b: &Mutex<M, B>)
         -> Result<()>
-        where M: RawMutex, B: ServBehaviour
+        where
+            M: RawMutex,
+            for<'f> Behaviour<'f>: From<&'f mut B>
         {
 
         {
@@ -74,7 +132,7 @@ impl<'a> EmbassySunset<'a> {
                     warn!("progress locked");
                     // XXX: unsure why we need this explicit type
                     let b: &mut B = &mut b;
-                    let mut b = Behaviour::new_server(b);
+                    let mut b: Behaviour = b.into();
                     inner.runner.progress(&mut b).await?;
                     // b is dropped, allowing other users
                 }

@@ -233,8 +233,9 @@ async fn session(socket: &mut TcpSocket<'_>) -> sunset::Result<()> {
     let serv = &serv;
 
     let app = Mutex::<NoopRawMutex, _>::new(app);
+    let app = &app as &Mutex::<NoopRawMutex, dyn ServBehaviour>;
 
-    let run = serv.run(socket, &app);
+    let run = serv.run(socket, app);
 
     let session = async {
         loop {

@@ -189,8 +189,9 @@ async fn session(socket: &mut TcpSocket<'_>) -> sunset::Result<()> {
     let serv = &serv;
 
     let app = Mutex::<NoopRawMutex, _>::new(app);
+    let app = &app as &Mutex::<NoopRawMutex, dyn ServBehaviour>;
 
-    serv.run(socket, &app).await
+    serv.run(socket, app).await
 }
 
 static EXECUTOR: StaticCell<Executor> = StaticCell::new();

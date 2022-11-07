@@ -38,8 +38,20 @@ pub type ResponseString = heapless::String<100>;
 // into a separate trait (which impls the non-async trait)
 
 pub enum Behaviour<'a> {
-    Client(&'a mut (dyn CliBehaviour + Send)),
+    Client(&'a mut (dyn CliBehaviour)),
     Server(&'a mut (dyn ServBehaviour)),
+}
+
+impl<'a, 'b> From<&'a mut (dyn ServBehaviour + 'b)> for Behaviour<'a> {
+    fn from(b: &'a mut (dyn ServBehaviour + 'b)) -> Self {
+        Self::Server(b)
+    }
+}
+
+impl<'a, 'b> From<&'a mut (dyn CliBehaviour + 'b)> for Behaviour<'a> {
+    fn from(b: &'a mut (dyn CliBehaviour + 'b)) -> Self {
+        Self::Client(b)
+    }
 }
 
 impl<'a> Behaviour<'a> {
