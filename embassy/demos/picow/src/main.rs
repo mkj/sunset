@@ -8,7 +8,8 @@ use core::todo;
 use defmt::*;
 use embassy_executor::Spawner;
 use embassy_sync::mutex::Mutex;
-use embassy_sync::blocking_mutex::raw::NoopRawMutex;
+use embassy_sync::blocking_mutex::raw::{NoopRawMutex, CriticalSectionRawMutex};
+use embassy_sync::signal::Signal;
 use embassy_net::tcp::TcpSocket;
 use embassy_net::{Stack, StackResources};
 use embassy_rp::gpio::{Flex, Level, Output};
@@ -148,7 +149,7 @@ struct DemoServer {
     want_shell: bool,
     shell_started: bool,
 
-    notify: Signal<NoopRawMutex, ()>,
+    notify: Signal<CriticalSectionRawMutex, ()>,
 }
 
 impl DemoServer {
