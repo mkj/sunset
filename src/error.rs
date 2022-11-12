@@ -95,9 +95,6 @@ pub enum Error {
     // Bug { location: snafu::Location },
     /// Program bug
     Bug,
-
-    // TODO remove this
-    OtherBug { location: snafu::Location },
 }
 
 impl Error {
@@ -123,24 +120,6 @@ impl Error {
             //         caller.column(),
             //     ),
             // }
-        }
-    }
-
-    pub fn otherbug() -> Error {
-        // Easier to track the source of errors in development,
-        // but release builds shouldn't panic.
-        if cfg!(debug_assertions) {
-            panic!("Hit a bug");
-        } else {
-            let caller = core::panic::Location::caller();
-            Error::OtherBug
-            {
-                location: snafu::Location::new(
-                    caller.file(),
-                    caller.line(),
-                    caller.column(),
-                ),
-            }
         }
     }
 
