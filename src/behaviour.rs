@@ -176,9 +176,16 @@ pub trait ServBehaviour: Sync+Send {
     // be loaded on the stack rather than kept in memory for the whole lifetime.
     fn hostkeys(&mut self) -> BhResult<&[sign::SignKey]>;
 
+    #[allow(unused)]
     // TODO: or return a slice of enums
-    fn have_auth_password(&self, username: TextString) -> bool;
-    fn have_auth_pubkey(&self, username: TextString) -> bool;
+    fn have_auth_password(&self, username: TextString) -> bool {
+        false
+    }
+
+    #[allow(unused)]
+    fn have_auth_pubkey(&self, username: TextString) -> bool {
+        false
+    }
 
     #[allow(unused)]
     /// Return true to allow the user to log in with no authentication

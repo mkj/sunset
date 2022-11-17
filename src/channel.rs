@@ -83,7 +83,7 @@ impl Channels {
     }
 
     /// Returns a `Channel` for a local number, any state including `InOpen`.
-    pub fn get_any(&self, num: u32) -> Result<&Channel> {
+    fn get_any(&self, num: u32) -> Result<&Channel> {
         self.ch
             .get(num as usize)
             // out of range
@@ -94,7 +94,7 @@ impl Channels {
     }
 
     /// Returns a `Channel` for a local number. Excludes `InOpen` state.
-    pub fn get(&self, num: u32) -> Result<&Channel> {
+    fn get(&self, num: u32) -> Result<&Channel> {
         let ch = self.get_any(num)?;
 
         if matches!(ch.state, ChanState::InOpen) {
@@ -104,7 +104,7 @@ impl Channels {
         }
     }
 
-    pub fn get_mut(&mut self, num: u32) -> Result<&mut Channel> {
+    fn get_mut(&mut self, num: u32) -> Result<&mut Channel> {
         let ch = self
             .ch
             .get_mut(num as usize)
@@ -121,11 +121,27 @@ impl Channels {
         }
     }
 
+    /// Must be called when an application has finished with a channel.
+    pub fn done(&mut self, num: u32) -> Result<()> {
+        self.get_mut(num)?.app_done = true;
+        Ok(())
+    }
+
     fn remove(&mut self, num: u32) -> Result<()> {
         // TODO any checks?
-        *self.ch.get_mut(num as usize).ok_or(Error::BadChannel)? = None;
-        todo!();
-        // Ok(())
+        let ch = self.ch.get_mut(num as usize).ok_or(Error::BadChannel)?;
+        if let Some(c) = ch {
+            if c.app_done {
+                trace!("removing channel {}", num);
+                *ch = None;
+            } else {
+                c.state = ChanState::PendingDone;
+                trace!("not removing channel {}, not finished", num);
+            }
+            Ok(())
+        } else{
+            Err(Error::BadChannel)
+        }
     }
 
     /// Returns the first available channel
@@ -155,14 +171,17 @@ impl Channels {
         Ok(ch.as_mut().unwrap())
     }
 
-    /// Returns the channel data packet to send, and the length of data consumed.
-    /// Caller has already checked valid length with send_allowed()
+    /// Returns the channel data packet to send.
+    /// Caller has already checked valid length with send_allowed().
+    /// Don't call with zero length data.
     pub(crate) fn send_data<'b>(
         &mut self,
         num: u32,
         ext: Option<u32>,
         data: &'b [u8],
     ) -> Result<Packet<'b>> {
+        debug_assert!(data.len() > 0);
+
         let send = self.get_mut(num)?.send.as_mut().trap()?;
         if data.len() > send.max_packet || data.len() > send.window {
             return Err(Error::bug());
@@ -376,7 +395,7 @@ impl Channels {
                 let di = DataIn {
                     num: p.num,
                     ext: None,
-                    offset: p.data_offset(),
+                    offset: ChannelData::DATA_OFFSET,
                     len: p.data.0.len(),
                 };
                 disp = Dispatched(Some(di));
@@ -392,7 +411,7 @@ impl Channels {
                 let di = DataIn {
                     num: p.num,
                     ext: Some(p.code),
-                    offset: p.data_offset(),
+                    offset: ChannelDataExt::DATA_OFFSET,
                     len: p.data.0.len(),
                 };
                 trace!("{di:?}");
@@ -588,11 +607,11 @@ enum ChanState {
         init_req: InitReqs,
     },
     Normal,
-
     RecvEof,
-
     // TODO: recvclose state probably shouldn't be possible, we remove it straight away?
     RecvClose,
+    /// The channel is unused and ready to close after a call to `done()`
+    PendingDone,
 }
 
 pub(crate) struct Channel {
@@ -611,6 +630,11 @@ pub(crate) struct Channel {
     pending_adjust: usize,
 
     full_window: usize,
+
+    /// Set once application has called `done()`. The channel
+    /// will only be removed from the list
+    /// (allowing channel number re-use) if `app_done` is set
+    app_done: bool,
 }
 
 impl Channel {
@@ -629,6 +653,7 @@ impl Channel {
             send: None,
             pending_adjust: 0,
             full_window: config::DEFAULT_WINDOW,
+            app_done: false,
         }
     }
 

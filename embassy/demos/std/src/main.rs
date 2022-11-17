@@ -10,10 +10,11 @@ use core::future::Future;
 use core::todo;
 use embassy_executor::{Spawner, Executor};
 use embassy_sync::mutex::Mutex;
-use embassy_sync::blocking_mutex::raw::NoopRawMutex;
+use embassy_sync::blocking_mutex::raw::{NoopRawMutex, CriticalSectionRawMutex};
+use embassy_sync::signal::Signal;
 use embassy_net::tcp::TcpSocket;
 use embassy_net::{Stack, StackResources, ConfigStrategy};
-use embassy_futures::join::join3;
+use embassy_futures::join::join;
 use embedded_io::asynch::{Read, Write};
 use static_cell::StaticCell;
 
@@ -27,6 +28,7 @@ use rand::rngs::OsRng;
 use rand::RngCore;
 
 use sunset::*;
+use sunset::error::TrapBug;
 use sunset_embassy::SSHServer;
 
 use crate::tuntap::TunTapDevice;
@@ -107,6 +109,8 @@ struct DemoServer {
     sess: Option<u32>,
     want_shell: bool,
     shell_started: bool,
+
+    notify: Signal<CriticalSectionRawMutex, ()>,
 }
 
 impl DemoServer {
@@ -119,6 +123,7 @@ impl DemoServer {
             keys,
             want_shell: false,
             shell_started: false,
+            notify: Signal::new(),
         })
     }
 }
@@ -128,36 +133,10 @@ impl ServBehaviour for DemoServer {
         Ok(&self.keys)
     }
 
-
-    fn have_auth_password(&self, user: TextString) -> bool {
-        true
-    }
-
-    fn have_auth_pubkey(&self, user: TextString) -> bool {
-        false
-    }
-
     fn auth_unchallenged(&mut self, username: TextString) -> bool {
         info!("Allowing auth for user {:?}", username.as_str());
         true
     }
-
-    fn auth_password(&mut self, user: TextString, password: TextString) -> bool {
-        user.as_str().unwrap_or("") == "matt" && password.as_str().unwrap_or("") == "pw"
-    }
-
-    // fn auth_pubkey(&mut self, user: TextString, pubkey: &PubKey) -> bool {
-    //     if user.as_str().unwrap_or("") != "matt" {
-    //         return false
-    //     }
-
-    //     // key is tested1
-    //     pubkey.matches_openssh("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMkNdReJERy1rPGqdfTN73TnayPR+lTNhdZvOgkAOs5x")
-    //     .unwrap_or_else(|e| {
-    //         warn!("Failed loading openssh key: {e}");
-    //         false
-    //     })
-    // }
 
     fn open_session(&mut self, chan: u32) -> ChanOpened {
         if self.sess.is_some() {
@@ -171,6 +150,7 @@ impl ServBehaviour for DemoServer {
     fn sess_shell(&mut self, chan: u32) -> bool {
         let r = !self.want_shell && self.sess == Some(chan);
         self.want_shell = true;
+        self.notify.signal(());
         trace!("req want shell");
         r
     }
@@ -178,6 +158,25 @@ impl ServBehaviour for DemoServer {
     fn sess_pty(&mut self, chan: u32, _pty: &Pty) -> bool {
         self.sess == Some(chan)
     }
+}
+
+async fn shell_fut<'f>(serv: &SSHServer<'f>, app: &Mutex<NoopRawMutex, DemoServer>) -> Result<()>
+{
+    let session = async {
+        // self.notify.wait()?;
+        let chan = app.lock().await.sess.trap()?;
+
+        loop {
+            let mut b = [0u8; 100];
+            let lr = serv.read_channel(chan, None, &mut b).await?;
+            let lw = serv.write_channel(chan, None, &b[..lr]).await?;
+            if lr != lw {
+                trace!("read/write mismatch {} {}", lr, lw);
+            }
+        }
+        Ok(())
+    };
+    session.await
 }
 
 async fn session(socket: &mut TcpSocket<'_>) -> sunset::Result<()> {
@@ -189,9 +188,15 @@ async fn session(socket: &mut TcpSocket<'_>) -> sunset::Result<()> {
     let serv = &serv;
 
     let app = Mutex::<NoopRawMutex, _>::new(app);
-    let app = &app as &Mutex::<NoopRawMutex, dyn ServBehaviour>;
 
-    serv.run(socket, app).await
+    let session = shell_fut(serv, &app);
+
+    let app = &app as &Mutex::<NoopRawMutex, dyn ServBehaviour>;
+    let run = serv.run(socket, app);
+
+    join(run, session).await;
+
+    Ok(())
 }
 
 static EXECUTOR: StaticCell<Executor> = StaticCell::new();

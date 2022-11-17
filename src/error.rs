@@ -59,6 +59,13 @@ pub enum Error {
     /// SSH packet contents doesn't match length
     WrongPacketLength,
 
+    /// Channel EOF
+    ///
+    /// This is an expected error when a SSH channel completes. Can be returned
+    /// by channel read/write functions. Any further calls in the same direction
+    /// and with the same `ext`) will fail similarly.
+    ChannelEOF,
+
     // Used for unknown key types etc.
     #[snafu(display("{what} is not available"))]
     NotAvailable { what: &'static str },

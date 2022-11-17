@@ -4,7 +4,7 @@ use {
 };
 
 use core::future::{poll_fn, Future};
-use core::task::Poll;
+use core::task::{Poll, Context};
 
 use embassy_sync::waitqueue::WakerRegistration;
 use embassy_sync::mutex::Mutex;
@@ -15,14 +15,19 @@ use embassy_net::tcp::TcpSocket;
 
 use pin_utils::pin_mut;
 
-use sunset::{Runner, Result, Behaviour, ServBehaviour, CliBehaviour};
+use sunset::{Runner, Result, Error, Behaviour, ServBehaviour, CliBehaviour};
 use sunset::config::MAX_CHANNELS;
 
 pub(crate) struct Inner<'a> {
-    pub runner: Runner<'a>,
+    runner: Runner<'a>,
 
-    pub chan_read_wakers: [WakerRegistration; MAX_CHANNELS],
-    pub chan_write_wakers: [WakerRegistration; MAX_CHANNELS],
+    chan_read_wakers: [WakerRegistration; MAX_CHANNELS],
+
+    chan_write_wakers: [WakerRegistration; MAX_CHANNELS],
+    /// this is set `true` when the associated `chan_write_wakers` entry
+    /// was set for an ext write. This is needed because ext writes
+    /// require more buffer, so have different wake conditions.
+    ext_write_waker: [bool; MAX_CHANNELS],
 }
 
 pub struct EmbassySunset<'a> {
@@ -37,6 +42,7 @@ impl<'a> EmbassySunset<'a> {
             runner,
             chan_read_wakers: Default::default(),
             chan_write_wakers: Default::default(),
+            ext_write_waker: Default::default(),
         };
         let inner = Mutex::new(inner);
 
@@ -103,19 +109,19 @@ impl<'a> EmbassySunset<'a> {
 
 
     fn wake_channels(&self, inner: &mut Inner) {
+        if let Some((chan, _ext)) = inner.runner.ready_channel_input() {
+            inner.chan_read_wakers[chan as usize].wake()
+        }
 
-            if let Some((chan, _ext)) = inner.runner.ready_channel_input() {
-                inner.chan_read_wakers[chan as usize].wake()
+        for chan in 0..MAX_CHANNELS {
+            let ext = inner.ext_write_waker[chan];
+            if inner.runner.ready_channel_send(chan as u32, ext).unwrap_or(0) > 0 {
+                inner.chan_write_wakers[chan].wake()
             }
-
-            for chan in 0..MAX_CHANNELS {
-                if inner.runner.ready_channel_send(chan as u32).unwrap_or(0) > 0 {
-                    inner.chan_write_wakers[chan].wake()
-                }
-            }
+        }
     }
 
-    // XXX could we have a concrete NoopRawMutex instead of M?
+    // XXX should we have a concrete NoopRawMutex instead of M?
     pub async fn progress<M, B: ?Sized>(&self,
         b: &Mutex<M, B>)
         -> Result<()>
@@ -129,8 +135,6 @@ impl<'a> EmbassySunset<'a> {
             {
                 {
                     let mut b = b.lock().await;
-                    warn!("progress locked");
-                    // XXX: unsure why we need this explicit type
                     let b: &mut B = &mut b;
                     let mut b: Behaviour = b.into();
                     inner.runner.progress(&mut b).await?;
@@ -141,30 +145,23 @@ impl<'a> EmbassySunset<'a> {
             }
             // inner dropped
         }
-        warn!("progress unlocked");
 
         // idle until input is received
         // TODO do we also want to wake in other situations?
         self.progress_notify.wait().await;
+
         Ok(())
     }
 
-    pub async fn read(&self, buf: &mut [u8]) -> Result<usize> {
+    async fn poll_inner<F, T>(&self, mut f: F) -> T
+        where F: FnMut(&mut Inner, &mut Context) -> Poll<T> {
         poll_fn(|cx| {
             // Attempt to lock .inner
             let i = self.inner.lock();
             pin_mut!(i);
             let r = match i.poll(cx) {
                 Poll::Ready(mut inner) => {
-                    match inner.runner.output(buf) {
-                        // no output ready
-                        Ok(0) => {
-                            inner.runner.set_output_waker(cx.waker());
-                            Poll::Pending
-                        }
-                        Ok(n) => Poll::Ready(Ok(n)),
-                        Err(e) => Poll::Ready(Err(e)),
-                    }
+                    f(&mut inner, cx)
                 }
                 Poll::Pending => {
                     // .inner lock is busy
@@ -174,40 +171,69 @@ impl<'a> EmbassySunset<'a> {
             r
         })
         .await
+    }
+
+    pub async fn read(&self, buf: &mut [u8]) -> Result<usize> {
+        self.poll_inner(|inner, cx| {
+            match inner.runner.output(buf) {
+                // no output ready
+                Ok(0) => {
+                    inner.runner.set_output_waker(cx.waker());
+                    Poll::Pending
+                }
+                Ok(n) => Poll::Ready(Ok(n)),
+                Err(e) => Poll::Ready(Err(e)),
+            }
+        }).await
     }
 
     pub async fn write(&self, buf: &[u8]) -> Result<usize> {
-        poll_fn(|cx| {
-            let i = self.inner.lock();
-            pin_mut!(i);
-            let r = match i.poll(cx) {
-                Poll::Ready(mut inner) => {
-                    if inner.runner.ready_input() {
-                        match inner.runner.input(buf) {
-                            Ok(0) => {
-                                inner.runner.set_input_waker(cx.waker());
-                                Poll::Pending
-                            },
-                            Ok(n) => Poll::Ready(Ok(n)),
-                            Err(e) => Poll::Ready(Err(e)),
-                        }
-                    } else {
+        self.poll_inner(|inner, cx| {
+            if inner.runner.ready_input() {
+                match inner.runner.input(buf) {
+                    Ok(0) => {
+                        inner.runner.set_input_waker(cx.waker());
                         Poll::Pending
-                    }
+                    },
+                    Ok(n) => Poll::Ready(Ok(n)),
+                    Err(e) => Poll::Ready(Err(e)),
                 }
-                Poll::Pending => {
-                    // .inner lock is busy
-                    Poll::Pending
-                }
-            };
-            if r.is_ready() {
-                // wake up .progress() to handle the input
-                self.progress_notify.signal(())
+            } else {
+                Poll::Pending
             }
-            r
-        })
-        .await
+        }).await
     }
 
-    // pub async fn read_channel(&self, buf: &mut [u8]) -> Result<usize> {
+    pub async fn read_channel(&self, ch: u32, ext: Option<u32>, buf: &mut [u8]) -> Result<usize> {
+        if ch as usize > MAX_CHANNELS {
+            return Err(Error::BadChannel)
+        }
+        self.poll_inner(|inner, cx| {
+            let l = inner.runner.channel_input(ch, ext, buf);
+            if let Ok(0) = l {
+                // 0 bytes read, pending
+                inner.chan_read_wakers[ch as usize].register(cx.waker());
+                Poll::Pending
+            } else {
+                Poll::Ready(l)
+            }
+        }).await
+    }
+
+    pub async fn write_channel(&self, ch: u32, ext: Option<u32>, buf: &[u8]) -> Result<usize> {
+        if ch as usize > MAX_CHANNELS {
+            return Err(Error::BadChannel)
+        }
+        self.poll_inner(|inner, cx| {
+            let l = inner.runner.channel_send(ch, ext, buf);
+            if let Ok(0) = l {
+                // 0 bytes written, pending
+                inner.chan_write_wakers[ch as usize].register(cx.waker());
+                inner.ext_write_waker[ch as usize] = ext.is_some();
+                Poll::Pending
+            } else {
+                Poll::Ready(l)
+            }
+        }).await
+    }
 }

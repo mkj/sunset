@@ -9,6 +9,7 @@ use core::task::{Poll, Waker};
 use pretty_hex::PrettyHex;
 
 use crate::*;
+use packets::{ChannelDataExt, ChannelData};
 use encrypt::KeyState;
 use traffic::{TrafIn, TrafOut, TrafSend};
 
@@ -81,8 +82,14 @@ impl<'a> Runner<'a> {
         Ok(runner)
     }
 
-    /// Drives connection progress, handling received payload and sending
-    /// other packets as required. This must be polled/awaited regularly.
+    /// Drives connection progress, handling received payload and queueing
+    /// other packets to send as required.
+    ///
+    /// This must be polled/awaited regularly, passing in `behaviour`.
+    ///
+    /// This method is async but will not block unless the `Behaviour` implementation
+    /// does so. Note that some computationally intensive operations may be performed
+    /// during key exchange.
     pub async fn progress(&mut self, behaviour: &mut Behaviour<'_>) -> Result<()> {
         let mut s = self.traf_out.sender(&mut self.keys);
         // Handle incoming packets
@@ -176,23 +183,27 @@ impl<'a> Runner<'a> {
         Ok(chan)
     }
 
-    pub fn channel_type(&self, chan: u32) -> Result<channel::ChanType> {
-        self.conn.channels.get(chan).map(|c| c.ty)
-    }
+    // pub fn channel_type(&self, chan: u32) -> Result<channel::ChanType> {
+    //     self.conn.channels.get(chan).map(|c| c.ty)
+    // }
 
     /// Send data from this application out the wire.
-    /// Returns `Some` the length of `buf` consumed, or `None` on EOF
+    /// Returns `Ok(len)` consumed, `Err(Error::ChannelEof)` on EOF,
+    /// or other errors.
     pub fn channel_send(
         &mut self,
         chan: u32,
         ext: Option<u32>,
         buf: &[u8],
-    ) -> Result<Option<usize>> {
-        let len = self.ready_channel_send(chan);
+    ) -> Result<usize> {
+        if buf.len() == 0 {
+            return Ok(0)
+        }
+        let len = self.ready_channel_send(chan, ext.is_some());
         let len = match len {
-            Some(l) if l == 0 => return Ok(Some(0)),
+            Some(l) if l == 0 => return Ok(0),
             Some(l) => l,
-            None => return Ok(None),
+            None => return Err(Error::ChannelEOF),
         };
 
         let len = len.min(buf.len());
@@ -200,10 +211,13 @@ impl<'a> Runner<'a> {
         let p = self.conn.channels.send_data(chan, ext, &buf[..len])?;
         self.traf_out.send_packet(p, &mut self.keys)?;
         self.wake();
-        Ok(Some(len))
+        Ok(len)
     }
 
-    /// Receive data coming from the wire into this application
+    /// Receive data coming from the wire into this application.
+    /// Returns `Ok(len)` received, `Err(Error::ChannelEof)` on EOF,
+    /// or other errors.
+    /// TODO: EOF is unimplemented
     pub fn channel_input(
         &mut self,
         chan: u32,
@@ -213,9 +227,9 @@ impl<'a> Runner<'a> {
         trace!("runner chan in");
         let (len, complete) = self.traf_in.channel_input(chan, ext, buf);
         if complete {
-            let p = self.conn.channels.finished_input(chan)?;
-            if let Some(p) = p {
-                self.traf_out.send_packet(p, &mut self.keys)?;
+            let wind_adjust = self.conn.channels.finished_input(chan)?;
+            if let Some(wind_adjust) = wind_adjust {
+                self.traf_out.send_packet(wind_adjust, &mut self.keys)?;
             }
             self.wake();
         }
@@ -234,11 +248,29 @@ impl<'a> Runner<'a> {
         self.conn.channels.have_recv_eof(chan)
     }
 
-    // Returns None on channel closed
-    pub fn ready_channel_send(&self, chan: u32) -> Option<usize> {
+    // Returns the maximum data that may be sent to a channel, or
+    // `None` on channel closed
+    pub fn ready_channel_send(&self, chan: u32, is_ext: bool) -> Option<usize> {
         // minimum of buffer space and channel window available
-        let buf_space = self.traf_out.send_allowed(&self.keys);
-        self.conn.channels.send_allowed(chan).map(|s| s.min(buf_space))
+        let payload_space = self.traf_out.send_allowed(&self.keys);
+        let offset = if is_ext {
+            ChannelDataExt::DATA_OFFSET
+        } else {
+            ChannelData::DATA_OFFSET
+        };
+        let payload_space = payload_space.saturating_sub(offset);
+        self.conn.channels.send_allowed(chan).map(|s| s.min(payload_space))
+    }
+
+    /// Must be called when an application has finished with a channel.
+    ///
+    /// Channel numbers will not be re-used without calling this, so
+    /// failing to call this can result in running out of channels.
+    ///
+    /// Any further calls using the same channel number may result
+    /// in data from a different channel re-using the same number.
+    pub fn channel_done(&mut self, chan: u32) -> Result<()> {
+        self.conn.channels.done(chan)
     }
 
     pub fn term_window_change(&self, _chan: u32, _wc: packets::WinChange) -> Result<()> {
@@ -272,5 +304,9 @@ impl<'a> Runner<'a> {
             }
         }
     }
+}
 
+#[cfg(test)]
+mod tests {
+    // TODO: test send_allowed() limits
 }

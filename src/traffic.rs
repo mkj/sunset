@@ -253,9 +253,7 @@ impl<'a> TrafIn<'a> {
         match self.state {
             RxState::InChannelData { chan: c, ext: e, ref mut idx, len }
             if (c, e) == (chan, ext) => {
-                if *idx > len {
-                    error!("bad idx {} len {} e {:?} c {}", *idx, len, e, c);
-                }
+                debug_assert!(len >= *idx);
                 let wlen = (len - *idx).min(buf.len());
                 buf[..wlen].copy_from_slice(&self.buf[*idx..*idx + wlen]);
                 // info!("idx {} += wlen {} = {}", *idx, wlen, *idx+wlen);

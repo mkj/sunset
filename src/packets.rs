@@ -434,10 +434,8 @@ pub struct ChannelData<'a> {
 }
 
 impl ChannelData<'_> {
-    // offset into a packet of the raw data
-    pub(crate) fn data_offset(&self) -> usize {
-        9
-    }
+    // offset into a packet payload, includes packet type byte
+    pub const DATA_OFFSET: usize = 9;
 }
 
 #[derive(Debug,SSHEncode, SSHDecode)]
@@ -448,11 +446,8 @@ pub struct ChannelDataExt<'a> {
 }
 
 impl ChannelDataExt<'_> {
-    // offset into a packet payload
-    pub(crate) fn data_offset(&self) -> usize {
-    // offset into a packet of the raw data
-        13
-    }
+    // offset into a packet payload, includes packet type byte
+    pub const DATA_OFFSET: usize = 13;
 }
 
 #[derive(Debug,SSHEncode, SSHDecode)]

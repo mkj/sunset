@@ -51,7 +51,8 @@ impl<'a> SSHServer<'a> {
     }
 
     pub async fn channel(&mut self, ch: u32) -> Result<(ChanInOut<'a>, Option<ChanExtOut<'a>>)> {
-        let ty = self.sunset.with_runner(|r| r.channel_type(ch)).await?;
+        // TODO: what was this for?
+        // let ty = self.sunset.with_runner(|r| r.channel_type(ch)).await?;
         let inout = ChanInOut::new(ch, &self.sunset);
         // TODO ext
         let ext = None;
