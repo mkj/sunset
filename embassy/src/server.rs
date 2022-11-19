@@ -13,9 +13,8 @@ pub struct SSHServer<'a> {
 
 impl<'a> SSHServer<'a> {
     pub fn new(inbuf: &'a mut [u8], outbuf: &'a mut [u8],
-        b: &mut (dyn ServBehaviour + Send),
         ) -> Result<Self> {
-        let runner = Runner::new_server(inbuf, outbuf, b)?;
+        let runner = Runner::new_server(inbuf, outbuf)?;
         let sunset = EmbassySunset::new(runner);
         Ok(Self { sunset })
     }

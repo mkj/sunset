@@ -66,10 +66,8 @@ impl<'a> Runner<'a> {
     pub fn new_server(
         inbuf: &'a mut [u8],
         outbuf: &'a mut [u8],
-        // TODO: can probably get rid of b argument here (and in callees)
-        b: &mut dyn ServBehaviour,
     ) -> Result<Runner<'a>, Error> {
-        let conn = Conn::new_server(b)?;
+        let conn = Conn::new_server()?;
         let runner = Runner {
             conn,
             traf_in: TrafIn::new(inbuf),

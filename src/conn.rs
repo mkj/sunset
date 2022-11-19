@@ -93,11 +93,10 @@ impl Conn {
     }
 
     pub fn new_server(
-        b: &mut dyn ServBehaviour,
         ) -> Result<Self> {
         // XXX
         let algo_conf = AlgoConfig::new(false);
-        Self::new(ClientServer::Server(server::Server::new(b)), algo_conf)
+        Self::new(ClientServer::Server(server::Server::new()), algo_conf)
     }
 
     fn new(cliserv: ClientServer, algo_conf: AlgoConfig) -> Result<Self, Error> {

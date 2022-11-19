@@ -103,32 +103,30 @@ async fn listener(stack: &'static Stack<TunTapDevice>) -> ! {
     }
 }
 
-struct DemoServer {
+struct DemoServer<'a> {
     keys: [SignKey; 1],
 
     sess: Option<u32>,
-    want_shell: bool,
     shell_started: bool,
 
-    notify: Signal<CriticalSectionRawMutex, ()>,
+    shell: &'a DemoShell,
 }
 
-impl DemoServer {
-    fn new() -> Result<Self> {
+impl<'a> DemoServer<'a> {
+    fn new(shell: &'a DemoShell) -> Result<Self> {
 
         let keys = [SignKey::generate(KeyType::Ed25519)?];
 
         Ok(Self {
             sess: None,
             keys,
-            want_shell: false,
             shell_started: false,
-            notify: Signal::new(),
+            shell,
         })
     }
 }
 
-impl ServBehaviour for DemoServer {
+impl<'a> ServBehaviour for DemoServer<'a> {
     fn hostkeys(&mut self) -> BhResult<&[SignKey]> {
         Ok(&self.keys)
     }
@@ -148,9 +146,9 @@ impl ServBehaviour for DemoServer {
     }
 
     fn sess_shell(&mut self, chan: u32) -> bool {
-        let r = !self.want_shell && self.sess == Some(chan);
-        self.want_shell = true;
-        self.notify.signal(());
+        let r = !self.shell_started && self.sess == Some(chan);
+        self.shell_started = true;
+        self.shell.notify.signal(chan);
         trace!("req want shell");
         r
     }
@@ -160,36 +158,49 @@ impl ServBehaviour for DemoServer {
     }
 }
 
-async fn shell_fut<'f>(serv: &SSHServer<'f>, app: &Mutex<NoopRawMutex, DemoServer>) -> Result<()>
-{
-    let session = async {
-        // self.notify.wait()?;
-        let chan = app.lock().await.sess.trap()?;
+#[derive(Default)]
+struct DemoShell {
+    notify: Signal<CriticalSectionRawMutex, u32>,
+}
 
-        loop {
-            let mut b = [0u8; 100];
-            let lr = serv.read_channel(chan, None, &mut b).await?;
-            let lw = serv.write_channel(chan, None, &b[..lr]).await?;
-            if lr != lw {
-                trace!("read/write mismatch {} {}", lr, lw);
+impl DemoShell {
+    async fn run<'f>(&self, serv: &SSHServer<'f>) -> Result<()>
+    {
+        let session = async {
+            let chan = self.notify.wait().await;
+
+            loop {
+                let mut b = [0u8; 100];
+                let lr = serv.read_channel(chan, None, &mut b).await?;
+                let b = &mut b[..lr];
+                for c in b.iter_mut() {
+                    if *c >= b'0' && *c <= b'9' {
+                        *c = b'0' + (b'9' - *c)
+                    }
+                }
+                let lw = serv.write_channel(chan, None, b).await?;
+                if lr != lw {
+                    trace!("read/write mismatch {} {}", lr, lw);
+                }
             }
-        }
-        Ok(())
-    };
-    session.await
+            Ok(())
+        };
+        session.await
+    }
 }
 
 async fn session(socket: &mut TcpSocket<'_>) -> sunset::Result<()> {
-    let mut app = DemoServer::new()?;
+    let shell = DemoShell::default();
+    let app = DemoServer::new(&shell)?;
 
     let mut ssh_rxbuf = [0; 2000];
     let mut ssh_txbuf = [0; 2000];
-    let serv = SSHServer::new(&mut ssh_rxbuf, &mut ssh_txbuf, &mut app)?;
+    let serv = SSHServer::new(&mut ssh_rxbuf, &mut ssh_txbuf)?;
     let serv = &serv;
 
     let app = Mutex::<NoopRawMutex, _>::new(app);
 
-    let session = shell_fut(serv, &app);
+    let session = shell.run(serv);
 
     let app = &app as &Mutex::<NoopRawMutex, dyn ServBehaviour>;
     let run = serv.run(socket, app);

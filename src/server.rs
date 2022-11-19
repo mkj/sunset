@@ -16,9 +16,8 @@ pub(crate) struct Server {
 
 impl Server {
     pub fn new(
-        b: &mut dyn ServBehaviour,
         ) -> Self {
-        Server { auth: ServAuth::new(b) }
+        Server { auth: ServAuth::new() }
     }
 
     pub fn service_request(&self, p: &ServiceRequest, s: &mut TrafSend) -> Result<()> {
