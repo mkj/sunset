@@ -3,7 +3,7 @@
 //! Some identifiers are also listed directly in `packet.rs` derive attributes.
 //! Packet numbers are listed in `packets.rs`.
 //!
-//! This module also serves as index of SSH specifications.
+//! This module also serves as an index of SSH specifications.
 
 /// [RFC8731](https://tools.ietf.org/html/rfc8731)
 pub const SSH_NAME_CURVE25519: &str = "curve25519-sha256";
@@ -29,8 +29,8 @@ pub const SSH_NAME_AES256_CTR: &str = "aes256-ctr";
 /// OpenSSH [PROTOCOL.chacha20poly1305.txt](https://cvsweb.openbsd.org/src/usr.bin/ssh/PROTOCOL.chacha20poly1305?annotate=HEAD)
 pub const SSH_NAME_CHAPOLY: &str = "chacha20-poly1305@openssh.com";
 /// OpenSSH [PROTOCOL](https://cvsweb.openbsd.org/src/usr.bin/ssh/PROTOCOL?annotate=HEAD).
-/// (No-one uses aes-gcm [RFC5647](https://tools.ietf.org/html/rfc5647) from the NSA, it fails to define mac negotiation
-/// sensibly and has horrible naming style)
+/// (No-one directly uses `AEAD_AES_256_GCM` [RFC5647](https://tools.ietf.org/html/rfc5647) from the NSA, it fails to define mac negotiation
+/// sensibly and has incongruous naming style)
 pub const SSH_NAME_AES256_GCM: &str = "aes256-gcm@openssh.com";
 
 /// [RFC6668](https://tools.ietf.org/html/rfc6668)
