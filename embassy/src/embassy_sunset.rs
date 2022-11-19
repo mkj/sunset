@@ -21,6 +21,9 @@ use sunset::config::MAX_CHANNELS;
 pub(crate) struct Inner<'a> {
     runner: Runner<'a>,
 
+    // TODO: we might need separate normal/ext read and write
+    // WakerRegistrations. otherwise they'll keep waking each other?
+
     chan_read_wakers: [WakerRegistration; MAX_CHANNELS],
 
     chan_write_wakers: [WakerRegistration; MAX_CHANNELS],
@@ -110,6 +113,7 @@ impl<'a> EmbassySunset<'a> {
 
     fn wake_channels(&self, inner: &mut Inner) {
         if let Some((chan, _ext)) = inner.runner.ready_channel_input() {
+            // TODO: if there isn't any waker waiting, should we just drop the packet?
             inner.chan_read_wakers[chan as usize].wake()
         }
 
@@ -153,6 +157,7 @@ impl<'a> EmbassySunset<'a> {
         Ok(())
     }
 
+    /// helper to perform a function on the `inner`, returning a `Poll` value
     async fn poll_inner<F, T>(&self, mut f: F) -> T
         where F: FnMut(&mut Inner, &mut Context) -> Poll<T> {
         poll_fn(|cx| {
@@ -190,20 +195,26 @@ impl<'a> EmbassySunset<'a> {
     pub async fn write(&self, buf: &[u8]) -> Result<usize> {
         self.poll_inner(|inner, cx| {
             if inner.runner.ready_input() {
-                match inner.runner.input(buf) {
+                let r = match inner.runner.input(buf) {
                     Ok(0) => {
                         inner.runner.set_input_waker(cx.waker());
                         Poll::Pending
                     },
                     Ok(n) => Poll::Ready(Ok(n)),
                     Err(e) => Poll::Ready(Err(e)),
+                };
+                if r.is_ready() {
+                    self.progress_notify.signal(())
                 }
+                r
             } else {
                 Poll::Pending
             }
         }).await
     }
 
+    // TODO: should there be a variant that polls for either normal/ext, and
+    // returns it as a flag?
     pub async fn read_channel(&self, ch: u32, ext: Option<u32>, buf: &mut [u8]) -> Result<usize> {
         if ch as usize > MAX_CHANNELS {
             return Err(Error::BadChannel)
