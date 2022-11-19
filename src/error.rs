@@ -91,6 +91,7 @@ pub enum Error {
 
     // This state should not be reached, previous logic should have prevented it.
     // Create this using [`Error::bug()`] or [`.trap()`](TrapBug::trap).
+    // Location is currently disabled due to bloat.
     // #[snafu(display("Program bug {location}"))]
     // Bug { location: snafu::Location },
     /// Program bug
