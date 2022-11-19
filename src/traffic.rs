@@ -290,6 +290,16 @@ impl<'a> TrafOut<'a> {
             TxState::Write { idx, len } => (idx, len),
         };
 
+        // Sanity check
+        match p.category() {
+            packets::Category::All | packets::Category::Kex => (), // OK cleartext
+            _ => {
+                if keys.is_cleartext() {
+                    return Error::bug_msg("send cleartext")
+                }
+            }
+        }
+
         // Use the remainder of our buffer to write the packet. Payload starts
         // after the length and padding bytes which get filled by encrypt()
         let wbuf = &mut self.buf[len..];
