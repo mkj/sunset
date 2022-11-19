@@ -59,6 +59,11 @@ impl KeyState {
         }
     }
 
+    pub fn is_cleartext(&self) -> bool {
+        matches!(self.keys.enc, EncKey::NoCipher)
+            || matches!(self.keys.dec, DecKey::NoCipher)
+    }
+
     /// Updates with new keys, keeping the same sequence numbers
     pub fn rekey(&mut self, keys: Keys) {
         self.keys = keys
