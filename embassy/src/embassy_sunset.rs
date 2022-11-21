@@ -85,13 +85,16 @@ impl<'a> EmbassySunset<'a> {
                 // TODO: make sunset read directly from socket, no intermediate buffer.
                 let mut buf = [0; 1024];
                 let l = rsock.read(&mut buf).await.expect("TODO handle read error");
+                if l == 0 {
+                    trace!("net EOF");
+                    break
+                }
                 let mut buf = &buf[..l];
                 while buf.len() > 0 {
                     let n = self.write(&buf).await?;
                     buf = &buf[n..];
                 }
             }
-            #[allow(unreachable_code)]
             Ok::<_, sunset::Error>(())
         };
 
