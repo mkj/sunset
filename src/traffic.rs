@@ -83,7 +83,7 @@ enum RxState {
         ext: Option<u32>,
         /// read index of channel data. should transition to Idle once `idx==len`
         idx: usize,
-        /// length of buffer, end of channel data
+        /// length of channel data
         len: usize,
     },
 }
@@ -216,9 +216,14 @@ impl<'a> TrafIn<'a> {
         Ok(buf.len() - r.len())
     }
 
-    pub fn ready_channel_input(&self) -> Option<(u32, Option<u32>)> {
+    /// Returns `(channel, ext, length)`
+    pub fn ready_channel_input(&self) -> Option<(u32, Option<u32>, usize)> {
         match self.state {
-            RxState::InChannelData { chan, ext, .. } => Some((chan, ext)),
+            RxState::InChannelData { chan, ext, idx, len } => {
+                let rem = len - idx;
+                debug_assert!(rem > 0);
+                Some((chan, ext, rem))
+            },
             _ => None,
         }
     }
@@ -268,6 +273,16 @@ impl<'a> TrafIn<'a> {
                 }
             }
             _ => (0, false)
+        }
+    }
+
+    pub fn discard_channel_input(&mut self, chan: u32) {
+        match self.state {
+            RxState::InChannelData { chan: c, .. }
+            if c == chan => {
+                self.state = RxState::Idle;
+            }
+            _ => ()
         }
     }
 

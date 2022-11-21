@@ -222,6 +222,10 @@ impl Channels {
         self.get(num).map_or(Some(0), |c| c.send_allowed())
     }
 
+    pub(crate) fn valid_send(&self, num: u32, ext: Option<u32>) -> bool {
+        self.get(num).map_or(false, |c| c.valid_send(ext))
+    }
+
     fn dispatch_open(
         &mut self,
         p: &ChannelOpen<'_>,
@@ -736,6 +740,12 @@ impl Channel {
     // None on close
     fn send_allowed(&self) -> Option<usize> {
         self.send.as_ref().map(|s| usize::max(s.window, s.max_packet))
+    }
+
+    pub(crate) fn valid_send(&self, ext: Option<u32>) -> bool {
+        // TODO: later we should only allow non-pty "session" channels
+        // to have ext, for stderr only.
+        true
     }
 
     /// Returns a window adjustment packet if required

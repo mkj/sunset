@@ -115,7 +115,7 @@ impl<'a> EmbassySunset<'a> {
 
 
     fn wake_channels(&self, inner: &mut Inner) {
-        if let Some((chan, _ext)) = inner.runner.ready_channel_input() {
+        if let Some((chan, _ext, _len)) = inner.runner.ready_channel_input() {
             // TODO: if there isn't any waker waiting, should we just drop the packet?
             inner.chan_read_wakers[chan as usize].wake()
         }
@@ -216,17 +216,18 @@ impl<'a> EmbassySunset<'a> {
         }).await
     }
 
-    // TODO: should there be a variant that polls for either normal/ext, and
-    // returns it as a flag?
-    pub async fn read_channel(&self, ch: u32, ext: Option<u32>, buf: &mut [u8]) -> Result<usize> {
+    /// Reads normal channel data. If extended data is pending it will be discarded.
+    pub async fn read_channel_stdin(&self, ch: u32, buf: &mut [u8]) -> Result<usize> {
         if ch as usize > MAX_CHANNELS {
             return Err(Error::BadChannel)
         }
         self.poll_inner(|inner, cx| {
-            let l = inner.runner.channel_input(ch, ext, buf);
+            let l = inner.runner.channel_input(ch, None, buf);
             if let Ok(0) = l {
                 // 0 bytes read, pending
                 inner.chan_read_wakers[ch as usize].register(cx.waker());
+                // discard any `ext` input for this channel
+                inner.runner.discard_channel_input(ch);
                 Poll::Pending
             } else {
                 Poll::Ready(l)
@@ -251,3 +252,4 @@ impl<'a> EmbassySunset<'a> {
         }).await
     }
 }
+

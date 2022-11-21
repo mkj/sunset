@@ -28,8 +28,8 @@ impl<'a> SSHServer<'a> {
         self.sunset.run(socket, b).await
     }
 
-    pub async fn read_channel(&self, ch: u32, ext: Option<u32>, buf: &mut [u8]) -> Result<usize> {
-        self.sunset.read_channel(ch, ext, buf).await
+    pub async fn read_channel_stdin(&self, ch: u32, buf: &mut [u8]) -> Result<usize> {
+        self.sunset.read_channel_stdin(ch, buf).await
     }
 
     pub async fn write_channel(&self, ch: u32, ext: Option<u32>, buf: &[u8]) -> Result<usize> {

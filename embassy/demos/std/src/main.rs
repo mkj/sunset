@@ -171,11 +171,11 @@ impl DemoShell {
 
             loop {
                 let mut b = [0u8; 100];
-                let lr = serv.read_channel(chan, None, &mut b).await?;
+                let lr = serv.read_channel_stdin(chan, &mut b).await?;
                 let b = &mut b[..lr];
                 for c in b.iter_mut() {
-                    if *c >= b'0' && *c <= b'9' {
-                        *c = b'0' + (b'9' - *c)
+                    if *c >= b'1' && *c <= b'9' {
+                        *c = b'1' + (b'9' - *c)
                     }
                 }
                 let lw = serv.write_channel(chan, None, b).await?;
@@ -215,6 +215,8 @@ static EXECUTOR: StaticCell<Executor> = StaticCell::new();
 fn main() {
     env_logger::builder()
         .filter_level(log::LevelFilter::Trace)
+        .filter_module("sunset::runner", log::LevelFilter::Info)
+        .filter_module("sunset::traffic", log::LevelFilter::Info)
         .filter_module("async_io", log::LevelFilter::Info)
         .filter_module("polling", log::LevelFilter::Info)
         .format_timestamp_nanos()

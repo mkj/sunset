@@ -234,11 +234,18 @@ impl<'a> Runner<'a> {
         Ok(len)
     }
 
+    /// Discards any channel input data pending for `chan`, regardless of whether
+    /// normal or `ext`.
+    pub fn discard_channel_input(&mut self, chan: u32) {
+        self.traf_in.discard_channel_input(chan)
+    }
+
     /// When channel data is ready, returns a tuple
-    /// `Some((channel, ext))` where `ext` is `None` for stdout, `Some(exttype)`
-    /// for extended types (like stderr).
-    /// Returns `None` if none ready.
-    pub fn ready_channel_input(&self) -> Option<(u32, Option<u32>)> {
+    /// `Some((channel, ext, len))` where `ext` is `None` for stdout
+    /// or `Some(sshnames::SSH_EXTENDED_DATA_STDERR)` for stderr.
+    /// `len` is the amount of data ready remaining to read, will always be non-zero.
+    /// Returns `None` if no data ready.
+    pub fn ready_channel_input(&self) -> Option<(u32, Option<u32>, usize)> {
         self.traf_in.ready_channel_input()
     }
 
@@ -258,6 +265,12 @@ impl<'a> Runner<'a> {
         };
         let payload_space = payload_space.saturating_sub(offset);
         self.conn.channels.send_allowed(chan).map(|s| s.min(payload_space))
+    }
+
+    /// Returns `true` if the channel and `ext` are currently valid for writing.
+    /// Note that they may not be ready to send output.
+    pub fn valid_channel_send(&self, chan: u32, ext: Option<u32>) -> bool {
+        self.conn.channels.valid_send(chan, ext)
     }
 
     /// Must be called when an application has finished with a channel.
