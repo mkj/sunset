@@ -38,7 +38,7 @@ pin-utils = "0.1"
 
 menu = "0.3"
 
-caprand = { path = "../../../../caprand" }
+caprand = { git = "https://github.com/mkj/caprand" }
 
 critical-section = "1.1"
 rand = { version = "0.8", default-features = false, features = ["getrandom"] }
