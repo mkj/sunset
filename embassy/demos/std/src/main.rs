@@ -18,17 +18,8 @@ use embassy_futures::join::join;
 use embedded_io::asynch::{Read, Write};
 use static_cell::StaticCell;
 
-use core::str::FromStr;
-use core::cell::RefCell;
-use core::num::NonZeroU32;
-use futures::{task::noop_waker_ref,pending};
-use core::task::{Context,Poll,Waker,RawWaker,RawWakerVTable};
-
 use rand::rngs::OsRng;
 use rand::RngCore;
-
-use menu::Runner as MenuRunner;
-use menu::Menu;
 
 use sunset::*;
 use sunset::error::TrapBug;
@@ -37,17 +28,12 @@ use sunset_embassy::SSHServer;
 use crate::tuntap::TunTapDevice;
 
 mod tuntap;
-mod demo_menu;
+#[path = "../../common/common.rs"]
+mod demo_common;
+
+use demo_common::SSHConfig;
 
 const NUM_LISTENERS: usize = 4;
-
-macro_rules! singleton {
-    ($val:expr) => {{
-        type T = impl Sized;
-        static STATIC_CELL: StaticCell<T> = StaticCell::new();
-        STATIC_CELL.init_with(move || $val)
-    }};
-}
 
 #[embassy_executor::task]
 async fn net_task(stack: &'static Stack<TunTapDevice>) -> ! {
@@ -75,147 +61,25 @@ async fn main_task(spawner: Spawner) {
         seed
     ));
 
+    let config = &*singleton!(
+        demo_common::SSHConfig::new().unwrap()
+    );
+
     // Launch network task
     spawner.spawn(net_task(stack)).unwrap();
 
     for _ in 0..NUM_LISTENERS {
-        spawner.spawn(listener(stack)).unwrap();
+        spawner.spawn(listener(stack, &config)).unwrap();
     }
 }
 
 // TODO: pool_size should be NUM_LISTENERS but needs a literal
 #[embassy_executor::task(pool_size = 4)]
-async fn listener(stack: &'static Stack<TunTapDevice>) -> ! {
-    let mut rx_buffer = [0; 4096];
-    let mut tx_buffer = [0; 4096];
+async fn listener(stack: &'static Stack<TunTapDevice>, config: &'static SSHConfig) -> ! {
 
-    loop {
-        let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
-
-        info!("Listening on TCP:22...");
-        if let Err(e) = socket.accept(22).await {
-            warn!("accept error: {:?}", e);
-            continue;
-        }
-
-        let r = session(&mut socket).await;
-        if let Err(_e) = r {
-            // warn!("Ended with error: {:?}", e);
-            warn!("Ended with error");
-        }
-    }
+    demo_common::listener(stack, config).await
 }
 
-struct DemoServer<'a> {
-    keys: [SignKey; 1],
-
-    sess: Option<u32>,
-    shell_started: bool,
-
-    shell: &'a DemoShell,
-}
-
-impl<'a> DemoServer<'a> {
-    fn new(shell: &'a DemoShell) -> Result<Self> {
-
-        let keys = [SignKey::generate(KeyType::Ed25519)?];
-
-        Ok(Self {
-            sess: None,
-            keys,
-            shell_started: false,
-            shell,
-        })
-    }
-}
-
-impl<'a> ServBehaviour for DemoServer<'a> {
-    fn hostkeys(&mut self) -> BhResult<&[SignKey]> {
-        Ok(&self.keys)
-    }
-
-    fn auth_unchallenged(&mut self, username: TextString) -> bool {
-        info!("Allowing auth for user {:?}", username.as_str());
-        true
-    }
-
-    fn open_session(&mut self, chan: u32) -> ChanOpened {
-        if self.sess.is_some() {
-            ChanOpened::Failure(ChanFail::SSH_OPEN_ADMINISTRATIVELY_PROHIBITED)
-        } else {
-            self.sess = Some(chan);
-            ChanOpened::Success
-        }
-    }
-
-    fn sess_shell(&mut self, chan: u32) -> bool {
-        let r = !self.shell_started && self.sess == Some(chan);
-        self.shell_started = true;
-        self.shell.notify.signal(chan);
-        trace!("req want shell");
-        r
-    }
-
-    fn sess_pty(&mut self, chan: u32, _pty: &Pty) -> bool {
-        self.sess == Some(chan)
-    }
-}
-
-
-#[derive(Default)]
-struct DemoShell {
-    notify: Signal<CriticalSectionRawMutex, u32>,
-}
-
-impl DemoShell {
-    async fn run<'f>(&self, serv: &SSHServer<'f>) -> Result<()>
-    {
-        let session = async {
-            // wait for a shell to start
-            let chan = self.notify.wait().await;
-
-            let mut menu_buf = [0u8; 64];
-            let mut menu_out = demo_menu::Output::default();
-
-            let mut menu = MenuRunner::new(&demo_menu::ROOT_MENU, &mut menu_buf, menu_out);
-
-            loop {
-                let mut b = [0u8; 20];
-                let lr = serv.read_channel_stdin(chan, &mut b).await?;
-                let b = &mut b[..lr];
-                for c in b.iter() {
-                    menu.input_byte(*c);
-                    menu.context.flush(serv, chan).await?;
-                }
-            }
-            Ok(())
-        };
-
-        session.await
-    }
-}
-
-
-async fn session(socket: &mut TcpSocket<'_>) -> sunset::Result<()> {
-    let shell = DemoShell::default();
-    let app = DemoServer::new(&shell)?;
-
-    let mut ssh_rxbuf = [0; 2000];
-    let mut ssh_txbuf = [0; 2000];
-    let serv = SSHServer::new(&mut ssh_rxbuf, &mut ssh_txbuf)?;
-    let serv = &serv;
-
-    let app = Mutex::<NoopRawMutex, _>::new(app);
-
-    let session = shell.run(serv);
-
-    let app = &app as &Mutex::<NoopRawMutex, dyn ServBehaviour>;
-    let run = serv.run(socket, app);
-
-    join(run, session).await;
-
-    Ok(())
-}
 
 static EXECUTOR: StaticCell<Executor> = StaticCell::new();
 

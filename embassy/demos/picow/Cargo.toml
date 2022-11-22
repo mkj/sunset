@@ -36,11 +36,17 @@ sunset = { path = "../../.." }
 getrandom = { version = "0.2", default-features = false, features = ["custom"]}
 pin-utils = "0.1"
 
+menu = "0.3"
+
 caprand = { path = "../../../../caprand" }
 
 critical-section = "1.1"
 rand = { version = "0.8", default-features = false, features = ["getrandom"] }
 sha2 = { version = "0.10", default-features = false }
+
+[features]
+default = ["defmt"]
+defmt = []
 
 [patch.crates-io]
 embassy-executor = { git = "https://github.com/embassy-rs/embassy", rev = "e7fdd500d8354a03fcd105c8298cf7b4798a4107" }
