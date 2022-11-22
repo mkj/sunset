@@ -27,6 +27,9 @@ use core::task::{Context,Poll,Waker,RawWaker,RawWakerVTable};
 use rand::rngs::OsRng;
 use rand::RngCore;
 
+use menu::Runner as MenuRunner;
+use menu::Menu;
+
 use sunset::*;
 use sunset::error::TrapBug;
 use sunset_embassy::SSHServer;
@@ -34,6 +37,7 @@ use sunset_embassy::SSHServer;
 use crate::tuntap::TunTapDevice;
 
 mod tuntap;
+mod demo_menu;
 
 const NUM_LISTENERS: usize = 4;
 
@@ -87,7 +91,6 @@ async fn listener(stack: &'static Stack<TunTapDevice>) -> ! {
 
     loop {
         let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
-        socket.set_timeout(Some(embassy_net::SmolDuration::from_secs(10)));
 
         info!("Listening on TCP:22...");
         if let Err(e) = socket.accept(22).await {
@@ -158,6 +161,7 @@ impl<'a> ServBehaviour for DemoServer<'a> {
     }
 }
 
+
 #[derive(Default)]
 struct DemoShell {
     notify: Signal<CriticalSectionRawMutex, u32>,
@@ -167,27 +171,30 @@ impl DemoShell {
     async fn run<'f>(&self, serv: &SSHServer<'f>) -> Result<()>
     {
         let session = async {
+            // wait for a shell to start
             let chan = self.notify.wait().await;
 
+            let mut menu_buf = [0u8; 64];
+            let mut menu_out = demo_menu::Output::default();
+
+            let mut menu = MenuRunner::new(&demo_menu::ROOT_MENU, &mut menu_buf, menu_out);
+
             loop {
-                let mut b = [0u8; 100];
+                let mut b = [0u8; 20];
                 let lr = serv.read_channel_stdin(chan, &mut b).await?;
                 let b = &mut b[..lr];
-                for c in b.iter_mut() {
-                    if *c >= b'1' && *c <= b'9' {
-                        *c = b'1' + (b'9' - *c)
-                    }
-                }
-                let lw = serv.write_channel(chan, None, b).await?;
-                if lr != lw {
-                    trace!("read/write mismatch {} {}", lr, lw);
+                for c in b.iter() {
+                    menu.input_byte(*c);
+                    menu.context.flush(serv, chan).await?;
                 }
             }
             Ok(())
         };
+
         session.await
     }
 }
+
 
 async fn session(socket: &mut TcpSocket<'_>) -> sunset::Result<()> {
     let shell = DemoShell::default();

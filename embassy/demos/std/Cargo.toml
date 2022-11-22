@@ -28,6 +28,8 @@ heapless = "0.7.15"
 libc = "0.2.101"
 async-io = "1.6.0"
 
+menu = "0.3"
+
 sunset-embassy = { path = "../../" }
 sunset = { path = "../../.." }
 
