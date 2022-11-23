@@ -5,25 +5,12 @@ use {
     log::{debug, error, info, log, trace, warn},
 };
 
-use core::future::Future;
-
-use core::todo;
 use embassy_executor::{Spawner, Executor};
-use embassy_sync::mutex::Mutex;
-use embassy_sync::blocking_mutex::raw::{NoopRawMutex, CriticalSectionRawMutex};
-use embassy_sync::signal::Signal;
-use embassy_net::tcp::TcpSocket;
 use embassy_net::{Stack, StackResources, ConfigStrategy};
-use embassy_futures::join::join;
-use embedded_io::asynch::{Read, Write};
 use static_cell::StaticCell;
 
 use rand::rngs::OsRng;
 use rand::RngCore;
-
-use sunset::*;
-use sunset::error::TrapBug;
-use sunset_embassy::SSHServer;
 
 use crate::tuntap::TunTapDevice;
 

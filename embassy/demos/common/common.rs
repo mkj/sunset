@@ -1,30 +1,23 @@
-#![feature(type_alias_impl_trait)]
-
 #[allow(unused_imports)]
 #[cfg(not(feature = "defmt"))]
 use {
     log::{debug, error, info, log, trace, warn},
 };
 
+#[allow(unused)]
 #[cfg(feature = "defmt")]
 use defmt::{debug, info, warn, panic, error, trace};
 
-use core::future::Future;
-
-use embassy_executor::{Spawner, Executor};
 use embassy_sync::mutex::Mutex;
 use embassy_sync::blocking_mutex::raw::{NoopRawMutex, CriticalSectionRawMutex};
 use embassy_sync::signal::Signal;
 use embassy_net::tcp::TcpSocket;
-use embassy_net::{Stack, Device, StackResources, ConfigStrategy};
+use embassy_net::{Stack, Device};
 use embassy_futures::join::join;
-use static_cell::StaticCell;
 
 use menu::Runner as MenuRunner;
-use menu::Menu;
 
 use sunset::*;
-use sunset::error::TrapBug;
 use sunset_embassy::SSHServer;
 
 mod demo_menu;
@@ -153,7 +146,7 @@ impl DemoShell {
                     menu.context.flush(serv, chan).await?;
                 }
             }
-            Ok(())
+            // Ok(())
         };
 
         session.await

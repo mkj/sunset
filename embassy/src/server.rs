@@ -1,5 +1,5 @@
 use embassy_sync::mutex::Mutex;
-use embassy_sync::blocking_mutex::raw::{NoopRawMutex, RawMutex};
+use embassy_sync::blocking_mutex::raw::RawMutex;
 use embassy_net::tcp::TcpSocket;
 
 use sunset::*;

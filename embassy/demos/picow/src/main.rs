@@ -2,21 +2,11 @@
 #![no_main]
 #![feature(type_alias_impl_trait)]
 
-use core::future::Future;
-
-use core::todo;
 use defmt::*;
 use embassy_executor::Spawner;
-use embassy_sync::mutex::Mutex;
-use embassy_sync::blocking_mutex::raw::{NoopRawMutex, CriticalSectionRawMutex};
-use embassy_sync::signal::Signal;
-use embassy_net::tcp::TcpSocket;
 use embassy_net::{Stack, StackResources};
 use embassy_rp::gpio::{Flex, Level, Output};
-use embassy_futures::join::join;
-use embassy_rp::peripherals::{PIN_23, PIN_24, PIN_25, PIN_29};
-use embedded_hal_async::spi::{ExclusiveDevice, SpiBusFlush, SpiBusRead, SpiBusWrite};
-use embedded_io::asynch::{Read, Write};
+use embedded_hal_async::spi::ExclusiveDevice;
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
 
@@ -24,7 +14,6 @@ use rand::rngs::OsRng;
 use rand::RngCore;
 
 use sunset::*;
-use sunset_embassy::SSHServer;
 
 mod wifi;
 #[path = "../../common/common.rs"]

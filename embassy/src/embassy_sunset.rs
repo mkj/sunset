@@ -15,7 +15,7 @@ use embassy_net::tcp::TcpSocket;
 
 use pin_utils::pin_mut;
 
-use sunset::{Runner, Result, Error, Behaviour, ServBehaviour, CliBehaviour};
+use sunset::{Runner, Result, Error, Behaviour};
 use sunset::config::MAX_CHANNELS;
 
 pub(crate) struct Inner<'a> {
