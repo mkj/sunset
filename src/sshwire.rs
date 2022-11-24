@@ -285,13 +285,14 @@ impl<'de> SSHDecode<'de> for BinString<'de> {
 ///
 /// The SSH protocol defines it to be UTF-8, though
 /// in some applications it could be treated as ASCII-only.
-/// The library treats it as an opaque `&[u8]`, leaving
+/// Sunset treats it as an opaque `&[u8]`, leaving
 /// decoding to the [`Behaviour`].
 ///
-/// Note that SSH protocol identifiers in `Packet` etc
-/// are `&str` rather than `TextString`, and always defined as ASCII.
+/// Note that SSH protocol identifiers in `Packet`
+/// are `&str` rather than `TextString`, and always defined as ASCII. For
+/// example `"publickey"`, `"ssh-rsa"`.
 /// Application API
-#[derive(Clone,PartialEq,Copy)]
+#[derive(Clone,PartialEq,Copy,Default)]
 pub struct TextString<'a>(pub &'a [u8]);
 
 impl<'a> TextString<'a> {

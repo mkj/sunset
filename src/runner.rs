@@ -256,6 +256,8 @@ impl<'a> Runner<'a> {
     // Returns the maximum data that may be sent to a channel, or
     // `None` on channel closed
     pub fn ready_channel_send(&self, chan: u32, is_ext: bool) -> Option<usize> {
+        // TODO: return 0 if InKex means we can't transmit packets. 
+
         // minimum of buffer space and channel window available
         let payload_space = self.traf_out.send_allowed(&self.keys);
         let offset = if is_ext {

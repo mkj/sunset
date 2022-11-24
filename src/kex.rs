@@ -132,8 +132,9 @@ impl KexHash {
 
         // TODO: q_c and q_s need to be padded as mpint (extra 0x00 if high bit set)
         // for ecdsa and DH modes, but not for curve25519.
-        // Hack test for ed25519 algo
-        assert_eq!(q_c.len(), 32);
+
+        // A hacky sanity check that this is curve25519
+        debug_assert_eq!(q_c.len(), 32);
 
         self.hash_slice(q_c);
         self.hash_slice(q_s);
@@ -573,6 +574,9 @@ mod tests {
     use crate::*;
     use crate::sunsetlog::init_test_log;
 
+    // TODO:
+    // - test algo negotiation
+
     use super::SSH_NAME_CURVE25519;
 
     #[test]
@@ -594,6 +598,8 @@ mod tests {
 
     // Unknown names fail. This is easy to hit if the names of from_name()
     // match statements are mistyped or aren't imported.
+    // These are separate tests because they trigger `Error::bug()` which
+    // is an explicit panic in debug builds.
     #[test]
     #[should_panic]
     fn test_unknown_kex() {
