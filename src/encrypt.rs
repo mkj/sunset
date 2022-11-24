@@ -253,8 +253,7 @@ impl Keys {
         debug_assert!(2 * hash_ctx.output_size() >= out.len());
 
         let l = len.min(hash_ctx.output_size());
-        let rest = &mut out[..];
-        let (k1, rest) = rest.split_at_mut(l);
+        let (k1, rest) = out.split_at_mut(l);
         let (k2, _) = rest.split_at_mut(len - l);
 
         hash_ctx.reset();
@@ -434,11 +433,11 @@ impl Keys {
             return Err(Error::NoRoom);
         }
 
-        buf[SSH_LENGTH_SIZE] = padlen as u8;
         // write the length
-        buf[0..SSH_LENGTH_SIZE]
+        buf[..SSH_LENGTH_SIZE]
             .copy_from_slice(&((len - SSH_LENGTH_SIZE) as u32).to_be_bytes());
         // write random padding
+        buf[SSH_LENGTH_SIZE] = padlen as u8;
         let pad_start = SSH_LENGTH_SIZE + 1 + payload_len;
         debug_assert_eq!(pad_start + padlen, len);
         random::fill_random(&mut buf[pad_start..pad_start + padlen])?;

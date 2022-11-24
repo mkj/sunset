@@ -169,7 +169,7 @@ struct EncodeBytes<'a> {
 
 impl SSHSink for EncodeBytes<'_> {
     fn push(&mut self, v: &[u8]) -> WireResult<()> {
-        if self.pos + v.len() > self.target.len() {
+        if self.target.len() - self.pos < v.len() {
             return Err(WireError::NoRoom);
         }
         self.target[self.pos..self.pos + v.len()].copy_from_slice(v);
@@ -184,7 +184,7 @@ struct EncodeLen {
 
 impl SSHSink for EncodeLen {
     fn push(&mut self, v: &[u8]) -> WireResult<()> {
-        self.pos += v.len();
+        self.pos = self.pos.checked_add(v.len()).ok_or(WireError::NoRoom)?;
         Ok(())
     }
 }
