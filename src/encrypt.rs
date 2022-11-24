@@ -335,6 +335,9 @@ impl Keys {
         }
 
         let (data, mac) = buf.split_at_mut(buf.len() - size_integ);
+        
+        // roundtrip tests are exhaustive over short packet lengths
+        debug_assert!(data.len() >= size_block);
 
         // ETM modes would check integrity here.
 
@@ -346,9 +349,8 @@ impl Keys {
                 })?;
             }
             DecKey::Aes256Ctr(a) => {
-                if data.len() > 16 {
-                    a.apply_keystream(&mut data[16..]);
-                }
+                // safe index, checked data.len()
+                a.apply_keystream(&mut data[16..]);
             }
             DecKey::NoCipher => {}
         }
@@ -467,13 +469,13 @@ impl Keys {
             EncKey::NoCipher => {}
         }
 
-        // ETM modes would go here.
+        // ETM integ modes would go here.
 
         Ok(len + size_integ)
     }
 }
 
-/// Placeholder for a cipher type prior to creating a a [`EncKey`] or [`DecKey`],
+/// Placeholder for a cipher type prior to creating an [`EncKey`] or [`DecKey`],
 /// for use during key setup in [`kex`]
 #[derive(Debug, Clone)]
 pub(crate) enum Cipher {
@@ -667,7 +669,6 @@ pub(crate) enum IntegKey {
     ChaPoly,
     HmacSha256([u8; 32]),
     // aesgcm?
-    // Sha2Hmac ?
     NoInteg,
 }
 
@@ -712,7 +713,7 @@ mod tests {
 
     // setting `corrupt` tests that incorrect mac is detected
     fn do_roundtrips(keys_enc: &mut KeyState, keys_dec: &mut KeyState, corrupt: bool) {
-        for i in 0usize..40 {
+        for i in 0usize..80 {
             let mut v: std::vec::Vec<u8> = (0u8..i as u8 + 60).collect();
             let orig_payload = v[SSH_PAYLOAD_START..SSH_PAYLOAD_START + i].to_vec();
 
