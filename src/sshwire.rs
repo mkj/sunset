@@ -391,20 +391,22 @@ impl<'de, B: SSHDecode<'de>> SSHDecode<'de> for Blob<B> {
 
         // Sanity check the length matched
         let used_len = pos2 - pos1;
-        if used_len == len {
-            Ok(Blob(inner))
-        } else {
-            let extra = len.checked_sub(used_len).ok_or_else(|| {
-                trace!("inner consumed past length of SSH Blob. \
-                    Expected {} bytes, got {} bytes {}..{}",
-                    len, pos2-pos1, pos1, pos2);
-                WireError::SSHProtoError
-            })?;
-            // Skip over unconsumed bytes in the blob.
-            // This can occur with Unknown variants
-            s.take(extra)?;
-            Ok(Blob(inner))
+        if used_len != len {
+            trace!("SSH blob length differs. \
+                Expected {} bytes, got {} bytes {}..{}",
+                len, used_len, pos1, pos2);
+            let extra = len.checked_sub(used_len).ok_or(WireError::SSHProtoError)?;
+
+            if s.ctx().seen_unknown {
+                // Skip over unconsumed bytes in the blob.
+                // This can occur with Unknown variants
+                trace!("Difference is OK, seen_unknown");
+                s.take(extra)?;
+            } else {
+                return Err(WireError::SSHProtoError)
+            }
         }
+        Ok(Blob(inner))
     }
 }
 
@@ -639,5 +641,66 @@ pub(crate) mod tests {
         let s = SignKey::generate(KeyType::Ed25519).unwrap();
         ctx.cli_auth_type = Some(auth::AuthType::PubKey);
         test_roundtrip_context(&p, &ctx);
+    }
+
+    // Some other blob decoding tests are in packets module
+
+    #[test]
+    fn wrong_blob_size() {
+        let p1 = Blob(BinString(b"hello"));
+
+        let mut buf1 = vec![88; 1000];
+        let l = write_ssh(&mut buf1, &p1).unwrap();
+        // some leeway
+        buf1.truncate(l+5);
+        // make the length one extra
+        buf1[3] += 1;
+        let r: Result<Blob<BinString>, _> = read_ssh(&buf1, None);
+        assert!(matches!(r.unwrap_err(), Error::SSHProtoError));
+
+        let mut buf1 = vec![88; 1000];
+        let l = write_ssh(&mut buf1, &p1).unwrap();
+        // some leeway
+        buf1.truncate(l+5);
+        // make the length one short
+        buf1[3] -= 1;
+        let r: Result<Blob<BinString>, _> = read_ssh(&buf1, None);
+        assert!(matches!(r.unwrap_err(), Error::SSHProtoError));
+    }
+
+    #[test]
+    fn wrong_packet_size() {
+        let p1 = packets::NewKeys {};
+        let p1: Packet = p1.into();
+        let mut ctx = ParseContext::new();
+
+        let mut buf1 = vec![88; 1000];
+        let l = write_ssh(&mut buf1, &p1).unwrap();
+
+        // too long
+        buf1.truncate(l+1);
+        let r = packet_from_bytes(&buf1, &ctx);
+        assert!(matches!(r.unwrap_err(), Error::WrongPacketLength));
+
+        // success
+        buf1.truncate(l);
+        packet_from_bytes(&buf1, &ctx).unwrap();
+
+        // short
+        buf1.truncate(l-1);
+        let r = packet_from_bytes(&buf1, &ctx);
+        assert!(matches!(r.unwrap_err(), Error::RanOut));
+
+    }
+
+    #[test]
+    fn overflow_encode() {
+        let mut buf1 = vec![22; 7];
+
+        assert_eq!(write_ssh(&mut buf1, &"").unwrap(), 4);
+        assert_eq!(write_ssh(&mut buf1, &"a").unwrap(), 5);
+        assert_eq!(write_ssh(&mut buf1, &"aa").unwrap(), 6);
+        assert_eq!(write_ssh(&mut buf1, &"aaa").unwrap(), 7);
+        assert!(matches!(write_ssh(&mut buf1, &"aaaa").unwrap_err(), Error::NoRoom));
     }
 }

@@ -893,6 +893,46 @@ mod tests {
         let ctx = ParseContext::default();
         let p2 = packet_from_bytes(&buf1, &ctx).unwrap();
         trace!("broken: {p2:#?}");
+        assert!(matches!(p2,
+            Packet::ChannelOpen(ChannelOpen { ty: ChannelOpenType::Unknown(_), ..})
+        ));
+    }
+
+    #[test]
+    /// Tests recovery from unknown variants in a blob when decoding.
+    fn unknown_variant_in_blob() {
+        init_test_log();
+        let p: Packet = UserauthRequest {
+            username: "matt".into(), service: "connection",
+            method: AuthMethod::PubKey(MethodPubKey {
+                sig_algo: "something",
+                pubkey: Blob(PubKey::Ed25519(
+                    Ed25519PubKey { key: BinString(b"zzzz") }
+                )),
+                sig: Some(Blob(Signature::Ed25519(Ed25519Sig {
+                    sig: BinString(b"sighere")
+                })))
+            })}.into();
+
+        let mut buf1 = vec![88; 1000];
+        let l = write_ssh(&mut buf1, &p).unwrap();
+        buf1.truncate(l);
+        // change a byte in the "ssh-ed25519" variant string
+        buf1[60] = 'F' as u8;
+        trace!("broken: {:?}", buf1.hex_dump());
+        let ctx = ParseContext::default();
+        let p2 = packet_from_bytes(&buf1, &ctx).unwrap();
+        trace!("broken: {p2:#?}");
+        assert!(matches!(p2,
+            Packet::UserauthRequest(UserauthRequest {
+                method: AuthMethod::PubKey(MethodPubKey {
+                    pubkey: Blob(PubKey::Unknown(Unknown(b"ssF-ed25519"))),
+                    sig: Some(Blob(Signature::Ed25519(_))),
+                    ..
+                }),
+                ..
+            })
+        ));
     }
 
     #[test]
