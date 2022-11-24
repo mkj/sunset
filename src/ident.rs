@@ -1,6 +1,6 @@
 use crate::error::{Error,TrapBug, Result};
 
-pub(crate) const OUR_VERSION: &[u8] = b"SSH-2.0-SunsetSSH-0.1";
+pub(crate) const OUR_VERSION: &[u8] = b"SSH-2.0-Sunset-0.1";
 
 pub(crate) const SSH_PREFIX: &[u8] = b"SSH-2.0-";
 
