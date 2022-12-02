@@ -10,6 +10,7 @@ use core::fmt;
 
 use sha2::Sha256;
 use digest::Digest;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::*;
 use encrypt::{Cipher, Integ, Keys};
@@ -382,7 +383,7 @@ impl Kex {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, ZeroizeOnDrop)]
 pub(crate) enum SharedSecret {
     KexCurve25519(KexCurve25519),
     // ECDH?
@@ -488,7 +489,7 @@ impl SharedSecret {
 
 pub(crate) struct KexOutput {
     pub h: SessId,
-    pub keys: Keys,
+    pub keys: Option<Keys>,
 }
 
 impl fmt::Debug for KexOutput {
@@ -505,13 +506,14 @@ impl<'a> KexOutput {
         let h = kex_hash.finish(k);
 
         let sess_id = sess_id.as_ref().unwrap_or(&h);
-        let keys = Keys::new_from(k, &h, &sess_id, algos)?;
+        let keys = Some(Keys::new_from(k, &h, &sess_id, algos)?);
 
         Ok(KexOutput { h, keys })
     }
 
 }
 
+#[derive(ZeroizeOnDrop)]
 pub(crate) struct KexCurve25519 {
     // Initialised in `new()`, cleared after deriving the secret
     ours: Option<salty::agreement::SecretKey>,

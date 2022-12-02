@@ -9,11 +9,12 @@ use chacha20::cipher::{KeyIvInit, StreamCipher, StreamCipherSeek, StreamCipherSe
 use poly1305::Poly1305;
 use poly1305::universal_hash::{NewUniversalHash, UniversalHash};
 use poly1305::universal_hash::generic_array::GenericArray;
-
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::*;
 use encrypt::SSH_LENGTH_SIZE;
 
+#[derive(Zeroize, ZeroizeOnDrop)]
 pub struct SSHChaPoly {
     k1: [u8; 32],
     k2: [u8; 32],

@@ -253,6 +253,7 @@ impl<'a> PubKey<'a> {
         }
     }
 
+    #[cfg(feature = "openssh-key")]
     pub fn matches_openssh(&self, k: &str) -> Result<bool> {
         let k = ssh_key::PublicKey::from_openssh(k)
             .map_err(|_| {

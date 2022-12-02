@@ -8,7 +8,6 @@ use core::char::MAX;
 use core::task::{Waker,Poll};
 
 use pretty_hex::PrettyHex;
-
 use heapless::Vec;
 
 use crate::*;
@@ -288,9 +287,11 @@ impl Conn {
                 match self.state {
                     ConnState::InKex { done_auth, ref mut output } => {
                         // NewKeys shouldn't be received before kexdhinit/kexdhreply
-                        let output = output.take().ok_or(Error::PacketWrong)?;
-                        s.rekey(output.keys);
-                        self.sess_id.get_or_insert(output.h);
+                        let mut ko = output.take().ok_or(Error::PacketWrong)?;
+                        s.rekey(ko.keys.take().trap()?);
+                        self.sess_id.get_or_insert(ko.h.clone());
+                        // force ZeroizeOnDrop to run
+                        *output = Default::default();
                         self.state = if done_auth {
                             ConnState::Authed
                         } else {

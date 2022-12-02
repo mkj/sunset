@@ -7,6 +7,7 @@ use {
 
 use salty::{SecretKey, PublicKey};
 use signature::Verifier;
+use zeroize::ZeroizeOnDrop;
 
 use crate::*;
 use packets::ParseContext;
@@ -125,6 +126,7 @@ pub enum KeyType {
 /// A SSH signing key. This may hold the private part locally
 /// or could potentially send the signing requests to a SSH agent
 /// or other entitiy.
+#[derive(ZeroizeOnDrop)]
 pub enum SignKey {
     Ed25519(salty::Keypair),
 }
@@ -148,6 +150,7 @@ impl SignKey {
         }
     }
 
+    #[cfg(feature = "openssh-key")]
     pub fn from_openssh(k: impl AsRef<[u8]>) -> Result<Self> {
         let k = ssh_key::PrivateKey::from_openssh(k)
             .map_err(|_| {
@@ -177,7 +180,7 @@ impl SignKey {
     }
 }
 
-// TODO: this might go behind a feature?
+#[cfg(feature = "openssh-key")]
 impl TryFrom<ssh_key::PrivateKey> for SignKey {
     type Error = Error;
     fn try_from(k: ssh_key::PrivateKey) -> Result<Self> {

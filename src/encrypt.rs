@@ -6,12 +6,13 @@ use {
     log::{debug, error, info, log, trace, warn},
 };
 
-use aes::{cipher::{BlockSizeUser, KeyIvInit, KeySizeUser, StreamCipher}, Aes256};
 use core::num::Wrapping;
-use pretty_hex::PrettyHex;
 use core::fmt;
 use core::fmt::Debug;
 
+use aes::{cipher::{BlockSizeUser, KeyIvInit, KeySizeUser, StreamCipher}, Aes256};
+use pretty_hex::PrettyHex;
+use zeroize::ZeroizeOnDrop;
 use hmac::{Hmac, Mac};
 use sha2::Digest as Sha2DigestForTrait;
 
@@ -133,12 +134,14 @@ impl KeyState {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, ZeroizeOnDrop)]
 pub(crate) struct Keys {
     pub(crate) enc: EncKey,
     pub(crate) dec: DecKey,
 
+    #[zeroize(skip)]
     pub(crate) integ_enc: IntegKey,
+    #[zeroize(skip)]
     pub(crate) integ_dec: IntegKey,
 }
 
@@ -529,6 +532,7 @@ impl Cipher {
     }
 }
 
+#[derive(ZeroizeOnDrop)]
 pub(crate) enum EncKey {
     ChaPoly(SSHChaPoly),
     Aes256Ctr(Aes256Ctr32BE),
@@ -581,6 +585,7 @@ impl EncKey {
     }
 }
 
+#[derive(ZeroizeOnDrop)]
 pub(crate) enum DecKey {
     ChaPoly(SSHChaPoly),
     Aes256Ctr(Aes256Ctr32BE),
