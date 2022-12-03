@@ -83,7 +83,12 @@ enum ConnState {
     // Cleanup ??
 }
 
-pub(crate) struct Dispatched(pub Option<channel::DataIn>);
+#[derive(Default)]
+pub(crate) struct Dispatched {
+    pub data_in: Option<channel::DataIn>,
+    /// set for sensitive payloads such as password auth
+    pub zeroize_payload: bool,
+}
 
 impl Conn {
     pub fn new_client() -> Result<Self> {
@@ -174,7 +179,7 @@ impl Conn {
             Err(Error::UnknownPacket { number }) => {
                 trace!("Unimplemented packet type {number}");
                 s.send(packets::Unimplemented { seq })?;
-                Ok(Dispatched(None))
+                Ok(Dispatched::default())
             }
             Err(e) => {
                 trace!("Error decoding packet: {e} {:#?}", payload.hex_dump());
@@ -223,7 +228,7 @@ impl Conn {
     ) -> Result<Dispatched, Error> {
         // TODO: perhaps could consolidate packet client vs server checks
         trace!("Incoming {packet:#?}");
-        let mut disp = Dispatched(None);
+        let mut disp = Dispatched::default();
 
         self.check_packet(&packet)?;
 
@@ -331,6 +336,7 @@ impl Conn {
             }
             Packet::UserauthRequest(p) => {
                 if let ClientServer::Server(serv) = &mut self.cliserv {
+                    disp.zeroize_payload = true;
                     let sess_id = self.sess_id.as_ref().trap()?;
                     let success = serv.auth.request(p, sess_id, s, b.server()?)?;
                     if success {
@@ -394,7 +400,7 @@ impl Conn {
             | Packet::ChannelFailure(_)
             // TODO: maybe needs a conn or cliserv argument.
             => {
-                disp = self.channels.dispatch(packet, s, b).await?;
+                disp.data_in = self.channels.dispatch(packet, s, b).await?;
            }
         };
         Ok(disp)

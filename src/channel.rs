@@ -337,9 +337,9 @@ impl Channels {
         packet: Packet<'_>,
         s: &mut TrafSend<'_, '_>,
         b: &mut Behaviour<'_>,
-    ) -> Result<Dispatched> {
+    ) -> Result<Option<DataIn>> {
         trace!("chan dispatch");
-        let mut disp = Dispatched(None);
+        let mut data_in = None;
         match packet {
             Packet::ChannelOpen(p) => {
                 self.dispatch_open(&p, s, b)?;
@@ -400,7 +400,7 @@ impl Channels {
                     offset: ChannelData::DATA_OFFSET,
                     len: p.data.0.len(),
                 };
-                disp = Dispatched(Some(di));
+                data_in = Some(di);
             }
             Packet::ChannelDataExt(p) => {
                 self.get(p.num)?;
@@ -436,7 +436,7 @@ impl Channels {
             }
             _ => Error::bug_msg("unreachable")?,
         };
-        Ok(disp)
+        Ok(data_in)
     }
 
     /// Incoming packet handling
@@ -447,17 +447,17 @@ impl Channels {
         packet: Packet<'_>,
         s: &mut TrafSend<'_, '_>,
         b: &mut Behaviour<'_>,
-    ) -> Result<Dispatched> {
+    ) -> Result<Option<DataIn>> {
         let r = self.dispatch_inner(packet, s, b).await;
 
         match r {
             Err(Error::BadChannel) => {
                 warn!("Ignoring bad channel number");
-                Ok(Dispatched(None))
+                Ok(None)
             }
             // TODO: close channel on error? or on SSHProtoError?
             Err(any) => Err(any),
-            Ok(disp) => Ok(disp),
+            Ok(data_in) => Ok(data_in),
         }
     }
 }

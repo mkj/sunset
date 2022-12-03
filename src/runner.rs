@@ -94,14 +94,14 @@ impl<'a> Runner<'a> {
         if let Some((payload, seq)) = self.traf_in.payload() {
             let d = self.conn.handle_payload(payload, seq, &mut s, behaviour).await?;
 
-            if let Some(d) = d.0 {
+            if let Some(data_in) = d.data_in {
                 // incoming channel data, we haven't finished with payload
                 trace!("handle_payload chan input");
-                self.traf_in.set_channel_input(d)?;
+                self.traf_in.set_channel_input(data_in)?;
             } else {
                 // other packets have been completed
                 trace!("handle_payload done");
-                self.traf_in.done_payload()?;
+                self.traf_in.done_payload(d.zeroize_payload)?;
             }
         }
 

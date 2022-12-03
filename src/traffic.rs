@@ -4,6 +4,8 @@ use {
     log::{debug, error, info, log, trace, warn},
 };
 
+use zeroize::Zeroize;
+
 use crate::encrypt::KeyState;
 use crate::encrypt::{SSH_LENGTH_SIZE, SSH_PAYLOAD_START};
 use crate::ident::RemoteVersion;
@@ -128,9 +130,12 @@ impl<'a> TrafIn<'a> {
     }
 
     /// Called when `payload()` and `payload_reborrow()` are complete.
-    pub(crate) fn done_payload(&mut self) -> Result<(), Error> {
+    pub(crate) fn done_payload(&mut self, zeroize: bool) -> Result<(), Error> {
         match self.state {
-            RxState::InPayload { .. } => {
+            RxState::InPayload { len, .. } => {
+                if zeroize {
+                    self.buf[SSH_PAYLOAD_START..SSH_PAYLOAD_START + len].zeroize();
+                }
                 self.state = RxState::Idle;
                 Ok(())
             }
