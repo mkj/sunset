@@ -27,7 +27,7 @@ cortex-m-rt = "0.7.0"
 futures = { version = "0.3.17", default-features = false, features = ["async-await", "cfg-target-has-atomic", "unstable"] }
 
 embedded-hal-1 = { package = "embedded-hal", version = "1.0.0-alpha.8" }
-embedded-hal-async = { version = "0.1.0-alpha.2" }
+embedded-hal-async = { version = "0.2.0-alpha.0" }
 embedded-io = { version = "0.3.0", features = ["async", "defmt"] }
 heapless = "0.7.15"
 
@@ -49,12 +49,12 @@ default = ["defmt"]
 defmt = []
 
 [patch.crates-io]
-embassy-executor = { git = "https://github.com/embassy-rs/embassy", rev = "61be0e75c83961a42fc1d844159f1fed7d8afbea" }
-embassy-time = { git = "https://github.com/embassy-rs/embassy", rev = "61be0e75c83961a42fc1d844159f1fed7d8afbea" }
-embassy-futures = { git = "https://github.com/embassy-rs/embassy", rev = "61be0e75c83961a42fc1d844159f1fed7d8afbea" }
-embassy-sync = { git = "https://github.com/embassy-rs/embassy", rev = "61be0e75c83961a42fc1d844159f1fed7d8afbea" }
-embassy-rp = { git = "https://github.com/embassy-rs/embassy", rev = "61be0e75c83961a42fc1d844159f1fed7d8afbea" }
-embassy-net = { git = "https://github.com/embassy-rs/embassy", rev = "61be0e75c83961a42fc1d844159f1fed7d8afbea" }
+embassy-executor = { git = "https://github.com/embassy-rs/embassy", rev = "f109e73c6d7ef2ad93102b7c8223f5cef30ef36f" }
+embassy-time = { git = "https://github.com/embassy-rs/embassy", rev = "f109e73c6d7ef2ad93102b7c8223f5cef30ef36f" }
+embassy-futures = { git = "https://github.com/embassy-rs/embassy", rev = "f109e73c6d7ef2ad93102b7c8223f5cef30ef36f" }
+embassy-sync = { git = "https://github.com/embassy-rs/embassy", rev = "f109e73c6d7ef2ad93102b7c8223f5cef30ef36f" }
+embassy-rp = { git = "https://github.com/embassy-rs/embassy", rev = "f109e73c6d7ef2ad93102b7c8223f5cef30ef36f" }
+embassy-net = { git = "https://github.com/embassy-rs/embassy", rev = "f109e73c6d7ef2ad93102b7c8223f5cef30ef36f" }
 # embassy-sync = { path = "/home/matt/3rd/rs/embassy/embassy-sync" }
 
 [profile.dev]

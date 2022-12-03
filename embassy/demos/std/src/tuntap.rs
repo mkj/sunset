@@ -1,3 +1,7 @@
+// From https://github.com/embassy-rs/embassy/blob/master/examples/std/src/tuntap.rs
+// Copyright (c) 2019-2022 Embassy project contributors
+// MIT or Apache-2.0 license
+
 use std::io;
 use std::io::{Read, Write};
 use std::os::unix::io::{AsRawFd, RawFd};

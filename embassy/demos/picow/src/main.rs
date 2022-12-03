@@ -1,6 +1,8 @@
 #![no_std]
 #![no_main]
 #![feature(type_alias_impl_trait)]
+#![feature(async_fn_in_trait)]
+#![allow(incomplete_features)]
 
 use defmt::*;
 use embassy_executor::Spawner;
@@ -35,7 +37,7 @@ async fn main(spawner: Spawner) {
     let mut p = embassy_rp::init(Default::default());
 
     caprand::setup(&mut p.PIN_25).unwrap();
-    getrandom::register_custom_getrandom!(caprand::random);
+    getrandom::register_custom_getrandom!(caprand::getrandom);
 
     // TODO: move this to wifi mod
 
