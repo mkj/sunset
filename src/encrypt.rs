@@ -134,7 +134,9 @@ impl KeyState {
     }
 }
 
-#[derive(Debug, ZeroizeOnDrop)]
+// Clone is required so we can clone() then drop the original in place,
+// avoiding issues with Option::take(). This could be revisited.
+#[derive(Debug, Clone, ZeroizeOnDrop)]
 pub(crate) struct Keys {
     pub(crate) enc: EncKey,
     pub(crate) dec: DecKey,
@@ -532,7 +534,7 @@ impl Cipher {
     }
 }
 
-#[derive(ZeroizeOnDrop)]
+#[derive(Clone, ZeroizeOnDrop)]
 pub(crate) enum EncKey {
     ChaPoly(SSHChaPoly),
     Aes256Ctr(Aes256Ctr32BE),
@@ -585,7 +587,7 @@ impl EncKey {
     }
 }
 
-#[derive(ZeroizeOnDrop)]
+#[derive(Clone, ZeroizeOnDrop)]
 pub(crate) enum DecKey {
     ChaPoly(SSHChaPoly),
     Aes256Ctr(Aes256Ctr32BE),
@@ -670,6 +672,7 @@ impl fmt::Display for Integ {
     }
 }
 
+#[derive(Clone)]
 pub(crate) enum IntegKey {
     ChaPoly,
     HmacSha256([u8; 32]),

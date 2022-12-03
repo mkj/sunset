@@ -425,14 +425,13 @@ impl SharedSecret {
         mut kex: Kex, p: &packets::KexDHReply<'f>, sess_id: &Option<SessId>,
         b: &mut dyn CliBehaviour
     ) -> Result<KexOutput> {
-        // let mut algos = kex.algos.take().trap()?;
-        let mut algos = kex.algos.trap()?;
+        let mut algos = kex.algos.as_mut().trap()?;
         let mut kex_hash = kex.kex_hash.take().trap()?;
         kex_hash.prefinish(&p.k_s.0, algos.kex.pubkey(), p.q_s.0)?;
         // consumes the sharedsecret private key in algos
         let kex_out = match algos.kex {
             SharedSecret::KexCurve25519(_) => {
-                KexCurve25519::secret(&mut algos, p.q_s.0, kex_hash, sess_id)?
+                KexCurve25519::secret(algos, p.q_s.0, kex_hash, sess_id)?
             }
         };
 
@@ -452,7 +451,7 @@ impl SharedSecret {
         mut kex: Kex, p: &packets::KexDHInit, sess_id: &Option<SessId>,
         s: &mut TrafSend, b: &mut dyn ServBehaviour,
     ) -> Result<KexOutput> {
-        let mut algos = kex.algos.trap()?;
+        let mut algos = kex.algos.as_mut().trap()?;
         // hostkeys list must contain the signature type
         let hostkey = b.hostkeys()?.iter().find(|k| k.can_sign(algos.hostsig)).trap()?;
 
@@ -460,7 +459,7 @@ impl SharedSecret {
         kex_hash.prefinish(&hostkey.pubkey(), p.q_c.0, algos.kex.pubkey())?;
         let (kex_out, kex_pub) = match algos.kex {
             SharedSecret::KexCurve25519(_) => {
-                let kex_out = KexCurve25519::secret(&mut algos, p.q_c.0, kex_hash, sess_id)?;
+                let kex_out = KexCurve25519::secret(algos, p.q_c.0, kex_hash, sess_id)?;
                 (kex_out, algos.kex.pubkey())
             }
         };
@@ -489,7 +488,7 @@ impl SharedSecret {
 
 pub(crate) struct KexOutput {
     pub h: SessId,
-    pub keys: Option<Keys>,
+    pub keys: Keys,
 }
 
 impl fmt::Debug for KexOutput {
@@ -506,7 +505,7 @@ impl<'a> KexOutput {
         let h = kex_hash.finish(k);
 
         let sess_id = sess_id.as_ref().unwrap_or(&h);
-        let keys = Some(Keys::new_from(k, &h, &sess_id, algos)?);
+        let keys = Keys::new_from(k, &h, &sess_id, algos)?;
 
         Ok(KexOutput { h, keys })
     }
@@ -555,10 +554,11 @@ impl KexCurve25519 {
         } else {
             return Err(Error::bug());
         };
-        let ours = kex.ours.take().trap()?;
+        let ours = kex.ours.as_mut().trap()?;
         let theirs: [u8; 32] = theirs.try_into().map_err(|_| Error::BadKex)?;
         let theirs = theirs.try_into().map_err(|_| Error::BadKex)?;
         let shsec = ours.agree(&theirs);
+        kex.ours = None;
         KexOutput::make(&shsec.to_bytes(), algos, kex_hash, sess_id)
     }
 }

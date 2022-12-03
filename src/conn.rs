@@ -286,12 +286,15 @@ impl Conn {
             Packet::NewKeys(_) => {
                 match self.state {
                     ConnState::InKex { done_auth, ref mut output } => {
-                        // NewKeys shouldn't be received before kexdhinit/kexdhreply
-                        let mut ko = output.take().ok_or(Error::PacketWrong)?;
-                        s.rekey(ko.keys.take().trap()?);
+                        // NewKeys shouldn't be received before kexdhinit/kexdhreply.
+
+                        // .as_ref() rather than .take(), so we can zeroize later
+                        let ko = output.as_ref().ok_or(Error::PacketWrong)?;
+                        // keys.take() leaves remnant memory in output, but output will zeroize soon
+                        s.rekey(ko.keys.clone());
                         self.sess_id.get_or_insert(ko.h.clone());
-                        // force ZeroizeOnDrop to run
-                        *output = Default::default();
+                        // zeroize output.keys via ZeroizeOnDrop
+                        *output = None;
                         self.state = if done_auth {
                             ConnState::Authed
                         } else {

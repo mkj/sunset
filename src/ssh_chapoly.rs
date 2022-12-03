@@ -14,7 +14,7 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 use crate::*;
 use encrypt::SSH_LENGTH_SIZE;
 
-#[derive(Zeroize, ZeroizeOnDrop)]
+#[derive(Clone, ZeroizeOnDrop)]
 pub struct SSHChaPoly {
     k1: [u8; 32],
     k2: [u8; 32],
