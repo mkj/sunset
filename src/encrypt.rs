@@ -512,7 +512,7 @@ impl Cipher {
     /// Length in bytes
     pub fn key_len(&self) -> usize {
         match self {
-            Cipher::ChaPoly => SSHChaPoly::key_len(),
+            Cipher::ChaPoly => SSHChaPoly::KEY_LEN,
             Cipher::Aes256Ctr => aes::Aes256::key_size(),
         }
     }
@@ -564,7 +564,7 @@ impl EncKey {
     ) -> Result<Self, Error> {
         match cipher {
             Cipher::ChaPoly => {
-                Ok(EncKey::ChaPoly(SSHChaPoly::new(key).trap()?))
+                Ok(EncKey::ChaPoly(SSHChaPoly::new_from_slice(key).trap()?))
             }
             Cipher::Aes256Ctr => Ok(EncKey::Aes256Ctr(
                 Aes256Ctr32BE::new_from_slices(key, iv).trap()?,
@@ -614,7 +614,7 @@ impl DecKey {
     ) -> Result<Self, Error> {
         match cipher {
             Cipher::ChaPoly => {
-                Ok(DecKey::ChaPoly(SSHChaPoly::new(key).trap()?))
+                Ok(DecKey::ChaPoly(SSHChaPoly::new_from_slice(key).trap()?))
             }
             Cipher::Aes256Ctr => Ok(DecKey::Aes256Ctr(
                 Aes256Ctr32BE::new_from_slices(key, iv).trap()?,
@@ -702,7 +702,7 @@ impl IntegKey {
     }
     pub fn size_out(&self) -> usize {
         match self {
-            IntegKey::ChaPoly => SSHChaPoly::tag_len(),
+            IntegKey::ChaPoly => SSHChaPoly::TAG_LEN,
             IntegKey::HmacSha256(_) => sha2::Sha256::output_size(),
             IntegKey::NoInteg => 0,
         }
