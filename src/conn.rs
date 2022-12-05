@@ -84,6 +84,7 @@ enum ConnState {
 }
 
 #[derive(Default)]
+/// Returned state from `handle_payload()` for `Runner` to use.
 pub(crate) struct Dispatched {
     pub data_in: Option<channel::DataIn>,
     /// set for sensitive payloads such as password auth
@@ -251,7 +252,7 @@ impl Conn {
             }
             Packet::KexDHInit(p) => {
                 match self.state {
-                    ConnState::InKex { done_auth: _, ref mut output } => {
+                    ConnState::InKex { ref mut output, .. } => {
                         if self.cliserv.is_client() {
                             // TODO: client/server validity checks should move somewhere more general
                             trace!("kexdhinit not server");
@@ -270,7 +271,7 @@ impl Conn {
             }
             Packet::KexDHReply(p) => {
                 match self.state {
-                    ConnState::InKex { done_auth: _, ref mut output } => {
+                    ConnState::InKex { ref mut output, .. } => {
                         if let ClientServer::Client(_cli) = &mut self.cliserv {
                             if self.kex.maybe_discard_packet() {
                                 // ok

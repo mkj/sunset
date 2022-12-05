@@ -1,6 +1,9 @@
 //! SSH wire format reading/writing.
+//!
 //! Used in conjunction with [`sshwire_derive`] and the [`packet`](crate::packets) format
 //! definitions.
+//!
+//! SSH wire format is described in [RFC4251](https://tools.ietf.org/html/rfc4251) SSH Architecture
 
 #[allow(unused_imports)]
 use {
@@ -36,6 +39,10 @@ pub trait SSHSource<'de> {
 
 /// Encodes the type in SSH wire format
 pub trait SSHEncode {
+    /// Encode data
+    ///
+    /// The state of the `SSHSink` is undefined after an error is returned, data may
+    /// have been partially encoded.
     fn enc<S>(&self, s: &mut S) -> WireResult<()> where S: SSHSink;
 }
 
@@ -48,6 +55,10 @@ pub trait SSHEncodeEnum {
 
 /// Decodes `struct` and `enum`s without an externally provided enum name
 pub trait SSHDecode<'de>: Sized {
+    /// Decode data
+    ///
+    /// The state of the `SSHSource` is undefined after an error is returned, data may
+    /// have been partially consumed.
     fn dec<S>(s: &mut S) -> WireResult<Self> where S: SSHSource<'de>;
 }
 
@@ -169,11 +180,12 @@ struct EncodeBytes<'a> {
 
 impl SSHSink for EncodeBytes<'_> {
     fn push(&mut self, v: &[u8]) -> WireResult<()> {
-        if self.target.len() - self.pos < v.len() {
+        let end = self.pos.checked_add(v.len()).ok_or(WireError::NoRoom)?;
+        if end > self.target.len() {
             return Err(WireError::NoRoom);
         }
-        self.target[self.pos..self.pos + v.len()].copy_from_slice(v);
-        self.pos += v.len();
+        self.target[self.pos..end].copy_from_slice(v);
+        self.pos = end;
         Ok(())
     }
 }
@@ -438,7 +450,7 @@ impl SSHEncode for &[u8] {
     fn enc<S>(&self, s: &mut S) -> WireResult<()>
     where S: SSHSink {
         // data
-        s.push(&self)
+        s.push(self)
     }
 }
 
@@ -507,7 +519,7 @@ impl<'de> SSHDecode<'de> for u32 {
 
 /// Decodes a SSH name string. Must be ASCII
 /// without control characters. RFC4251 section 6.
-pub fn try_as_ascii<'a>(t: &'a [u8]) -> WireResult<&'a AsciiStr> {
+pub fn try_as_ascii(t: &[u8]) -> WireResult<&AsciiStr> {
     let n = t.as_ascii_str().map_err(|_| WireError::BadName)?;
     if n.chars().any(|ch| ch.is_ascii_control() || ch == AsciiChar::DEL) {
         return Err(WireError::BadName);
@@ -515,7 +527,7 @@ pub fn try_as_ascii<'a>(t: &'a [u8]) -> WireResult<&'a AsciiStr> {
     Ok(n)
 }
 
-pub fn try_as_ascii_str<'a>(t: &'a [u8]) -> WireResult<&'a str> {
+pub fn try_as_ascii_str(t: &[u8]) -> WireResult<&str> {
     try_as_ascii(t).map(AsciiStr::as_str)
 }
 

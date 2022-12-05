@@ -67,7 +67,7 @@ impl Channels {
         ty: packets::ChannelOpenType<'b>,
         init_req: InitReqs,
     ) -> Result<(&Channel, Packet<'b>)> {
-        let (num, ch) = self.unused_chan()?;
+        let num = self.unused_chan()?;
 
         let chan = Channel::new(num, (&ty).into(), init_req);
         let p = packets::ChannelOpen {
@@ -77,6 +77,7 @@ impl Channels {
             ty,
         }
         .into();
+        let ch = &mut self.ch[num as usize];
         *ch = Some(chan);
         Ok((ch.as_ref().unwrap(), p))
     }
@@ -144,19 +145,19 @@ impl Channels {
     }
 
     /// Returns the first available channel
-    fn unused_chan(&mut self) -> Result<(u32, &mut Option<Channel>)> {
+    fn unused_chan(&self) -> Result<u32> {
         self.ch
-            .iter_mut()
+            .iter()
             .enumerate()
             .find_map(
-                |(i, ch)| if ch.as_mut().is_none() { Some((i as u32, ch)) } else { None },
+                |(i, ch)| if ch.as_ref().is_none() { Some(i as u32) } else { None },
             )
             .ok_or(Error::NoChannels)
     }
 
     /// Creates a new channel in InOpen state.
     fn reserve_chan(&mut self, co: &ChannelOpen<'_>) -> Result<&mut Channel> {
-        let (num, ch) = self.unused_chan()?;
+        let num = self.unused_chan()?;
         let mut chan = Channel::new(num, (&co.ty).into(), Vec::new());
         chan.send = Some(ChanDir {
             num: co.num,
@@ -165,6 +166,7 @@ impl Channels {
         });
         chan.state = ChanState::InOpen;
 
+        let ch = &mut self.ch[num as usize];
         *ch = Some(chan);
         Ok(ch.as_mut().unwrap())
     }

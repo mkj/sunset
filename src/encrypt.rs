@@ -44,8 +44,7 @@ const MAX_KEY_LEN: usize = 64;
 #[derive(Debug)]
 pub(crate) struct KeyState {
     keys: Keys,
-    // Packet sequence numbers. These must be transferred to subsequent KeyState
-    // since they don't reset with rekeying.
+    // Packet sequence numbers. These don't reset with rekeying.
     seq_encrypt: Wrapping<u32>,
     seq_decrypt: Wrapping<u32>,
 }
@@ -157,7 +156,7 @@ impl Keys {
         }
     }
 
-    pub fn new_from(
+    pub fn derive(
         k: &[u8], h: &SessId, sess_id: &SessId, algos: &kex::Algos,
     ) -> Result<Self, Error> {
         let mut key = [0u8; MAX_KEY_LEN];
@@ -816,7 +815,7 @@ mod tests {
                 let sharedkey = b"hello";
 
                 trace!("algos enc {algos:?}");
-                let newkeys = Keys::new_from(sharedkey, &h, &sess_id, &algos).unwrap();
+                let newkeys = Keys::derive(sharedkey, &h, &sess_id, &algos).unwrap();
                 keys_enc.rekey(newkeys);
 
                 // client and server enc/dec keys are derived differently, we need them
@@ -825,7 +824,7 @@ mod tests {
                 core::mem::swap(&mut algos.cipher_enc, &mut algos.cipher_dec);
                 core::mem::swap(&mut algos.integ_enc, &mut algos.integ_dec);
                 trace!("algos dec {algos:?}");
-                let newkeys_b = Keys::new_from(sharedkey, &h, &sess_id, &algos).unwrap();
+                let newkeys_b = Keys::derive(sharedkey, &h, &sess_id, &algos).unwrap();
                 keys_dec.rekey(newkeys_b);
 
             } else {
@@ -852,7 +851,7 @@ mod tests {
                 let sess_id = SessId::from_slice(&Sha256::digest(b"some sessid")).unwrap();
                 let sharedkey = b"hello";
                 let newkeys =
-                    Keys::new_from(sharedkey, &h, &sess_id, &algos).unwrap();
+                    Keys::derive(sharedkey, &h, &sess_id, &algos).unwrap();
 
                 keys.rekey(newkeys);
                 trace!("algos {algos:?}");

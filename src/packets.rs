@@ -2,6 +2,7 @@
 //!
 //! A [`Packet`] can be encoded/decoded to the
 //! SSH Binary Packet Protocol using [`sshwire`].
+//! SSH packet format is described in [RFC4253](https://tools.ietf.org/html/rfc5643) SSH Transport
 
 use core::borrow::BorrowMut;
 use core::cell::Cell;
@@ -148,7 +149,7 @@ impl<'de: 'a, 'a> SSHDecode<'de> for Userauth60<'a> {
             Some(auth::AuthType::PubKey) => Ok(Self::PkOk(SSHDecode::dec(s)?)),
             _ => {
                 trace!("Wrong packet state for userauth60");
-                return Err(WireError::PacketWrong)
+                Err(WireError::PacketWrong)
             }
         }
     }
@@ -603,7 +604,7 @@ impl core::fmt::Display for Unknown<'_> {
 pub struct ParseContext {
     pub cli_auth_type: Option<auth::AuthType>,
 
-    // Used by sign_encode()
+    // Used by auth_sig_msg()
     pub method_pubkey_force_sig_bool: bool,
 
     // Set to true if an unknown variant is encountered.

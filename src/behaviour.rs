@@ -67,20 +67,18 @@ impl<'a> Behaviour<'a> {
     /// Calls either client or server
     pub(crate) fn open_tcp_forwarded(&mut self, chan: u32,
         t: &ForwardedTcpip) -> channel::ChanOpened {
-        if self.is_client() {
-            self.client().unwrap().open_tcp_forwarded(chan, t)
-        } else {
-            self.server().unwrap().open_tcp_forwarded(chan, t)
+        match self {
+            Self::Client(b) => b.open_tcp_forwarded(chan, t),
+            Self::Server(b) => b.open_tcp_forwarded(chan, t),
         }
     }
 
     /// Calls either client or server
     pub(crate) fn open_tcp_direct(&mut self, chan: u32,
         t: &DirectTcpip) -> channel::ChanOpened {
-        if self.is_client() {
-            self.client().unwrap().open_tcp_direct(chan, t)
-        } else {
-            self.server().unwrap().open_tcp_direct(chan, t)
+        match self {
+            Self::Client(b) => b.open_tcp_direct(chan, t),
+            Self::Server(b) => b.open_tcp_direct(chan, t),
         }
     }
 
@@ -178,29 +176,46 @@ pub trait ServBehaviour: Sync+Send {
 
     #[allow(unused)]
     // TODO: or return a slice of enums
+    /// Implementations should take care to avoid leaking user existence
+    /// based on timing.
     fn have_auth_password(&self, username: TextString) -> bool {
         false
     }
 
     #[allow(unused)]
+    /// Implementations should take care to avoid leaking user existence
+    /// based on timing.
     fn have_auth_pubkey(&self, username: TextString) -> bool {
         false
     }
 
     #[allow(unused)]
     /// Return true to allow the user to log in with no authentication
+    ///
+    /// Implementations may need to take care to avoid leaking user existence
+    /// based on timing.
     fn auth_unchallenged(&mut self, username: TextString) -> bool {
         false
     }
 
     #[allow(unused)]
     // TODO: change password
+    /// Implementations should perform password hash comparisons
+    /// in constant time, using 
+    /// [`subtle::ConstantTimeEq`](subtle::ConstantTimeEq) or similar.
+    ///
+    /// Implementations may need to take care to avoid leaking user existence
+    /// based on timing.
     fn auth_password(&mut self, username: TextString, password: TextString) -> bool {
         false
     }
 
     /// Returns true if the pubkey can be used to log in.
+    ///
     /// TODO: allow returning pubkey restriction options
+    ///
+    /// Implementations may need to take care to avoid leaking user existence
+    /// based on timing.
     #[allow(unused)]
     fn auth_pubkey(&mut self, username: TextString, pubkey: &PubKey) -> bool {
         false

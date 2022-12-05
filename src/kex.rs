@@ -505,7 +505,7 @@ impl<'a> KexOutput {
         let h = kex_hash.finish(k);
 
         let sess_id = sess_id.as_ref().unwrap_or(&h);
-        let keys = Keys::new_from(k, &h, &sess_id, algos)?;
+        let keys = Keys::derive(k, &h, &sess_id, algos)?;
 
         Ok(KexOutput { h, keys })
     }

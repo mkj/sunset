@@ -23,6 +23,7 @@ static EMPTY_LOCALNAMES: LocalNames = LocalNames::new();
 
 /// A comma separated string, can be decoded or encoded.
 /// Used for remote name lists.
+/// Wire format is described in [RFC4251](https://tools.ietf.org/html/rfc4251) SSH Architecture "name-list"
 #[derive(SSHEncode, SSHDecode, Debug)]
 pub struct StringNames<'a>(pub &'a AsciiStr);
 

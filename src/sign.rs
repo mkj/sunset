@@ -104,7 +104,7 @@ impl SigType {
 }
 
 pub(crate) enum OwnedSig {
-    // Signature doesn't let us borrow the inner bytes,
+    // salty::Signature doesn't let us borrow the inner bytes,
     // so we just store raw bytes here.
     Ed25519([u8; 64]),
     _RSA256, // TODO
@@ -168,7 +168,7 @@ impl SignKey {
     }
 
     pub(crate) fn sign(&self, msg: &impl SSHEncode, parse_ctx: Option<&ParseContext>) -> Result<OwnedSig> {
-        match self {
+        let sig: OwnedSig = match self {
             SignKey::Ed25519(k) => {
                 k.sign_parts(|h| {
                     sshwire::hash_ser(h, msg, parse_ctx).map_err(|_| salty::Error::ContextTooLong)
@@ -176,7 +176,17 @@ impl SignKey {
                 .trap()
                 .map(|s| s.into())
             }
+        }?;
+
+        {
+            // Validate to avoid letting errors/bitflips expose private key.
+            // Maybe this needs to be configurable for slow platforms?
+            let vsig: Signature = (&sig).into();
+            let sig_type = vsig.sig_type().unwrap();
+            sig_type.verify(&self.pubkey(), msg, &vsig)?;
         }
+
+        Ok(sig)
     }
 }
 
