@@ -290,7 +290,13 @@ impl<'a> TrafIn<'a> {
             _ => ()
         }
     }
+}
 
+impl<'a> Drop for TrafIn<'a> {
+    fn drop(&mut self) {
+        // clear any decrypted content
+        self.buf.zeroize()
+    }
 }
 
 impl<'a> TrafOut<'a> {
@@ -397,6 +403,13 @@ impl<'a> TrafOut<'a> {
         TrafSend::new(self, keys)
     }
 
+}
+
+impl<'a> Drop for TrafOut<'a> {
+    fn drop(&mut self) {
+        // clear any pre-encryption content
+        self.buf.zeroize()
+    }
 }
 
 /// Convenience to pass TrafOut with keys
