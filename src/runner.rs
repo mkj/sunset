@@ -42,8 +42,6 @@ impl core::fmt::Debug for Runner<'_> {
     }
 }
 
-
-
 impl<'a> Runner<'a> {
     /// `inbuf` must be sized to fit the largest SSH packet allowed.
     pub fn new_client(
@@ -85,7 +83,7 @@ impl<'a> Runner<'a> {
     ///
     /// This must be polled/awaited regularly, passing in `behaviour`.
     ///
-    /// This method is async but will not block unless the `Behaviour` implementation
+    /// This method is async but will not await unless the `Behaviour` implementation
     /// does so. Note that some computationally intensive operations may be performed
     /// during key exchange.
     pub async fn progress(&mut self, behaviour: &mut Behaviour<'_>) -> Result<()> {

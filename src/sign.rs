@@ -179,14 +179,23 @@ impl SignKey {
         }?;
 
         {
-            // Validate to avoid letting errors/bitflips expose private key.
-            // Maybe this needs to be configurable for slow platforms?
+            // Faults in signing can expose the private key. We verify the signature
+            // just created to avoid this problem.
+            // TODO: Maybe this needs to be configurable for slow platforms?
             let vsig: Signature = (&sig).into();
             let sig_type = vsig.sig_type().unwrap();
             sig_type.verify(&self.pubkey(), msg, &vsig)?;
         }
 
         Ok(sig)
+    }
+}
+
+impl core::fmt::Debug for SignKey {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("SignKey")
+        .field("Ed25519", &"...")
+        .finish()
     }
 }
 

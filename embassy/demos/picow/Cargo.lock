@@ -435,12 +435,14 @@ dependencies = [
  "as-slice 0.2.1",
  "atomic-polyfill 1.0.1",
  "atomic-pool",
- "defmt",
  "embassy-sync",
  "embassy-time",
+ "embedded-io 0.4.0",
+ "embedded-nal-async",
  "futures",
  "generic-array 0.14.6",
  "heapless",
+ "log",
  "managed",
  "smoltcp",
  "stable_deref_trait",
@@ -562,6 +564,29 @@ name = "embedded-io"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ef1a6892d9eef45c8fa6b9e0086428a2cca8491aca8f787c534a3d6d0bcb3ced"
+
+[[package]]
+name = "embedded-nal"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "db9efecb57ab54fa918730f2874d7d37647169c50fa1357fecb81abee840b113"
+dependencies = [
+ "heapless",
+ "nb 1.0.0",
+ "no-std-net 0.5.0",
+]
+
+[[package]]
+name = "embedded-nal-async"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0dc8f5d837a6e95e9ecad9b5503fff6ef12e16407706abed1d33fc61eaf90da8"
+dependencies = [
+ "embedded-io 0.4.0",
+ "embedded-nal",
+ "heapless",
+ "no-std-net 0.6.0",
+]
 
 [[package]]
 name = "embedded-storage"
@@ -812,6 +837,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "no-std-net"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1bcece43b12349917e096cddfa66107277f123e6c96a5aea78711dc601a47152"
+
+[[package]]
+name = "no-std-net"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "43794a0ace135be66a25d3ae77d41b91615fb68ae937f904090203e81f755b65"
+
+[[package]]
 name = "num-traits"
 version = "0.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1051,7 +1088,6 @@ dependencies = [
  "bitflags",
  "byteorder",
  "cfg-if",
- "defmt",
  "heapless",
  "managed",
 ]
@@ -1136,6 +1172,7 @@ dependencies = [
  "sha2",
  "signature",
  "snafu",
+ "subtle",
  "sunset-sshwire-derive",
  "zeroize",
 ]
@@ -1179,8 +1216,8 @@ name = "sunset-embassy"
 version = "0.2.0-alpha"
 dependencies = [
  "embassy-futures",
- "embassy-net",
  "embassy-sync",
+ "embedded-io 0.4.0",
  "log",
  "pin-utils",
  "sunset",

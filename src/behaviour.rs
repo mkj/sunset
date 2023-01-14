@@ -106,10 +106,10 @@ impl<'a> Behaviour<'a> {
     }
 }
 
-/// `Sync+Send` bound is to allow for future changes to make async.
-pub trait CliBehaviour: Sync+Send {
+pub trait CliBehaviour {
     /// Provide the user to use for authentication. Will only be called once
     /// per session.
+    ///
     /// If the user needs to change a new connection should be made
     /// – servers often have limits on authentication attempts.
     ///
@@ -164,8 +164,7 @@ pub trait CliBehaviour: Sync+Send {
     }
 }
 
-/// `Sync+Send` bound is to allow for future changes to make async.
-pub trait ServBehaviour: Sync+Send {
+pub trait ServBehaviour {
     // TODO: load keys on demand?
     // at present `async` isn't very useful here, since it can't load keys
     // on demand. perhaps it should have a callback to get key types,

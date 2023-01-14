@@ -58,11 +58,9 @@ ssh-key = { version = "0.5", default-features = false, optional = true }
 # for debug printing
 pretty-hex = { version = "0.3", default-features = false }
 
-async-trait = { version = "0.1", optional = true }
-
 [features]
 default = [ "getrandom" ]
-std = ["async-trait", "snafu/std"]
+std = ["snafu/std"]
 # tokio-queue = ["dep:tokio"]
 openssh-key = ["ssh-key"]
 
@@ -76,15 +74,14 @@ anyhow = { version = "1.0" }
 pretty-hex = "0.3"
 simplelog = { version = "0.12", features = ["test"] }
 proptest = "1.0"
-async-trait = { version = "0.1" }
 
 serde_json = "1.0"
 
 
 # embassy is not released yet
 [patch.crates-io]
-embassy-time = { git = "https://github.com/embassy-rs/embassy", rev = "f109e73c6d7ef2ad93102b7c8223f5cef30ef36f" }
+# embassy-time = { git = "https://github.com/embassy-rs/embassy", rev = "f109e73c6d7ef2ad93102b7c8223f5cef30ef36f" }
 embassy-futures = { git = "https://github.com/embassy-rs/embassy", rev = "f109e73c6d7ef2ad93102b7c8223f5cef30ef36f" }
 embassy-sync = { git = "https://github.com/embassy-rs/embassy", rev = "f109e73c6d7ef2ad93102b7c8223f5cef30ef36f" }
-embassy-net = { git = "https://github.com/embassy-rs/embassy", rev = "f109e73c6d7ef2ad93102b7c8223f5cef30ef36f" }
+# embassy-net = { git = "https://github.com/embassy-rs/embassy", rev = "f109e73c6d7ef2ad93102b7c8223f5cef30ef36f" }
 # embassy-sync = { path = "/home/matt/3rd/rs/embassy/embassy-sync" }

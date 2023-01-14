@@ -7,16 +7,21 @@ use core::future::{poll_fn, Future};
 use core::task::{Poll, Context};
 
 use embassy_sync::waitqueue::WakerRegistration;
-use embassy_sync::mutex::Mutex;
 use embassy_sync::blocking_mutex::raw::{NoopRawMutex, RawMutex};
+use embassy_sync::mutex::Mutex;
 use embassy_sync::signal::Signal;
 use embassy_futures::join::join3;
-use embassy_net::tcp::TcpSocket;
+use embedded_io::asynch;
 
 use pin_utils::pin_mut;
 
 use sunset::{Runner, Result, Error, Behaviour};
 use sunset::config::MAX_CHANNELS;
+
+// For now we only support single-threaded executors.
+// In future this could be behind a cfg to allow different
+// RawMutex for std executors or other situations.
+type SunsetRawMutex = NoopRawMutex;
 
 pub(crate) struct Inner<'a> {
     runner: Runner<'a>,
@@ -34,9 +39,9 @@ pub(crate) struct Inner<'a> {
 }
 
 pub struct EmbassySunset<'a> {
-    pub(crate) inner: Mutex<NoopRawMutex, Inner<'a>>,
+    pub(crate) inner: Mutex<SunsetRawMutex, Inner<'a>>,
 
-    progress_notify: Signal<NoopRawMutex, ()>,
+    progress_notify: Signal<SunsetRawMutex, ()>,
 }
 
 impl<'a> EmbassySunset<'a> {
@@ -57,14 +62,13 @@ impl<'a> EmbassySunset<'a> {
          }
     }
 
-    pub async fn run<M, B: ?Sized>(&self, socket: &mut TcpSocket<'_>,
+    pub async fn run<B: ?Sized, M: RawMutex>(&self,
+        rsock: &mut impl asynch::Read,
+        wsock: &mut impl asynch::Write,
         b: &Mutex<M, B>) -> Result<()>
         where
-            M: RawMutex,
             for<'f> Behaviour<'f>: From<&'f mut B>
     {
-        let (mut rsock, mut wsock) = socket.split();
-
         let tx = async {
             loop {
                 // TODO: make sunset read directly from socket, no intermediate buffer.
@@ -128,12 +132,10 @@ impl<'a> EmbassySunset<'a> {
         }
     }
 
-    // XXX should we have a concrete NoopRawMutex instead of M?
-    pub async fn progress<M, B: ?Sized>(&self,
+    pub async fn progress<B: ?Sized, M: RawMutex>(&self,
         b: &Mutex<M, B>)
         -> Result<()>
         where
-            M: RawMutex,
             for<'f> Behaviour<'f>: From<&'f mut B>
         {
 

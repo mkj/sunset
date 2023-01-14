@@ -453,6 +453,7 @@ impl SharedSecret {
     ) -> Result<KexOutput> {
         let mut algos = kex.algos.as_mut().trap()?;
         // hostkeys list must contain the signature type
+        trace!("hostkeys {:?}", b.hostkeys());
         let hostkey = b.hostkeys()?.iter().find(|k| k.can_sign(algos.hostsig)).trap()?;
 
         let mut kex_hash = kex.kex_hash.take().trap()?;
@@ -565,7 +566,6 @@ impl KexCurve25519 {
 
 #[cfg(test)]
 mod tests {
-    use async_trait::async_trait;
     use pretty_hex::PrettyHex;
 
     use crate::encrypt;

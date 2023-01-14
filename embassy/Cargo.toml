@@ -5,8 +5,8 @@ edition = "2021"
 
 [dependencies]
 embassy-sync = { version = "0.1.0" }
-embassy-net = { version = "0.1.0" }
 embassy-futures = { version = "0.1.0" }
+embedded-io = { version = "0.4", features = ["async"] }
 pin-utils = { version = "0.1" }
 
 sunset = { path = "../" }

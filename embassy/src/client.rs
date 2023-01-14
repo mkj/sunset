@@ -7,14 +7,14 @@ use sunset::*;
 use crate::*;
 use embassy_sunset::EmbassySunset;
 
-pub struct SSHServer<'a> {
+pub struct SSHClient<'a> {
     sunset: EmbassySunset<'a>,
 }
 
-impl<'a> SSHServer<'a> {
+impl<'a> SSHClient<'a> {
     pub fn new(inbuf: &'a mut [u8], outbuf: &'a mut [u8],
         ) -> Result<Self> {
-        let runner = Runner::new_server(inbuf, outbuf)?;
+        let runner = Runner::new_client(inbuf, outbuf)?;
         let sunset = EmbassySunset::new(runner);
         Ok(Self { sunset })
     }

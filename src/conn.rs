@@ -1,3 +1,5 @@
+//! Represents the state of a SSH connection.
+
 #[allow(unused_imports)]
 use {
     crate::error::{*, Error, Result, TrapBug},
@@ -99,7 +101,6 @@ impl Conn {
 
     pub fn new_server(
         ) -> Result<Self> {
-        // XXX
         let algo_conf = AlgoConfig::new(false);
         Self::new(ClientServer::Server(server::Server::new()), algo_conf)
     }

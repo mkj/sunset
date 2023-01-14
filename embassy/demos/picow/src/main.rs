@@ -36,7 +36,7 @@ async fn main(spawner: Spawner) {
 
     let mut p = embassy_rp::init(Default::default());
 
-    caprand::setup(&mut p.PIN_25).unwrap();
+    caprand::setup(&mut p.PIN_10).unwrap();
     getrandom::register_custom_getrandom!(caprand::getrandom);
 
     // TODO: move this to wifi mod
