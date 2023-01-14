@@ -5,7 +5,7 @@ Some demo code is from Embassy project under
 MIT or Apache-2.0 license.
 
 embassy/demos/picow/src/wifi.rs
-embassy/demos/picow/src/tuntap.rs
+embassy/demos/std/src/tuntap.rs
 
 picow firmware has Permissive Binary License
 embassy/demos/picow/firmware/LICENSE-permissive-binary-license-1.0.txt
