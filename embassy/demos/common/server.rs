@@ -54,7 +54,7 @@ pub async fn listener<D: Device>(stack: &'static Stack<D>, config: &SSHConfig) -
 
         info!("Listening on TCP:22...");
         if let Err(e) = socket.accept(22).await {
-            warn!("accept error: {:?}", e);
+            warn!("accept error");
             continue;
         }
 
@@ -122,7 +122,7 @@ impl<'a> ServBehaviour for DemoServer<'a> {
 
 #[derive(Default)]
 struct DemoShell {
-    notify: Signal<CriticalSectionRawMutex, u32>,
+    notify: Signal<NoopRawMutex, u32>,
 }
 
 impl DemoShell {
@@ -156,19 +156,21 @@ impl DemoShell {
 
 async fn session(socket: &mut TcpSocket<'_>, config: &SSHConfig) -> sunset::Result<()> {
     let shell = DemoShell::default();
+
     let app = DemoServer::new(&shell, config)?;
+    let app = Mutex::<NoopRawMutex, _>::new(app);
+    let app = &app as &Mutex::<NoopRawMutex, dyn ServBehaviour>;
 
     let mut ssh_rxbuf = [0; 2000];
     let mut ssh_txbuf = [0; 2000];
     let serv = SSHServer::new(&mut ssh_rxbuf, &mut ssh_txbuf)?;
     let serv = &serv;
 
-    let app = Mutex::<NoopRawMutex, _>::new(app);
-
     let session = shell.run(serv);
 
-    let app = &app as &Mutex::<NoopRawMutex, dyn ServBehaviour>;
-    let run = serv.run(socket, app);
+    let (mut rsock, mut wsock) = socket.split();
+
+    let run = serv.run(&mut rsock, &mut wsock, app);
 
     join(run, session).await;
 

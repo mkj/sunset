@@ -15,7 +15,7 @@ use rand::RngCore;
 use crate::tuntap::TunTapDevice;
 
 mod tuntap;
-#[path = "../../common/common.rs"]
+#[path = "../../common/server.rs"]
 mod demo_common;
 
 use demo_common::SSHConfig;
