@@ -1,5 +1,7 @@
 // TODO
-pub const NUM_MODES: usize = 56;
+pub const NUM_MODES: usize = 57;
+
+// Codes from rfc4254. IUTF8 from rfc8160
 /*
           0     TTY_OP_END  Indicates end of options.
           1     VINTR       Interrupt character; 255 if none.  Similarly
@@ -32,6 +34,7 @@ pub const NUM_MODES: usize = 56;
           39    IXANY       Any char will restart after stop.
           40    IXOFF       Enable input flow control.
           41    IMAXBEL     Ring bell on input queue full.
+          42    IUTF8       Terminal input and output is assumed to be encoded in UTF-8.
           50    ISIG        Enable signals INTR, QUIT, [D]SUSP.
           51    ICANON      Canonicalize input lines.
           52    XCASE       Enable input and output of uppercase

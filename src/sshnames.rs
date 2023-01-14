@@ -42,6 +42,9 @@ pub const SSH_NAME_NONE: &str = "none";
 /// [RFC4252](https://tools.ietf.org/html/rfc4252)
 pub const SSH_SERVICE_USERAUTH: &str = "ssh-userauth";
 /// [RFC4254](https://tools.ietf.org/html/rfc4254)
+///
+/// `IUTF8` is specified in
+/// [RFC8160](https://tools.ietf.org/html/rfc8160)
 pub const SSH_SERVICE_CONNECTION: &str = "ssh-connection";
 
 /// [RFC4252](https://tools.ietf.org/html/rfc4252)
