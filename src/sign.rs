@@ -48,7 +48,7 @@ impl SigType {
 
     /// Returns `Ok(())` on success
     pub fn verify(
-        &self, pubkey: &PubKey, msg: &impl SSHEncode, sig: &Signature) -> Result<()> {
+        &self, pubkey: &PubKey, msg: &impl SSHEncode, sig: &Signature, parse_ctx: Option<&ParseContext>) -> Result<()> {
 
         // Check that the signature type is known
         let sig_type = sig.sig_type().map_err(|_| Error::BadSig)?;
@@ -70,7 +70,7 @@ impl SigType {
                 let s: &[u8; 64] = s.sig.0.try_into().map_err(|_| Error::BadSig)?;
                 let s: salty::Signature = s.into();
                 k.verify_parts(&s, |h| {
-                    sshwire::hash_ser(h, msg, None).map_err(|_| salty::Error::ContextTooLong)
+                    sshwire::hash_ser(h, msg, parse_ctx).map_err(|_| salty::Error::ContextTooLong)
                 })
                 .map_err(|_| Error::BadSig)
             }
@@ -184,7 +184,7 @@ impl SignKey {
             // TODO: Maybe this needs to be configurable for slow platforms?
             let vsig: Signature = (&sig).into();
             let sig_type = vsig.sig_type().unwrap();
-            sig_type.verify(&self.pubkey(), msg, &vsig)?;
+            sig_type.verify(&self.pubkey(), msg, &vsig, parse_ctx)?;
         }
 
         Ok(sig)

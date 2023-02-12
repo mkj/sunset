@@ -193,6 +193,7 @@ pub struct MethodPubKey<'a> {
 impl SSHEncode for MethodPubKey<'_> {
     fn enc<S>(&self, s: &mut S) -> WireResult<()>
     where S: SSHSink {
+        // Signature bool will be set when signing
         let force_sig_bool = s.ctx().map_or(false, |c| c.method_pubkey_force_sig_bool);
         let sig = self.sig.is_some() || force_sig_bool;
         sig.enc(s)?;

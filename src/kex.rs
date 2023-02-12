@@ -437,7 +437,7 @@ impl SharedSecret {
 
         // TODO: error message on signature failure.
         let h: &[u8] = kex_out.h.as_ref();
-        algos.hostsig.verify(&p.k_s.0, &h, &p.sig.0)?;
+        algos.hostsig.verify(&p.k_s.0, &h, &p.sig.0, None)?;
         debug!("Hostkey signature is valid");
         if matches!(b.valid_hostkey(&p.k_s.0), Ok(true)) {
             Ok(kex_out)
