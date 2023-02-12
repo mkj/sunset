@@ -19,10 +19,14 @@ of the RNG quality before use in real applications.
 
 Running on the host system, useful for development and debugging.
 The network stack is smoltcp with a `tap` device. Based on Embassy's `examples/std/src/tuntap.rs`, it needs
-local network setup something like
+local network setup something like this, where a local dhcp server is running on tap0. Alternatively tap0
+can be bridged to another network which has dhcp available.
 
 ```sh
 sudo ip tuntap add name tap0 mode tap user $USER
 sudo ip link set tap0 up
+
 sudo ip addr add 10.9.0.1/16 dev tap0
+# or
+sudo brctl addif br0 tap0
 ```

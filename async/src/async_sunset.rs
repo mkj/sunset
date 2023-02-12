@@ -110,7 +110,7 @@ impl<'a> AsyncSunset<'a> {
         Ok(())
     }
 
-    pub async fn with_runner<F, R>(&mut self, f: F) -> R
+    pub async fn with_runner<F, R>(&self, f: F) -> R
         where F: FnOnce(&mut Runner) -> R {
         let mut inner = self.inner.lock().await;
         f(&mut inner.runner)

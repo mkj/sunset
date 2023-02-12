@@ -168,6 +168,13 @@ impl Error {
 
 }
 
+#[cfg(feature = "embedded-io")]
+impl embedded_io::Error for Error {
+    fn kind(&self) -> embedded_io::ErrorKind {
+        embedded_io::ErrorKind::Other
+    }
+}
+
 pub type Result<T, E = Error> = core::result::Result<T, E>;
 
 pub trait TrapBug<T> {

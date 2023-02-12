@@ -286,6 +286,7 @@ impl<'a> Runner<'a> {
 
     pub fn term_window_change(&self, _chan: u32, _wc: packets::WinChange) -> Result<()> {
         todo!("term_window_change()");
+        // Needs to check that it is a channel with pty.
         // self.conn.channels.term_window_change(chan, wc)
     }
 

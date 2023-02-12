@@ -3,15 +3,20 @@ use {
     // crate::error::Error,
     log::{debug, error, info, log, trace, warn},
 };
-use anyhow::{Context, Result, Error, bail};
+use anyhow::{Context, Result, Error, bail, anyhow};
+use embassy_sync::{mutex::Mutex, blocking_mutex::raw::NoopRawMutex};
 use pretty_hex::PrettyHex;
 
 use tokio::net::TcpStream;
+use tokio::task::spawn_local;
 
 use std::{net::Ipv6Addr, io::Read};
 
 use sunset::*;
-use sunset_async::{SSHClient, raw_pty};
+use sunset_async::{raw_pty};
+use sunset_embassy::SSHClient;
+
+use embedded_io::adapters::FromTokio;
 
 use simplelog::*;
 
@@ -79,12 +84,16 @@ fn main() -> Result<()> {
     // logging uses the timezone, so we can't use async main.
     setup_log(&args)?;
 
+
     tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .unwrap()
         .block_on(async {
-            run(&args).await
+            // TODO: Until "async functions in traits" allows Send bounds
+            // we just run it all on a single thread.
+            let local = tokio::task::LocalSet::new();
+            local.run_until(run(args)).await
         })
         .map_err(|e| {
             error!("Exit with error: {e:?}");
@@ -131,7 +140,7 @@ fn read_key(p: &str) -> Result<SignKey> {
     SignKey::from_openssh(v).context("parsing openssh key")
 }
 
-async fn run(args: &Args) -> Result<()> {
+async fn run(args: Args) -> Result<()> {
 
     info!("running main");
     trace!("tracing main");
@@ -145,10 +154,6 @@ async fn run(args: &Args) -> Result<()> {
     // Connect to a peer
     let mut stream = TcpStream::connect((args.host.as_str(), args.port)).await?;
 
-    let mut rxbuf = vec![0; 3000];
-    let mut txbuf = vec![0; 3000];
-    let mut cli = SSHClient::new(&mut rxbuf, &mut txbuf)?;
-
     // app is a Behaviour
     let mut app = sunset_async::CmdlineClient::new(
         args.username.as_ref().unwrap(),
@@ -159,60 +164,23 @@ async fn run(args: &Args) -> Result<()> {
         app.add_authkey(read_key(&i).with_context(|| format!("loading key {i}"))?);
     }
 
-    let mut s = cli.socket();
+    let app = Mutex::<NoopRawMutex, _>::new(app);
 
+    let ssh_task = spawn_local(async move {
+        let app = &app as &Mutex::<NoopRawMutex, dyn CliBehaviour>;
+        let mut rxbuf = vec![0; 3000];
+        let mut txbuf = vec![0; 3000];
+        let cli = SSHClient::new(&mut rxbuf, &mut txbuf)?;
+        let cli = &cli;
 
-    moro::async_scope!(|scope| {
-        scope.spawn(tokio::io::copy_bidirectional(&mut stream, &mut s));
+        let (rsock, wsock) = stream.split();
+        let mut rsock = FromTokio::new(rsock);
+        let mut wsock = FromTokio::new(wsock);
+        cli.run(&mut rsock, &mut wsock, app).await
+    });
 
-        scope.spawn(async {
-            loop {
-                cli.progress(&mut app).await.context("progress loop")?;
-
-                app.progress(&mut cli).await?;
-
-                // match ev {
-                //     Some(Event::CliAuthed) => {
-                //         let mut raw_pty_guard = None;
-                //         info!("Opening a new session channel");
-                //         let (mut io, mut errpair) = if wantpty {
-                //             raw_pty_guard = Some(raw_pty()?);
-                //             let io = cli.open_session_pty(cmd.as_deref()).await
-                //                 .context("Opening session")?;
-                //             (io, None)
-                //         } else {
-                //             let (io, err) = cli.open_session_nopty(cmd.as_deref()).await
-                //                 .context("Opening session")?;
-                //             let errpair = (err, sunset_async::stderr()?);
-                //             (io, Some(errpair))
-                //         };
-
-                //         let mut i = sunset_async::stdin()?;
-                //         let mut o = sunset_async::stdout()?;
-                //         let mut io2 = io.clone();
-                //         scope.spawn(async move {
-                //             moro::async_scope!(|scope| {
-                //                 scope.spawn(tokio::io::copy(&mut io, &mut o));
-                //                 scope.spawn(tokio::io::copy(&mut i, &mut io2));
-                //                 if let Some(ref mut ep) = errpair {
-                //                     let (err, e) = ep;
-                //                     scope.spawn(tokio::io::copy(err, e));
-                //                 }
-                //             }).await;
-                //             drop(raw_pty_guard);
-                //             Ok::<_, anyhow::Error>(())
-                //         });
-                //         // TODO: handle channel completion or open failure
-                //     }
-                //     Some(_) => unreachable!(),
-                //     None => {},
-                // }
-            }
-            #[allow(unreachable_code)]
-            Ok::<_, anyhow::Error>(())
-
-        });
-    }).await;
-
-    Ok(())
+    match ssh_task.await {
+        Err(_) => Err(anyhow!("Sunset task panicked")),
+        Ok(r) => r.context("Exited"),
+    }
 }

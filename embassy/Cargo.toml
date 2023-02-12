@@ -9,6 +9,6 @@ embassy-futures = { version = "0.1.0" }
 embedded-io = { version = "0.4", features = ["async"] }
 pin-utils = { version = "0.1" }
 
-sunset = { path = "../" }
+sunset = { path = "../", features = ["embedded-io"] }
 
 log = { version = "0.4" }

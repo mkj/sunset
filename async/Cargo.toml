@@ -7,10 +7,17 @@ license = "MPL-2.0"
 description = "Async wrapper for Sunset SSH"
 
 [dependencies]
-sunset = { path = "..", features = ["std"] }
+sunset = { path = "..", features = ["std", "openssh-key"] }
+sunset-embassy = { path = "../embassy" }
 log = { version = "0.4", features = ["release_max_level_info"] }
 rpassword = "6.0"
 argh = "0.1"
+
+embassy-sync = { version = "0.1.0" }
+
+# async feature requires nightly for async fn in trait
+# https://github.com/rust-lang/rust/issues/91611
+embedded-io = { version = "0.4", features = ["async", "tokio"] }
 
 # smol = { version = "1.2" }
 # futures-io = "0.3"
@@ -23,10 +30,7 @@ argh = "0.1"
 
 # "net" for AsyncFd on unix
 tokio = { version = "1.19", features = ["sync", "net"] }
-# require alpha for https://github.com/rust-lang/futures-rs/pull/2571
-# need later than 0.3.21
-futures = { git = "https://github.com/rust-lang/futures-rs", rev = "8b0f812f53ada0d0aeb74abc32be22ab9dafae05" }
-async-trait = "0.1"
+futures = "0.3"
 moro = "0.4"
 
 libc = "0.2"

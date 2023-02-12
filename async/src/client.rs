@@ -29,6 +29,7 @@ pub struct SSHClient<'a> {
 }
 
 impl<'a> SSHClient<'a> {
+    /* May return an error if RNG fails */
     pub fn new(inbuf: &'a mut [u8],
         outbuf: &'a mut [u8]) -> Result<Self> {
         let runner = Runner::new_client(inbuf, outbuf)?;

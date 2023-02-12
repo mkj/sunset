@@ -10,7 +10,8 @@ use embassy_sync::waitqueue::WakerRegistration;
 use embassy_sync::blocking_mutex::raw::{NoopRawMutex, RawMutex};
 use embassy_sync::mutex::Mutex;
 use embassy_sync::signal::Signal;
-use embassy_futures::join::join3;
+use embassy_futures::select::{select3, Either3};
+use embassy_futures::select::select_slice;
 use embedded_io::asynch;
 
 use pin_utils::pin_mut;
@@ -104,17 +105,18 @@ impl<'a> EmbassySunset<'a> {
 
         let prog = async {
             loop {
-                self.progress(b).await?;
+                self.progress(b).await?
             }
-            #[allow(unreachable_code)]
-            Ok::<_, sunset::Error>(())
         };
 
-
-        // TODO: handle results
-        join3(rx, tx, prog).await;
-
-        Ok(())
+        // TODO: we might want to let `prog` run until buffers are drained
+        // in case a disconnect message was received.
+        // TODO Is there a nice way than this?
+        match select3(rx, tx, prog).await {
+            Either3::First(v) => v,
+            Either3::Second(v) => v,
+            Either3::Third(v) => v,
+        }
     }
 
 
@@ -160,6 +162,12 @@ impl<'a> EmbassySunset<'a> {
         self.progress_notify.wait().await;
 
         Ok(())
+    }
+
+    pub(crate) async fn with_runner<F, R>(&self, f: F) -> R
+        where F: FnOnce(&mut Runner) -> R {
+        let mut inner = self.inner.lock().await;
+        f(&mut inner.runner)
     }
 
     /// helper to perform a function on the `inner`, returning a `Poll` value

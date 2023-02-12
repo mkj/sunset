@@ -6,13 +6,12 @@ use core::str::FromStr;
 use sunset::SignKey;
 use sunset::{BhError, BhResult};
 use sunset::{ChanMsg, ChanMsgDetails, Error, Result, Runner};
+use sunset_embassy::{SSHClient, ChanExtIn, ChanExtOut, ChanInOut};
 
 use std::collections::VecDeque;
 
-use async_trait::async_trait;
-
 use crate::*;
-use crate::{raw_pty, RawPtyGuard, SSHClient, ChanInOut, ChanExtIn};
+use crate::{raw_pty, RawPtyGuard};
 
 enum CmdlineState<'a> {
     PreAuth,
@@ -26,7 +25,6 @@ enum CmdlineState<'a> {
 /// Command line interface SSH client behaviour
 pub struct CmdlineClient<'a> {
     state: CmdlineState<'a>,
-    main_ch: Option<u32>,
     pty_guard: Option<RawPtyGuard>,
 
     authkeys: VecDeque<SignKey>,
@@ -39,7 +37,6 @@ impl<'a> CmdlineClient<'a> {
     pub fn new(username: impl AsRef<str>, cmd: Option<impl AsRef<str>>, want_pty: bool) -> Self {
         CmdlineClient {
             state: CmdlineState::PreAuth,
-            main_ch: None,
             pty_guard: None,
 
             authkeys: VecDeque::new(),
@@ -50,7 +47,7 @@ impl<'a> CmdlineClient<'a> {
         }
     }
 
-    pub async fn progress(&mut self, cli: &mut SSHClient<'a>) -> Result<()> {
+    pub async fn progress(&mut self, cli: &'a SSHClient<'a>) -> Result<()> {
         match self.state {
             CmdlineState::Authed => {
                 info!("Opening a new session channel");
@@ -68,11 +65,13 @@ impl<'a> CmdlineClient<'a> {
         self.authkeys.push_back(k)
     }
 
-    async fn open_session(&mut self, cli: &mut SSHClient<'a>) -> Result<()> {
+    async fn open_session(&mut self, cli: &'a SSHClient<'a>) -> Result<()> {
         debug_assert!(matches!(self.state, CmdlineState::Authed));
 
         // TODO expect
-        // self.pty_guard = Some(raw_pty().expect("raw pty"));
+        if self.want_pty {
+            // self.pty_guard = Some(raw_pty().expect("raw pty"));
+        }
 
         let cmd = self.cmd.as_ref().map(|s| s.as_str());
         let (io, extin) = if self.want_pty {
@@ -87,8 +86,6 @@ impl<'a> CmdlineClient<'a> {
     }
 }
 
-// #[async_trait(?Send)]
-#[async_trait]
 impl sunset::CliBehaviour for CmdlineClient<'_> {
     fn username(&mut self) -> BhResult<sunset::ResponseString> {
         sunset::ResponseString::from_str(&self.username).map_err(|_| BhError::Fail)

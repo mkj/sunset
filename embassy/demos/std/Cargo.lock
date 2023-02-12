@@ -1065,6 +1065,7 @@ dependencies = [
  "cipher",
  "ctr",
  "digest",
+ "embedded-io 0.4.0",
  "heapless",
  "hmac",
  "log",

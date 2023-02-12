@@ -10,7 +10,7 @@ use core::ops::DerefMut;
 use embedded_io::{asynch, Io};
 
 use crate::*;
-use async_sunset::{Inner, poll_lock};
+use embassy_sunset::EmbassySunset;
 
 pub struct Channel<'a> {
     chan: u32,
@@ -31,59 +31,59 @@ impl<'a> Channel<'a> {
         //     }
         // };
 
-        // TODO: also need to wait for spare output buffer
-        self.sunset.inner.lock().await
-        .runner.term_window_change(self.chan, wc);
+        // // TODO: also need to wait for spare output buffer
+        // self.sunset.inner.lock().await
+        // .runner.term_window_change(self.chan, wc);
     }
 }
 
 pub struct ChanInOut<'a> {
     chan: u32,
-    sunset: AsyncSunset<'a>,
+    sunset: &'a EmbassySunset<'a>,
 
-    rlfut: Option<OwnedMutexLockFuture<Inner<'a>>>,
-    wlfut: Option<OwnedMutexLockFuture<Inner<'a>>>,
+    // rlfut: Option<OwnedMutexLockFuture<Inner<'a>>>,
+    // wlfut: Option<OwnedMutexLockFuture<Inner<'a>>>,
 }
 
 pub struct ChanExtIn<'a> {
     chan: u32,
     ext: u32,
-    sunset: AsyncSunset<'a>,
+    sunset: &'a EmbassySunset<'a>,
 
-    rlfut: Option<OwnedMutexLockFuture<Inner<'a>>>,
+    // rlfut: Option<OwnedMutexLockFuture<Inner<'a>>>,
 }
 
 pub struct ChanExtOut<'a> {
     chan: u32,
     ext: u32,
-    sunset: AsyncSunset<'a>,
+    sunset: &'a EmbassySunset<'a>,
 
-    wlfut: Option<OwnedMutexLockFuture<Inner<'a>>>,
+    // wlfut: Option<OwnedMutexLockFuture<Inner<'a>>>,
 }
 
 impl<'a> ChanInOut<'a> {
-    pub(crate) fn new(chan: u32, sunset: &AsyncSunset<'a>) -> Self {
+    pub(crate) fn new(chan: u32, sunset: &'a EmbassySunset<'a>) -> Self {
         Self {
-            chan, sunset: sunset.private_clone(),
-            rlfut: None, wlfut: None,
+            chan, sunset,
+            // rlfut: None, wlfut: None,
         }
     }
 }
 
-impl Clone for ChanInOut<'_> {
-    fn clone(&self) -> Self {
-        Self {
-            chan: self.chan, sunset: self.sunset.private_clone(),
-            rlfut: None, wlfut: None,
-        }
-    }
-}
+// impl Clone for ChanInOut<'_> {
+//     fn clone(&self) -> Self {
+//         Self {
+//             chan: self.chan, sunset: self.sunset.private_clone(),
+//             // rlfut: None, wlfut: None,
+//         }
+//     }
+// }
 
 impl<'a> ChanExtIn<'a> {
-    pub(crate) fn new(chan: u32, ext: u32, sunset: &AsyncSunset<'a>) -> Self {
+    pub(crate) fn new(chan: u32, ext: u32, sunset: &'a EmbassySunset<'a>) -> Self {
         Self {
-            chan, ext, sunset: sunset.private_clone(),
-            rlfut: None,
+            chan, ext, sunset,
+            // rlfut: None,
         }
     }
 }
@@ -94,14 +94,14 @@ impl<'a> Io for ChanInOut<'a> {
 }
 
 impl<'a> asynch::Read for ChanInOut<'a> {
-    async fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
-        self.sunset.read_channel_stdin(self.ch, buf)
+    async fn read(&mut self, buf: &mut [u8]) -> Result<usize, sunset::Error> {
+        self.sunset.read_channel_stdin(self.chan, buf).await
     }
 }
 
 impl<'a> asynch::Write for ChanInOut<'a> {
-    async fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
-        self.sunset.write_channel(self.ch, None, buf)
+    async fn write(&mut self, buf: &[u8]) -> Result<usize, sunset::Error> {
+        self.sunset.write_channel(self.chan, None, buf).await
     }
 
     // TODO: not sure how easy end-to-end flush is

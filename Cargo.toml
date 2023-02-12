@@ -20,7 +20,7 @@ exclude = [
 ]
 
 [profile.release]
-opt-level = 's'
+opt-level = 'z'
 lto = "fat"
 debug = 1
 
@@ -54,6 +54,7 @@ subtle = { version = "2.4", default-features = false }
 # fork allows hashing by parts (sign/verify from sshwire), and zeroize
 salty = { version = "0.2", git = "https://github.com/mkj/salty", branch = "sunset" }
 ssh-key = { version = "0.5", default-features = false, optional = true }
+embedded-io = { version = "0.4", optional = true }
 
 # for debug printing
 pretty-hex = { version = "0.3", default-features = false }
@@ -62,7 +63,8 @@ pretty-hex = { version = "0.3", default-features = false }
 default = [ "getrandom" ]
 std = ["snafu/std"]
 # tokio-queue = ["dep:tokio"]
-openssh-key = ["ssh-key"]
+openssh-key = ["dep:ssh-key"]
+embedded-io = ["dep:embedded-io"]
 
 getrandom = ["rand/getrandom"]
 
@@ -74,9 +76,6 @@ anyhow = { version = "1.0" }
 pretty-hex = "0.3"
 simplelog = { version = "0.12", features = ["test"] }
 proptest = "1.0"
-
-serde_json = "1.0"
-
 
 # embassy is not released yet
 [patch.crates-io]

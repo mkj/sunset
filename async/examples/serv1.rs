@@ -3,19 +3,47 @@ use {
     // crate::error::Error,
     log::{debug, error, info, log, trace, warn},
 };
-use anyhow::{Context, Result, Error, bail};
-use pretty_hex::PrettyHex;
-
-use tokio::net::{TcpStream, TcpListener};
-use tokio::io::{AsyncReadExt,AsyncWriteExt};
 
 use std::{net::Ipv6Addr, io::Read};
 use std::path::Path;
 
-use sunset::*;
-use sunset_async::*;
+use anyhow::{Context, Result, Error, bail};
+use embassy_sync::blocking_mutex::raw::{NoopRawMutex, RawMutex};
+use embassy_sync::mutex::Mutex;
+use pretty_hex::PrettyHex;
 
-use async_trait::async_trait;
+use tokio::net::{TcpStream, TcpListener};
+use tokio::io::{AsyncReadExt,AsyncWriteExt};
+use tokio::sync::oneshot;
+use tokio::runtime::Runtime;
+use tokio::task::spawn_local;
+
+use embedded_io::adapters::FromTokio;
+
+use sunset::*;
+use sunset_embassy::SSHServer;
+
+// struct StdRawMutex {
+//     l: std::sync::Mutex<()>,
+// }
+
+// unsafe impl RawMutex for StdRawMutex {
+//     const INIT: Self = Self::new();
+
+//     fn lock<R>(&self, f: impl FnOnce() -> R) -> R {
+//         let x = self.l.lock();
+//         f()
+//     }
+// }
+
+// impl StdRawMutex {
+//     const fn new() -> Self {
+//         Self {
+//             l: std::sync::Mutex::new(()),
+//         }
+//     }
+// }
+
 
 use simplelog::*;
 #[derive(argh::FromArgs)]
@@ -30,7 +58,7 @@ struct Args {
     /// more verbose
     trace: bool,
 
-    #[argh(option, short='p', default="22")]
+    #[argh(option, short='p', default="2244")]
     /// port
     port: u16,
 
@@ -51,17 +79,20 @@ fn main() -> Result<()> {
 
     setup_log(&args)?;
 
-    tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .unwrap()
-        .block_on(async {
-            run(&args).await
-        })
-        .map_err(|e| {
-            error!("Exit with error: {e:?}");
-            e
-        })
+    if args.hostkey.is_empty() {
+        error!("At least one --hostkey is required");
+        return Ok(())
+    }
+
+    let rt  = Runtime::new().unwrap();
+    let local = task::LocalSet::new();
+    local.block_on(&rt, async {
+        run(&args).await
+    })
+    .map_err(|e| {
+        error!("Exit with error: {e:?}");
+        e
+    })
 }
 
 fn setup_log(args: &Args) -> Result<()> {
@@ -98,16 +129,16 @@ fn read_key(p: &str) -> Result<SignKey> {
     SignKey::from_openssh(v).context("parsing openssh key")
 }
 
-struct DemoServer {
+struct DemoServer<'a> {
     keys: Vec<SignKey>,
 
     sess: Option<u32>,
-    want_shell: bool,
     shell_started: bool,
+    shell: &'a DemoShell,
 }
 
-impl DemoServer {
-    fn new(keyfiles: &[String]) -> Result<Self> {
+impl<'a> DemoServer<'a> {
+    fn new(shell: &'a DemoShell, keyfiles: &[String]) -> Result<Self> {
         let keys = keyfiles.iter().map(|f| {
             read_key(f).with_context(|| format!("loading key {f}"))
         }).collect::<Result<Vec<SignKey>>>()?;
@@ -115,17 +146,16 @@ impl DemoServer {
         Ok(Self {
             sess: None,
             keys,
-            want_shell: false,
             shell_started: false,
+            shell,
         })
     }
 }
 
-impl ServBehaviour for DemoServer {
+impl<'a> ServBehaviour for DemoServer<'a> {
     fn hostkeys(&mut self) -> BhResult<&[SignKey]> {
         Ok(&self.keys)
     }
-
 
     fn have_auth_password(&self, user: TextString) -> bool {
         true
@@ -162,8 +192,9 @@ impl ServBehaviour for DemoServer {
     }
 
     fn sess_shell(&mut self, chan: u32) -> bool {
-        let r = !self.want_shell && self.sess == Some(chan);
-        self.want_shell = true;
+        let r = !self.shell_started && self.sess == Some(chan);
+        self.shell_started = true;
+        self.shell_notify.take().send(chan);
         trace!("req want shell");
         r
     }
@@ -173,85 +204,75 @@ impl ServBehaviour for DemoServer {
     }
 }
 
+struct DemoShell {
+    notify: mpsc::Receiver<u32>,
+}
 
-async fn session_loop(inout: ChanInOut<'_>) -> Result<(), anyhow::Error> {
-    let mut o = inout.clone();
-    loop {
-        let mut b = [0u8];
-        o.read(&mut b).await?;
-        trace!("{b:?}");
-        if let Some(c) = char::from_u32(b[0] as u32) {
-            if c == '\r' {
-                o.write(&['\n' as u8]).await?;
-            }
+impl DemoShell {
+    async fn run<'f>(self, serv: &SSHServer<'_>) -> Result<()>
+    {
+        let session = async {
+            // wait for a shell to start
+            let chan = if let Ok(c) = self.notify.await {
+                c
+            } else {
+                // no shell was started. that's OK.
+                return Ok(())
+            };
 
-            if c == 'm' {
-                b[0] = 'M' as u8;
+            loop {
+                todo!("stuff");
+                // let mut b = [0u8; 20];
+                // let lr = serv.read_channel_stdin(chan, &mut b).await?;
+                // let b = &mut b[..lr];
+                // for c in b.iter() {
+                //     menu.input_byte(*c);
+                //     menu.context.flush(serv, chan).await?;
+                // }
             }
-            o.write(&b).await?;
-        } else {
-            o.write(&b).await?;
-        }
+            // Ok(())
+        };
+
+        session.await
     }
 }
 
-fn run_session<'a, R: Send>(args: &'a Args, scope: &'a moro::Scope<'a, '_, R>, mut stream: TcpStream) -> Result<()> {
+fn run_session(args: &Args, mut stream: TcpStream) -> Result<()> {
     // app is a Behaviour
+    let mut shell = DemoShell::default();
 
-    scope.spawn(async move {
-        let mut app = DemoServer::new(&args.hostkey)?;
+    spawn_local(async move {
+        // TODO: simplify
+        let app = DemoServer::new(&shell, &args.hostkey)?;
+        let app = Mutex::<NoopRawMutex, _>::new(app);
+        let app = &app as &Mutex::<NoopRawMutex, dyn ServBehaviour>;
+
         let mut rxbuf = vec![0; 3000];
         let mut txbuf = vec![0; 3000];
-        let mut serv = SSHServer::new(&mut rxbuf, &mut txbuf, &mut app)?;
-        let mut s = serv.socket();
+        let serv = SSHServer::new(&mut rxbuf, &mut txbuf)?;
+        let serv = &serv;
 
-        let w = moro::async_scope!(|scope| {
+        spawn_local(async {
+            let (rsock, wsock) = stream.split();
+            let mut rsock = FromTokio::new(rsock);
+            let mut wsock = FromTokio::new(wsock);
+            serv.run(&mut rsock, &mut wsock, app).await
+        });
 
-            scope.spawn(tokio::io::copy_bidirectional(&mut stream, &mut s));
-
-            let v = scope.spawn(async {
-                loop {
-                    serv.progress(&mut app).await.context("progress loop")?;
-                    if app.want_shell && !app.shell_started {
-                        app.shell_started = true;
-
-                        if let Some(ch) = app.sess {
-                            let ch = ch.clone();
-                            let (inout, mut _ext) = serv.channel(ch).await?;
-                            scope.spawn(async {
-                                session_loop(inout).await
-                            });
-                        }
-
-                    }
-                }
-                #[allow(unreachable_code)]
-                Ok::<_, anyhow::Error>(())
-            }).await;
-
-            let r: () = scope.terminate(v).await;
-            Ok(())
-        }).await;
-        trace!("Finished session {:?}", w);
-        w
+        spawn_local(shell.run(serv));
+        Ok::<_, anyhow::Error>(())
     });
     Ok(())
-
 }
 
 async fn run(args: &Args) -> Result<()> {
     // TODO not localhost. also ipv6?
     let listener = TcpListener::bind(("127.6.6.6", args.port)).await.context("Listening")?;
-    moro::async_scope!(|scope| {
-        scope.spawn(async {
-            loop {
-                let (stream, _) = listener.accept().await?;
+    loop {
+        let (stream, _) = listener.accept().await?;
 
-                run_session(args, scope, stream)?
-            }
-            #[allow(unreachable_code)]
-            Ok::<_, anyhow::Error>(())
-        }).await
-
-    }).await
+        run_session(args, stream)?
+    }
+    #[allow(unreachable_code)]
+    Ok::<_, anyhow::Error>(())
 }
