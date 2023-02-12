@@ -6,7 +6,7 @@ use {
 };
 
 use embassy_executor::{Spawner, Executor};
-use embassy_net::{Stack, StackResources, ConfigStrategy};
+use embassy_net::{Stack, StackResources, Config};
 use static_cell::StaticCell;
 
 use rand::rngs::OsRng;
@@ -21,6 +21,8 @@ mod demo_common;
 use demo_common::SSHConfig;
 
 const NUM_LISTENERS: usize = 4;
+// +1 for dhcp
+const NUM_SOCKETS: usize = NUM_LISTENERS+1;
 
 #[embassy_executor::task]
 async fn net_task(stack: &'static Stack<TunTapDevice>) -> ! {
@@ -33,7 +35,7 @@ async fn main_task(spawner: Spawner) {
 
     // TODO config
     let opt_tap0 = "tap0";
-    let config = ConfigStrategy::Dhcp;
+    let config = Config::Dhcp(Default::default());
 
     // Init network device
     let device = TunTapDevice::new(opt_tap0).unwrap();
@@ -44,19 +46,19 @@ async fn main_task(spawner: Spawner) {
     let stack = &*singleton!(Stack::new(
         device,
         config,
-        singleton!(StackResources::<1, 10, 8>::new()),
+        singleton!(StackResources::<NUM_SOCKETS>::new()),
         seed
     ));
-
-    let config = &*singleton!(
-        demo_common::SSHConfig::new().unwrap()
-    );
 
     // Launch network task
     spawner.spawn(net_task(stack)).unwrap();
 
+    let ssh_config = &*singleton!(
+        demo_common::SSHConfig::new().unwrap()
+    );
+
     for _ in 0..NUM_LISTENERS {
-        spawner.spawn(listener(stack, &config)).unwrap();
+        spawner.spawn(listener(stack, &ssh_config)).unwrap();
     }
 }
 

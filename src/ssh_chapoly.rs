@@ -7,10 +7,11 @@ use {
 use chacha20::ChaCha20;
 use chacha20::cipher::{KeyIvInit, StreamCipher, StreamCipherSeek, StreamCipherSeekCore};
 use poly1305::Poly1305;
-use poly1305::universal_hash::{NewUniversalHash, UniversalHash};
+use poly1305::universal_hash::UniversalHash;
 use poly1305::universal_hash::generic_array::GenericArray;
 use subtle::ConstantTimeEq;
 use zeroize::{Zeroize, ZeroizeOnDrop};
+use digest::KeyInit;
 
 use crate::*;
 use encrypt::SSH_LENGTH_SIZE;
@@ -79,7 +80,7 @@ impl SSHChaPoly {
         c.apply_keystream(&mut poly_key);
 
         // check tag
-        let msg_tag = poly1305::Tag::new(*GenericArray::from_slice(mac));
+        let msg_tag = poly1305::Tag::from_slice(mac);
         let poly = Poly1305::new((&poly_key).into());
         // compute_unpadded() adds the necessary trailing 1 byte when padding output
         let tag = poly.compute_unpadded(msg);
@@ -127,7 +128,7 @@ impl SSHChaPoly {
         c.apply_keystream(&mut poly_key);
         let poly = Poly1305::new((&poly_key).into());
         let tag = poly.compute_unpadded(msg);
-        mac.copy_from_slice(&tag.into_bytes());
+        mac.copy_from_slice(tag.as_slice());
 
         Ok(())
     }

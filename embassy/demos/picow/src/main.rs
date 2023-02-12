@@ -24,9 +24,11 @@ mod demo_common;
 use demo_common::SSHConfig;
 
 const NUM_LISTENERS: usize = 4;
+// +1 for dhcp
+const NUM_SOCKETS: usize = NUM_LISTENERS+1;
 
 #[embassy_executor::task]
-async fn net_task(stack: &'static Stack<cyw43::NetDevice<'static>>) -> ! {
+async fn net_task(stack: &'static Stack<cyw43::NetDriver<'static>>) -> ! {
     stack.run().await
 }
 
@@ -63,17 +65,15 @@ async fn main(spawner: Spawner) {
     let spi = ExclusiveDevice::new(bus, cs);
 
     let state = singleton!(cyw43::State::new());
-    let (mut control, runner) = cyw43::new(state, pwr, spi, fw).await;
+    let (net_device, mut control, runner) = cyw43::new(state, pwr, spi, fw).await;
 
     spawner.spawn(wifi::wifi_task(runner)).unwrap();
-
-    let net_device = control.init(clm).await;
 
     //control.join_open(env!("WIFI_NETWORK")).await;
     control.join_wpa2(env!("WIFI_NETWORK"), env!("WIFI_PASSWORD")).await;
     //control.join_wpa2("WIFI_NETWORK", "WIFI_PASSWORD").await;
 
-    let config = embassy_net::ConfigStrategy::Dhcp;
+    let config = embassy_net::Config::Dhcp(Default::default());
     //let config = embassy_net::ConfigStrategy::Static(embassy_net::Config {
     //    address: Ipv4Cidr::new(Ipv4Address::new(192, 168, 69, 2), 24),
     //    dns_servers: Vec::new(),
@@ -86,24 +86,24 @@ async fn main(spawner: Spawner) {
     let stack = &*singleton!(Stack::new(
         net_device,
         config,
-        singleton!(StackResources::<1, 10, 8>::new()),
+        singleton!(StackResources::<NUM_SOCKETS>::new()),
         seed
     ));
 
-    let config = &*singleton!(
+    unwrap!(spawner.spawn(net_task(stack)));
+
+    let ssh_config = &*singleton!(
         demo_common::SSHConfig::new().unwrap()
     );
 
-    unwrap!(spawner.spawn(net_task(stack)));
-
     for _ in 0..NUM_LISTENERS {
-        spawner.spawn(listener(stack, &config)).unwrap();
+        spawner.spawn(listener(stack, &ssh_config)).unwrap();
     }
 }
 
 // TODO: pool_size should be NUM_LISTENERS but needs a literal
 #[embassy_executor::task(pool_size = 4)]
-async fn listener(stack: &'static Stack<cyw43::NetDevice<'static>>, config: &'static SSHConfig) -> ! {
+async fn listener(stack: &'static Stack<cyw43::NetDriver<'static>>, config: &'static SSHConfig) -> ! {
     demo_common::listener(stack, config).await
 }
 

@@ -12,7 +12,8 @@ use embassy_sync::mutex::Mutex;
 use embassy_sync::blocking_mutex::raw::{NoopRawMutex, CriticalSectionRawMutex};
 use embassy_sync::signal::Signal;
 use embassy_net::tcp::TcpSocket;
-use embassy_net::{Stack, Device};
+use embassy_net::Stack;
+use embassy_net_driver::Driver;
 use embassy_futures::join::join;
 
 use menu::Runner as MenuRunner;
@@ -45,7 +46,7 @@ impl SSHConfig {
 }
 
 // main entry point
-pub async fn listener<D: Device>(stack: &'static Stack<D>, config: &SSHConfig) -> ! {
+pub async fn listener<D: Driver>(stack: &'static Stack<D>, config: &SSHConfig) -> ! {
     let mut rx_buffer = [0; 4096];
     let mut tx_buffer = [0; 4096];
 
