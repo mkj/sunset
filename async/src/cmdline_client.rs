@@ -6,9 +6,10 @@ use core::str::FromStr;
 use sunset::SignKey;
 use sunset::{BhError, BhResult};
 use sunset::{ChanMsg, ChanMsgDetails, Error, Result, Runner};
-use sunset_embassy::{SSHClient, ChanExtIn, ChanExtOut, ChanInOut};
+use sunset_embassy::*;
 
 use std::collections::VecDeque;
+use embassy_sync::channel::{Channel, Sender, Receiver};
 
 use crate::*;
 use crate::{raw_pty, RawPtyGuard};
@@ -22,47 +23,71 @@ enum CmdlineState<'a> {
     Ready { io: ChanInOut<'a>, extin: Option<ChanExtIn<'a>> },
 }
 
-/// Command line interface SSH client behaviour
-pub struct CmdlineClient<'a> {
+enum Msg {
+    Authed,
+}
+
+pub struct CmdlineClient {
+    cmd: Option<String>,
+    want_pty: bool,
+
+    // to be passed to hooks
+    authkeys: VecDeque<SignKey>,
+    username: String,
+
+    notify: Channel<SunsetRawMutex, Msg, 1>,
+}
+
+pub struct CmdlineRunner<'a> {
     state: CmdlineState<'a>,
     pty_guard: Option<RawPtyGuard>,
 
-    authkeys: VecDeque<SignKey>,
-    username: String,
-    cmd: Option<String>,
+    cmd: &'a Option<String>,
     want_pty: bool,
+
+    notify: Receiver<'a, SunsetRawMutex, Msg, 1>,
 }
 
-impl<'a> CmdlineClient<'a> {
-    pub fn new(username: impl AsRef<str>, cmd: Option<impl AsRef<str>>, want_pty: bool) -> Self {
-        CmdlineClient {
+pub struct CmdlineHooks<'a> {
+    authkeys: VecDeque<SignKey>,
+    username: &'a str,
+
+    notify: Sender<'a, SunsetRawMutex, Msg, 1>,
+}
+
+impl<'a> CmdlineRunner<'a> {
+    fn new(cmd: &'a Option<String>, want_pty: bool, notify: Receiver<'a, SunsetRawMutex, Msg, 1>) -> Self {
+        Self {
             state: CmdlineState::PreAuth,
             pty_guard: None,
-
-            authkeys: VecDeque::new(),
-            username: username.as_ref().into(),
-            // TODO: shorthand for this?
-            cmd: cmd.map(|c| c.as_ref().into()),
+            cmd,
             want_pty,
+            notify,
         }
     }
 
-    pub async fn progress(&mut self, cli: &'a SSHClient<'a>) -> Result<()> {
-        match self.state {
-            CmdlineState::Authed => {
-                info!("Opening a new session channel");
-                self.open_session(cli).await?;
+    pub fn something(&mut self) {
+        debug!("something!")
+    }
+
+    pub async fn run(&mut self, cli: &'a SSHClient<'a>) -> Result<()> {
+        loop {
+            let msg = self.notify.recv().await;
+            match msg {
+                Msg::Authed => {
+                    info!("Opening a new session channel");
+                    self.open_session(cli).await?;
+                }
             }
-            | CmdlineState::PreAuth => (),
-            | CmdlineState::Ready {..} => (),
-            _ => todo!(),
         }
+        // match self.state {
+        //     CmdlineState::Authed => {
+        //     }
+        //     | CmdlineState::PreAuth => (),
+        //     | CmdlineState::Ready {..} => (),
+        //     _ => todo!(),
+        // }
         Ok(())
-
-    }
-
-    pub fn add_authkey(&mut self, k: SignKey) {
-        self.authkeys.push_back(k)
     }
 
     async fn open_session(&mut self, cli: &'a SSHClient<'a>) -> Result<()> {
@@ -86,7 +111,44 @@ impl<'a> CmdlineClient<'a> {
     }
 }
 
-impl sunset::CliBehaviour for CmdlineClient<'_> {
+impl CmdlineClient {
+    pub fn new(username: impl AsRef<str>, cmd: Option<impl AsRef<str>>, want_pty: bool) -> Self {
+        Self {
+
+            // TODO: shorthand for this?
+            cmd: cmd.map(|c| c.as_ref().into()),
+            want_pty,
+
+            notify: Channel::new(),
+
+            username: username.as_ref().into(),
+            authkeys: Default::default(),
+        }
+    }
+
+    pub fn split(&mut self) -> (CmdlineHooks, CmdlineRunner) {
+        let ak = core::mem::replace(&mut self.authkeys, Default::default());
+        let hooks = CmdlineHooks::new(&self.username, ak, self.notify.sender());
+        let runner = CmdlineRunner::new(&self.cmd, self.want_pty, self.notify.receiver());
+        (hooks, runner)
+    }
+
+    pub fn add_authkey(&mut self, k: SignKey) {
+        self.authkeys.push_back(k)
+    }
+}
+
+impl<'a> CmdlineHooks<'a> {
+    fn new(username: &'a str, authkeys: VecDeque<SignKey>, notify: Sender<'a, SunsetRawMutex, Msg, 1>) -> Self {
+        Self {
+            authkeys,
+            username,
+            notify,
+        }
+    }
+}
+
+impl<'a> sunset::CliBehaviour for CmdlineHooks<'a> {
     fn username(&mut self) -> BhResult<sunset::ResponseString> {
         sunset::ResponseString::from_str(&self.username).map_err(|_| BhError::Fail)
     }
@@ -118,12 +180,11 @@ impl sunset::CliBehaviour for CmdlineClient<'_> {
     }
 
     fn authenticated(&mut self) {
-        match self.state {
-            CmdlineState::PreAuth => {
-                info!("Authentication succeeded");
-                self.state = CmdlineState::Authed;
-            }
-            _ => warn!("Unexpected auth response")
+        info!("Authentication succeeded");
+        // TODO: need better handling, what else could we do?
+        while self.notify.try_send(Msg::Authed).is_err() {
+            warn!("Full notification queue");
+            tokio::task::yield_now();
         }
     }
 }

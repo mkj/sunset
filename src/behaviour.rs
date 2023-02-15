@@ -30,7 +30,7 @@ pub enum BhError {
 pub type ResponseString = heapless::String<100>;
 
 // TODO: once async functions in traits work with no_std, some of the trait
-// methods could become async.
+// methods could become async. Need to decide whether to be Send or not.
 //  Tracking Issue for static async fn in traits
 // https://github.com/rust-lang/rust/issues/91611
 

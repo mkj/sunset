@@ -11,7 +11,6 @@ use embassy_sync::blocking_mutex::raw::{NoopRawMutex, RawMutex};
 use embassy_sync::mutex::Mutex;
 use embassy_sync::signal::Signal;
 use embassy_futures::select::{select3, Either3};
-use embassy_futures::select::select_slice;
 use embedded_io::asynch;
 
 use pin_utils::pin_mut;
@@ -22,7 +21,9 @@ use sunset::config::MAX_CHANNELS;
 // For now we only support single-threaded executors.
 // In future this could be behind a cfg to allow different
 // RawMutex for std executors or other situations.
-type SunsetRawMutex = NoopRawMutex;
+pub type SunsetRawMutex = NoopRawMutex;
+
+pub type SunsetMutex<T> = Mutex<SunsetRawMutex, T>;
 
 pub(crate) struct Inner<'a> {
     runner: Runner<'a>,

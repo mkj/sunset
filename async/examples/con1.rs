@@ -90,8 +90,10 @@ fn main() -> Result<()> {
         .build()
         .unwrap()
         .block_on(async {
-            // TODO: Until "async functions in traits" allows Send bounds
-            // we just run it all on a single thread.
+            // TODO: currently we just run it all on a single thread.
+            // once SunsetRawWaker is configurable we could run threaded,
+            // but would also need to have `Send` methods in `Behaviour`
+            // which currently isn't supported by async functions in traits.
             let local = tokio::task::LocalSet::new();
             local.run_until(run(args)).await
         })
@@ -154,29 +156,33 @@ async fn run(args: Args) -> Result<()> {
     // Connect to a peer
     let mut stream = TcpStream::connect((args.host.as_str(), args.port)).await?;
 
-    // app is a Behaviour
-    let mut app = sunset_async::CmdlineClient::new(
-        args.username.as_ref().unwrap(),
-        cmd,
-        wantpty,
-        );
-    for i in &args.identityfile {
-        app.add_authkey(read_key(&i).with_context(|| format!("loading key {i}"))?);
-    }
-
-    let app = Mutex::<NoopRawMutex, _>::new(app);
 
     let ssh_task = spawn_local(async move {
-        let app = &app as &Mutex::<NoopRawMutex, dyn CliBehaviour>;
         let mut rxbuf = vec![0; 3000];
         let mut txbuf = vec![0; 3000];
         let cli = SSHClient::new(&mut rxbuf, &mut txbuf)?;
-        let cli = &cli;
+
+        let mut app = sunset_async::CmdlineClient::new(
+            args.username.as_ref().unwrap(),
+            cmd,
+            wantpty,
+            );
+        for i in &args.identityfile {
+            app.add_authkey(read_key(&i).with_context(|| format!("loading key {i}"))?);
+        }
+        let (hooks, mut runner) = app.split();
+
+        let hooks = Mutex::<NoopRawMutex, _>::new(hooks);
+        let hooks = &hooks as &Mutex::<NoopRawMutex, dyn CliBehaviour>;
 
         let (rsock, wsock) = stream.split();
         let mut rsock = FromTokio::new(rsock);
         let mut wsock = FromTokio::new(wsock);
-        cli.run(&mut rsock, &mut wsock, app).await
+
+        let ssh = cli.run(&mut rsock, &mut wsock, hooks);
+        let sess = runner.run(&cli);
+        futures::future::join(ssh, sess).await;
+        Ok::<_, anyhow::Error>(())
     });
 
     match ssh_task.await {
