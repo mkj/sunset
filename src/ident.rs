@@ -58,7 +58,7 @@ pub(crate) enum VersPars {
     Done(usize),
 }
 
-impl<'a> RemoteVersion {
+impl RemoteVersion {
     pub fn new() -> Self {
         RemoteVersion {
             storage: [0; MAX_REMOTE_VERSION_LEN],
@@ -68,7 +68,7 @@ impl<'a> RemoteVersion {
     }
 
     /// Returns the parsed version if stored.
-    pub fn version(&'a self) -> Option<&'a [u8]> {
+    pub fn version(&self) -> Option<&[u8]> {
         match &self.st {
             VersPars::Done(len) => {
                 let (s, _) = self.storage.split_at(*len);

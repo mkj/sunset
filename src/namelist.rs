@@ -97,7 +97,7 @@ impl<'a> From<&'a LocalNames> for NameList<'a> {
 }
 
 
-impl<'a> NameList<'a> {
+impl NameList<'_> {
     /// Returns the first name in this namelist that matches, based on SSH priority.
     /// The SSH client's list (which could be either remote or ours) is used
     /// to determine priority.
@@ -142,7 +142,7 @@ impl<'a> NameList<'a> {
     }
 }
 
-impl<'a> StringNames<'a> {
+impl StringNames<'_> {
     /// Returns the first name in this namelist that matches one of the provided options
     fn first_string_match(&self, options: &LocalNames) -> Option<&'static str> {
         for n in self.0.split(Comma) {

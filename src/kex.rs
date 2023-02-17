@@ -499,7 +499,7 @@ impl fmt::Debug for KexOutput {
     }
 }
 
-impl<'a> KexOutput {
+impl KexOutput {
     fn make(
         k: &[u8], algos: &Algos, kex_hash: KexHash, sess_id: &Option<SessId>,
     ) -> Result<Self> {

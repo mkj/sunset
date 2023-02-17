@@ -263,13 +263,13 @@ pub fn hash_mpint(hash_ctx: &mut dyn digest::DynDigest, m: &[u8]) {
 #[derive(Clone,PartialEq)]
 pub struct BinString<'a>(pub &'a [u8]);
 
-impl<'a> AsRef<[u8]> for BinString<'a> {
-    fn as_ref(&self) -> &'a [u8] {
+impl AsRef<[u8]> for BinString<'_> {
+    fn as_ref(&self) -> &[u8] {
         self.0
     }
 }
 
-impl<'a> Debug for BinString<'a> {
+impl Debug for BinString<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "BinString(len={})", self.0.len())
     }
@@ -307,21 +307,21 @@ impl<'de> SSHDecode<'de> for BinString<'de> {
 #[derive(Clone,PartialEq,Copy,Default)]
 pub struct TextString<'a>(pub &'a [u8]);
 
-impl<'a> TextString<'a> {
+impl TextString<'_> {
     /// Returns the UTF-8 decoded string, using [`core::str::from_utf8`]
     /// Don't call this if you are avoiding including UTF-8 routines in
     /// the binary.
-    pub fn as_str(&self) -> Result<&'a str> {
+    pub fn as_str(&self) -> Result<&str> {
         core::str::from_utf8(self.0).map_err(|_| Error::BadString)
     }
 
-    pub fn as_ascii(&self) -> Result<&'a str> {
+    pub fn as_ascii(&self) -> Result<&str> {
         self.0.as_ascii_str().map_err(|_| Error::BadString).map(|s| s.as_str())
     }
 }
 
-impl<'a> AsRef<[u8]> for TextString<'a> {
-    fn as_ref(&self) -> &'a [u8] {
+impl AsRef<[u8]> for TextString<'_> {
+    fn as_ref(&self) -> &[u8] {
         self.0
     }
 }
@@ -332,7 +332,7 @@ impl<'a> From<&'a str> for TextString<'a> {
     }
 }
 
-impl<'a> Debug for TextString<'a> {
+impl Debug for TextString<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let s = core::str::from_utf8(self.0);
         if let Ok(s) = s {

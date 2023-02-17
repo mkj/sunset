@@ -174,7 +174,7 @@ pub struct MethodPassword<'a> {
 }
 
 // Don't print password
-impl<'a> fmt::Debug for MethodPassword<'a>{
+impl fmt::Debug for MethodPassword<'_>{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("MethodPassword")
             .field("change", &self.change)
@@ -245,9 +245,9 @@ pub enum PubKey<'a> {
     Unknown(Unknown<'a>),
 }
 
-impl<'a> PubKey<'a> {
+impl PubKey<'_> {
     /// The algorithm name presented. May be invalid.
-    pub fn algorithm_name(&self) -> Result<&'a str, &Unknown<'a>> {
+    pub fn algorithm_name(&self) -> Result<&str, &Unknown<'_>> {
         match self {
             PubKey::Ed25519(_) => Ok(SSH_NAME_ED25519),
             PubKey::RSA(_) => Ok(SSH_NAME_RSA),
