@@ -160,17 +160,17 @@ async fn run(args: Args) -> Result<()> {
     let ssh_task = spawn_local(async move {
         let mut rxbuf = vec![0; 3000];
         let mut txbuf = vec![0; 3000];
-        let cli = SSHClient::new(&mut rxbuf, &mut txbuf)?;
 
         let mut app = sunset_async::CmdlineClient::new(
             args.username.as_ref().unwrap(),
             cmd,
             wantpty,
             );
+        let cli = SSHClient::new(&mut rxbuf, &mut txbuf)?;
         for i in &args.identityfile {
             app.add_authkey(read_key(&i).with_context(|| format!("loading key {i}"))?);
         }
-        let (hooks, mut runner) = app.split();
+        let (hooks, mut cmd) = app.split();
 
         let hooks = Mutex::<NoopRawMutex, _>::new(hooks);
         let hooks = &hooks as &Mutex::<NoopRawMutex, dyn CliBehaviour>;
@@ -180,7 +180,8 @@ async fn run(args: Args) -> Result<()> {
         let mut wsock = FromTokio::new(wsock);
 
         let ssh = cli.run(&mut rsock, &mut wsock, hooks);
-        let sess = runner.run(&cli);
+        // Circular reference here, cli -> cmd and cmd->cli
+        let sess = cmd.run(&cli);
         futures::future::join(ssh, sess).await;
         Ok::<_, anyhow::Error>(())
     });
