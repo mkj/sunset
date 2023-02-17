@@ -18,6 +18,8 @@ use sunset_embassy::SSHClient;
 
 use embedded_io::adapters::FromTokio;
 
+use zeroize::Zeroizing;
+
 use simplelog::*;
 
 #[derive(argh::FromArgs)]
@@ -158,8 +160,8 @@ async fn run(args: Args) -> Result<()> {
 
 
     let ssh_task = spawn_local(async move {
-        let mut rxbuf = vec![0; 3000];
-        let mut txbuf = vec![0; 3000];
+        let mut rxbuf = Zeroizing::new(vec![0; 3000]);
+        let mut txbuf = Zeroizing::new(vec![0; 3000]);
 
         let mut app = sunset_async::CmdlineClient::new(
             args.username.as_ref().unwrap(),
