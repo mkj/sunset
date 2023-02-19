@@ -53,8 +53,8 @@ pub enum Error {
     /// Ran out of channels
     NoChannels,
 
-    /// Bad channel number
-    BadChannel,
+    #[snafu(display("Bad channel number {num}"))]
+    BadChannel { num: u32 },
 
     /// SSH packet contents doesn't match length
     WrongPacketLength,

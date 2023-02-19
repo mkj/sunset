@@ -230,7 +230,7 @@ impl<'a> EmbassySunset<'a> {
     /// Reads normal channel data. If extended data is pending it will be discarded.
     pub async fn read_channel_stdin(&self, ch: u32, buf: &mut [u8]) -> Result<usize> {
         if ch as usize > MAX_CHANNELS {
-            return Err(Error::BadChannel)
+            return Err(Error::BadChannel { num: ch })
         }
         self.poll_inner(|inner, cx| {
             let l = inner.runner.channel_input(ch, None, buf);
@@ -248,7 +248,7 @@ impl<'a> EmbassySunset<'a> {
 
     pub async fn write_channel(&self, ch: u32, ext: Option<u32>, buf: &[u8]) -> Result<usize> {
         if ch as usize > MAX_CHANNELS {
-            return Err(Error::BadChannel)
+            return Err(Error::BadChannel { num: ch })
         }
         self.poll_inner(|inner, cx| {
             let l = inner.runner.channel_send(ch, ext, buf);

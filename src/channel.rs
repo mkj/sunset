@@ -87,10 +87,10 @@ impl Channels {
         self.ch
             .get(num as usize)
             // out of range
-            .ok_or(Error::BadChannel)?
+            .ok_or(Error::BadChannel { num })?
             .as_ref()
             // unused channel
-            .ok_or(Error::BadChannel)
+            .ok_or(Error::BadChannel { num })
     }
 
     /// Returns a `Channel` for a local number. Excludes `InOpen` state.
@@ -98,7 +98,7 @@ impl Channels {
         let ch = self.get_any(num)?;
 
         if matches!(ch.state, ChanState::InOpen) {
-            Err(Error::BadChannel)
+            Err(Error::BadChannel { num })
         } else {
             Ok(ch)
         }
@@ -109,13 +109,13 @@ impl Channels {
             .ch
             .get_mut(num as usize)
             // out of range
-            .ok_or(Error::BadChannel)?
+            .ok_or(Error::BadChannel { num })?
             .as_mut()
             // unused channel
-            .ok_or(Error::BadChannel)?;
+            .ok_or(Error::BadChannel { num })?;
 
         if matches!(ch.state, ChanState::InOpen) {
-            Err(Error::BadChannel)
+            Err(Error::BadChannel { num })
         } else {
             Ok(ch)
         }
@@ -129,7 +129,7 @@ impl Channels {
 
     fn remove(&mut self, num: u32) -> Result<()> {
         // TODO any checks?
-        let ch = self.ch.get_mut(num as usize).ok_or(Error::BadChannel)?;
+        let ch = self.ch.get_mut(num as usize).ok_or(Error::BadChannel { num })?;
         if let Some(c) = ch {
             if c.app_done {
                 trace!("removing channel {}", num);
@@ -140,7 +140,7 @@ impl Channels {
             }
             Ok(())
         } else{
-            Err(Error::BadChannel)
+            Err(Error::BadChannel { num })
         }
     }
 
@@ -453,7 +453,7 @@ impl Channels {
         let r = self.dispatch_inner(packet, s, b).await;
 
         match r {
-            Err(Error::BadChannel) => {
+            Err(Error::BadChannel { num }) => {
                 warn!("Ignoring bad channel number");
                 Ok(None)
             }
