@@ -1,3 +1,4 @@
+use futures::pin_mut;
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
 
@@ -10,6 +11,13 @@ use sunset_embassy::*;
 
 use std::collections::VecDeque;
 use embassy_sync::channel::{Channel, Sender, Receiver};
+use embedded_io::asynch::{Read as _, Write as _};
+
+use tokio::io::AsyncReadExt;
+use tokio::io::AsyncWriteExt;
+
+use futures::{select_biased, future::Fuse};
+use futures::FutureExt;
 
 use crate::*;
 use crate::{raw_pty, RawPtyGuard};
@@ -67,27 +75,70 @@ impl<'a> CmdlineRunner<'a> {
         }
     }
 
-    pub fn something(&mut self) {
-        debug!("something!")
+    async fn chan_run(io: ChanInOut<'a>) -> Result<()> {
+        // TODO extin
+        let fi = async {
+            let mut io = io.clone();
+            let mut si = crate::stdin().map_err(|_| Error::msg("opening stdin failed"))?;
+            loop {
+                // TODO buffers
+                let mut buf = [0u8; 1000];
+                let l = si.read(&mut buf).await.map_err(|_| Error::ChannelEOF)?;
+                // TODO do we need EPIPE too?
+                io.write(&buf[..l]).await.map_err(|_| Error::ChannelEOF)?;
+            }
+            #[allow(unreachable_code)]
+            Ok::<_, sunset::Error>(())
+        };
+        let fo = async {
+            let mut io = io.clone();
+            let mut so = crate::stdout().map_err(|_| Error::msg("opening stdout failed"))?;
+            loop {
+                // TODO buffers
+                let mut buf = [0u8; 1000];
+                let l = io.read(&mut buf).await.map_err(|_| Error::ChannelEOF)?;
+                so.write(&buf[..l]).await.map_err(|_| Error::ChannelEOF)?;
+            }
+            #[allow(unreachable_code)]
+            Ok::<_, sunset::Error>(())
+        };
+
+        embassy_futures::join::join(fi, fo).await;
+        Ok(())
     }
 
+    /// Runs the `CmdlineClient` session. Requests a shell or command, performs
+    /// channel IO.
     pub async fn run(&mut self, cli: &'a SSHClient<'a>) -> Result<()> {
+        let mut chanio = Fuse::terminated();
+        pin_mut!(chanio);
+
         loop {
-            let msg = self.notify.recv().await;
-            match msg {
-                Msg::Authed => {
-                    info!("Opening a new session channel");
-                    self.open_session(cli).await?;
+            select_biased! {
+                msg = self.notify.recv().fuse() => {
+                    match msg {
+                        Msg::Authed => {
+                            if !matches!(self.state, CmdlineState::PreAuth) {
+                                warn!("Unexpected auth success, state {:?}", self.state);
+                                return Ok(())
+                            }
+                            self.state = CmdlineState::Authed;
+                            debug!("Opening a new session channel");
+                            self.open_session(cli).await?;
+                            if let CmdlineState::Ready { io, extin } = &self.state {
+                                chanio.set(Self::chan_run(io.clone()).fuse())
+                            }
+                        }
+                    }
+                    Ok::<_, sunset::Error>(())
+                },
+                e = chanio => {
+                    trace!("chanio finished: {e:?}");
+                    e
                 }
-            }
+            }?
         }
-        // match self.state {
-        //     CmdlineState::Authed => {
-        //     }
-        //     | CmdlineState::PreAuth => (),
-        //     | CmdlineState::Ready {..} => (),
-        //     _ => todo!(),
-        // }
+
         Ok(())
     }
 
@@ -185,7 +236,7 @@ impl<'a> sunset::CliBehaviour for CmdlineHooks<'a> {
         // TODO: need better handling, what else could we do?
         while self.notify.try_send(Msg::Authed).is_err() {
             warn!("Full notification queue");
-            tokio::task::yield_now();
+            // tokio::task::yield_now();
         }
     }
 }

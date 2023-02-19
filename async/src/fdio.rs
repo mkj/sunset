@@ -50,7 +50,6 @@ impl AsyncRead for InFd {
         cx: &mut Context<'_>,
         buf: &mut ReadBuf,
     ) -> Poll<Result<(), IoError>> {
-        trace!("infd rd {:?}", self.f);
         // XXX loop was copy pasted from docs, perhaps it could be simpler
         loop {
             let mut guard = match self.f.poll_read_ready(cx)? {
@@ -84,7 +83,6 @@ impl AsyncWrite for OutFd {
         cx: &mut Context<'_>,
         buf: &[u8]
     ) -> Poll<std::io::Result<usize>> {
-        trace!("outfd wr {:?}", self.f);
         loop {
             let mut guard = match self.f.poll_write_ready(cx)? {
                 Poll::Ready(r) => r,

@@ -154,6 +154,9 @@ async fn run(args: Args) -> Result<()> {
         (Some(args.cmd.join(" ")), false)
     };
 
+    warn!("TODO: pty support");
+    let wantpty = false;
+
     // Connect to a peer
     let mut stream = TcpStream::connect((args.host.as_str(), args.port)).await?;
 

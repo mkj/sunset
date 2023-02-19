@@ -37,6 +37,7 @@ impl<'a> Channel<'a> {
     }
 }
 
+#[derive(Clone)]
 pub struct ChanInOut<'a> {
     chan: u32,
     sunset: &'a EmbassySunset<'a>,
