@@ -94,14 +94,14 @@ impl<'a> Behaviour<'a> {
     pub(crate) fn client(&mut self) -> Result<&mut dyn CliBehaviour> {
         match self {
             Self::Client(c) => Ok(*c),
-            _ => Error::bug_msg("Not client"),
+            _ => error::PacketWrong.fail()
         }
     }
 
     pub(crate) fn server(&mut self) -> Result<&mut dyn ServBehaviour> {
         match self {
             Self::Server(c) => Ok(*c),
-            _ => Error::bug_msg("Not server"),
+            _ => error::PacketWrong.fail(),
         }
     }
 }

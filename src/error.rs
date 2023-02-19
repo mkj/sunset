@@ -12,10 +12,12 @@ use heapless::String;
 use crate::behaviour::BhError;
 
 // TODO: can we make Snafu not require Debug?
-// TODO: maybe split this into a list of public vs private errors?
 
 #[non_exhaustive]
 #[derive(Snafu, Debug)]
+#[snafu(context(suffix(false)))]
+// TODO: maybe split this into a list of public vs private errors?
+#[snafu(visibility(pub))]
 pub enum Error {
     /// Output buffer ran out of room
     NoRoom,
@@ -54,7 +56,22 @@ pub enum Error {
     NoChannels,
 
     #[snafu(display("Bad channel number {num}"))]
-    BadChannel { num: u32 },
+    BadChannel { num: u32, backtrace: snafu::Backtrace },
+
+    /// Bad channel ext code
+    ///
+    /// This will be returned due to API function arguments, not due to
+    /// network traffic.
+    /// Can occur if a client tries to send stderr data, or a server
+    /// attempts to receive stderr data. Can also occur if a caller
+    /// uses an ext code other than `SSH_EXTENDED_DATA_STDERR`.
+    ///
+    /// Received data packets of that kind will be discarded.
+    ///
+    /// These are currently unsupported in Sunset. If other clients
+    /// start to use these features (technically allowed by the RFCs)
+    /// then support could be added to Sunset.
+    BadChannelExt { backtrace: snafu::Backtrace },
 
     /// SSH packet contents doesn't match length
     WrongPacketLength,
@@ -90,6 +107,8 @@ pub enum Error {
 
     /// Implementation behaviour error
     #[snafu(display("Failure from application: {msg}"))]
+    // XXX bleh
+    #[snafu(context(suffix(Error)))]
     BehaviourError { msg: &'static str },
 
     #[snafu(display("{msg}"))]
@@ -111,6 +130,7 @@ impl Error {
     }
 
     #[cold]
+    #[track_caller]
     /// Panics in debug builds, returns [`Error::Bug`] in release.
     // TODO: this should return a Result since it's always used as Err(Error::bug())
     pub fn bug() -> Error {
@@ -208,6 +228,7 @@ impl<T, E> TrapBug<T> for Result<T, E> {
 }
 
 impl<T> TrapBug<T> for Option<T> {
+    #[track_caller]
     fn trap(self) -> Result<T, Error> {
         // call directly so that Location::caller() works
         if let Some(i) = self {

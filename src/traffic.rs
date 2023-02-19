@@ -96,7 +96,6 @@ impl<'a> TrafIn<'a> {
     }
 
     pub fn ready_input(&self) -> bool {
-        trace!("ready_input state {:?}", self.state);
         match self.state {
             | RxState::Idle
             | RxState::ReadInitial { .. }
@@ -115,7 +114,7 @@ impl<'a> TrafIn<'a> {
         buf: &[u8],
     ) -> Result<usize, Error> {
         let mut inlen = 0;
-        trace!("state {:?} input {}", self.state, buf.len());
+        debug_assert!(self.ready_input());
         if remote_version.version().is_none() && matches!(self.state, RxState::Idle) {
             // Handle initial version string
             let l;
@@ -136,6 +135,7 @@ impl<'a> TrafIn<'a> {
                 if zeroize {
                     self.buf[SSH_PAYLOAD_START..SSH_PAYLOAD_START + len].zeroize();
                 }
+                trace!("channel_input idle was {:?} done_payload", self.state);
                 self.state = RxState::Idle;
                 Ok(())
             }
@@ -223,6 +223,7 @@ impl<'a> TrafIn<'a> {
 
     /// Returns `(channel, ext, length)`
     pub fn ready_channel_input(&self) -> Option<(u32, Option<u32>, usize)> {
+        trace!("ready_channel_input state {:?}", self.state);
         match self.state {
             RxState::InChannelData { chan, ext, idx, len } => {
                 let rem = len - idx;
@@ -258,7 +259,7 @@ impl<'a> TrafIn<'a> {
         ext: Option<u32>,
         buf: &mut [u8],
     ) -> (usize, bool) {
-        trace!("channel input {chan} {ext:?} st {:?}", self.state);
+        trace!("channel input {chan} {ext:?} state {:?}", self.state);
 
         match self.state {
             RxState::InChannelData { chan: c, ext: e, ref mut idx, len }
@@ -271,6 +272,7 @@ impl<'a> TrafIn<'a> {
 
                 if *idx == len {
                     // all done.
+                    trace!("channel_input idle was {:?} all done", self.state);
                     self.state = RxState::Idle;
                     (wlen, true)
                 } else {
@@ -281,10 +283,41 @@ impl<'a> TrafIn<'a> {
         }
     }
 
+    // Returns (length, complete, Option(ext))
+    pub fn channel_input_either(
+        &mut self,
+        chan: u32,
+        buf: &mut [u8],
+    ) -> (usize, bool, Option<u32>) {
+        trace!("channel input {chan} state {:?}", self.state);
+
+        match self.state {
+            RxState::InChannelData { chan: c, ext, ref mut idx, len }
+            if c == chan => {
+                debug_assert!(len >= *idx);
+                let wlen = (len - *idx).min(buf.len());
+                buf[..wlen].copy_from_slice(&self.buf[*idx..*idx + wlen]);
+                // info!("idx {} += wlen {} = {}", *idx, wlen, *idx+wlen);
+                *idx += wlen;
+
+                if *idx == len {
+                    // all done.
+                    trace!("channel_input idle was {:?} all done", self.state);
+                    self.state = RxState::Idle;
+                    (wlen, true, ext)
+                } else {
+                    (wlen, false, ext)
+                }
+            }
+            _ => (0, false, None)
+        }
+    }
+
     pub fn discard_channel_input(&mut self, chan: u32) {
         match self.state {
             RxState::InChannelData { chan: c, .. }
             if c == chan => {
+                trace!("channel_input idle was {:?} discard", self.state);
                 self.state = RxState::Idle;
             }
             _ => ()

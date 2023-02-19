@@ -61,7 +61,7 @@ pretty-hex = { version = "0.3", default-features = false }
 
 [features]
 default = [ "getrandom" ]
-std = ["snafu/std"]
+std = ["snafu/std", "snafu/backtraces"]
 # tokio-queue = ["dep:tokio"]
 openssh-key = ["dep:ssh-key"]
 embedded-io = ["dep:embedded-io"]

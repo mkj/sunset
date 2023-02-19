@@ -15,7 +15,7 @@ use embedded_io::asynch;
 
 use pin_utils::pin_mut;
 
-use sunset::{Runner, Result, Error, Behaviour};
+use sunset::{Runner, Result, Error, Behaviour, sshnames};
 use sunset::config::MAX_CHANNELS;
 
 // For now we only support single-threaded executors.
@@ -28,16 +28,13 @@ pub type SunsetMutex<T> = Mutex<SunsetRawMutex, T>;
 pub(crate) struct Inner<'a> {
     runner: Runner<'a>,
 
-    // TODO: we might need separate normal/ext read and write
-    // WakerRegistrations. otherwise they'll keep waking each other?
-
     chan_read_wakers: [WakerRegistration; MAX_CHANNELS],
 
     chan_write_wakers: [WakerRegistration; MAX_CHANNELS],
-    /// this is set `true` when the associated `chan_write_wakers` entry
-    /// was set for an ext write. This is needed because ext writes
-    /// require more buffer, so have different wake conditions.
-    ext_write_waker: [bool; MAX_CHANNELS],
+
+    /// Will be a stderr read waker for a client, or stderr write waker for
+    /// a server.
+    chan_ext_wakers: [WakerRegistration; MAX_CHANNELS],
 }
 
 pub struct EmbassySunset<'a> {
@@ -52,7 +49,7 @@ impl<'a> EmbassySunset<'a> {
             runner,
             chan_read_wakers: Default::default(),
             chan_write_wakers: Default::default(),
-            ext_write_waker: Default::default(),
+            chan_ext_wakers: Default::default(),
         };
         let inner = Mutex::new(inner);
 
@@ -122,14 +119,31 @@ impl<'a> EmbassySunset<'a> {
 
 
     fn wake_channels(&self, inner: &mut Inner) {
-        if let Some((chan, _ext, _len)) = inner.runner.ready_channel_input() {
-            // TODO: if there isn't any waker waiting, should we just drop the packet?
-            inner.chan_read_wakers[chan as usize].wake()
+        // Read wakers
+        if let Some((chan, ext, _len)) = inner.runner.ready_channel_input() {
+            // TODO: if there isn't any waker waiting, could we just drop the packet?
+            if let Some(e) = ext {
+                debug_assert!(inner.runner.is_client());
+                debug_assert!(e == sshnames::SSH_EXTENDED_DATA_STDERR);
+                trace!("wake ch read ext {:?}", inner.chan_ext_wakers[chan as usize]);
+                inner.chan_ext_wakers[chan as usize].wake()
+            } else {
+                trace!("wake ch read ext {:?}", inner.chan_read_wakers[chan as usize]);
+                inner.chan_read_wakers[chan as usize].wake()
+            }
         }
 
         for chan in 0..MAX_CHANNELS {
-            let ext = inner.ext_write_waker[chan];
-            if inner.runner.ready_channel_send(chan as u32, ext).unwrap_or(0) > 0 {
+            // TODO: if this is slow we could be smarter about aggregating ext vs standard,
+            // or handling the case of full out payload buffers.
+            if inner.runner.is_client() {
+                let ext = &mut inner.chan_ext_wakers[chan];
+                if inner.runner.ready_channel_send(chan as u32, true).unwrap_or(0) > 0 {
+                    ext.wake();
+                }
+            }
+
+            if inner.runner.ready_channel_send(chan as u32, false).unwrap_or(0) > 0 {
                 inner.chan_write_wakers[chan].wake()
             }
         }
@@ -142,17 +156,22 @@ impl<'a> EmbassySunset<'a> {
             for<'f> Behaviour<'f>: From<&'f mut B>
         {
 
+            trace!("embassy progress");
         {
             let mut inner = self.inner.lock().await;
             {
                 {
+                    trace!("embassy progress inner");
                     let mut b = b.lock().await;
+                    trace!("embassy progress behaviour lock");
                     let b: &mut B = &mut b;
                     let mut b: Behaviour = b.into();
                     inner.runner.progress(&mut b).await?;
+                    trace!("embassy progress runner done");
                     // b is dropped, allowing other users
                 }
 
+                trace!("embassy progress wake chans");
                 self.wake_channels(&mut inner)
             }
             // inner dropped
@@ -227,18 +246,22 @@ impl<'a> EmbassySunset<'a> {
         }).await
     }
 
-    /// Reads normal channel data. If extended data is pending it will be discarded.
-    pub async fn read_channel_stdin(&self, ch: u32, buf: &mut [u8]) -> Result<usize> {
+    /// Reads channel data.
+    pub(crate) async fn read_channel(&self, ch: u32, ext: Option<u32>, buf: &mut [u8]) -> Result<usize> {
         if ch as usize > MAX_CHANNELS {
-            return Err(Error::BadChannel { num: ch })
+            return sunset::error::BadChannel { num: ch }.fail()
         }
         self.poll_inner(|inner, cx| {
-            let l = inner.runner.channel_input(ch, None, buf);
+            let l = inner.runner.channel_input(ch, ext, buf);
             if let Ok(0) = l {
                 // 0 bytes read, pending
-                inner.chan_read_wakers[ch as usize].register(cx.waker());
-                // discard any `ext` input for this channel
-                inner.runner.discard_channel_input(ch);
+                if ext.is_some() {
+                    trace!("register channel ext {ch} waker {:?}", cx.waker());
+                    inner.chan_ext_wakers[ch as usize].register(cx.waker());
+                } else {
+                    trace!("register channel read {ch} waker {:?}", cx.waker());
+                    inner.chan_read_wakers[ch as usize].register(cx.waker());
+                }
                 Poll::Pending
             } else {
                 Poll::Ready(l)
@@ -246,16 +269,71 @@ impl<'a> EmbassySunset<'a> {
         }).await
     }
 
-    pub async fn write_channel(&self, ch: u32, ext: Option<u32>, buf: &[u8]) -> Result<usize> {
+    /// Reads normal channel data. If extended data is pending it will be discarded.
+    // TODO delete this
+    pub(crate) async fn read_channel_stdin(&self, ch: u32, buf: &mut [u8]) -> Result<usize> {
         if ch as usize > MAX_CHANNELS {
-            return Err(Error::BadChannel { num: ch })
+            return sunset::error::BadChannel { num: ch }.fail()
+        }
+        self.poll_inner(|inner, cx| {
+            let l = inner.runner.channel_input(ch, None, buf);
+            if let Ok(0) = l {
+                // 0 bytes read, pending
+                trace!("register channel {ch} waker {:?}", cx.waker());
+                inner.chan_read_wakers[ch as usize].register(cx.waker());
+                // discard any `ext` input for this channel
+                match inner.runner.discard_channel_input(ch) {
+                    | Ok(())
+                    // bad channel is OK, perhaps the channel isn't running yet
+                    | Err(Error::BadChannel { .. })
+                    => Ok(()),
+                    r => r,
+                }?;
+                Poll::Pending
+            } else {
+                Poll::Ready(l)
+            }
+        }).await
+    }
+
+    // /// Reads channel data, returning the length read and optionally
+    // /// whether it was ext data. Should only be called from
+    // /// a single waker for both stdin and stderr, otherwise
+    // /// will keep alternating wakers.
+    // pub async fn read_channel_either(&self, ch: u32, buf: &mut [u8]) -> Result<(usize, Option<u32>)> {
+    //     if ch as usize > MAX_CHANNELS {
+    //         return sunset::error::BadChannel { num: ch }.fail()
+    //     }
+    //     self.poll_inner(|inner, cx| {
+    //         let (l, ext) = inner.runner.channel_input_either(ch, buf);
+    //         if let Ok(0) = l {
+    //             // 0 bytes read, pending
+    //             trace!("register channel {ch} waker {:?}", cx.waker());
+    //             inner.chan_read_wakers[ch as usize].register(cx.waker());
+    //             Poll::Pending
+    //         } else {
+    //             Poll::Ready((l, ext))
+    //         }
+    //     }).await
+    // }
+
+    pub(crate) async fn write_channel(&self, ch: u32, ext: Option<u32>, buf: &[u8]) -> Result<usize> {
+        if ch as usize > MAX_CHANNELS {
+            return sunset::error::BadChannel { num: ch }.fail()
         }
         self.poll_inner(|inner, cx| {
             let l = inner.runner.channel_send(ch, ext, buf);
             if let Ok(0) = l {
                 // 0 bytes written, pending
-                inner.chan_write_wakers[ch as usize].register(cx.waker());
-                inner.ext_write_waker[ch as usize] = ext.is_some();
+                if ext.is_some() {
+                    debug_assert!(!inner.runner.is_client());
+                    trace!("register channel ext {ch} waker {:?}", cx.waker());
+                    inner.chan_ext_wakers[ch as usize].register(cx.waker());
+                } else {
+                    trace!("register channel write {ch} waker {:?}", cx.waker());
+                    inner.chan_write_wakers[ch as usize].register(cx.waker());
+
+                }
                 Poll::Pending
             } else {
                 Poll::Ready(l)

@@ -118,6 +118,10 @@ impl Conn {
         })
     }
 
+    pub fn is_client(&self) -> bool {
+        self.cliserv.is_client()
+    }
+
     /// Updates `ConnState` and sends any packets required to progress the connection state.
     pub(crate) async fn progress(
         &mut self,
@@ -175,7 +179,9 @@ impl Conn {
         s: &mut TrafSend<'_, '_>,
         b: &mut Behaviour<'_>,
     ) -> Result<Dispatched, Error> {
+        // Parse the packet
         let r = sshwire::packet_from_bytes(payload, &self.parse_ctx);
+
         match r {
             Ok(p) => self.dispatch_packet(p, s, b).await,
             Err(Error::UnknownPacket { number }) => {
@@ -402,7 +408,7 @@ impl Conn {
             | Packet::ChannelFailure(_)
             // TODO: maybe needs a conn or cliserv argument.
             => {
-                disp.data_in = self.channels.dispatch(packet, s, b).await?;
+                disp.data_in = self.channels.dispatch(packet, self.cliserv.is_client(), s, b).await?;
            }
         };
         Ok(disp)

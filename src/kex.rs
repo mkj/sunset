@@ -425,7 +425,7 @@ impl SharedSecret {
         mut kex: Kex, p: &packets::KexDHReply<'f>, sess_id: &Option<SessId>,
         b: &mut dyn CliBehaviour
     ) -> Result<KexOutput> {
-        let mut algos = kex.algos.as_mut().trap()?;
+        let algos = kex.algos.as_mut().trap()?;
         let mut kex_hash = kex.kex_hash.take().trap()?;
         kex_hash.prefinish(&p.k_s.0, algos.kex.pubkey(), p.q_s.0)?;
         // consumes the sharedsecret private key in algos

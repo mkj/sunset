@@ -78,6 +78,10 @@ impl<'a> Runner<'a> {
         Ok(runner)
     }
 
+    pub fn is_client(&self) -> bool {
+        self.conn.is_client()
+    }
+
     /// Drives connection progress, handling received payload and queueing
     /// other packets to send as required.
     ///
@@ -94,7 +98,7 @@ impl<'a> Runner<'a> {
 
             if let Some(data_in) = d.data_in {
                 // incoming channel data, we haven't finished with payload
-                trace!("handle_payload chan input");
+                trace!("handle_payload chan input {data_in:?}");
                 self.traf_in.set_channel_input(data_in)?;
             } else {
                 // other packets have been completed
@@ -195,6 +199,14 @@ impl<'a> Runner<'a> {
         if buf.len() == 0 {
             return Ok(0)
         }
+
+        if let Some(e) = ext {
+            if self.conn.is_client() || e != sshnames::SSH_EXTENDED_DATA_STDERR {
+                // not currently supported
+                return error::BadChannelExt.fail()
+            }
+        }
+
         let len = self.ready_channel_send(chan, ext.is_some());
         let len = match len {
             Some(l) if l == 0 => return Ok(0),
@@ -212,7 +224,7 @@ impl<'a> Runner<'a> {
 
     /// Receive data coming from the wire into this application.
     /// Returns `Ok(len)` received, `Err(Error::ChannelEof)` on EOF,
-    /// or other errors.
+    /// or other errors. Ok(0) indicates no data available, ie pending.
     /// TODO: EOF is unimplemented
     pub fn channel_input(
         &mut self,
@@ -220,8 +232,17 @@ impl<'a> Runner<'a> {
         ext: Option<u32>,
         buf: &mut [u8],
     ) -> Result<usize> {
+
+        if let Some(e) = ext {
+            if !self.conn.is_client() || e != sshnames::SSH_EXTENDED_DATA_STDERR {
+                // not currently supported
+                return error::BadChannelExt.fail()
+            }
+        }
+
         trace!("runner chan in");
         let (len, complete) = self.traf_in.channel_input(chan, ext, buf);
+        trace!("runner chan in, len {len} complete {complete}");
         if complete {
             let wind_adjust = self.conn.channels.finished_input(chan)?;
             if let Some(wind_adjust) = wind_adjust {
@@ -232,10 +253,36 @@ impl<'a> Runner<'a> {
         Ok(len)
     }
 
+    /// Receives input data, either ext or normal.
+    pub fn channel_input_either(
+        &mut self,
+        chan: u32,
+        buf: &mut [u8],
+    ) -> Result<(usize, Option<u32>)> {
+        trace!("runner chan in");
+        let (len, complete, ext) = self.traf_in.channel_input_either(chan, buf);
+        trace!("runner chan in, len {len} complete {complete} ext {ext:?}");
+        if complete {
+            let wind_adjust = self.conn.channels.finished_input(chan)?;
+            if let Some(wind_adjust) = wind_adjust {
+                self.traf_out.send_packet(wind_adjust, &mut self.keys)?;
+            }
+            self.wake();
+        }
+        Ok((len, ext))
+    }
+
+
     /// Discards any channel input data pending for `chan`, regardless of whether
     /// normal or `ext`.
-    pub fn discard_channel_input(&mut self, chan: u32) {
-        self.traf_in.discard_channel_input(chan)
+    pub fn discard_channel_input(&mut self, chan: u32) -> Result<()> {
+        self.traf_in.discard_channel_input(chan);
+        let wind_adjust = self.conn.channels.finished_input(chan)?;
+        if let Some(wind_adjust) = wind_adjust {
+            self.traf_out.send_packet(wind_adjust, &mut self.keys)?;
+        }
+        self.wake();
+        Ok(())
     }
 
     /// When channel data is ready, returns a tuple
@@ -254,7 +301,7 @@ impl<'a> Runner<'a> {
     // Returns the maximum data that may be sent to a channel, or
     // `None` on channel closed
     pub fn ready_channel_send(&self, chan: u32, is_ext: bool) -> Option<usize> {
-        // TODO: return 0 if InKex means we can't transmit packets. 
+        // TODO: return 0 if InKex means we can't transmit packets.
 
         // minimum of buffer space and channel window available
         let payload_space = self.traf_out.send_allowed(&self.keys);

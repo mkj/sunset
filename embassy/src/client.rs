@@ -30,13 +30,13 @@ impl<'a> SSHClient<'a> {
         self.sunset.run(rsock, wsock, b).await
     }
 
-    pub async fn read_channel_stdin(&self, ch: u32, buf: &mut [u8]) -> Result<usize> {
-        self.sunset.read_channel_stdin(ch, buf).await
-    }
+    // pub async fn read_channel_stdin(&self, ch: u32, buf: &mut [u8]) -> Result<usize> {
+    //     self.sunset.read_channel_stdin(ch, buf).await
+    // }
 
-    pub async fn write_channel(&self, ch: u32, ext: Option<u32>, buf: &[u8]) -> Result<usize> {
-        self.sunset.write_channel(ch, ext, buf).await
-    }
+    // pub async fn write_channel(&self, ch: u32, ext: Option<u32>, buf: &[u8]) -> Result<usize> {
+    //     self.sunset.write_channel(ch, ext, buf).await
+    // }
 
     pub async fn open_session_nopty(&'a self, exec: Option<&str>)
     -> Result<(ChanInOut<'a>, ChanExtIn<'a>)> {

@@ -76,6 +76,7 @@ impl<'a> CmdlineRunner<'a> {
     }
 
     async fn chan_run(io: ChanInOut<'a>) -> Result<()> {
+        trace!("chan_run top");
         // TODO extin
         let fi = async {
             let mut io = io.clone();
@@ -83,9 +84,12 @@ impl<'a> CmdlineRunner<'a> {
             loop {
                 // TODO buffers
                 let mut buf = [0u8; 1000];
+                trace!("chan_run await stdin read");
                 let l = si.read(&mut buf).await.map_err(|_| Error::ChannelEOF)?;
+                trace!("chan_run stdin read {l}");
                 // TODO do we need EPIPE too?
                 io.write(&buf[..l]).await.map_err(|_| Error::ChannelEOF)?;
+                trace!("chan_run stdin wrote");
             }
             #[allow(unreachable_code)]
             Ok::<_, sunset::Error>(())
@@ -96,8 +100,11 @@ impl<'a> CmdlineRunner<'a> {
             loop {
                 // TODO buffers
                 let mut buf = [0u8; 1000];
+                trace!("chan_run await io read");
                 let l = io.read(&mut buf).await.map_err(|_| Error::ChannelEOF)?;
+                trace!("chan_run io read {l}");
                 so.write(&buf[..l]).await.map_err(|_| Error::ChannelEOF)?;
+                trace!("chan_run stdout wrote");
             }
             #[allow(unreachable_code)]
             Ok::<_, sunset::Error>(())
