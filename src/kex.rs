@@ -189,7 +189,7 @@ impl fmt::Display for Algos {
             (&self.cipher_dec, &self.cipher_enc, &self.integ_dec, &self.integ_enc)
         };
 
-        write!(f, "Negotiated algorithms\nkex {}\nhostkey {}\ncipher c->s {}\ncipher s->c {}\nmac c->s {}\nmac s->c {}",
+        write!(f, "Negotiated algorithms {{\nkex {}\nhostkey {}\ncipher c->s {}\ncipher s->c {}\nmac c->s {}\nmac s->c {}\n}}",
             self.kex, self.hostsig.algorithm_name(), cc, cs, mc, ms)
     }
 }
@@ -209,7 +209,7 @@ impl Kex {
         let remote_kexinit =
             if let Packet::KexInit(k) = p { k } else { return Err(Error::bug()) };
         let algos = Self::algo_negotiation(is_client, remote_kexinit, algo_conf)?;
-        debug!("Negotiated algorithms {algos}");
+        debug!("{algos}");
         self.kex_hash =
             Some(KexHash::new(self, &algos, algo_conf, remote_version, p)?);
         self.algos = Some(algos);

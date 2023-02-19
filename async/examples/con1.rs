@@ -146,7 +146,6 @@ fn read_key(p: &str) -> Result<SignKey> {
 
 async fn run(args: Args) -> Result<()> {
 
-    info!("running main");
     trace!("tracing main");
 
     let (cmd, wantpty) = if args.cmd.is_empty() {

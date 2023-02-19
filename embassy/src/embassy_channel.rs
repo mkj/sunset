@@ -45,12 +45,29 @@ pub struct ChanInOut<'a> {
     // wlfut: Option<OwnedMutexLockFuture<Inner<'a>>>,
 }
 
+impl core::fmt::Debug for ChanInOut<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("ChanInOut")
+            .field("chan", &self.chan)
+            .finish_non_exhaustive()
+    }
+}
+
 pub struct ChanExtIn<'a> {
     chan: u32,
     ext: u32,
     sunset: &'a EmbassySunset<'a>,
 
     // rlfut: Option<OwnedMutexLockFuture<Inner<'a>>>,
+}
+
+impl core::fmt::Debug for ChanExtIn<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("ChanExtIn")
+            .field("chan", &self.chan)
+            .field("ext", &self.ext)
+            .finish_non_exhaustive()
+    }
 }
 
 pub struct ChanExtOut<'a> {
@@ -60,6 +77,16 @@ pub struct ChanExtOut<'a> {
 
     // wlfut: Option<OwnedMutexLockFuture<Inner<'a>>>,
 }
+
+impl core::fmt::Debug for ChanExtOut<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("ChanExtOut")
+            .field("chan", &self.chan)
+            .field("ext", &self.ext)
+            .finish_non_exhaustive()
+    }
+}
+
 
 impl<'a> ChanInOut<'a> {
     pub(crate) fn new(chan: u32, sunset: &'a EmbassySunset<'a>) -> Self {

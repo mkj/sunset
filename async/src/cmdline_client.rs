@@ -14,6 +14,7 @@ use embassy_sync::channel::{Channel, Sender, Receiver};
 use crate::*;
 use crate::{raw_pty, RawPtyGuard};
 
+#[derive(Debug)]
 enum CmdlineState<'a> {
     PreAuth,
     Authed,
@@ -180,7 +181,7 @@ impl<'a> sunset::CliBehaviour for CmdlineHooks<'a> {
     }
 
     fn authenticated(&mut self) {
-        info!("Authentication succeeded");
+        debug!("Authentication succeeded");
         // TODO: need better handling, what else could we do?
         while self.notify.try_send(Msg::Authed).is_err() {
             warn!("Full notification queue");

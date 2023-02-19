@@ -124,7 +124,7 @@ impl Conn {
         s: &mut TrafSend<'_, '_>,
         b: &mut Behaviour<'_>,
     ) -> Result<(), Error> {
-        debug!("progress conn state {:?}", self.state);
+        trace!("progress conn state {:?}", self.state);
         match self.state {
             ConnState::SendIdent => {
                 s.send_version()?;
