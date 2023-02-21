@@ -259,7 +259,7 @@ impl<'a> TrafIn<'a> {
         ext: Option<u32>,
         buf: &mut [u8],
     ) -> (usize, bool) {
-        trace!("channel input {chan} {ext:?} state {:?}", self.state);
+        trace!("channel input {chan} ext arg {ext:?} state {:?}", self.state);
 
         match self.state {
             RxState::InChannelData { chan: c, ext: e, ref mut idx, len }
@@ -269,6 +269,7 @@ impl<'a> TrafIn<'a> {
                 buf[..wlen].copy_from_slice(&self.buf[*idx..*idx + wlen]);
                 // info!("idx {} += wlen {} = {}", *idx, wlen, *idx+wlen);
                 *idx += wlen;
+                trace!("match input data wlen {wlen}");
 
                 if *idx == len {
                     // all done.

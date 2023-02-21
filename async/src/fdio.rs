@@ -38,9 +38,15 @@ pub fn stdout() -> Result<OutFd, IoError> {
         f: dup_async(libc::STDOUT_FILENO, Interest::WRITABLE)?,
     })
 }
-pub fn stderr() -> Result<OutFd, IoError> {
+pub fn stderr_out() -> Result<OutFd, IoError> {
     Ok(OutFd {
         f: dup_async(libc::STDERR_FILENO, Interest::WRITABLE)?,
+    })
+}
+
+pub fn stderr_in() -> Result<InFd, IoError> {
+    Ok(InFd {
+        f: dup_async(libc::STDERR_FILENO, Interest::READABLE)?,
     })
 }
 

@@ -413,29 +413,23 @@ impl Channels {
             Packet::ChannelDataExt(p) => {
                 let ch = self.get_mut(p.num)?;
                 if !is_client || p.code != sshnames::SSH_EXTENDED_DATA_STDERR {
-                    // Discard the data, see comment in runner::channel_input()
+                    // Discard the data, see comment in Error::BadChannelExt
                     debug!("Ignoring unexpected ext data, code {}", p.code);
                     ch.finished_input(p.data.0.len());
                 } else {
-                    if is_client {
-                        // TODO check we are expecting input and ext is valid.
-                        if self.pending_input.is_some() {
-                            return Err(Error::bug());
-                        }
-                        self.pending_input =
-                            Some(PendInput { chan: p.num, len: p.data.0.len() });
-                        let di = DataIn {
-                            num: p.num,
-                            ext: Some(p.code),
-                            offset: ChannelDataExt::DATA_OFFSET,
-                            len: p.data.0.len(),
-                        };
-                        data_in = Some(di);
-                    } else {
-                        // ignore ext data sent to a server
-                        debug!("Ignoring ext data to server");
-                        ch.finished_input(p.data.0.len());
+                    // TODO check we are expecting input and ext is valid.
+                    if self.pending_input.is_some() {
+                        return Err(Error::bug());
                     }
+                    self.pending_input =
+                        Some(PendInput { chan: p.num, len: p.data.0.len() });
+                    let di = DataIn {
+                        num: p.num,
+                        ext: Some(p.code),
+                        offset: ChannelDataExt::DATA_OFFSET,
+                        len: p.data.0.len(),
+                    };
+                    data_in = Some(di);
                 }
             }
             Packet::ChannelEof(p) => {

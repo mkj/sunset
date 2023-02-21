@@ -242,7 +242,7 @@ impl<'a> Runner<'a> {
 
         trace!("runner chan in");
         let (len, complete) = self.traf_in.channel_input(chan, ext, buf);
-        trace!("runner chan in, len {len} complete {complete}");
+        trace!("runner chan in, len {len} complete {complete} ext {ext:?}");
         if complete {
             let wind_adjust = self.conn.channels.finished_input(chan)?;
             if let Some(wind_adjust) = wind_adjust {

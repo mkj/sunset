@@ -75,7 +75,7 @@ impl<'a> CmdlineRunner<'a> {
         }
     }
 
-    async fn chan_run(io: ChanInOut<'a>) -> Result<()> {
+    async fn chan_run(io: ChanInOut<'a>, io_err: Option<ChanExtIn<'a>>) -> Result<()> {
         trace!("chan_run top");
         // TODO extin
         let fi = async {
@@ -110,7 +110,27 @@ impl<'a> CmdlineRunner<'a> {
             Ok::<_, sunset::Error>(())
         };
 
-        embassy_futures::join::join(fi, fo).await;
+
+        if let Some(mut errfd) = io_err {
+            let fe = async {
+                let mut so = crate::stderr_out().map_err(|_| Error::msg("opening stderr failed"))?;
+                loop {
+                    // TODO buffers
+                    let mut buf = [0u8; 1000];
+                    trace!("chan_run await io read");
+                    let l = errfd.read(&mut buf).await.map_err(|_| Error::ChannelEOF)?;
+                    trace!("chan_run io read {l}");
+                    so.write(&buf[..l]).await.map_err(|_| Error::ChannelEOF)?;
+                    trace!("chan_run stdout wrote");
+                }
+                #[allow(unreachable_code)]
+                Ok::<_, sunset::Error>(())
+            };
+            embassy_futures::join::join3(fe, fi, fo).await;
+        } else {
+            embassy_futures::join::join(fi, fo).await;
+        }
+        // TODO handle errors from the join?
         Ok(())
     }
 
@@ -133,7 +153,7 @@ impl<'a> CmdlineRunner<'a> {
                             debug!("Opening a new session channel");
                             self.open_session(cli).await?;
                             if let CmdlineState::Ready { io, extin } = &self.state {
-                                chanio.set(Self::chan_run(io.clone()).fuse())
+                                chanio.set(Self::chan_run(io.clone(), extin.clone()).fuse())
                             }
                         }
                     }

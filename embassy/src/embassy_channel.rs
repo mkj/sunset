@@ -43,18 +43,26 @@ pub struct ChanInOut<'a> {
     sunset: &'a EmbassySunset<'a>,
 }
 
+#[derive(Clone)]
+pub struct ChanExtIn<'a> {
+    chan: u32,
+    ext: u32,
+    sunset: &'a EmbassySunset<'a>,
+}
+
+#[derive(Clone)]
+pub struct ChanExtOut<'a> {
+    chan: u32,
+    ext: u32,
+    sunset: &'a EmbassySunset<'a>,
+}
+
 impl core::fmt::Debug for ChanInOut<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("ChanInOut")
             .field("chan", &self.chan)
             .finish_non_exhaustive()
     }
-}
-
-pub struct ChanExtIn<'a> {
-    chan: u32,
-    ext: u32,
-    sunset: &'a EmbassySunset<'a>,
 }
 
 impl core::fmt::Debug for ChanExtIn<'_> {
@@ -64,14 +72,6 @@ impl core::fmt::Debug for ChanExtIn<'_> {
             .field("ext", &self.ext)
             .finish_non_exhaustive()
     }
-}
-
-pub struct ChanExtOut<'a> {
-    chan: u32,
-    ext: u32,
-    sunset: &'a EmbassySunset<'a>,
-
-    // wlfut: Option<OwnedMutexLockFuture<Inner<'a>>>,
 }
 
 impl core::fmt::Debug for ChanExtOut<'_> {
@@ -122,14 +122,14 @@ impl<'a> Io for ChanExtIn<'a> {
 
 impl<'a> asynch::Read for ChanInOut<'a> {
     async fn read(&mut self, buf: &mut [u8]) -> Result<usize, sunset::Error> {
-        let r = self.sunset.read_channel_stdin(self.chan, buf).await;
+        let r = self.sunset.read_channel(self.chan, None, buf).await;
         r
     }
 }
 
 impl<'a> asynch::Read for ChanExtIn<'a> {
     async fn read(&mut self, buf: &mut [u8]) -> Result<usize, sunset::Error> {
-        let r = self.sunset.read_channel_stdin(self.chan, buf).await;
+        let r = self.sunset.read_channel(self.chan, Some(self.ext), buf).await;
         r
     }
 }
