@@ -646,7 +646,7 @@ mod tests {
             false
         }
 
-        fn open_session(&mut self, chan: u32) -> ChanOpened {
+        fn open_session(&mut self, chan: ChanNum) -> ChanOpened {
             ChanOpened::Success
         }
     }

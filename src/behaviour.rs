@@ -65,7 +65,7 @@ impl<'a> Behaviour<'a> {
     }
 
     /// Calls either client or server
-    pub(crate) fn open_tcp_forwarded(&mut self, chan: u32,
+    pub(crate) fn open_tcp_forwarded(&mut self, chan: ChanNum,
         t: &ForwardedTcpip) -> channel::ChanOpened {
         match self {
             Self::Client(b) => b.open_tcp_forwarded(chan, t),
@@ -74,7 +74,7 @@ impl<'a> Behaviour<'a> {
     }
 
     /// Calls either client or server
-    pub(crate) fn open_tcp_direct(&mut self, chan: u32,
+    pub(crate) fn open_tcp_direct(&mut self, chan: ChanNum,
         t: &DirectTcpip) -> channel::ChanOpened {
         match self {
             Self::Client(b) => b.open_tcp_direct(chan, t),
@@ -154,12 +154,12 @@ pub trait CliBehaviour {
     // TODO: postauth channel callbacks
 
     #[allow(unused)]
-    fn open_tcp_forwarded(&self, chan: u32, t: &ForwardedTcpip) -> ChanOpened {
+    fn open_tcp_forwarded(&self, chan: ChanNum, t: &ForwardedTcpip) -> ChanOpened {
         ChanOpened::Failure(ChanFail::SSH_OPEN_UNKNOWN_CHANNEL_TYPE)
     }
 
     #[allow(unused)]
-    fn open_tcp_direct(&self, chan: u32, t: &DirectTcpip) -> ChanOpened {
+    fn open_tcp_direct(&self, chan: ChanNum, t: &DirectTcpip) -> ChanOpened {
         ChanOpened::Failure(ChanFail::SSH_OPEN_UNKNOWN_CHANNEL_TYPE)
     }
 }
@@ -221,30 +221,30 @@ pub trait ServBehaviour {
     }
 
     /// Returns whether a session can be opened
-    fn open_session(&mut self, chan: u32) -> channel::ChanOpened;
+    fn open_session(&mut self, chan: ChanNum) -> channel::ChanOpened;
 
     #[allow(unused)]
-    fn open_tcp_forwarded(&mut self, chan: u32, t: &ForwardedTcpip) -> ChanOpened {
+    fn open_tcp_forwarded(&mut self, chan: ChanNum, t: &ForwardedTcpip) -> ChanOpened {
         ChanOpened::Failure(ChanFail::SSH_OPEN_UNKNOWN_CHANNEL_TYPE)
     }
 
     #[allow(unused)]
-    fn open_tcp_direct(&mut self, chan: u32, t: &DirectTcpip) -> ChanOpened {
+    fn open_tcp_direct(&mut self, chan: ChanNum, t: &DirectTcpip) -> ChanOpened {
         ChanOpened::Failure(ChanFail::SSH_OPEN_UNKNOWN_CHANNEL_TYPE)
     }
 
     #[allow(unused)]
-    fn sess_shell(&mut self, chan: u32) -> bool {
+    fn sess_shell(&mut self, chan: ChanNum) -> bool {
         false
     }
 
     #[allow(unused)]
-    fn sess_exec(&mut self, chan: u32, cmd: TextString) -> bool {
+    fn sess_exec(&mut self, chan: ChanNum, cmd: TextString) -> bool {
         false
     }
 
     #[allow(unused)]
-    fn sess_pty(&mut self, chan: u32, pty: &Pty) -> bool {
+    fn sess_pty(&mut self, chan: ChanNum, pty: &Pty) -> bool {
         false
     }
 }

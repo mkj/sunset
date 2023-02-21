@@ -164,7 +164,7 @@ impl<'a> Runner<'a> {
     }
 
     // TODO: move somewhere client specific?
-    pub fn open_client_session(&mut self, exec: Option<&str>, pty: Option<channel::Pty>) -> Result<u32> {
+    pub fn open_client_session(&mut self, exec: Option<&str>, pty: Option<channel::Pty>) -> Result<ChanNum> {
         trace!("open_client_session");
         let mut init_req = channel::InitReqs::new();
         if let Some(pty) = pty {
@@ -184,7 +184,7 @@ impl<'a> Runner<'a> {
         Ok(chan)
     }
 
-    // pub fn channel_type(&self, chan: u32) -> Result<channel::ChanType> {
+    // pub fn channel_type(&self, chan: ChanNum) -> Result<channel::ChanType> {
     //     self.conn.channels.get(chan).map(|c| c.ty)
     // }
 
@@ -193,7 +193,7 @@ impl<'a> Runner<'a> {
     /// or other errors.
     pub fn channel_send(
         &mut self,
-        chan: u32,
+        chan: ChanNum,
         dt: ChanData,
         buf: &[u8],
     ) -> Result<usize> {
@@ -222,7 +222,7 @@ impl<'a> Runner<'a> {
     /// TODO: EOF is unimplemented
     pub fn channel_input(
         &mut self,
-        chan: u32,
+        chan: ChanNum,
         dt: ChanData,
         buf: &mut [u8],
     ) -> Result<usize> {
@@ -245,7 +245,7 @@ impl<'a> Runner<'a> {
     /// Receives input data, either dt or normal.
     pub fn channel_input_either(
         &mut self,
-        chan: u32,
+        chan: ChanNum,
         buf: &mut [u8],
     ) -> Result<(usize, ChanData)> {
         trace!("runner chan in");
@@ -264,7 +264,7 @@ impl<'a> Runner<'a> {
 
     /// Discards any channel input data pending for `chan`, regardless of whether
     /// normal or `dt`.
-    pub fn discard_channel_input(&mut self, chan: u32) -> Result<()> {
+    pub fn discard_channel_input(&mut self, chan: ChanNum) -> Result<()> {
         let len = self.traf_in.discard_channel_input(chan);
         let wind_adjust = self.conn.channels.finished_input(chan, len)?;
         if let Some(wind_adjust) = wind_adjust {
@@ -278,11 +278,11 @@ impl<'a> Runner<'a> {
     /// `Some((channel, dt, len))`
     /// `len` is the amount of data ready remaining to read, will always be non-zero.
     /// Returns `None` if no data ready.
-    pub fn ready_channel_input(&self) -> Option<(u32, ChanData, usize)> {
+    pub fn ready_channel_input(&self) -> Option<(ChanNum, ChanData, usize)> {
         self.traf_in.ready_channel_input()
     }
 
-    pub fn channel_eof(&self, chan: u32) -> bool {
+    pub fn channel_eof(&self, chan: ChanNum) -> bool {
         self.conn.channels.have_recv_eof(chan)
     }
 
@@ -291,7 +291,7 @@ impl<'a> Runner<'a> {
     /// Returns `Ok(None)` on channel closed.
     ///
     /// May fail with `BadChannelData` if dt is invalid for this session.
-    pub fn ready_channel_send(&self, chan: u32, dt: ChanData) -> Result<Option<usize>> {
+    pub fn ready_channel_send(&self, chan: ChanNum, dt: ChanData) -> Result<Option<usize>> {
         // TODO: return 0 if InKex means we can't transmit packets.
 
         // Avoid apps polling forever on a packet type that won't come
@@ -306,7 +306,7 @@ impl<'a> Runner<'a> {
 
     /// Returns `true` if the channel and `dt` are currently valid for writing.
     /// Note that they may not be ready to send output.
-    pub fn valid_channel_send(&self, chan: u32, dt: ChanData) -> bool {
+    pub fn valid_channel_send(&self, chan: ChanNum, dt: ChanData) -> bool {
         self.conn.channels.valid_send(chan, dt)
     }
 
@@ -317,11 +317,11 @@ impl<'a> Runner<'a> {
     ///
     /// Any further calls using the same channel number may result
     /// in data from a different channel re-using the same number.
-    pub fn channel_done(&mut self, chan: u32) -> Result<()> {
+    pub fn channel_done(&mut self, chan: ChanNum) -> Result<()> {
         self.conn.channels.done(chan)
     }
 
-    pub fn term_window_change(&self, _chan: u32, _wc: packets::WinChange) -> Result<()> {
+    pub fn term_window_change(&self, _chan: ChanNum, _wc: packets::WinChange) -> Result<()> {
         todo!("term_window_change()");
         // Needs to check that it is a channel with pty.
         // self.conn.channels.term_window_change(chan, wc)

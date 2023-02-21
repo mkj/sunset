@@ -81,7 +81,7 @@ enum RxState {
     /// Decrypted incoming channel data
     InChannelData {
         /// channel number
-        chan: u32,
+        chan: ChanNum,
         /// extended flag. usually None, or `Some(1)` for `SSH_EXTENDED_DATA_STDERR`
         dt: ChanData,
         /// read index of channel data. should transition to Idle once `idx==len`
@@ -223,7 +223,7 @@ impl<'a> TrafIn<'a> {
     }
 
     /// Returns `(channel, dt, length)`
-    pub fn ready_channel_input(&self) -> Option<(u32, ChanData, usize)> {
+    pub fn ready_channel_input(&self) -> Option<(ChanNum, ChanData, usize)> {
         trace!("ready_channel_input state {:?}", self.state);
         match self.state {
             RxState::InChannelData { chan, dt, idx, len } => {
@@ -251,7 +251,7 @@ impl<'a> TrafIn<'a> {
     // data packet has been completed, or None if some is still pending.
     pub fn channel_input(
         &mut self,
-        chan: u32,
+        chan: ChanNum,
         dt: ChanData,
         buf: &mut [u8],
     ) -> (usize, Option<usize>) {
@@ -281,7 +281,7 @@ impl<'a> TrafIn<'a> {
     // Returns (length, complete: Option<len: usize>>, Option(dt))
     pub fn channel_input_either(
         &mut self,
-        chan: u32,
+        chan: ChanNum,
         buf: &mut [u8],
     ) -> (usize, Option<usize>, ChanData) {
         trace!("channel input {chan} state {:?}", self.state);
@@ -309,7 +309,7 @@ impl<'a> TrafIn<'a> {
     }
 
     /// Returns the length of data discarded
-    pub fn discard_channel_input(&mut self, chan: u32) -> usize {
+    pub fn discard_channel_input(&mut self, chan: ChanNum) -> usize {
         match self.state {
             RxState::InChannelData { chan: c, len, .. }
             if c == chan => {

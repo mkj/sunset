@@ -182,7 +182,7 @@ impl<'a> ServBehaviour for DemoServer<'a> {
         })
     }
 
-    fn open_session(&mut self, chan: u32) -> ChanOpened {
+    fn open_session(&mut self, chan: ChanNum) -> ChanOpened {
         if self.sess.is_some() {
             ChanOpened::Failure(ChanFail::SSH_OPEN_ADMINISTRATIVELY_PROHIBITED)
         } else {
@@ -191,7 +191,7 @@ impl<'a> ServBehaviour for DemoServer<'a> {
         }
     }
 
-    fn sess_shell(&mut self, chan: u32) -> bool {
+    fn sess_shell(&mut self, chan: ChanNum) -> bool {
         let r = !self.shell_started && self.sess == Some(chan);
         self.shell_started = true;
         self.shell_notify.take().send(chan);
@@ -199,7 +199,7 @@ impl<'a> ServBehaviour for DemoServer<'a> {
         r
     }
 
-    fn sess_pty(&mut self, chan: u32, _pty: &Pty) -> bool {
+    fn sess_pty(&mut self, chan: ChanNum, _pty: &Pty) -> bool {
         self.sess == Some(chan)
     }
 }

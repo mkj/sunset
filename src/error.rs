@@ -10,6 +10,7 @@ use snafu::{prelude::*, Location};
 use heapless::String;
 
 use crate::behaviour::BhError;
+use crate::channel::ChanNum;
 
 // TODO: can we make Snafu not require Debug?
 
@@ -56,7 +57,7 @@ pub enum Error {
     NoChannels,
 
     #[snafu(display("Bad channel number {num}"))]
-    BadChannel { num: u32 },
+    BadChannel { num: ChanNum },
 
     /// Bad channel data type
     ///

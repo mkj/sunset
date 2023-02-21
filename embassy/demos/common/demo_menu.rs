@@ -10,7 +10,7 @@ pub struct Output {
 }
 
 impl Output {
-    pub async fn flush(&mut self, serv: &SSHServer<'_>, chan: u32) -> Result<()> {
+    pub async fn flush(&mut self, serv: &SSHServer<'_>, chan: ChanNum) -> Result<()> {
 
         let mut b = self.s.as_str().as_bytes();
         while b.len() > 0 {

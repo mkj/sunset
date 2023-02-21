@@ -35,21 +35,23 @@ impl Channels {
 
         let chan = Channel::new(num, (&ty).into(), init_req);
         let p = packets::ChannelOpen {
-            num,
+            num: num.0,
             initial_window: chan.recv.window as u32,
             max_packet: chan.recv.max_packet as u32,
             ty,
         }
         .into();
-        let ch = &mut self.ch[num as usize];
-        *ch = Some(chan);
-        Ok((ch.as_ref().unwrap(), p))
+        let ch = &mut self.ch[num.0 as usize];
+        let ch = ch.insert(chan);
+        // *ch = Some(chan);
+        // let ch = ch.as_ref().unwrap();
+        Ok((ch, p))
     }
 
     /// Returns a `Channel` for a local number, any state including `InOpen`.
-    fn get_any(&self, num: u32) -> Result<&Channel> {
+    fn get_any(&self, num: ChanNum) -> Result<&Channel> {
         self.ch
-            .get(num as usize)
+            .get(num.0 as usize)
             // out of range
             .ok_or(error::BadChannel { num }.build())?
             .as_ref()
@@ -58,7 +60,7 @@ impl Channels {
     }
 
     /// Returns a `Channel` for a local number. Excludes `InOpen` or `Opening` state.
-    fn get(&self, num: u32) -> Result<&Channel> {
+    fn get(&self, num: ChanNum) -> Result<&Channel> {
         let ch = self.get_any(num)?;
 
         match ch.state {
@@ -69,9 +71,9 @@ impl Channels {
         }
     }
 
-    fn get_any_mut(&mut self, num: u32) -> Result<&mut Channel> {
+    fn get_any_mut(&mut self, num: ChanNum) -> Result<&mut Channel> {
         self.ch
-            .get_mut(num as usize)
+            .get_mut(num.0 as usize)
             // out of range
             .ok_or(error::BadChannel { num }.build())?
             .as_mut()
@@ -79,7 +81,7 @@ impl Channels {
             .ok_or(error::BadChannel { num }.build())
     }
 
-    fn get_mut(&mut self, num: u32) -> Result<&mut Channel> {
+    fn get_mut(&mut self, num: ChanNum) -> Result<&mut Channel> {
         let ch = self.get_any_mut(num)?;
 
         match ch.state {
@@ -91,14 +93,14 @@ impl Channels {
     }
 
     /// Must be called when an application has finished with a channel.
-    pub fn done(&mut self, num: u32) -> Result<()> {
+    pub fn done(&mut self, num: ChanNum) -> Result<()> {
         self.get_mut(num)?.app_done = true;
         Ok(())
     }
 
-    fn remove(&mut self, num: u32) -> Result<()> {
+    fn remove(&mut self, num: ChanNum) -> Result<()> {
         // TODO any checks?
-        let ch = self.ch.get_mut(num as usize).ok_or(error::BadChannel { num }.build())?;
+        let ch = self.ch.get_mut(num.0 as usize).ok_or(error::BadChannel { num }.build())?;
         if let Some(c) = ch {
             if c.app_done {
                 trace!("removing channel {}", num);
@@ -114,12 +116,12 @@ impl Channels {
     }
 
     /// Returns the first available channel
-    fn unused_chan(&self) -> Result<u32> {
+    fn unused_chan(&self) -> Result<ChanNum> {
         self.ch
             .iter()
             .enumerate()
             .find_map(
-                |(i, ch)| if ch.as_ref().is_none() { Some(i as u32) } else { None },
+                |(i, ch)| if ch.as_ref().is_none() { Some(ChanNum(i as u32)) } else { None },
             )
             .ok_or(Error::NoChannels)
     }
@@ -135,7 +137,7 @@ impl Channels {
         });
         chan.state = ChanState::InOpen;
 
-        let ch = &mut self.ch[num as usize];
+        let ch = &mut self.ch[num.0 as usize];
         *ch = Some(chan);
         Ok(ch.as_mut().unwrap())
     }
@@ -147,13 +149,14 @@ impl Channels {
     /// Don't call with zero length data.
     pub(crate) fn send_data<'b>(
         &mut self,
-        num: u32,
+        num: ChanNum,
         dt: ChanData,
         data: &'b [u8],
     ) -> Result<Packet<'b>> {
         debug_assert!(data.len() > 0);
 
-        let send = self.get_mut(num)?.send.as_mut().trap()?;
+        let ch = self.get_mut(num)?;
+        let send = ch.send.as_mut().trap()?;
         if data.len() > send.max_packet || data.len() > send.window {
             return Err(Error::bug());
         }
@@ -171,21 +174,21 @@ impl Channels {
 
     /// Informs the channel layer that an incoming packet has been read out,
     /// so a window adjustment can be queued.
-    pub(crate) fn finished_input(&mut self, num: u32, len: usize) -> Result<Option<Packet>> {
+    pub(crate) fn finished_input(&mut self, num: ChanNum, len: usize) -> Result<Option<Packet>> {
         let ch = self.get_mut(num)?;
         ch.finished_input(len);
         ch.check_window_adjust()
     }
 
-    pub(crate) fn have_recv_eof(&self, num: u32) -> bool {
+    pub(crate) fn have_recv_eof(&self, num: ChanNum) -> bool {
         self.get(num).map_or(false, |c| c.have_recv_eof())
     }
 
-    pub(crate) fn send_allowed(&self, num: u32) -> Option<usize> {
+    pub(crate) fn send_allowed(&self, num: ChanNum) -> Option<usize> {
         self.get(num).map_or(Some(0), |c| c.send_allowed())
     }
 
-    pub(crate) fn valid_send(&self, num: u32, dt: ChanData) -> bool {
+    pub(crate) fn valid_send(&self, num: ChanNum, dt: ChanData) -> bool {
         self.get(num).map_or(false, |c| c.valid_send(dt))
     }
 
@@ -271,7 +274,7 @@ impl Channels {
         s: &mut TrafSend,
         b: &mut Behaviour<'_>,
     ) -> Result<()> {
-        if let Ok(ch) = self.get(p.num) {
+        if let Ok(ch) = self.get(ChanNum(p.num)) {
             // only servers accept requests
             let success = if let Ok(b) = b.server() {
                 ch.dispatch_server_request(p, s, b).unwrap_or_else(|e| {
@@ -312,7 +315,7 @@ impl Channels {
             }
 
             Packet::ChannelOpenConfirmation(p) => {
-                let ch = self.get_any_mut(p.num)?;
+                let ch = self.get_any_mut(ChanNum(p.num))?;
                 match ch.state {
                     ChanState::Opening { .. } => {
                         let init_state =
@@ -338,25 +341,25 @@ impl Channels {
             }
 
             Packet::ChannelOpenFailure(p) => {
-                let ch = self.get_any(p.num)?;
+                let ch = self.get_any(ChanNum(p.num))?;
                 if ch.send.is_some() {
                     // TODO: or just warn?
                     trace!("open failure late?");
                     return Err(Error::SSHProtoError);
                 } else {
-                    self.remove(p.num)?;
+                    self.remove(ChanNum(p.num))?;
                     // TODO event
                 }
             }
             Packet::ChannelWindowAdjust(p) => {
-                let send = self.get_mut(p.num)?.send.as_mut().trap()?;
+                let send = self.get_mut(ChanNum(p.num))?.send.as_mut().trap()?;
                 send.window = send.window.saturating_add(p.adjust as usize);
             }
             Packet::ChannelData(p) => {
-                self.get(p.num)?;
+                self.get(ChanNum(p.num))?;
                 // TODO check we are expecting input
                 let di = DataIn {
-                    num: p.num,
+                    num: ChanNum(p.num),
                     dt: ChanData::Normal,
                     offset: ChannelData::DATA_OFFSET,
                     len: p.data.0.len(),
@@ -364,7 +367,7 @@ impl Channels {
                 data_in = Some(di);
             }
             Packet::ChannelDataExt(p) => {
-                let ch = self.get_mut(p.num)?;
+                let ch = self.get_mut(ChanNum(p.num))?;
                 if !is_client || p.code != sshnames::SSH_EXTENDED_DATA_STDERR {
                     // Discard the data, sunset can't handle this
                     debug!("Ignoring unexpected dt data, code {}", p.code);
@@ -372,7 +375,7 @@ impl Channels {
                 } else {
                     // TODO check we are expecting input and dt is valid.
                     let di = DataIn {
-                        num: p.num,
+                        num: ChanNum(p.num),
                         dt: ChanData::Stderr,
                         offset: ChannelDataExt::DATA_OFFSET,
                         len: p.data.0.len(),
@@ -381,7 +384,7 @@ impl Channels {
                 }
             }
             Packet::ChannelEof(p) => {
-                self.get(p.num)?;
+                self.get(ChanNum(p.num))?;
             }
             Packet::ChannelClose(_p) => {
                 // todo!();
@@ -495,7 +498,7 @@ pub enum ReqDetails {
 
 #[derive(Debug)]
 pub struct Req {
-    num: u32,
+    num: ChanNum,
     details: ReqDetails,
 }
 
@@ -510,7 +513,7 @@ impl ReqDetails {
 
 impl Req {
     pub(crate) fn packet<'a>(&'a self) -> Result<Packet<'a>> {
-        let num = self.num;
+        let num = self.num.0;
         let want_reply = self.details.want_reply();
         let ty = match &self.details {
             ReqDetails::Shell => ChannelReqType::Shell,
@@ -556,7 +559,9 @@ const MAX_INIT_REQS: usize = 2;
 
 /// Per-direction channel variables
 #[derive(Debug)]
-pub struct ChanDir {
+struct ChanDir {
+    /// `u32` rather than `ChanNum` because it can also be used
+    /// for the sender-side number
     num: u32,
     max_packet: usize,
     window: usize,
@@ -612,7 +617,7 @@ pub(crate) struct Channel {
 }
 
 impl Channel {
-    fn new(num: u32, ty: ChanType, init_req: InitReqs) -> Self {
+    fn new(num: ChanNum, ty: ChanType, init_req: InitReqs) -> Self {
         Channel {
             ty,
             state: ChanState::Opening { init_req },
@@ -620,7 +625,7 @@ impl Channel {
             sent_eof: false,
             last_req: Deque::new(),
             recv: ChanDir {
-                num,
+                num: num.0,
                 max_packet: config::DEFAULT_MAX_PACKET,
                 window: config::DEFAULT_WINDOW,
             },
@@ -632,17 +637,19 @@ impl Channel {
     }
 
     /// Local channel number
-    pub(crate) fn num(&self) -> u32 {
-        self.recv.num
+    pub(crate) fn num(&self) -> ChanNum {
+        ChanNum(self.recv.num)
     }
 
     /// Remote channel number, fails if channel is in progress opening
+    ///
+    /// Returned as a plain `u32` since it is a different namespace than `ChanNum`
     pub(crate) fn send_num(&self) -> Result<u32> {
         Ok(self.send.as_ref().trap()?.num)
     }
 
     fn request(&mut self, req: ReqDetails, s: &mut TrafSend) -> Result<()> {
-        let num = self.send.as_ref().trap()?.num;
+        let num = ChanNum(self.send.as_ref().trap()?.num);
         let r = Req { num, details: req };
         s.send(r.packet()?)
     }
@@ -720,11 +727,11 @@ impl Channel {
 
     /// Returns a window adjustment packet if required
     fn check_window_adjust(&mut self) -> Result<Option<Packet>> {
-        let send = self.send.as_mut().trap()?;
+        let num = self.send.as_mut().trap()?.num;
         if self.pending_adjust > self.full_window / 2 {
             let adjust = self.pending_adjust as u32;
             self.pending_adjust = 0;
-            let p = packets::ChannelWindowAdjust { num: send.num, adjust }.into();
+            let p = packets::ChannelWindowAdjust { num, adjust }.into();
             Ok(Some(p))
         } else {
             Ok(None)
@@ -733,7 +740,7 @@ impl Channel {
 }
 
 pub struct ChanMsg {
-    pub num: u32,
+    pub num: ChanNum,
     pub msg: ChanMsgDetails,
 }
 
@@ -748,7 +755,7 @@ pub enum ChanMsgDetails {
 
 #[derive(Debug)]
 pub(crate) struct DataIn {
-    pub num: u32,
+    pub num: ChanNum,
     pub dt: ChanData,
     pub offset: usize,
     pub len: usize,
@@ -768,7 +775,14 @@ pub(crate) struct Channels {
 }
 
 /// A SSH protocol channel number
-pub struct ChanNum(u32);
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub struct ChanNum(pub u32);
+
+impl core::fmt::Display for ChanNum {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        self.0.fmt(f)
+    }
+}
 
 /// Channel data packet type.
 ///

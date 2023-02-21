@@ -14,7 +14,7 @@ use embassy_sunset::EmbassySunset;
 use sunset::{ChanData, ChanNum};
 
 pub struct Channel<'a> {
-    chan: u32,
+    chan: ChanNum,
     sunset: &'a EmbassySunset<'a>,
 }
 
@@ -40,21 +40,21 @@ impl<'a> Channel<'a> {
 
 #[derive(Clone)]
 pub struct ChanInOut<'a> {
-    chan: u32,
+    chan: ChanNum,
     dt: ChanData,
     sunset: &'a EmbassySunset<'a>,
 }
 
 #[derive(Clone)]
 pub struct ChanIn<'a> {
-    chan: u32,
+    chan: ChanNum,
     dt: ChanData,
     sunset: &'a EmbassySunset<'a>,
 }
 
 #[derive(Clone)]
 pub struct ChanOut<'a> {
-    chan: u32,
+    chan: ChanNum,
     dt: ChanData,
     sunset: &'a EmbassySunset<'a>,
 }
@@ -88,7 +88,7 @@ impl core::fmt::Debug for ChanOut<'_> {
 
 
 impl<'a> ChanInOut<'a> {
-    pub(crate) fn new(chan: u32, dt: ChanData, sunset: &'a EmbassySunset<'a>) -> Self {
+    pub(crate) fn new(chan: ChanNum, dt: ChanData, sunset: &'a EmbassySunset<'a>) -> Self {
         Self {
             chan, dt, sunset,
         }
@@ -96,7 +96,7 @@ impl<'a> ChanInOut<'a> {
 }
 
 impl<'a> ChanIn<'a> {
-    pub(crate) fn new(chan: u32, dt: ChanData, sunset: &'a EmbassySunset<'a>) -> Self {
+    pub(crate) fn new(chan: ChanNum, dt: ChanData, sunset: &'a EmbassySunset<'a>) -> Self {
         Self {
             chan, dt, sunset,
         }
@@ -104,7 +104,7 @@ impl<'a> ChanIn<'a> {
 }
 
 impl<'a> ChanOut<'a> {
-    pub(crate) fn new(chan: u32, dt: ChanData, sunset: &'a EmbassySunset<'a>) -> Self {
+    pub(crate) fn new(chan: ChanNum, dt: ChanData, sunset: &'a EmbassySunset<'a>) -> Self {
         Self {
             chan, dt, sunset,
         }

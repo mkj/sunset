@@ -30,11 +30,11 @@ impl<'a> SSHServer<'a> {
         self.sunset.run(rsock, wsock, b).await
     }
 
-    pub async fn read_channel_stdin(&self, ch: u32, buf: &mut [u8]) -> Result<usize> {
+    pub async fn read_channel_stdin(&self, ch: ChanNum, buf: &mut [u8]) -> Result<usize> {
         self.sunset.read_channel_stdin(ch, buf).await
     }
 
-    pub async fn write_channel(&self, ch: u32, dt: ChanData, buf: &[u8]) -> Result<usize> {
+    pub async fn write_channel(&self, ch: ChanNum, dt: ChanData, buf: &[u8]) -> Result<usize> {
         self.sunset.write_channel(ch, dt, buf).await
     }
 }
