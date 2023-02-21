@@ -11,6 +11,6 @@ mod embassy_channel;
 pub use server::SSHServer;
 pub use client::SSHClient;
 
-pub use embassy_channel::{ChanInOut, ChanExtIn, ChanExtOut};
+pub use embassy_channel::{ChanInOut, ChanIn, ChanOut};
 
 pub use embassy_sunset::{SunsetMutex, SunsetRawMutex};

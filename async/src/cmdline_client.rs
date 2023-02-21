@@ -29,7 +29,7 @@ enum CmdlineState<'a> {
     // TODO split sending the channel open and the request strings
     _ChanOpen,
     _ChanReq,
-    Ready { io: ChanInOut<'a>, extin: Option<ChanExtIn<'a>> },
+    Ready { io: ChanInOut<'a>, extin: Option<ChanIn<'a>> },
 }
 
 enum Msg {
@@ -75,7 +75,7 @@ impl<'a> CmdlineRunner<'a> {
         }
     }
 
-    async fn chan_run(io: ChanInOut<'a>, io_err: Option<ChanExtIn<'a>>) -> Result<()> {
+    async fn chan_run(io: ChanInOut<'a>, io_err: Option<ChanIn<'a>>) -> Result<()> {
         trace!("chan_run top");
         // TODO extin
         let fi = async {

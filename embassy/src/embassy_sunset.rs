@@ -15,7 +15,7 @@ use embedded_io::asynch;
 
 use pin_utils::pin_mut;
 
-use sunset::{Runner, Result, Error, Behaviour, sshnames};
+use sunset::{Runner, Result, Error, Behaviour, sshnames, ChanData, ChanNum};
 use sunset::config::MAX_CHANNELS;
 
 // For now we only support single-threaded executors.
@@ -118,35 +118,37 @@ impl<'a> EmbassySunset<'a> {
     }
 
 
-    fn wake_channels(&self, inner: &mut Inner) {
+    fn wake_channels(&self, inner: &mut Inner) -> Result<()> {
         // Read wakers
-        if let Some((chan, ext, _len)) = inner.runner.ready_channel_input() {
+        if let Some((chan, dt, _len)) = inner.runner.ready_channel_input() {
             // TODO: if there isn't any waker waiting, could we just drop the packet?
-            if let Some(e) = ext {
-                debug_assert!(inner.runner.is_client());
-                debug_assert!(e == sshnames::SSH_EXTENDED_DATA_STDERR);
-                trace!("wake ch read ext {:?}", inner.chan_ext_wakers[chan as usize]);
-                inner.chan_ext_wakers[chan as usize].wake()
-            } else {
-                trace!("wake ch read ext {:?}", inner.chan_read_wakers[chan as usize]);
-                inner.chan_read_wakers[chan as usize].wake()
-            }
-        }
-
-        for chan in 0..MAX_CHANNELS {
-            // TODO: if this is slow we could be smarter about aggregating ext vs standard,
-            // or handling the case of full out payload buffers.
-            if inner.runner.is_client() {
-                let ext = &mut inner.chan_ext_wakers[chan];
-                if inner.runner.ready_channel_send(chan as u32, true).unwrap_or(0) > 0 {
-                    ext.wake();
+            match dt {
+                ChanData::Normal => {
+                    trace!("wake ch read dt {:?}", inner.chan_read_wakers[chan as usize]);
+                    inner.chan_read_wakers[chan as usize].wake()
+                }
+                ChanData::Stderr => {
+                    trace!("wake ch ext dt {:?}", inner.chan_ext_wakers[chan as usize]);
+                    inner.chan_ext_wakers[chan as usize].wake()
                 }
             }
+        }
 
-            if inner.runner.ready_channel_send(chan as u32, false).unwrap_or(0) > 0 {
+        // Write wakers
+        for chan in 0..MAX_CHANNELS {
+            // TODO: if this is slow we could be smarter about aggregating dt vs standard,
+            // or handling the case of full out payload buffers.
+            if inner.runner.ready_channel_send(chan as u32, ChanData::Normal)?.unwrap_or(0) > 0 {
                 inner.chan_write_wakers[chan].wake()
             }
+
+            if !inner.runner.is_client() {
+                if inner.runner.ready_channel_send(chan as u32, ChanData::Stderr)?.unwrap_or(0) > 0 {
+                    inner.chan_ext_wakers[chan].wake()
+                }
+            }
         }
+        Ok(())
     }
 
     pub async fn progress<B: ?Sized, M: RawMutex>(&self,
@@ -172,7 +174,7 @@ impl<'a> EmbassySunset<'a> {
                 }
 
                 trace!("embassy progress wake chans");
-                self.wake_channels(&mut inner)
+                self.wake_channels(&mut inner)?
             }
             // inner dropped
         }
@@ -247,20 +249,23 @@ impl<'a> EmbassySunset<'a> {
     }
 
     /// Reads channel data.
-    pub(crate) async fn read_channel(&self, ch: u32, ext: Option<u32>, buf: &mut [u8]) -> Result<usize> {
+    pub(crate) async fn read_channel(&self, ch: u32, dt: ChanData, buf: &mut [u8]) -> Result<usize> {
         if ch as usize > MAX_CHANNELS {
             return sunset::error::BadChannel { num: ch }.fail()
         }
         self.poll_inner(|inner, cx| {
-            let l = inner.runner.channel_input(ch, ext, buf);
+            let l = inner.runner.channel_input(ch, dt, buf);
             if let Ok(0) = l {
                 // 0 bytes read, pending
-                if ext.is_some() {
-                    trace!("register channel ext {ch} waker {:?}", cx.waker());
-                    inner.chan_ext_wakers[ch as usize].register(cx.waker());
-                } else {
-                    trace!("register channel read {ch} waker {:?}", cx.waker());
-                    inner.chan_read_wakers[ch as usize].register(cx.waker());
+                match dt {
+                    ChanData::Normal => {
+                        trace!("register channel read {ch} waker {:?}", cx.waker());
+                        inner.chan_read_wakers[ch as usize].register(cx.waker());
+                    }
+                    ChanData::Stderr => {
+                        trace!("register channel dt {ch} waker {:?}", cx.waker());
+                        inner.chan_ext_wakers[ch as usize].register(cx.waker());
+                    }
                 }
                 Poll::Pending
             } else {
@@ -276,17 +281,15 @@ impl<'a> EmbassySunset<'a> {
             return sunset::error::BadChannel { num: ch }.fail()
         }
         self.poll_inner(|inner, cx| {
-            let l = inner.runner.channel_input(ch, None, buf);
+            let l = inner.runner.channel_input(ch, ChanData::Normal, buf);
             if let Ok(0) = l {
                 // 0 bytes read, pending
                 trace!("register channel {ch} waker {:?}", cx.waker());
                 inner.chan_read_wakers[ch as usize].register(cx.waker());
-                // discard any `ext` input for this channel
+                // discard any `dt` input for this channel
                 match inner.runner.discard_channel_input(ch) {
-                    | Ok(())
                     // bad channel is OK, perhaps the channel isn't running yet
-                    | Err(Error::BadChannel { .. })
-                    => Ok(()),
+                    Err(Error::BadChannel { .. }) => Ok(()),
                     r => r,
                 }?;
                 Poll::Pending
@@ -297,7 +300,7 @@ impl<'a> EmbassySunset<'a> {
     }
 
     // /// Reads channel data, returning the length read and optionally
-    // /// whether it was ext data. Should only be called from
+    // /// whether it was dt data. Should only be called from
     // /// a single waker for both stdin and stderr, otherwise
     // /// will keep alternating wakers.
     // pub async fn read_channel_either(&self, ch: u32, buf: &mut [u8]) -> Result<(usize, Option<u32>)> {
@@ -305,34 +308,35 @@ impl<'a> EmbassySunset<'a> {
     //         return sunset::error::BadChannel { num: ch }.fail()
     //     }
     //     self.poll_inner(|inner, cx| {
-    //         let (l, ext) = inner.runner.channel_input_either(ch, buf);
+    //         let (l, dt) = inner.runner.channel_input_either(ch, buf);
     //         if let Ok(0) = l {
     //             // 0 bytes read, pending
     //             trace!("register channel {ch} waker {:?}", cx.waker());
     //             inner.chan_read_wakers[ch as usize].register(cx.waker());
     //             Poll::Pending
     //         } else {
-    //             Poll::Ready((l, ext))
+    //             Poll::Ready((l, dt))
     //         }
     //     }).await
     // }
 
-    pub(crate) async fn write_channel(&self, ch: u32, ext: Option<u32>, buf: &[u8]) -> Result<usize> {
+    pub(crate) async fn write_channel(&self, ch: u32, dt: ChanData, buf: &[u8]) -> Result<usize> {
         if ch as usize > MAX_CHANNELS {
             return sunset::error::BadChannel { num: ch }.fail()
         }
         self.poll_inner(|inner, cx| {
-            let l = inner.runner.channel_send(ch, ext, buf);
+            let l = inner.runner.channel_send(ch, dt, buf);
             if let Ok(0) = l {
                 // 0 bytes written, pending
-                if ext.is_some() {
-                    debug_assert!(!inner.runner.is_client());
-                    trace!("register channel ext {ch} waker {:?}", cx.waker());
-                    inner.chan_ext_wakers[ch as usize].register(cx.waker());
-                } else {
-                    trace!("register channel write {ch} waker {:?}", cx.waker());
-                    inner.chan_write_wakers[ch as usize].register(cx.waker());
-
+                match dt {
+                    ChanData::Normal => {
+                        trace!("register channel write {ch} waker {:?}", cx.waker());
+                        inner.chan_write_wakers[ch as usize].register(cx.waker());
+                    }
+                    ChanData::Stderr => {
+                        trace!("register channel dt {ch} waker {:?}", cx.waker());
+                        inner.chan_ext_wakers[ch as usize].register(cx.waker());
+                    }
                 }
                 Poll::Pending
             } else {

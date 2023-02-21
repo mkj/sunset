@@ -141,12 +141,14 @@ impl Channels {
     }
 
     /// Returns the channel data packet to send.
-    /// Caller has already checked valid length with send_allowed().
+    ///
+    /// Caller has already checked valid length with send_allowed(), and
+    /// validated `dt`.
     /// Don't call with zero length data.
     pub(crate) fn send_data<'b>(
         &mut self,
         num: u32,
-        ext: Option<u32>,
+        dt: ChanData,
         data: &'b [u8],
     ) -> Result<Packet<'b>> {
         debug_assert!(data.len() > 0);
@@ -158,11 +160,10 @@ impl Channels {
         send.window -= data.len();
 
         let data = BinString(data);
-        let p = if let Some(code) = ext {
-            // TODO: check code is valid for this channel
-            packets::ChannelDataExt { num: send.num, code, data }.into()
-        } else {
-            packets::ChannelData { num: send.num, data }.into()
+        let p = match dt {
+            ChanData::Normal => packets::ChannelData { num: send.num, data }.into(),
+            ChanData::Stderr => packets::ChannelDataExt {
+                num: send.num, code: sshnames::SSH_EXTENDED_DATA_STDERR, data }.into(),
         };
 
         Ok(p)
@@ -184,8 +185,8 @@ impl Channels {
         self.get(num).map_or(Some(0), |c| c.send_allowed())
     }
 
-    pub(crate) fn valid_send(&self, num: u32, ext: Option<u32>) -> bool {
-        self.get(num).map_or(false, |c| c.valid_send(ext))
+    pub(crate) fn valid_send(&self, num: u32, dt: ChanData) -> bool {
+        self.get(num).map_or(false, |c| c.valid_send(dt))
     }
 
     fn dispatch_open(
@@ -356,7 +357,7 @@ impl Channels {
                 // TODO check we are expecting input
                 let di = DataIn {
                     num: p.num,
-                    ext: None,
+                    dt: ChanData::Normal,
                     offset: ChannelData::DATA_OFFSET,
                     len: p.data.0.len(),
                 };
@@ -365,14 +366,14 @@ impl Channels {
             Packet::ChannelDataExt(p) => {
                 let ch = self.get_mut(p.num)?;
                 if !is_client || p.code != sshnames::SSH_EXTENDED_DATA_STDERR {
-                    // Discard the data, see comment in Error::BadChannelExt
-                    debug!("Ignoring unexpected ext data, code {}", p.code);
+                    // Discard the data, sunset can't handle this
+                    debug!("Ignoring unexpected dt data, code {}", p.code);
                     ch.finished_input(p.data.0.len());
                 } else {
-                    // TODO check we are expecting input and ext is valid.
+                    // TODO check we are expecting input and dt is valid.
                     let di = DataIn {
                         num: p.num,
-                        ext: Some(p.code),
+                        dt: ChanData::Stderr,
                         offset: ChannelDataExt::DATA_OFFSET,
                         len: p.data.0.len(),
                     };
@@ -711,9 +712,9 @@ impl Channel {
         self.send.as_ref().map(|s| usize::max(s.window, s.max_packet))
     }
 
-    pub(crate) fn valid_send(&self, ext: Option<u32>) -> bool {
+    pub(crate) fn valid_send(&self, dt: ChanData) -> bool {
         // TODO: later we should only allow non-pty "session" channels
-        // to have ext, for stderr only.
+        // to have dt, for stderr only.
         true
     }
 
@@ -748,7 +749,7 @@ pub enum ChanMsgDetails {
 #[derive(Debug)]
 pub(crate) struct DataIn {
     pub num: u32,
-    pub ext: Option<u32>,
+    pub dt: ChanData,
     pub offset: usize,
     pub len: usize,
 }
@@ -764,6 +765,48 @@ pub enum ChanOpened {
 
 pub(crate) struct Channels {
     ch: [Option<Channel>; config::MAX_CHANNELS],
+}
+
+/// A SSH protocol channel number
+pub struct ChanNum(u32);
+
+/// Channel data packet type.
+///
+/// The SSH specification allows other `u32` types, though Sunset doesn't
+/// currently implement it, they are not widely used.
+#[derive(Debug, PartialEq, Copy, Clone)]
+pub enum ChanData {
+    /// `SSH_MSG_CHANNEL_DATA`
+    Normal,
+    /// `SSH_MSG_CHANNEL_EXTENDED_DATA`
+    Stderr,
+    // Future API:
+    // Other(u32),
+}
+
+impl ChanData {
+    pub(crate) fn validate_send(&self, is_client: bool) -> Result<()> {
+        if matches!(self, ChanData::Stderr) && is_client {
+            error::BadChannelData.fail()
+        } else {
+            Ok(())
+        }
+    }
+
+    pub(crate) fn validate_receive(&self, is_client: bool) -> Result<()> {
+        if matches!(self, ChanData::Stderr) && !is_client {
+            error::BadChannelData.fail()
+        } else {
+            Ok(())
+        }
+    }
+
+    pub(crate) fn packet_offset(&self) -> usize {
+        match self {
+            ChanData::Normal => ChannelData::DATA_OFFSET,
+            ChanData::Stderr => ChannelDataExt::DATA_OFFSET,
+        }
+    }
 }
 
 pub(crate) type InitReqs = Vec<ReqDetails, MAX_INIT_REQS>;

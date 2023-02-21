@@ -56,22 +56,14 @@ pub enum Error {
     NoChannels,
 
     #[snafu(display("Bad channel number {num}"))]
-    BadChannel { num: u32, backtrace: snafu::Backtrace },
+    BadChannel { num: u32 },
 
-    /// Bad channel ext code
+    /// Bad channel data type
     ///
-    /// This will be returned due to API function arguments, not due to
-    /// network traffic.
-    /// Can occur if a client tries to send stderr data, or a server
-    /// attempts to receive stderr data. Can also occur if a caller
-    /// uses an ext code other than `SSH_EXTENDED_DATA_STDERR`.
-    ///
-    /// Received data packets of that kind will be discarded.
-    ///
-    /// These are currently unsupported in Sunset. If other clients
-    /// start to use these features (technically allowed by the RFCs)
-    /// then support could be added to Sunset.
-    BadChannelExt { backtrace: snafu::Backtrace },
+    /// Returned from an API call that would imply ChanData::Stderr
+    /// being sent to a server. This error will not be returned for
+    /// network data in the incorrect direction, instead that data is dropped.
+    BadChannelData { backtrace: snafu::Backtrace },
 
     /// SSH packet contents doesn't match length
     WrongPacketLength,
@@ -80,7 +72,7 @@ pub enum Error {
     ///
     /// This is an expected error when a SSH channel completes. Can be returned
     /// by channel read/write functions. Any further calls in the same direction
-    /// and with the same `ext`) will fail similarly.
+    /// will fail similarly.
     ChannelEOF,
 
     // Used for unknown key types etc.

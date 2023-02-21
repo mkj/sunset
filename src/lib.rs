@@ -54,3 +54,4 @@ pub use packets::PubKey;
 pub use error::{Error,Result};
 pub use channel::{ChanMsg, ChanMsgDetails, Pty, ChanOpened};
 pub use sshnames::ChanFail;
+pub use channel::{ChanData, ChanNum};

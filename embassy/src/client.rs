@@ -5,8 +5,9 @@ use embedded_io::asynch;
 use sunset::*;
 
 use crate::*;
+use sunset::{ChanData, ChanNum};
 use embassy_sunset::EmbassySunset;
-use embassy_channel::{ChanInOut, ChanExtIn};
+use embassy_channel::{ChanInOut, ChanIn};
 
 pub struct SSHClient<'a> {
     sunset: EmbassySunset<'a>,
@@ -34,18 +35,18 @@ impl<'a> SSHClient<'a> {
     //     self.sunset.read_channel_stdin(ch, buf).await
     // }
 
-    // pub async fn write_channel(&self, ch: u32, ext: Option<u32>, buf: &[u8]) -> Result<usize> {
-    //     self.sunset.write_channel(ch, ext, buf).await
+    // pub async fn write_channel(&self, ch: u32, dt: ChanData, buf: &[u8]) -> Result<usize> {
+    //     self.sunset.write_channel(ch, dt, buf).await
     // }
 
     pub async fn open_session_nopty(&'a self, exec: Option<&str>)
-    -> Result<(ChanInOut<'a>, ChanExtIn<'a>)> {
+    -> Result<(ChanInOut<'a>, ChanIn<'a>)> {
         let chan = self.sunset.with_runner(|runner| {
             runner.open_client_session(exec, None)
         }).await?;
 
-        let cstd = ChanInOut::new(chan, &self.sunset);
-        let cerr = ChanExtIn::new(chan, sshnames::SSH_EXTENDED_DATA_STDERR, &self.sunset);
+        let cstd = ChanInOut::new(chan, ChanData::Normal, &self.sunset);
+        let cerr = ChanIn::new(chan, ChanData::Stderr, &self.sunset);
         Ok((cstd, cerr))
     }
 

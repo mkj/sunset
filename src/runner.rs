@@ -10,6 +10,7 @@ use pretty_hex::PrettyHex;
 
 use crate::*;
 use packets::{ChannelDataExt, ChannelData};
+use crate::channel::{ChanNum, ChanData};
 use encrypt::KeyState;
 use traffic::{TrafIn, TrafOut, TrafSend};
 
@@ -193,21 +194,14 @@ impl<'a> Runner<'a> {
     pub fn channel_send(
         &mut self,
         chan: u32,
-        ext: Option<u32>,
+        dt: ChanData,
         buf: &[u8],
     ) -> Result<usize> {
         if buf.len() == 0 {
             return Ok(0)
         }
 
-        if let Some(e) = ext {
-            if self.conn.is_client() || e != sshnames::SSH_EXTENDED_DATA_STDERR {
-                // not currently supported
-                return error::BadChannelExt.fail()
-            }
-        }
-
-        let len = self.ready_channel_send(chan, ext.is_some());
+        let len = self.ready_channel_send(chan, dt)?;
         let len = match len {
             Some(l) if l == 0 => return Ok(0),
             Some(l) => l,
@@ -216,7 +210,7 @@ impl<'a> Runner<'a> {
 
         let len = len.min(buf.len());
 
-        let p = self.conn.channels.send_data(chan, ext, &buf[..len])?;
+        let p = self.conn.channels.send_data(chan, dt, &buf[..len])?;
         self.traf_out.send_packet(p, &mut self.keys)?;
         self.wake();
         Ok(len)
@@ -229,20 +223,15 @@ impl<'a> Runner<'a> {
     pub fn channel_input(
         &mut self,
         chan: u32,
-        ext: Option<u32>,
+        dt: ChanData,
         buf: &mut [u8],
     ) -> Result<usize> {
 
-        if let Some(e) = ext {
-            if !self.conn.is_client() || e != sshnames::SSH_EXTENDED_DATA_STDERR {
-                // not currently supported
-                return error::BadChannelExt.fail()
-            }
-        }
+        dt.validate_receive(self.conn.is_client())?;
 
         trace!("runner chan in");
-        let (len, complete) = self.traf_in.channel_input(chan, ext, buf);
-        trace!("runner chan in, len {len} complete {complete:?} ext {ext:?}");
+        let (len, complete) = self.traf_in.channel_input(chan, dt, buf);
+        trace!("runner chan in, len {len} complete {complete:?} dt {dt:?}");
         if let Some(len) = complete {
             let wind_adjust = self.conn.channels.finished_input(chan, len)?;
             if let Some(wind_adjust) = wind_adjust {
@@ -253,15 +242,15 @@ impl<'a> Runner<'a> {
         Ok(len)
     }
 
-    /// Receives input data, either ext or normal.
+    /// Receives input data, either dt or normal.
     pub fn channel_input_either(
         &mut self,
         chan: u32,
         buf: &mut [u8],
-    ) -> Result<(usize, Option<u32>)> {
+    ) -> Result<(usize, ChanData)> {
         trace!("runner chan in");
-        let (len, complete, ext) = self.traf_in.channel_input_either(chan, buf);
-        trace!("runner chan in, len {len} complete {complete:?} ext {ext:?}");
+        let (len, complete, dt) = self.traf_in.channel_input_either(chan, buf);
+        trace!("runner chan in, len {len} complete {complete:?} dt {dt:?}");
         if let Some(len) = complete {
             let wind_adjust = self.conn.channels.finished_input(chan, len)?;
             if let Some(wind_adjust) = wind_adjust {
@@ -269,29 +258,27 @@ impl<'a> Runner<'a> {
             }
             self.wake();
         }
-        Ok((len, ext))
+        Ok((len, dt))
     }
 
 
     /// Discards any channel input data pending for `chan`, regardless of whether
-    /// normal or `ext`.
+    /// normal or `dt`.
     pub fn discard_channel_input(&mut self, chan: u32) -> Result<()> {
-        self.traf_in.discard_channel_input(chan);
-        todo!("delete this function?");
-        // let wind_adjust = self.conn.channels.finished_input(chan)?;
-        // if let Some(wind_adjust) = wind_adjust {
-        //     self.traf_out.send_packet(wind_adjust, &mut self.keys)?;
-        // }
-        // self.wake();
-        // Ok(())
+        let len = self.traf_in.discard_channel_input(chan);
+        let wind_adjust = self.conn.channels.finished_input(chan, len)?;
+        if let Some(wind_adjust) = wind_adjust {
+            self.traf_out.send_packet(wind_adjust, &mut self.keys)?;
+        }
+        self.wake();
+        Ok(())
     }
 
     /// When channel data is ready, returns a tuple
-    /// `Some((channel, ext, len))` where `ext` is `None` for stdout
-    /// or `Some(sshnames::SSH_EXTENDED_DATA_STDERR)` for stderr.
+    /// `Some((channel, dt, len))`
     /// `len` is the amount of data ready remaining to read, will always be non-zero.
     /// Returns `None` if no data ready.
-    pub fn ready_channel_input(&self) -> Option<(u32, Option<u32>, usize)> {
+    pub fn ready_channel_input(&self) -> Option<(u32, ChanData, usize)> {
         self.traf_in.ready_channel_input()
     }
 
@@ -299,26 +286,28 @@ impl<'a> Runner<'a> {
         self.conn.channels.have_recv_eof(chan)
     }
 
-    // Returns the maximum data that may be sent to a channel, or
-    // `None` on channel closed
-    pub fn ready_channel_send(&self, chan: u32, is_ext: bool) -> Option<usize> {
+    /// Returns the maximum data that may be sent to a channel
+    ///
+    /// Returns `Ok(None)` on channel closed.
+    ///
+    /// May fail with `BadChannelData` if dt is invalid for this session.
+    pub fn ready_channel_send(&self, chan: u32, dt: ChanData) -> Result<Option<usize>> {
         // TODO: return 0 if InKex means we can't transmit packets.
+
+        // Avoid apps polling forever on a packet type that won't come
+        dt.validate_send(self.conn.is_client())?;
 
         // minimum of buffer space and channel window available
         let payload_space = self.traf_out.send_allowed(&self.keys);
-        let offset = if is_ext {
-            ChannelDataExt::DATA_OFFSET
-        } else {
-            ChannelData::DATA_OFFSET
-        };
-        let payload_space = payload_space.saturating_sub(offset);
-        self.conn.channels.send_allowed(chan).map(|s| s.min(payload_space))
+        // subtract space for packet headers prior to data
+        let payload_space = payload_space.saturating_sub(dt.packet_offset());
+        Ok(self.conn.channels.send_allowed(chan).map(|s| s.min(payload_space)))
     }
 
-    /// Returns `true` if the channel and `ext` are currently valid for writing.
+    /// Returns `true` if the channel and `dt` are currently valid for writing.
     /// Note that they may not be ready to send output.
-    pub fn valid_channel_send(&self, chan: u32, ext: Option<u32>) -> bool {
-        self.conn.channels.valid_send(chan, ext)
+    pub fn valid_channel_send(&self, chan: u32, dt: ChanData) -> bool {
+        self.conn.channels.valid_send(chan, dt)
     }
 
     /// Must be called when an application has finished with a channel.

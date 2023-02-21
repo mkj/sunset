@@ -1,5 +1,5 @@
 use sunset_embassy::SSHServer;
-use sunset::Result;
+use sunset::{Result, ChanData, ChanNum};
 
 use menu::*;
 use core::fmt::Write;
@@ -14,7 +14,7 @@ impl Output {
 
         let mut b = self.s.as_str().as_bytes();
         while b.len() > 0 {
-            let l = serv.write_channel(chan, None, b).await?;
+            let l = serv.write_channel(chan, ChanData::Normal, b).await?;
             b = &b[l..];
         }
         self.s.clear();

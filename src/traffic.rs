@@ -9,6 +9,7 @@ use zeroize::Zeroize;
 use crate::encrypt::KeyState;
 use crate::encrypt::{SSH_LENGTH_SIZE, SSH_PAYLOAD_START};
 use crate::ident::RemoteVersion;
+use crate::channel::{ChanNum, ChanData};
 use crate::*;
 use crate::packets::Packet;
 use pretty_hex::PrettyHex;
@@ -82,7 +83,7 @@ enum RxState {
         /// channel number
         chan: u32,
         /// extended flag. usually None, or `Some(1)` for `SSH_EXTENDED_DATA_STDERR`
-        ext: Option<u32>,
+        dt: ChanData,
         /// read index of channel data. should transition to Idle once `idx==len`
         idx: usize,
         /// length of channel data
@@ -221,14 +222,14 @@ impl<'a> TrafIn<'a> {
         Ok(buf.len() - r.len())
     }
 
-    /// Returns `(channel, ext, length)`
-    pub fn ready_channel_input(&self) -> Option<(u32, Option<u32>, usize)> {
+    /// Returns `(channel, dt, length)`
+    pub fn ready_channel_input(&self) -> Option<(u32, ChanData, usize)> {
         trace!("ready_channel_input state {:?}", self.state);
         match self.state {
-            RxState::InChannelData { chan, ext, idx, len } => {
+            RxState::InChannelData { chan, dt, idx, len } => {
                 let rem = len - idx;
                 debug_assert!(rem > 0);
-                Some((chan, ext, rem))
+                Some((chan, dt, rem))
             },
             _ => None,
         }
@@ -239,7 +240,7 @@ impl<'a> TrafIn<'a> {
         match self.state {
             RxState::InPayload { .. } => {
                 let idx = SSH_PAYLOAD_START + di.offset;
-                self.state = RxState::InChannelData { chan: di.num, ext: di.ext, idx, len: idx + di.len };
+                self.state = RxState::InChannelData { chan: di.num, dt: di.dt, idx, len: idx + di.len };
                 Ok(())
             }
             _ => Err(Error::bug()),
@@ -251,14 +252,14 @@ impl<'a> TrafIn<'a> {
     pub fn channel_input(
         &mut self,
         chan: u32,
-        ext: Option<u32>,
+        dt: ChanData,
         buf: &mut [u8],
     ) -> (usize, Option<usize>) {
-        trace!("channel input {chan} ext arg {ext:?} state {:?}", self.state);
+        trace!("channel input {chan} dt arg {dt:?} state {:?}", self.state);
 
         match self.state {
-            RxState::InChannelData { chan: c, ext: e, ref mut idx, len }
-            if (c, e) == (chan, ext) => {
+            RxState::InChannelData { chan: c, dt: e, ref mut idx, len }
+            if (c, e) == (chan, dt) => {
                 debug_assert!(len >= *idx);
                 let wlen = (len - *idx).min(buf.len());
                 buf[..wlen].copy_from_slice(&self.buf[*idx..*idx + wlen]);
@@ -277,16 +278,16 @@ impl<'a> TrafIn<'a> {
         }
     }
 
-    // Returns (length, complete: Option<len: usize>>, Option(ext))
+    // Returns (length, complete: Option<len: usize>>, Option(dt))
     pub fn channel_input_either(
         &mut self,
         chan: u32,
         buf: &mut [u8],
-    ) -> (usize, Option<usize>, Option<u32>) {
+    ) -> (usize, Option<usize>, ChanData) {
         trace!("channel input {chan} state {:?}", self.state);
 
         match self.state {
-            RxState::InChannelData { chan: c, ext, ref mut idx, len }
+            RxState::InChannelData { chan: c, dt, ref mut idx, len }
             if c == chan => {
                 debug_assert!(len >= *idx);
                 let wlen = (len - *idx).min(buf.len());
@@ -298,23 +299,25 @@ impl<'a> TrafIn<'a> {
                     // all done.
                     trace!("channel_input idle was {:?} all done", self.state);
                     self.state = RxState::Idle;
-                    (wlen, Some(len), ext)
+                    (wlen, Some(len), dt)
                 } else {
-                    (wlen, None, ext)
+                    (wlen, None, dt)
                 }
             }
-            _ => (0, None, None)
+            _ => (0, None, ChanData::Normal)
         }
     }
 
-    pub fn discard_channel_input(&mut self, chan: u32) {
+    /// Returns the length of data discarded
+    pub fn discard_channel_input(&mut self, chan: u32) -> usize {
         match self.state {
-            RxState::InChannelData { chan: c, .. }
+            RxState::InChannelData { chan: c, len, .. }
             if c == chan => {
                 trace!("channel_input idle was {:?} discard", self.state);
                 self.state = RxState::Idle;
+                len
             }
-            _ => ()
+            _ => 0
         }
     }
 }
