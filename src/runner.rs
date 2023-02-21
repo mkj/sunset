@@ -242,9 +242,9 @@ impl<'a> Runner<'a> {
 
         trace!("runner chan in");
         let (len, complete) = self.traf_in.channel_input(chan, ext, buf);
-        trace!("runner chan in, len {len} complete {complete} ext {ext:?}");
-        if complete {
-            let wind_adjust = self.conn.channels.finished_input(chan)?;
+        trace!("runner chan in, len {len} complete {complete:?} ext {ext:?}");
+        if let Some(len) = complete {
+            let wind_adjust = self.conn.channels.finished_input(chan, len)?;
             if let Some(wind_adjust) = wind_adjust {
                 self.traf_out.send_packet(wind_adjust, &mut self.keys)?;
             }
@@ -261,9 +261,9 @@ impl<'a> Runner<'a> {
     ) -> Result<(usize, Option<u32>)> {
         trace!("runner chan in");
         let (len, complete, ext) = self.traf_in.channel_input_either(chan, buf);
-        trace!("runner chan in, len {len} complete {complete} ext {ext:?}");
-        if complete {
-            let wind_adjust = self.conn.channels.finished_input(chan)?;
+        trace!("runner chan in, len {len} complete {complete:?} ext {ext:?}");
+        if let Some(len) = complete {
+            let wind_adjust = self.conn.channels.finished_input(chan, len)?;
             if let Some(wind_adjust) = wind_adjust {
                 self.traf_out.send_packet(wind_adjust, &mut self.keys)?;
             }
@@ -277,12 +277,13 @@ impl<'a> Runner<'a> {
     /// normal or `ext`.
     pub fn discard_channel_input(&mut self, chan: u32) -> Result<()> {
         self.traf_in.discard_channel_input(chan);
-        let wind_adjust = self.conn.channels.finished_input(chan)?;
-        if let Some(wind_adjust) = wind_adjust {
-            self.traf_out.send_packet(wind_adjust, &mut self.keys)?;
-        }
-        self.wake();
-        Ok(())
+        todo!("delete this function?");
+        // let wind_adjust = self.conn.channels.finished_input(chan)?;
+        // if let Some(wind_adjust) = wind_adjust {
+        //     self.traf_out.send_packet(wind_adjust, &mut self.keys)?;
+        // }
+        // self.wake();
+        // Ok(())
     }
 
     /// When channel data is ready, returns a tuple

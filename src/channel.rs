@@ -21,47 +21,9 @@ use traffic::TrafSend;
 
 use snafu::ErrorCompat;
 
-/// The result of a channel open request.
-pub enum ChanOpened {
-    Success,
-    /// A channel open response will be sent later (for eg TCP open)
-    Defer,
-    Failure(ChanFail),
-}
-
-pub(crate) struct Channels {
-    ch: [Option<Channel>; config::MAX_CHANNELS],
-
-    /// The size of channel data last set with `DataIn`.
-    pending_input: Option<PendInput>,
-}
-
-pub(crate) type InitReqs = Vec<ReqDetails, MAX_INIT_REQS>;
-
-// for dispatch_open_inner()
-enum DispatchOpenError {
-    Error(Error),
-    Failure(ChanFail),
-}
-
-impl From<Error> for DispatchOpenError {
-    fn from(e: Error) -> Self {
-        match e {
-            Error::NoChannels => Self::Failure(ChanFail::SSH_OPEN_RESOURCE_SHORTAGE),
-            e => Self::Error(e),
-        }
-    }
-}
-
-impl From<ChanFail> for DispatchOpenError {
-    fn from(f: ChanFail) -> Self {
-        Self::Failure(f)
-    }
-}
-
 impl Channels {
     pub fn new() -> Self {
-        Channels { ch: Default::default(), pending_input: None }
+        Channels { ch: Default::default() }
     }
 
     pub fn open<'b>(
@@ -208,15 +170,10 @@ impl Channels {
 
     /// Informs the channel layer that an incoming packet has been read out,
     /// so a window adjustment can be queued.
-    pub(crate) fn finished_input(&mut self, num: u32) -> Result<Option<Packet>> {
-        if let Some(p) = &mut self.pending_input {
-            if p.chan == num {
-                let len = p.len;
-                self.get_mut(num)?.finished_input(len);
-                self.pending_input = None;
-            }
-        }
-        self.get_mut(num)?.check_window_adjust()
+    pub(crate) fn finished_input(&mut self, num: u32, len: usize) -> Result<Option<Packet>> {
+        let ch = self.get_mut(num)?;
+        ch.finished_input(len);
+        ch.check_window_adjust()
     }
 
     pub(crate) fn have_recv_eof(&self, num: u32) -> bool {
@@ -397,11 +354,6 @@ impl Channels {
             Packet::ChannelData(p) => {
                 self.get(p.num)?;
                 // TODO check we are expecting input
-                if self.pending_input.is_some() {
-                    return Err(Error::bug());
-                }
-                self.pending_input =
-                    Some(PendInput { chan: p.num, len: p.data.0.len() });
                 let di = DataIn {
                     num: p.num,
                     ext: None,
@@ -418,11 +370,6 @@ impl Channels {
                     ch.finished_input(p.data.0.len());
                 } else {
                     // TODO check we are expecting input and ext is valid.
-                    if self.pending_input.is_some() {
-                        return Err(Error::bug());
-                    }
-                    self.pending_input =
-                        Some(PendInput { chan: p.num, len: p.data.0.len() });
                     let di = DataIn {
                         num: p.num,
                         ext: Some(p.code),
@@ -450,6 +397,7 @@ impl Channels {
             }
             _ => Error::bug_msg("unreachable")?,
         };
+
         Ok(data_in)
     }
 
@@ -805,7 +753,39 @@ pub(crate) struct DataIn {
     pub len: usize,
 }
 
-struct PendInput {
-    chan: u32,
-    len: usize,
+/// The result of a channel open request.
+pub enum ChanOpened {
+    Success,
+    /// A channel open response will be sent later (for eg TCP open)
+    Defer,
+    /// A SSH failure code
+    Failure(ChanFail),
 }
+
+pub(crate) struct Channels {
+    ch: [Option<Channel>; config::MAX_CHANNELS],
+}
+
+pub(crate) type InitReqs = Vec<ReqDetails, MAX_INIT_REQS>;
+
+// for dispatch_open_inner()
+enum DispatchOpenError {
+    Error(Error),
+    Failure(ChanFail),
+}
+
+impl From<Error> for DispatchOpenError {
+    fn from(e: Error) -> Self {
+        match e {
+            Error::NoChannels => Self::Failure(ChanFail::SSH_OPEN_RESOURCE_SHORTAGE),
+            e => Self::Error(e),
+        }
+    }
+}
+
+impl From<ChanFail> for DispatchOpenError {
+    fn from(f: ChanFail) -> Self {
+        Self::Failure(f)
+    }
+}
+

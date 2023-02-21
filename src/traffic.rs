@@ -240,25 +240,20 @@ impl<'a> TrafIn<'a> {
             RxState::InPayload { .. } => {
                 let idx = SSH_PAYLOAD_START + di.offset;
                 self.state = RxState::InChannelData { chan: di.num, ext: di.ext, idx, len: idx + di.len };
-                // error!("set input {:?}", self.state);
-                // trace!("all buf {:?}", self.buf[..32].hex_dump());
-                // trace!("set chan input offset {} idx {} {:?}",
-                //     di.offset, idx,
-                //     self.buf[idx..idx + di.len].hex_dump());
                 Ok(())
             }
             _ => Err(Error::bug()),
         }
     }
 
-    // Returns the length consumed, and a bool indicating whether the whole
-    // data packet has been completed.
+    // Returns the length consumed, and an Option<len> indicating whether the whole
+    // data packet has been completed, or None if some is still pending.
     pub fn channel_input(
         &mut self,
         chan: u32,
         ext: Option<u32>,
         buf: &mut [u8],
-    ) -> (usize, bool) {
+    ) -> (usize, Option<usize>) {
         trace!("channel input {chan} ext arg {ext:?} state {:?}", self.state);
 
         match self.state {
@@ -267,29 +262,27 @@ impl<'a> TrafIn<'a> {
                 debug_assert!(len >= *idx);
                 let wlen = (len - *idx).min(buf.len());
                 buf[..wlen].copy_from_slice(&self.buf[*idx..*idx + wlen]);
-                // info!("idx {} += wlen {} = {}", *idx, wlen, *idx+wlen);
                 *idx += wlen;
-                trace!("match input data wlen {wlen}");
 
                 if *idx == len {
                     // all done.
                     trace!("channel_input idle was {:?} all done", self.state);
                     self.state = RxState::Idle;
-                    (wlen, true)
+                    (wlen, Some(len))
                 } else {
-                    (wlen, false)
+                    (wlen, None)
                 }
             }
-            _ => (0, false)
+            _ => (0, None)
         }
     }
 
-    // Returns (length, complete, Option(ext))
+    // Returns (length, complete: Option<len: usize>>, Option(ext))
     pub fn channel_input_either(
         &mut self,
         chan: u32,
         buf: &mut [u8],
-    ) -> (usize, bool, Option<u32>) {
+    ) -> (usize, Option<usize>, Option<u32>) {
         trace!("channel input {chan} state {:?}", self.state);
 
         match self.state {
@@ -305,12 +298,12 @@ impl<'a> TrafIn<'a> {
                     // all done.
                     trace!("channel_input idle was {:?} all done", self.state);
                     self.state = RxState::Idle;
-                    (wlen, true, ext)
+                    (wlen, Some(len), ext)
                 } else {
-                    (wlen, false, ext)
+                    (wlen, None, ext)
                 }
             }
-            _ => (0, false, None)
+            _ => (0, None, None)
         }
     }
 
