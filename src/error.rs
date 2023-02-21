@@ -34,7 +34,7 @@ pub enum Error {
     /// Key exchange incorrect
     BadKex,
 
-    /// Decryption failed
+    /// Packet integrity failed
     BadDecrypt,
 
     /// Signature is incorrect

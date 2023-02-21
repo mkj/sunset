@@ -170,7 +170,7 @@ impl Keys {
         };
 
         let enc = {
-            let i = Self::compute_key(
+            let ci = Self::compute_key(
                 iv_e,
                 algos.cipher_enc.iv_len(),
                 &mut iv,
@@ -179,7 +179,7 @@ impl Keys {
                 h,
                 sess_id,
             )?;
-            let k = Self::compute_key(
+            let ck = Self::compute_key(
                 k_e,
                 algos.cipher_enc.key_len(),
                 &mut key,
@@ -188,11 +188,11 @@ impl Keys {
                 h,
                 sess_id,
             )?;
-            EncKey::from_cipher(&algos.cipher_enc, k, i)?
+            EncKey::from_cipher(&algos.cipher_enc, ck, ci)?
         };
 
         let dec = {
-            let i = Self::compute_key(
+            let ci = Self::compute_key(
                 iv_d,
                 algos.cipher_dec.iv_len(),
                 &mut iv,
@@ -201,7 +201,7 @@ impl Keys {
                 h,
                 sess_id,
             )?;
-            let k = Self::compute_key(
+            let ck = Self::compute_key(
                 k_d,
                 algos.cipher_dec.key_len(),
                 &mut key,
@@ -210,11 +210,11 @@ impl Keys {
                 h,
                 sess_id,
             )?;
-            DecKey::from_cipher(&algos.cipher_dec, k, i)?
+            DecKey::from_cipher(&algos.cipher_dec, ck, ci)?
         };
 
         let integ_enc = {
-            let k = Self::compute_key(
+            let ck = Self::compute_key(
                 i_e,
                 algos.integ_enc.key_len(),
                 &mut key,
@@ -223,11 +223,11 @@ impl Keys {
                 h,
                 sess_id,
             )?;
-            IntegKey::from_integ(&algos.integ_enc, k)?
+            IntegKey::from_integ(&algos.integ_enc, ck)?
         };
 
         let integ_dec = {
-            let k = Self::compute_key(
+            let ck = Self::compute_key(
                 i_d,
                 algos.integ_dec.key_len(),
                 &mut key,
@@ -236,11 +236,10 @@ impl Keys {
                 h,
                 sess_id,
             )?;
-            IntegKey::from_integ(&algos.integ_dec, k)?
+            IntegKey::from_integ(&algos.integ_dec, ck)?
         };
 
-        let o = Ok(Keys { enc, dec, integ_enc, integ_dec });
-        o
+        Ok(Keys { enc, dec, integ_enc, integ_dec })
     }
 
     /// RFC4253 7.2. `K1 = HASH(K || H || "A" || session_id)` etc
@@ -348,7 +347,6 @@ impl Keys {
         match &mut self.dec {
             DecKey::ChaPoly(k) => {
                 k.decrypt(seq, data, mac).map_err(|_| {
-                    info!("Packet integrity failed");
                     Error::BadDecrypt
                 })?;
             }
@@ -367,7 +365,6 @@ impl Keys {
                 h.update(&seq.to_be_bytes());
                 h.update(data);
                 h.verify_slice(mac).map_err(|_| {
-                    info!("Packet integrity failed");
                     Error::BadDecrypt
                 })?;
             }
@@ -440,8 +437,8 @@ impl Keys {
         }
 
         // write the length
-        buf[..SSH_LENGTH_SIZE]
-            .copy_from_slice(&((len - SSH_LENGTH_SIZE) as u32).to_be_bytes());
+        let blen = ((len - SSH_LENGTH_SIZE) as u32).to_be_bytes();
+        buf[..SSH_LENGTH_SIZE].copy_from_slice(&blen);
         // write random padding
         buf[SSH_LENGTH_SIZE] = padlen as u8;
         let pad_start = SSH_LENGTH_SIZE + 1 + payload_len;
