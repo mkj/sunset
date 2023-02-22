@@ -227,8 +227,8 @@ impl<'a> TrafIn<'a> {
         trace!("ready_channel_input state {:?}", self.state);
         match self.state {
             RxState::InChannelData { chan, dt, idx, len } => {
+                debug_assert!(len > idx);
                 let rem = len - idx;
-                debug_assert!(rem > 0);
                 Some((chan, dt, rem))
             },
             _ => None,
