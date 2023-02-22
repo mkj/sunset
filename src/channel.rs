@@ -361,7 +361,6 @@ impl Channels {
                 let di = DataIn {
                     num: ChanNum(p.num),
                     dt: ChanData::Normal,
-                    offset: ChannelData::DATA_OFFSET,
                     len: p.data.0.len(),
                 };
                 data_in = Some(di);
@@ -377,7 +376,6 @@ impl Channels {
                     let di = DataIn {
                         num: ChanNum(p.num),
                         dt: ChanData::Stderr,
-                        offset: ChannelDataExt::DATA_OFFSET,
                         len: p.data.0.len(),
                     };
                     data_in = Some(di);
@@ -757,7 +755,6 @@ pub enum ChanMsgDetails {
 pub(crate) struct DataIn {
     pub num: ChanNum,
     pub dt: ChanData,
-    pub offset: usize,
     pub len: usize,
 }
 

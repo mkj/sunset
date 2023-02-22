@@ -239,7 +239,7 @@ impl<'a> TrafIn<'a> {
         trace!("traf chan input state {:?}", self.state);
         match self.state {
             RxState::InPayload { .. } => {
-                let idx = SSH_PAYLOAD_START + di.offset;
+                let idx = SSH_PAYLOAD_START + di.dt.packet_offset();
                 self.state = RxState::InChannelData { chan: di.num, dt: di.dt, idx, len: idx + di.len };
                 Ok(())
             }
