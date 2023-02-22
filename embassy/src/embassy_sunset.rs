@@ -270,6 +270,7 @@ impl<'a> EmbassySunset<'a> {
                 }
                 Poll::Pending
             } else {
+                self.progress_notify.signal(());
                 Poll::Ready(l)
             }
         }).await
@@ -341,6 +342,7 @@ impl<'a> EmbassySunset<'a> {
                 }
                 Poll::Pending
             } else {
+                self.progress_notify.signal(());
                 Poll::Ready(l)
             }
         }).await
