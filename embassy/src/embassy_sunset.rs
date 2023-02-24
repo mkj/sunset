@@ -35,6 +35,9 @@ pub(crate) struct Inner<'a> {
     /// Will be a stderr read waker for a client, or stderr write waker for
     /// a server.
     chan_ext_wakers: [WakerRegistration; MAX_CHANNELS],
+
+    // TODO: do we need a separate waker for this?
+    chan_close_wakers: [WakerRegistration; MAX_CHANNELS],
 }
 
 pub struct EmbassySunset<'a> {
@@ -50,6 +53,7 @@ impl<'a> EmbassySunset<'a> {
             chan_read_wakers: Default::default(),
             chan_write_wakers: Default::default(),
             chan_ext_wakers: Default::default(),
+            chan_close_wakers: Default::default(),
         };
         let inner = Mutex::new(inner);
 
@@ -117,25 +121,18 @@ impl<'a> EmbassySunset<'a> {
         }
     }
 
-
     fn wake_channels(&self, inner: &mut Inner) -> Result<()> {
         // Read wakers
         if let Some((num, dt, _len)) = inner.runner.ready_channel_input() {
             // TODO: if there isn't any waker waiting, could we just drop the packet?
             match dt {
-                ChanData::Normal => {
-                    trace!("wake ch read dt {:?}", inner.chan_read_wakers[num.0 as usize]);
-                    inner.chan_read_wakers[num.0 as usize].wake()
-                }
-                ChanData::Stderr => {
-                    trace!("wake ch ext dt {:?}", inner.chan_ext_wakers[num.0 as usize]);
-                    inner.chan_ext_wakers[num.0 as usize].wake()
-                }
+                ChanData::Normal => inner.chan_read_wakers[num.0 as usize].wake(),
+                ChanData::Stderr => inner.chan_ext_wakers[num.0 as usize].wake(),
             }
         }
 
-        // Write wakers
         for chan in 0..MAX_CHANNELS {
+            // Write wakers
             let num = ChanNum(chan as u32);
             // TODO: if this is slow we could be smarter about aggregating dt vs standard,
             // or handling the case of full out payload buffers.
@@ -147,6 +144,18 @@ impl<'a> EmbassySunset<'a> {
                 if inner.runner.ready_channel_send(num, ChanData::Stderr)?.unwrap_or(0) > 0 {
                     inner.chan_ext_wakers[chan].wake()
                 }
+            }
+
+            // TODO: do we want to keep waking it?
+            if inner.runner.channel_eof(num) {
+                inner.chan_read_wakers[num.0 as usize].wake();
+                if inner.runner.is_client() {
+                    inner.chan_ext_wakers[num.0 as usize].wake();
+                }
+            }
+
+            if inner.runner.channel_closed(num) {
+                inner.chan_close_wakers[num.0 as usize].wake();
             }
         }
         Ok(())
@@ -255,24 +264,31 @@ impl<'a> EmbassySunset<'a> {
             return sunset::error::BadChannel { num }.fail()
         }
         self.poll_inner(|inner, cx| {
-            let l = inner.runner.channel_input(num, dt, buf);
-            if let Ok(0) = l {
-                // 0 bytes read, pending
-                match dt {
-                    ChanData::Normal => {
-                        trace!("register channel read {num} waker {:?}", cx.waker());
-                        inner.chan_read_wakers[num.0 as usize].register(cx.waker());
+            let i = match inner.runner.channel_input(num, dt, buf) {
+                Ok(0) => {
+                    // 0 bytes read, pending
+                    match dt {
+                        ChanData::Normal => {
+                            trace!("register channel read {num} waker {:?}", cx.waker());
+                            inner.chan_read_wakers[num.0 as usize].register(cx.waker());
+                        }
+                        ChanData::Stderr => {
+                            trace!("register channel dt {num} waker {:?}", cx.waker());
+                            inner.chan_ext_wakers[num.0 as usize].register(cx.waker());
+                        }
                     }
-                    ChanData::Stderr => {
-                        trace!("register channel dt {num} waker {:?}", cx.waker());
-                        inner.chan_ext_wakers[num.0 as usize].register(cx.waker());
-                    }
+                    Poll::Pending
                 }
-                Poll::Pending
-            } else {
+                Err(Error::ChannelEOF) => {
+                    error!("got eof dt {dt:?}");
+                    Poll::Ready(Ok(0))
+                }
+                r => Poll::Ready(r),
+            };
+            if matches!(i, Poll::Ready(_)) {
                 self.progress_notify.signal(());
-                Poll::Ready(l)
             }
+            i
         }).await
     }
 
@@ -344,6 +360,17 @@ impl<'a> EmbassySunset<'a> {
             } else {
                 self.progress_notify.signal(());
                 Poll::Ready(l)
+            }
+        }).await
+    }
+
+    pub(crate) async fn until_channel_closed(&self, num: ChanNum) -> Result<()> {
+        self.poll_inner(|inner, cx| {
+            if inner.runner.channel_closed(num) {
+                Poll::Ready(Ok(()))
+            } else {
+                inner.chan_close_wakers[num.0 as usize].register(cx.waker());
+                Poll::Pending
             }
         }).await
     }

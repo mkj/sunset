@@ -77,59 +77,78 @@ impl<'a> CmdlineRunner<'a> {
 
     async fn chan_run(io: ChanInOut<'a>, io_err: Option<ChanIn<'a>>) -> Result<()> {
         trace!("chan_run top");
-        // TODO extin
+        // in
         let fi = async {
-            let mut io = io.clone();
-            let mut si = crate::stdin().map_err(|_| Error::msg("opening stdin failed"))?;
-            loop {
-                // TODO buffers
-                let mut buf = [0u8; 1000];
-                trace!("chan_run await stdin read");
-                let l = si.read(&mut buf).await.map_err(|_| Error::ChannelEOF)?;
-                trace!("chan_run stdin read {l}");
-                // TODO do we need EPIPE too?
-                io.write(&buf[..l]).await.map_err(|_| Error::ChannelEOF)?;
-                trace!("chan_run stdin wrote");
-            }
-            #[allow(unreachable_code)]
-            Ok::<_, sunset::Error>(())
-        };
-        let fo = async {
             let mut io = io.clone();
             let mut so = crate::stdout().map_err(|_| Error::msg("opening stdout failed"))?;
             loop {
                 // TODO buffers
                 let mut buf = [0u8; 1000];
-                trace!("chan_run await io read");
-                let l = io.read(&mut buf).await.map_err(|_| Error::ChannelEOF)?;
-                trace!("chan_run io read {l}");
+                let l = io.read(&mut buf).await?;
+                error!("in l {l:?}");
+                if l == 0 {
+                    break;
+                }
                 so.write(&buf[..l]).await.map_err(|_| Error::ChannelEOF)?;
-                trace!("chan_run stdout wrote");
             }
             #[allow(unreachable_code)]
             Ok::<_, sunset::Error>(())
         };
 
-
-        if let Some(mut errfd) = io_err {
-            let fe = async {
-                let mut so = crate::stderr_out().map_err(|_| Error::msg("opening stderr failed"))?;
+        // err
+        let fe = async {
+            // if io_err is None we complete immediately
+            if let Some(mut errin) = io_err {
+                let mut eo = crate::stderr_out().map_err(|_| Error::msg("opening stderr failed"))?;
                 loop {
                     // TODO buffers
                     let mut buf = [0u8; 1000];
-                    trace!("chan_run await io read");
-                    let l = errfd.read(&mut buf).await.map_err(|_| Error::ChannelEOF)?;
-                    trace!("chan_run io read {l}");
-                    so.write(&buf[..l]).await.map_err(|_| Error::ChannelEOF)?;
-                    trace!("chan_run stdout wrote");
+                    let l = errin.read(&mut buf).await?;
+                    if l == 0 {
+                        error!("err eof");
+                        break;
+                    }
+                    eo.write(&buf[..l]).await.map_err(|_| Error::ChannelEOF)?;
                 }
                 #[allow(unreachable_code)]
                 Ok::<_, sunset::Error>(())
-            };
-            embassy_futures::join::join3(fe, fi, fo).await;
-        } else {
-            embassy_futures::join::join(fi, fo).await;
-        }
+            } else {
+                Ok(())
+            }
+        };
+
+        // out
+        let fo = async {
+            let mut io = io.clone();
+            let mut si = crate::stdin().map_err(|_| Error::msg("opening stdin failed"))?;
+            loop {
+                // TODO buffers
+                let mut buf = [0u8; 1000];
+                let l = si.read(&mut buf).await.map_err(|_| Error::ChannelEOF)?;
+                io.write(&buf[..l]).await?;
+            }
+            Ok::<_, sunset::Error>(())
+        };
+
+
+        // output needs to complete when the channel is closed
+        let fo = embassy_futures::select::select(fo, io.until_closed());
+
+        let fo = fo.map(|x| {
+            error!("fo done");
+            x
+        });
+        let fi = fi.map(|x| {
+            error!("fi done");
+            x
+        });
+        let fe = fe.map(|x| {
+            error!("fe done");
+            x
+        });
+
+        embassy_futures::join::join3(fe, fi, fo).await;
+        error!("all channel finished");
         // TODO handle errors from the join?
         Ok(())
     }
@@ -161,6 +180,9 @@ impl<'a> CmdlineRunner<'a> {
                 },
                 e = chanio => {
                     trace!("chanio finished: {e:?}");
+                    if e.is_ok() {
+                        break;
+                    }
                     e
                 }
             }?

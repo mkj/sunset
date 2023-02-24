@@ -64,7 +64,7 @@ pub enum Error {
     /// Returned from an API call that would imply ChanData::Stderr
     /// being sent to a server. This error will not be returned for
     /// network data in the incorrect direction, instead that data is dropped.
-    BadChannelData { backtrace: snafu::Backtrace },
+    BadChannelData,
 
     /// SSH packet contents doesn't match length
     WrongPacketLength,

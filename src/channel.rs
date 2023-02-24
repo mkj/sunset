@@ -100,19 +100,15 @@ impl Channels {
 
     fn remove(&mut self, num: ChanNum) -> Result<()> {
         // TODO any checks?
-        let ch = self.ch.get_mut(num.0 as usize).ok_or(error::BadChannel { num }.build())?;
-        if let Some(c) = ch {
-            if c.app_done {
-                trace!("removing channel {}", num);
-                *ch = None;
-            } else {
-                c.state = ChanState::PendingDone;
-                trace!("not removing channel {}, not finished", num);
-            }
-            Ok(())
-        } else{
-            error::BadChannel { num }.fail()
+        let ch = self.get_any_mut(num)?;
+        if ch.app_done {
+            trace!("removing channel {}", num);
+            self.ch[num.0 as usize] = None;
+        } else {
+            ch.state = ChanState::PendingDone;
+            trace!("not removing channel {}, not finished", num);
         }
+        Ok(())
     }
 
     /// Returns the first available channel
@@ -184,6 +180,11 @@ impl Channels {
         self.get(num).map_or(false, |c| c.have_recv_eof())
     }
 
+    pub(crate) fn is_closed(&self, num: ChanNum) -> bool {
+        self.get(num).map_or(false, |c| c.is_closed())
+    }
+
+
     pub(crate) fn send_allowed(&self, num: ChanNum) -> Option<usize> {
         self.get(num).map_or(Some(0), |c| c.send_allowed())
     }
@@ -201,7 +202,7 @@ impl Channels {
         match self.dispatch_open_inner(p, s, b) {
             Err(DispatchOpenError::Failure(f)) => {
                 s.send(packets::ChannelOpenFailure {
-                    num: p.num,
+                    num: p.num, // ChannelOpen.num is the sender's number
                     reason: f as u32,
                     desc: "".into(),
                     lang: "",
@@ -265,38 +266,6 @@ impl Channels {
             }
         }
 
-        Ok(())
-    }
-
-    pub fn dispatch_request(
-        &mut self,
-        p: &packets::ChannelRequest,
-        s: &mut TrafSend,
-        b: &mut Behaviour<'_>,
-    ) -> Result<()> {
-        if let Ok(ch) = self.get(ChanNum(p.num)) {
-            // only servers accept requests
-            let success = if let Ok(b) = b.server() {
-                ch.dispatch_server_request(p, s, b).unwrap_or_else(|e| {
-                    debug!("Error in channel req handling for {p:?}, {e:?}");
-                    false
-                })
-            } else {
-                error!("TODO: handle requests as a client for exit");
-                false
-            };
-
-            if p.want_reply {
-                let num = ch.send_num()?;
-                if success {
-                    s.send(packets::ChannelSuccess { num })?;
-                } else {
-                    s.send(packets::ChannelFailure { num })?;
-                }
-            }
-        } else {
-            debug!("Ignoring request to unknown channel: {p:#?}");
-        }
         Ok(())
     }
 
@@ -382,14 +351,18 @@ impl Channels {
                 }
             }
             Packet::ChannelEof(p) => {
-                self.get(ChanNum(p.num))?;
+                let ch = self.get_mut(ChanNum(p.num))?;
+                ch.handle_eof(s, b)?;
             }
-            Packet::ChannelClose(_p) => {
-                // todo!();
-                error!("ignoring channel close");
+            Packet::ChannelClose(p) => {
+                let ch = self.get_mut(ChanNum(p.num))?;
+                ch.handle_close(s, b)?;
             }
             Packet::ChannelRequest(p) => {
-                self.dispatch_request(&p, s, b)?;
+                match self.get(ChanNum(p.num)) {
+                    Ok(ch) => ch.dispatch_request(&p, s, b)?,
+                    Err(_) => debug!("Ignoring request to unknown channel: {p:#?}"),
+                }
             }
             Packet::ChannelSuccess(_p) => {
                 trace!("channel success, TODO");
@@ -496,7 +469,8 @@ pub enum ReqDetails {
 
 #[derive(Debug)]
 pub struct Req {
-    num: ChanNum,
+    // recipient's channel number
+    num: u32,
     details: ReqDetails,
 }
 
@@ -511,7 +485,7 @@ impl ReqDetails {
 
 impl Req {
     pub(crate) fn packet<'a>(&'a self) -> Result<Packet<'a>> {
-        let num = self.num.0;
+        let num = self.num;
         let want_reply = self.details.want_reply();
         let ty = match &self.details {
             ReqDetails::Shell => ChannelReqType::Shell,
@@ -641,13 +615,14 @@ impl Channel {
 
     /// Remote channel number, fails if channel is in progress opening
     ///
-    /// Returned as a plain `u32` since it is a different namespace than `ChanNum`
+    /// Returned as a plain `u32` since it is a different namespace than `ChanNum`.
+    /// This is the channel number included in most sent packets.
     pub(crate) fn send_num(&self) -> Result<u32> {
         Ok(self.send.as_ref().trap()?.num)
     }
 
     fn request(&mut self, req: ReqDetails, s: &mut TrafSend) -> Result<()> {
-        let num = ChanNum(self.send.as_ref().trap()?.num);
+        let num = self.send_num()?;
         let r = Req { num, details: req };
         s.send(r.packet()?)
     }
@@ -660,14 +635,42 @@ impl Channel {
         self.state = ChanState::Normal;
         let p = packets::ChannelOpenConfirmation {
             num: self.send_num()?,
-            // unwrap: state is InOpen
-            sender_num: self.send.as_ref().unwrap().num,
+            sender_num: self.recv.num,
             initial_window: self.recv.window as u32,
             max_packet: self.recv.max_packet as u32,
         }
         .into();
         Ok(p)
     }
+
+    fn dispatch_request(
+        &self,
+        p: &packets::ChannelRequest,
+        s: &mut TrafSend,
+        b: &mut Behaviour<'_>,
+    ) -> Result<()> {
+        // only servers accept requests
+        let success = if let Ok(b) = b.server() {
+            self.dispatch_server_request(p, s, b).unwrap_or_else(|e| {
+                debug!("Error in channel req handling for {p:?}, {e:?}");
+                false
+            })
+        } else {
+            error!("TODO: handle requests as a client for exit");
+            false
+        };
+
+        if p.want_reply {
+            let num = self.send_num()?;
+            if success {
+                s.send(packets::ChannelSuccess { num })?;
+            } else {
+                s.send(packets::ChannelFailure { num })?;
+            }
+        }
+        Ok(())
+    }
+
 
     fn dispatch_server_request(
         &self,
@@ -701,6 +704,28 @@ impl Channel {
         }
     }
 
+    fn handle_eof(&mut self, s: &mut TrafSend, b: &mut Behaviour<'_>) -> Result<()> {
+        //TODO: check existing state?
+        if !self.sent_eof {
+            s.send(packets::ChannelEof { num: self.send_num()? })?;
+            self.sent_eof = true;
+        }
+
+        self.state = ChanState::RecvEof;
+        // todo!();
+        Ok(())
+    }
+
+    fn handle_close(&mut self, s: &mut TrafSend, b: &mut Behaviour<'_>) -> Result<()> {
+        //TODO: check existing state?
+        if !self.sent_close {
+            s.send(packets::ChannelClose { num: self.send_num()? })?;
+            self.sent_close = true;
+        }
+        self.state = ChanState::RecvClose;
+        Ok(())
+    }
+
     fn finished_input(&mut self, len: usize) {
         self.pending_adjust = self.pending_adjust.saturating_add(len)
     }
@@ -710,6 +735,10 @@ impl Channel {
             ChanState::RecvEof | ChanState::RecvClose => true,
             _ => false,
         }
+    }
+
+    fn is_closed(&self) -> bool {
+        matches!(self.state, ChanState::RecvClose)
     }
 
     // None on close

@@ -229,6 +229,10 @@ impl<'a> Runner<'a> {
 
         dt.validate_receive(self.conn.is_client())?;
 
+        if self.channel_eof(chan) {
+            return error::ChannelEOF.fail()
+        }
+
         trace!("runner chan in");
         let (len, complete) = self.traf_in.channel_input(chan, dt, buf);
         trace!("runner chan in, len {len} complete {complete:?} dt {dt:?}");
@@ -284,6 +288,10 @@ impl<'a> Runner<'a> {
 
     pub fn channel_eof(&self, chan: ChanNum) -> bool {
         self.conn.channels.have_recv_eof(chan)
+    }
+
+    pub fn channel_closed(&self, chan: ChanNum) -> bool {
+        self.conn.channels.is_closed(chan)
     }
 
     /// Returns the maximum data that may be sent to a channel

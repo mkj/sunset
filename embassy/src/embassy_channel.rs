@@ -11,7 +11,7 @@ use embedded_io::{asynch, Io};
 
 use crate::*;
 use embassy_sunset::EmbassySunset;
-use sunset::{ChanData, ChanNum};
+use sunset::{Result, ChanData, ChanNum};
 
 pub struct Channel<'a> {
     chan: ChanNum,
@@ -93,6 +93,10 @@ impl<'a> ChanInOut<'a> {
             chan, dt, sunset,
         }
     }
+
+    pub async fn until_closed(&self) -> Result<()> {
+        self.sunset.until_channel_closed(self.chan).await
+    }
 }
 
 impl<'a> ChanIn<'a> {
@@ -108,6 +112,10 @@ impl<'a> ChanOut<'a> {
         Self {
             chan, dt, sunset,
         }
+    }
+
+    pub async fn until_closed(&self) -> Result<()> {
+        self.sunset.until_channel_closed(self.chan).await
     }
 }
 
