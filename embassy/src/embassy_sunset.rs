@@ -121,6 +121,10 @@ impl<'a> EmbassySunset<'a> {
         }
     }
 
+    fn wake_progress(&self) {
+        self.progress_notify.signal(())
+    }
+
     fn wake_channels(&self, inner: &mut Inner) -> Result<()> {
         // Read wakers
         if let Some((num, dt, _len)) = inner.runner.ready_channel_input() {
@@ -249,7 +253,7 @@ impl<'a> EmbassySunset<'a> {
                     Err(e) => Poll::Ready(Err(e)),
                 };
                 if r.is_ready() {
-                    self.progress_notify.signal(())
+                    self.wake_progress()
                 }
                 r
             } else {
@@ -287,7 +291,7 @@ impl<'a> EmbassySunset<'a> {
                 r => Poll::Ready(r),
             };
             if matches!(i, Poll::Ready(_)) {
-                self.progress_notify.signal(());
+                self.wake_progress()
             }
             i
         }).await
@@ -359,7 +363,7 @@ impl<'a> EmbassySunset<'a> {
                 }
                 Poll::Pending
             } else {
-                self.progress_notify.signal(());
+                self.wake_progress();
                 Poll::Ready(l)
             }
         }).await
