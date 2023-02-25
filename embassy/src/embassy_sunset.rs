@@ -253,6 +253,7 @@ impl<'a> EmbassySunset<'a> {
                 }
                 r
             } else {
+                inner.runner.set_input_waker(cx.waker());
                 Poll::Pending
             }
         }).await
