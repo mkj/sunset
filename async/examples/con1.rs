@@ -126,7 +126,7 @@ fn setup_log(args: &Args) -> Result<()> {
     };
 
     let mut logs: Vec<Box<dyn SharedLogger>> = vec![
-        TermLogger::new(level, conf.clone(), TerminalMode::Mixed, ColorChoice::Auto),
+        TermLogger::new(level, conf.clone(), TerminalMode::Stderr, ColorChoice::Auto),
     ];
 
     if let Some(tf) = args.tracefile.as_ref() {
