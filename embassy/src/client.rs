@@ -31,6 +31,10 @@ impl<'a> SSHClient<'a> {
         self.sunset.run(rsock, wsock, b).await
     }
 
+    pub async fn exit(&self) {
+        self.sunset.exit().await
+    }
+
     pub async fn open_session_nopty(&'a self, exec: Option<&str>)
     -> Result<(ChanInOut<'a>, ChanIn<'a>)> {
         let chan = self.sunset.with_runner(|runner| {

@@ -5,6 +5,7 @@ use {
 
 use core::future::{poll_fn, Future};
 use core::task::{Poll, Context};
+use core::ops::ControlFlow;
 
 use embassy_sync::waitqueue::WakerRegistration;
 use embassy_sync::blocking_mutex::raw::{NoopRawMutex, RawMutex};
@@ -27,6 +28,7 @@ pub type SunsetMutex<T> = Mutex<SunsetRawMutex, T>;
 
 pub(crate) struct Inner<'a> {
     runner: Runner<'a>,
+    exit: bool,
 
     chan_read_wakers: [WakerRegistration; MAX_CHANNELS],
 
@@ -50,6 +52,7 @@ impl<'a> EmbassySunset<'a> {
     pub fn new(runner: Runner<'a>) -> Self {
         let inner = Inner {
             runner,
+            exit: false,
             chan_read_wakers: Default::default(),
             chan_write_wakers: Default::default(),
             chan_ext_wakers: Default::default(),
@@ -107,8 +110,11 @@ impl<'a> EmbassySunset<'a> {
 
         let prog = async {
             loop {
-                self.progress(b).await?
+                if self.progress(b).await?.is_break() {
+                    break
+                }
             }
+            Ok(())
         };
 
         // TODO: we might want to let `prog` run until buffers are drained
@@ -123,6 +129,12 @@ impl<'a> EmbassySunset<'a> {
 
     fn wake_progress(&self) {
         self.progress_notify.signal(())
+    }
+
+    pub async fn exit(&self) {
+        let mut inner = self.inner.lock().await;
+        inner.exit = true;
+        self.wake_progress()
     }
 
     fn wake_channels(&self, inner: &mut Inner) -> Result<()> {
@@ -165,9 +177,10 @@ impl<'a> EmbassySunset<'a> {
         Ok(())
     }
 
+    /// Returns ControlFlow::Break on session exit.
     pub async fn progress<B: ?Sized, M: RawMutex>(&self,
         b: &Mutex<M, B>)
-        -> Result<()>
+        -> Result<ControlFlow<()>>
         where
             for<'f> Behaviour<'f>: From<&'f mut B>
         {
@@ -177,6 +190,10 @@ impl<'a> EmbassySunset<'a> {
         {
             let mut inner = self.inner.lock().await;
             {
+                if inner.exit {
+                    return Ok(ControlFlow::Break(()))
+                }
+
                 {
                     trace!("embassy progress inner");
                     let mut b = b.lock().await;
@@ -200,7 +217,7 @@ impl<'a> EmbassySunset<'a> {
             self.progress_notify.wait().await;
         }
 
-        Ok(())
+        Ok(ControlFlow::Continue(()))
     }
 
     pub(crate) async fn with_runner<F, R>(&self, f: F) -> R

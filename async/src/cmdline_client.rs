@@ -181,6 +181,7 @@ impl<'a> CmdlineRunner<'a> {
                 e = chanio => {
                     trace!("chanio finished: {e:?}");
                     if e.is_ok() {
+                        cli.exit().await;
                         break;
                     }
                     e
