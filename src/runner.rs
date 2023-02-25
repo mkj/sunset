@@ -91,10 +91,15 @@ impl<'a> Runner<'a> {
     /// This method is async but will not await unless the `Behaviour` implementation
     /// does so. Note that some computationally intensive operations may be performed
     /// during key exchange.
-    pub async fn progress(&mut self, behaviour: &mut Behaviour<'_>) -> Result<()> {
+    ///
+    /// Returns Ok(true) if an input packet was handled, Ok(false) if no packet was ready
+    /// (Can also return various errors)
+    pub async fn progress(&mut self, behaviour: &mut Behaviour<'_>) -> Result<bool> {
+        let mut progressed = false;
         let mut s = self.traf_out.sender(&mut self.keys);
         // Handle incoming packets
         if let Some((payload, seq)) = self.traf_in.payload() {
+            progressed = true;
             let d = self.conn.handle_payload(payload, seq, &mut s, behaviour).await?;
 
             if let Some(data_in) = d.data_in {
@@ -111,7 +116,7 @@ impl<'a> Runner<'a> {
         self.conn.progress(&mut s, behaviour).await?;
         self.wake();
 
-        Ok(())
+        Ok(progressed)
     }
 
     pub fn input(&mut self, buf: &[u8]) -> Result<usize, Error> {

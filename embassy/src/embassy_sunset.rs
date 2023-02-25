@@ -171,6 +171,7 @@ impl<'a> EmbassySunset<'a> {
         where
             for<'f> Behaviour<'f>: From<&'f mut B>
         {
+            let mut progressed = false;
 
             trace!("embassy progress");
         {
@@ -182,7 +183,7 @@ impl<'a> EmbassySunset<'a> {
                     trace!("embassy progress behaviour lock");
                     let b: &mut B = &mut b;
                     let mut b: Behaviour = b.into();
-                    inner.runner.progress(&mut b).await?;
+                    progressed = inner.runner.progress(&mut b).await?;
                     trace!("embassy progress runner done");
                     // b is dropped, allowing other users
                 }
@@ -193,9 +194,11 @@ impl<'a> EmbassySunset<'a> {
             // inner dropped
         }
 
-        // idle until input is received
-        // TODO do we also want to wake in other situations?
-        self.progress_notify.wait().await;
+        if !progressed {
+            // Idle until input is received
+            // TODO do we also want to wake in other situations?
+            self.progress_notify.wait().await;
+        }
 
         Ok(())
     }
