@@ -77,15 +77,17 @@ impl<'a> CmdlineRunner<'a> {
 
     async fn chan_run(io: ChanInOut<'a>, io_err: Option<ChanIn<'a>>) -> Result<()> {
         trace!("chan_run top");
-        // in
-        let fi = async {
+        // out
+        let fo = async {
             let mut io = io.clone();
-            let mut so = crate::stdout().map_err(|_| Error::msg("opening stdout failed"))?;
+            let mut so = crate::stdout().map_err(|e| {
+                error!("open stdout: {e:?}");
+                Error::msg("opening stdout failed")
+            })?;
             loop {
                 // TODO buffers
                 let mut buf = [0u8; 1000];
                 let l = io.read(&mut buf).await?;
-                error!("in l {l:?}");
                 if l == 0 {
                     break;
                 }
@@ -99,13 +101,14 @@ impl<'a> CmdlineRunner<'a> {
         let fe = async {
             // if io_err is None we complete immediately
             if let Some(mut errin) = io_err {
-                let mut eo = crate::stderr_out().map_err(|_| Error::msg("opening stderr failed"))?;
+                let mut eo = crate::stderr_out().map_err(|e| {
+                    Error::msg("opening stderr failed")
+                })?;
                 loop {
                     // TODO buffers
                     let mut buf = [0u8; 1000];
                     let l = errin.read(&mut buf).await?;
                     if l == 0 {
-                        error!("err eof");
                         break;
                     }
                     eo.write(&buf[..l]).await.map_err(|_| Error::ChannelEOF)?;
@@ -117,8 +120,8 @@ impl<'a> CmdlineRunner<'a> {
             }
         };
 
-        // out
-        let fo = async {
+        // in
+        let fi = async {
             let mut io = io.clone();
             let mut si = crate::stdin().map_err(|_| Error::msg("opening stdin failed"))?;
             loop {
@@ -132,23 +135,22 @@ impl<'a> CmdlineRunner<'a> {
 
 
         // output needs to complete when the channel is closed
-        let fo = embassy_futures::select::select(fo, io.until_closed());
+        let fi = embassy_futures::select::select(fi, io.until_closed());
 
         let fo = fo.map(|x| {
-            error!("fo done");
+            error!("fo done {x:?}");
             x
         });
         let fi = fi.map(|x| {
-            error!("fi done");
+            error!("fi done {x:?}");
             x
         });
         let fe = fe.map(|x| {
-            error!("fe done");
+            error!("fe done {x:?}");
             x
         });
 
         embassy_futures::join::join3(fe, fi, fo).await;
-        error!("all channel finished");
         // TODO handle errors from the join?
         Ok(())
     }
