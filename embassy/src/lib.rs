@@ -1,6 +1,8 @@
 #![no_std]
 #![feature(async_fn_in_trait)]
 
+#![forbid(unsafe_code)]
+
 mod server;
 mod client;
 mod embassy_sunset;

@@ -2,8 +2,6 @@
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
 
-use snafu::{prelude::*, Whatever};
-
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf, Interest};
 use tokio::io::unix::AsyncFd;
 
@@ -158,7 +156,8 @@ impl<F: Write+Unpin> AsyncWrite for OutFd<F> {
         self: Pin<&mut Self>,
         _cx: &mut Context<'_>,
     ) -> Poll<std::io::Result<()>> {
-        todo!("shutdown");
+        warn!("shutdown on fd not implemented");
+        Poll::Ready(Ok(()))
         // nix::sys::socket::shutdown(*self.f.get_ref(), nix::sys::socket::Shutdown::Write)?;
         // Poll::Ready(Ok(()))
     }

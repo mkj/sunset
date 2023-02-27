@@ -17,13 +17,13 @@ use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::signal::unix::{signal, SignalKind};
 
-use pty::win_size;
 
 use futures::{select_biased, future::Fuse};
 use futures::FutureExt;
 
 use crate::*;
 use crate::{raw_pty, RawPtyGuard};
+use crate::pty::win_size;
 
 #[derive(Debug)]
 enum CmdlineState<'a> {
@@ -178,6 +178,7 @@ impl<'a> CmdlineRunner<'a> {
             if let Some(w) = winch_signal.as_mut() {
                 winch_fut.set(w.recv().fuse());
             }
+
             select_biased! {
                 msg = self.notify.recv().fuse() => {
                     match msg {
@@ -202,6 +203,7 @@ impl<'a> CmdlineRunner<'a> {
                     cli.exit().await;
                     break;
                 }
+
                 _ = winch_fut => {
                     self.window_change_signal().await;
                     Ok::<_, sunset::Error>(())
