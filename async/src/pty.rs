@@ -3,8 +3,10 @@
 use log::{debug, error, info, log, trace, warn};
 
 use std::io::Error as IoError;
+use std::os::fd::AsRawFd;
 
-use libc::{ioctl, winsize, termios, tcgetattr, tcsetattr };
+use libc::{ioctl, winsize};
+use nix::sys::termios::Termios;
 
 use sunset::{Behaviour, Runner, Result, Pty};
 use sunset::config::*;
@@ -13,6 +15,7 @@ use sunset::packets::WinChange;
 /// Returns the size of the current terminal
 pub fn win_size() -> Result<WinChange, IoError> {
     let mut ws = winsize { ws_row: 0, ws_col: 0, ws_xpixel: 0, ws_ypixel: 0 };
+    // OK unsafe: TIOCGWINSZ returns a winsize
     let r = unsafe { ioctl(libc::STDIN_FILENO, libc::TIOCGWINSZ, &mut ws) };
     if r != 0 {
         return Err(IoError::last_os_error())
@@ -58,55 +61,57 @@ pub fn raw_pty() -> Result<RawPtyGuard, IoError> {
 }
 
 pub struct RawPtyGuard {
-    saved: termios,
+    saved: Termios,
 }
 
 impl RawPtyGuard {
     fn new() -> Result<Self, IoError> {
-        let mut saved: termios = unsafe { core::mem::zeroed() };
-        let r = unsafe { tcgetattr(libc::STDIN_FILENO, &mut saved) };
-        if r != 0 {
-            return Err(IoError::last_os_error())
-        }
-
-        Self::set_raw(&saved)?;
+        let saved = Self::set_raw()?;
 
         Ok(Self {
             saved,
         })
     }
 
-    fn set_raw(current: &termios) -> Result<(), IoError> {
-        use libc::*;
+    fn set_raw() -> nix::Result<Termios> {
+        use nix::sys::termios::*;
+
+        let fd = std::io::stdin().as_raw_fd();
+
+        let current = tcgetattr(fd)?;
         let mut raw = current.clone();
 
-        raw.c_iflag |= IGNPAR;
+        raw.input_flags.insert(InputFlags::IGNPAR);
         // We could also set IUCLC but it isn't in posix
-        raw.c_iflag &= !(ISTRIP | INLCR | IGNCR | ICRNL | IXON | IXANY | IXOFF);
-        raw.c_lflag &= !(ISIG | ICANON | ECHO | ECHOE | ECHOK | ECHONL);
-        raw.c_oflag &= !OPOST;
+        raw.input_flags.remove(
+            InputFlags::ISTRIP
+            | InputFlags::INLCR
+            | InputFlags::IGNCR
+            | InputFlags::ICRNL
+            | InputFlags::IXON
+            | InputFlags::IXANY
+            | InputFlags::IXOFF);
+        raw.local_flags.remove(
+            LocalFlags::ISIG
+            | LocalFlags::ICANON
+            | LocalFlags::ECHO
+            | LocalFlags::ECHOE
+            | LocalFlags::ECHOK
+            | LocalFlags::ECHONL);
+        raw.output_flags.remove(OutputFlags::OPOST);
 
-        let r = unsafe { tcsetattr(libc::STDIN_FILENO, TCSADRAIN, &raw) };
-        if r != 0 {
-            return Err(IoError::last_os_error())
-        }
-
-        info!("set_raw");
-
-        Ok(())
-
+        tcsetattr(fd, SetArg::TCSADRAIN, &raw)?;
+        Ok(current)
     }
 }
 
 impl Drop for RawPtyGuard {
     fn drop(&mut self) {
-
-        let r = unsafe { tcsetattr(libc::STDIN_FILENO, libc::TCSADRAIN, &self.saved) };
-        if r != 0 {
-            let e = IoError::last_os_error();
+        use nix::sys::termios::*;
+        let fd = std::io::stdin().as_raw_fd();
+        let r = tcsetattr(fd, SetArg::TCSADRAIN, &self.saved);
+        if let Err(e) = r {
             warn!("Failed restoring TTY: {e}");
-        } else {
-            info!("Restored TTY");
         }
     }
 }
