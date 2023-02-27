@@ -334,10 +334,16 @@ impl<'a> Runner<'a> {
         self.conn.channels.done(chan)
     }
 
-    pub fn term_window_change(&self, _chan: ChanNum, _wc: packets::WinChange) -> Result<()> {
-        todo!("term_window_change()");
-        // Needs to check that it is a channel with pty.
-        // self.conn.channels.term_window_change(chan, wc)
+    /// Send a terminal window size change report.
+    ///
+    /// Only call on a client session with a pty
+    pub fn term_window_change(&mut self, chan: ChanNum, winch: packets::WinChange) -> Result<()> {
+        if self.is_client() {
+            let mut s = self.traf_out.sender(&mut self.keys);
+            self.conn.channels.term_window_change(chan, winch, &mut s)
+        } else {
+            error::BadChannelData.fail()
+        }
     }
 
     // pub fn chan_pending(&self) -> bool {

@@ -193,6 +193,15 @@ impl Channels {
         self.get(num).map_or(false, |c| c.valid_send(dt))
     }
 
+    pub(crate) fn term_window_change(&self, num: ChanNum, winch: packets::WinChange,
+        s: &mut TrafSend) -> Result<()> {
+        let ch = self.get(num)?;
+        match ch.ty {
+            ChanType::Session => ch.request(ReqDetails::WinChange(winch), s),
+            _ => error::BadChannelData.fail(),
+        }
+    }
+
     fn dispatch_open(
         &mut self,
         p: &ChannelOpen<'_>,
@@ -566,7 +575,7 @@ enum ChanState {
 }
 
 pub(crate) struct Channel {
-    pub ty: ChanType,
+    ty: ChanType,
     state: ChanState,
     sent_eof: bool,
     sent_close: bool,
@@ -621,7 +630,7 @@ impl Channel {
         Ok(self.send.as_ref().trap()?.num)
     }
 
-    fn request(&mut self, req: ReqDetails, s: &mut TrafSend) -> Result<()> {
+    fn request(&self, req: ReqDetails, s: &mut TrafSend) -> Result<()> {
         let num = self.send_num()?;
         let r = Req { num, details: req };
         s.send(r.packet()?)
@@ -656,7 +665,7 @@ impl Channel {
                 false
             })
         } else {
-            error!("TODO: handle requests as a client for exit");
+            warn!("TODO: handle requests as a client for exit");
             false
         };
 

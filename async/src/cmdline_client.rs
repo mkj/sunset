@@ -15,6 +15,9 @@ use embedded_io::asynch::{Read as _, Write as _};
 
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
+use tokio::signal::unix::{signal, SignalKind};
+
+use pty::win_size;
 
 use futures::{select_biased, future::Fuse};
 use futures::FutureExt;
@@ -161,7 +164,20 @@ impl<'a> CmdlineRunner<'a> {
         let mut chanio = Fuse::terminated();
         pin_mut!(chanio);
 
+        let mut winch_signal = self.want_pty
+            .then(|| signal(SignalKind::window_change()))
+            .transpose()
+            .unwrap_or_else(|_| {
+                warn!("Couldn't watch for window change signals");
+                None
+            });
+
         loop {
+            let mut winch_fut = Fuse::terminated();
+            pin_mut!(winch_fut);
+            if let Some(w) = winch_signal.as_mut() {
+                winch_fut.set(w.recv().fuse());
+            }
             select_biased! {
                 msg = self.notify.recv().fuse() => {
                     match msg {
@@ -180,13 +196,15 @@ impl<'a> CmdlineRunner<'a> {
                     }
                     Ok::<_, sunset::Error>(())
                 },
+
                 e = chanio => {
                     trace!("chanio finished: {e:?}");
-                    if e.is_ok() {
-                        cli.exit().await;
-                        break;
-                    }
-                    e
+                    cli.exit().await;
+                    break;
+                }
+                _ = winch_fut => {
+                    self.window_change_signal().await;
+                    Ok::<_, sunset::Error>(())
                 }
             }?
         }
@@ -197,14 +215,12 @@ impl<'a> CmdlineRunner<'a> {
     async fn open_session(&mut self, cli: &'a SSHClient<'a>) -> Result<()> {
         debug_assert!(matches!(self.state, CmdlineState::Authed));
 
-        // TODO expect
-        if self.want_pty {
-            // self.pty_guard = Some(raw_pty().expect("raw pty"));
-        }
-
         let cmd = self.cmd.as_ref().map(|s| s.as_str());
         let (io, extin) = if self.want_pty {
-            let io = cli.open_session_pty(cmd).await?;
+            // TODO expect
+            let pty = pty::current_pty().expect("pty fetch");
+            self.pty_guard = Some(raw_pty().expect("raw pty"));
+            let io = cli.open_session_pty(cmd, pty).await?;
             (io, None)
         } else {
             let (io, extin) = cli.open_session_nopty(cmd).await?;
@@ -212,6 +228,25 @@ impl<'a> CmdlineRunner<'a> {
         };
         self.state = CmdlineState::Ready { io, extin };
         Ok(())
+    }
+
+    async fn window_change_signal(&mut self) {
+        let io = match &self.state {
+            CmdlineState::Ready { io, ..} => io,
+            _ => return,
+        };
+
+        let winch = match win_size() {
+            Ok(w) => w,
+            Err(e) => {
+                debug!("Error getting window size: {e:?}");
+                return;
+            }
+        };
+
+        if let Err(e) = io.term_window_change(winch).await {
+            debug!("window change failed: {e:?}");
+        }
     }
 }
 

@@ -46,18 +46,14 @@ impl<'a> SSHClient<'a> {
         Ok((cstd, cerr))
     }
 
-    pub async fn open_session_pty(&self, exec: Option<&str>)
+    pub async fn open_session_pty(&'a self, exec: Option<&str>, pty: Pty)
     -> Result<ChanInOut<'a>> {
 
-        // XXX error handling
-        todo!("open_session_pty");
-        // let pty = pty::current_pty().expect("pty fetch");
+        let chan = self.sunset.with_runner(|runner| {
+            runner.open_client_session(exec, Some(pty))
+        }).await?;
 
-        // let chan = self.sunset.with_runner(|runner| {
-        //     runner.open_client_session(exec, Some(pty))
-        // }).await?;
-
-        // let cstd = ChanInOut::new(chan, &self.sunset);
-        // Ok(cstd)
+        let cstd = ChanInOut::new(chan, ChanData::Normal, &self.sunset);
+        Ok(cstd)
     }
 }

@@ -13,31 +13,6 @@ use crate::*;
 use embassy_sunset::EmbassySunset;
 use sunset::{Result, ChanData, ChanNum};
 
-pub struct Channel<'a> {
-    chan: ChanNum,
-    sunset: &'a EmbassySunset<'a>,
-}
-
-impl<'a> Channel<'a> {
-    /// Should be called by a SSH client when the local terminal changes size
-    /// (`SIGWINCH` is received). Only applicable to client session
-    /// channels with a pty.
-    pub async fn term_window_change(&self) {
-        todo!("term_window_change");
-        // let wc = match pty::win_size() {
-        //     Ok(wc) => wc,
-        //     Err(e) => {
-        //         warn!("Failed getting window size: {e}");
-        //         return;
-        //     }
-        // };
-
-        // // TODO: also need to wait for spare output buffer
-        // self.sunset.inner.lock().await
-        // .runner.term_window_change(self.chan, wc);
-    }
-}
-
 #[derive(Clone)]
 pub struct ChanInOut<'a> {
     chan: ChanNum,
@@ -96,6 +71,11 @@ impl<'a> ChanInOut<'a> {
 
     pub async fn until_closed(&self) -> Result<()> {
         self.sunset.until_channel_closed(self.chan).await
+    }
+
+    pub async fn term_window_change(&self, winch: sunset::packets::WinChange) -> Result<()> {
+        error!("term_winch {:?}", winch);
+        self.sunset.with_runner(|runner| runner.term_window_change(self.chan, winch)).await
     }
 }
 

@@ -54,6 +54,10 @@ struct Args {
     /// port
     port: u16,
 
+    #[argh(switch, short='T')]
+    /// force no pty
+    force_no_pty: bool,
+
     #[argh(positional)]
     /// command
     cmd: Vec<String>,
@@ -109,11 +113,11 @@ fn setup_log(args: &Args) -> Result<()> {
     let mut conf = simplelog::ConfigBuilder::new();
     let conf = conf
     .add_filter_allow_str("sunset")
-    .add_filter_allow_str("con1")
+    .add_filter_allow_str("sshclient")
     // not debugging these bits of the stack at present
-    // .add_filter_ignore_str("sunset::traffic")
-    // .add_filter_ignore_str("sunset::runner")
-    // .add_filter_ignore_str("sunset_async::async_sunset")
+    .add_filter_ignore_str("sunset::traffic")
+    .add_filter_ignore_str("sunset::runner")
+    .add_filter_ignore_str("sunset_embassy")
     .set_time_offset_to_local().expect("Couldn't get local timezone")
     .build();
 
@@ -147,6 +151,7 @@ fn read_key(p: &str) -> Result<SignKey> {
 async fn run(args: Args) -> Result<()> {
 
     trace!("tracing main");
+    debug!("verbose main");
 
     let (cmd, wantpty) = if args.cmd.is_empty() {
         (None, true)
@@ -154,8 +159,7 @@ async fn run(args: Args) -> Result<()> {
         (Some(args.cmd.join(" ")), false)
     };
 
-    warn!("TODO: pty support");
-    let wantpty = false;
+    let wantpty = wantpty && !args.force_no_pty;
 
     // Connect to a peer
     let mut stream = TcpStream::connect((args.host.as_str(), args.port)).await?;

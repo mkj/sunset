@@ -305,7 +305,6 @@ impl<'a> EmbassySunset<'a> {
                     Poll::Pending
                 }
                 Err(Error::ChannelEOF) => {
-                    error!("got eof dt {dt:?}");
                     Poll::Ready(Ok(0))
                 }
                 r => Poll::Ready(r),
