@@ -1,4 +1,4 @@
-//! Named SSH algorithms, methods and extensions.
+//! Named SSH algorithms, methods, and extensions.
 //!
 //! Some identifiers are also listed directly in `packet.rs` derive attributes.
 //! Packet numbers are listed in `packets.rs`.

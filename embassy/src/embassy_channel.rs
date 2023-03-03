@@ -99,16 +99,16 @@ impl<'a> ChanOut<'a> {
     }
 }
 
-impl<'a> Io for ChanInOut<'a> {
+impl Io for ChanInOut<'_> {
     // TODO or something else?
     type Error = sunset::Error;
 }
 
-impl<'a> Io for ChanIn<'a> {
+impl Io for ChanIn<'_> {
     type Error = sunset::Error;
 }
 
-impl<'a> Io for ChanOut<'a> {
+impl Io for ChanOut<'_> {
     type Error = sunset::Error;
 }
 

@@ -3,17 +3,15 @@ use {
     // crate::error::Error,
     log::{debug, error, info, log, trace, warn},
 };
-use anyhow::{Context, Result, Error, bail, anyhow};
+use anyhow::{Context, Result, anyhow};
 use embassy_sync::{mutex::Mutex, blocking_mutex::raw::NoopRawMutex};
-use pretty_hex::PrettyHex;
 
 use tokio::net::TcpStream;
 use tokio::task::spawn_local;
 
-use std::{net::Ipv6Addr, io::Read};
+use std::io::Read;
 
 use sunset::*;
-use sunset_async::{raw_pty};
 use sunset_embassy::SSHClient;
 
 use embedded_io::adapters::FromTokio;
@@ -81,7 +79,7 @@ fn parse_args() -> Result<Args> {
     Ok(args)
 }
 
-fn main() -> Result<()> {
+fn try_main() -> Result<()> {
     let args = parse_args()?;
 
     // time crate won't read TZ if we're threaded, in case someone
@@ -103,10 +101,12 @@ fn main() -> Result<()> {
             let local = tokio::task::LocalSet::new();
             local.run_until(run(args)).await
         })
-        .map_err(|e| {
-            error!("Exit with error: {e:?}");
-            e
-        })
+}
+
+fn main() {
+    if let Err(e) = try_main() {
+        error!("Exit with error: {e}");
+    }
 }
 
 fn setup_log(args: &Args) -> Result<()> {
@@ -161,41 +161,58 @@ async fn run(args: Args) -> Result<()> {
 
     let wantpty = wantpty && !args.force_no_pty;
 
-    // Connect to a peer
-    let mut stream = TcpStream::connect((args.host.as_str(), args.port)).await?;
-
 
     let ssh_task = spawn_local(async move {
-        let mut rxbuf = Zeroizing::new(vec![0; 3000]);
-        let mut txbuf = Zeroizing::new(vec![0; 3000]);
-
         let mut app = sunset_async::CmdlineClient::new(
             args.username.as_ref().unwrap(),
             cmd,
             wantpty,
             );
-        let cli = SSHClient::new(&mut rxbuf, &mut txbuf)?;
         for i in &args.identityfile {
             app.add_authkey(read_key(&i).with_context(|| format!("loading key {i}"))?);
         }
-        let (hooks, mut cmd) = app.split();
 
-        let hooks = Mutex::<NoopRawMutex, _>::new(hooks);
-        let hooks = &hooks as &Mutex::<NoopRawMutex, dyn CliBehaviour>;
-
+        // Connect to a peer
+        let mut stream = TcpStream::connect((args.host.as_str(), args.port)).await?;
         let (rsock, wsock) = stream.split();
         let mut rsock = FromTokio::new(rsock);
         let mut wsock = FromTokio::new(wsock);
 
-        let ssh = cli.run(&mut rsock, &mut wsock, hooks);
+        let mut rxbuf = Zeroizing::new(vec![0; 3000]);
+        let mut txbuf = Zeroizing::new(vec![0; 3000]);
+        let cli = SSHClient::new(&mut rxbuf, &mut txbuf)?;
+
+        let (hooks, mut cmd) = app.split();
+
+        let hooks = Mutex::<NoopRawMutex, _>::new(hooks);
+        let bhooks = &hooks as &Mutex::<NoopRawMutex, dyn CliBehaviour>;
+
+        let ssh = async {
+            let r = cli.run(&mut rsock, &mut wsock, bhooks).await;
+            trace!("ssh run finished");
+            hooks.lock().await.exited().await;
+            r
+        };
+
         // Circular reference here, cli -> cmd and cmd->cli
-        let sess = cmd.run(&cli);
-        futures::future::join(ssh, sess).await;
+        let session = cmd.run(&cli);
+        let session = async {
+            let r = session.await;
+            trace!("client session run finished");
+            cli.exit().await;
+            r
+        };
+
+        let (res_ssh, res_session) = futures::future::join(ssh, session).await;
+        debug!("res_ssh {res_ssh:?}");
+        debug!("res_session {res_session:?}");
+        res_ssh?;
+        res_session?;
         Ok::<_, anyhow::Error>(())
     });
 
     match ssh_task.await {
         Err(_) => Err(anyhow!("Sunset task panicked")),
-        Ok(r) => r.context("Exited"),
+        Ok(r) => r,
     }
 }

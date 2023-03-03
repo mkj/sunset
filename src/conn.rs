@@ -24,7 +24,7 @@ use config::MAX_CHANNELS;
 use kex::{SessId, AlgoConfig};
 
 /// The core state of a SSH instance.
-pub struct Conn {
+pub(crate) struct Conn {
     state: ConnState,
 
     /// Next kex to run
@@ -138,6 +138,8 @@ impl Conn {
             }
             ConnState::ReceiveIdent => {
                 if self.remote_version.version().is_some() {
+                    trace!("got ident, state {:?} -> {:?}",
+                        self.state, ConnState::PreKex);
                     self.state = ConnState::PreKex;
                 }
             }
@@ -243,7 +245,7 @@ impl Conn {
         match packet {
             Packet::KexInit(_) => {
                 if matches!(self.state, ConnState::InKex { .. }) {
-                    return Err(Error::PacketWrong);
+                    return error::PacketWrong.fail();
                 }
                 self.state = ConnState::InKex {
                     done_auth: matches!(self.state, ConnState::Authed),

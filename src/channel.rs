@@ -365,10 +365,10 @@ impl Channels {
             }
             Packet::ChannelClose(p) => {
                 let ch = self.get_mut(ChanNum(p.num))?;
-                ch.handle_close(s, b)?;
+                ch.handle_close(s)?;
             }
             Packet::ChannelRequest(p) => {
-                match self.get(ChanNum(p.num)) {
+                match self.get_mut(ChanNum(p.num)) {
                     Ok(ch) => ch.dispatch_request(&p, s, b)?,
                     Err(_) => debug!("Ignoring request to unknown channel: {p:#?}"),
                 }
@@ -433,10 +433,9 @@ pub struct ModePair {
     pub arg: u32,
 }
 
-// TODO: name confused with packets::Pty
 #[derive(Debug)]
 pub struct Pty {
-    // or could we put String into packets::Pty and serialize modes there...
+    // or could we put String into packets::PtyReq and serialize modes there...
     pub term: String<MAX_TERM>,
     pub cols: u32,
     pub rows: u32,
@@ -446,9 +445,9 @@ pub struct Pty {
     pub modes: Vec<ModePair, { termmodes::NUM_MODES }>,
 }
 
-impl TryFrom<&packets::Pty<'_>> for Pty {
+impl TryFrom<&packets::PtyReq<'_>> for Pty {
     type Error = Error;
-    fn try_from(p: &packets::Pty) -> Result<Self, Self::Error> {
+    fn try_from(p: &packets::PtyReq) -> Result<Self, Self::Error> {
         error!("TODO implement pty modes");
         let term = p.term.as_ascii()?.try_into().map_err(|_| Error::BadString)?;
         Ok(Pty {
@@ -500,7 +499,7 @@ impl Req {
             ReqDetails::Shell => ChannelReqType::Shell,
             ReqDetails::Pty(pty) => {
                 error!("TODO implement pty modes");
-                ChannelReqType::Pty(packets::Pty {
+                ChannelReqType::Pty(packets::PtyReq {
                     term: TextString(pty.term.as_bytes()),
                     cols: pty.cols,
                     rows: pty.rows,
@@ -653,21 +652,29 @@ impl Channel {
     }
 
     fn dispatch_request(
-        &self,
+        &mut self,
         p: &packets::ChannelRequest,
         s: &mut TrafSend,
         b: &mut Behaviour<'_>,
     ) -> Result<()> {
         // only servers accept requests
-        let success = if let Ok(b) = b.server() {
-            self.dispatch_server_request(p, s, b).unwrap_or_else(|e| {
-                debug!("Error in channel req handling for {p:?}, {e:?}");
-                false
-            })
-        } else {
-            warn!("TODO: handle requests as a client for exit");
-            false
+        let r = match b {
+            Behaviour::Server(ref mut b) => {
+                // OK unwrap: is server
+                // let b = b.as_server().unwrap();
+                self.dispatch_server_request(p, s, *b)
+            }
+            Behaviour::Client(ref mut b) => {
+                // OK unwrap: is client
+                // let b = b.as_client().unwrap();
+                self.dispatch_client_request(p, s, *b)
+            }
         };
+
+        let success = r.unwrap_or_else(|e| {
+            debug!("Error in channel req handling for {p:?}, {e:?}");
+            false
+        });
 
         if p.want_reply {
             let num = self.send_num()?;
@@ -713,6 +720,40 @@ impl Channel {
         }
     }
 
+    fn dispatch_client_request(
+        &mut self,
+        p: &packets::ChannelRequest,
+        s: &mut TrafSend,
+        b: &mut dyn CliBehaviour,
+    ) -> Result<bool> {
+        if !matches!(self.ty, ChanType::Session) {
+            return Ok(false);
+        }
+
+        match &p.req {
+            ChannelReqType::ExitStatus(st) => {
+                self.handle_close(s)?;
+                Ok(true)
+            }
+            ChannelReqType::ExitSignal(sig) => {
+                self.handle_close(s)?;
+                Ok(true)
+            }
+            _ => {
+                if let ChannelReqType::Unknown(u) = &p.req {
+                    warn!("Unknown channel req type \"{}\"", u)
+                } else {
+                    // OK unwrap: tested for Unknown
+                    warn!(
+                        "Unhandled channel req \"{}\"",
+                        p.req.variant_name().unwrap()
+                    )
+                };
+                Ok(false)
+            }
+        }
+    }
+
     fn handle_eof(&mut self, s: &mut TrafSend, b: &mut Behaviour<'_>) -> Result<()> {
         //TODO: check existing state?
         if !self.sent_eof {
@@ -725,7 +766,7 @@ impl Channel {
         Ok(())
     }
 
-    fn handle_close(&mut self, s: &mut TrafSend, b: &mut Behaviour<'_>) -> Result<()> {
+    fn handle_close(&mut self, s: &mut TrafSend) -> Result<()> {
         //TODO: check existing state?
         if !self.sent_close {
             s.send(packets::ChannelClose { num: self.send_num()? })?;

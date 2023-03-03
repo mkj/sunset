@@ -22,7 +22,7 @@ impl ServAuth {
 
     /// Returns `true` if auth succeeds
     pub fn request(
-        &self,
+        &mut self,
         mut p: packets::UserauthRequest,
         sess_id: &SessId,
         s: &mut TrafSend,
@@ -82,6 +82,7 @@ impl ServAuth {
         // failure sends a list of available methods
         match inner()? {
             AuthResp::Success => {
+                self.authed = true;
                 s.send(packets::UserauthSuccess {})?;
                 Ok(true)
             }

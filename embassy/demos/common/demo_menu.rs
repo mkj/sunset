@@ -1,6 +1,9 @@
 use sunset_embassy::SSHServer;
 use sunset::{Result, ChanData, ChanNum};
 
+use embedded_io::asynch;
+use embedded_io::asynch::Write as _;
+
 use menu::*;
 use core::fmt::Write;
 
@@ -10,11 +13,13 @@ pub struct Output {
 }
 
 impl Output {
-    pub async fn flush(&mut self, serv: &SSHServer<'_>, chan: ChanNum) -> Result<()> {
+    pub async fn flush<W>(&mut self, w: &mut W) -> Result<()>
+    where W: asynch::Write + embedded_io::Io<Error = sunset::Error>
+    {
 
         let mut b = self.s.as_str().as_bytes();
         while b.len() > 0 {
-            let l = serv.write_channel(chan, ChanData::Normal, b).await?;
+            let l = w.write(b).await?;
             b = &b[l..];
         }
         self.s.clear();

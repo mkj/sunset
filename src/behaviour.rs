@@ -90,7 +90,6 @@ impl<'a> Behaviour<'a> {
         !self.is_client()
     }
 
-
     pub(crate) fn client(&mut self) -> Result<&mut dyn CliBehaviour> {
         match self {
             Self::Client(c) => Ok(*c),

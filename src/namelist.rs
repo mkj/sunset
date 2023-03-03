@@ -23,12 +23,14 @@ static EMPTY_LOCALNAMES: LocalNames = LocalNames::new();
 
 /// A comma separated string, can be decoded or encoded.
 /// Used for remote name lists.
+///
 /// Wire format is described in [RFC4251](https://tools.ietf.org/html/rfc4251) SSH Architecture "name-list"
 #[derive(SSHEncode, SSHDecode, Debug)]
 pub struct StringNames<'a>(pub &'a AsciiStr);
 
 /// A list of names, can only be encoded. Used for local name lists, comes
 /// from local fixed lists
+///
 /// Deliberately `'static` since it should only come from hardcoded local strings
 /// `SSH_NAME_*` in [`crate::sshnames`]. We don't validate string contents.
 #[derive(Debug)]
@@ -99,6 +101,7 @@ impl<'a> From<&'a LocalNames> for NameList<'a> {
 
 impl NameList<'_> {
     /// Returns the first name in this namelist that matches, based on SSH priority.
+    ///
     /// The SSH client's list (which could be either remote or ours) is used
     /// to determine priority.
     /// `self` is a remote list, `our_options` are our own allowed options in preference

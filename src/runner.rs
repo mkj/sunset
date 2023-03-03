@@ -28,9 +28,10 @@ pub struct Runner<'a> {
     keys: KeyState,
 
     /// Waker when output is ready
-    pub output_waker: Option<Waker>,
+    output_waker: Option<Waker>,
     /// Waker when ready to consume input.
-    pub input_waker: Option<Waker>,
+    input_waker: Option<Waker>,
+
     closed: bool,
 }
 
@@ -350,7 +351,7 @@ impl<'a> Runner<'a> {
     /// Must be called when an application has finished with a channel.
     ///
     /// Channel numbers will not be re-used without calling this, so
-    /// failing to call this can result in running out of channels.
+    /// failing to call this may result in running out of channels.
     ///
     /// Any further calls using the same channel number may result
     /// in data from a different channel re-using the same number.
@@ -369,14 +370,6 @@ impl<'a> Runner<'a> {
             error::BadChannelData.fail()
         }
     }
-
-    // pub fn chan_pending(&self) -> bool {
-    //     self.conn.chan_pending()
-    // }
-
-    // pub fn set_chan_waker(&mut self, waker: Waker) {
-    //     self.chan_waker = Some(waker);
-    // }
 
     fn wake(&mut self) {
         if self.ready_input() {

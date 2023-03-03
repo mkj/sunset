@@ -21,7 +21,7 @@ embassy-futures = { version = "0.1.0" }
 embedded-io = { version = "0.4", features = ["async", "tokio"] }
 
 # "net" for AsyncFd on unix
-tokio = { version = "1.25", features = ["net"] }
+tokio = { version = "1.25", features = ["net", "io-util", "signal"] }
 futures = "0.3"
 
 libc = "0.2"

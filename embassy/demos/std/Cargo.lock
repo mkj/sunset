@@ -375,7 +375,7 @@ dependencies = [
  "embassy-net-driver",
  "embassy-sync",
  "embassy-time",
- "embedded-io 0.4.0",
+ "embedded-io",
  "embedded-nal-async",
  "futures",
  "generic-array 0.14.6",
@@ -398,7 +398,7 @@ source = "git+https://github.com/embassy-rs/embassy?rev=e1eac15c429f88b1176109d6
 dependencies = [
  "cfg-if",
  "critical-section",
- "embedded-io 0.4.0",
+ "embedded-io",
  "futures-util",
  "heapless",
 ]
@@ -445,18 +445,12 @@ dependencies = [
 
 [[package]]
 name = "embedded-io"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "33dfba9e6c113f2fd8537c943780a7345945e66c86972e356b1152e19481bcf5"
-dependencies = [
- "defmt",
-]
-
-[[package]]
-name = "embedded-io"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ef1a6892d9eef45c8fa6b9e0086428a2cca8491aca8f787c534a3d6d0bcb3ced"
+dependencies = [
+ "defmt",
+]
 
 [[package]]
 name = "embedded-nal"
@@ -475,7 +469,7 @@ version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "27ce84f518ca912777ec143db235f4d615e3bf8d4e46d507d6ef12daf5b1df98"
 dependencies = [
- "embedded-io 0.4.0",
+ "embedded-io",
  "embedded-nal",
  "heapless",
  "no-std-net 0.6.0",
@@ -1095,7 +1089,7 @@ dependencies = [
  "cipher",
  "ctr",
  "digest",
- "embedded-io 0.4.0",
+ "embedded-io",
  "heapless",
  "hmac",
  "log",
@@ -1128,9 +1122,8 @@ dependencies = [
  "embassy-time",
  "embedded-hal 1.0.0-alpha.9",
  "embedded-hal-async",
- "embedded-io 0.3.1",
+ "embedded-io",
  "env_logger",
- "futures",
  "heapless",
  "libc",
  "log",
@@ -1148,7 +1141,7 @@ version = "0.2.0-alpha"
 dependencies = [
  "embassy-futures",
  "embassy-sync",
- "embedded-io 0.4.0",
+ "embedded-io",
  "log",
  "pin-utils",
  "sunset",

@@ -37,4 +37,12 @@ impl<'a> SSHServer<'a> {
     pub async fn write_channel(&self, ch: ChanNum, dt: ChanData, buf: &[u8]) -> Result<usize> {
         self.sunset.write_channel(ch, dt, buf).await
     }
+
+    pub fn stdio(&'a self, ch: ChanNum) -> ChanInOut<'a> {
+        ChanInOut::new(ch, ChanData::Normal, &self.sunset)
+    }
+
+    pub fn stderr(&'a self, ch: ChanNum) -> ChanOut<'a> {
+        ChanOut::new(ch, ChanData::Stderr, &self.sunset)
+    }
 }

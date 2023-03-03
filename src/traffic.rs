@@ -14,16 +14,19 @@ use crate::*;
 use crate::packets::Packet;
 use pretty_hex::PrettyHex;
 
+// TODO: if smoltcp exposed both ends of a CircularBuffer to recv()
+// we could perhaps just work directly in smoltcp's provided buffer?
+// Would need changes to ciphers with block boundaries
+
 pub(crate) struct TrafOut<'a> {
-    // TODO: if smoltcp exposed both ends of a CircularBuffer to recv()
-    // we could perhaps just work directly in smoltcp's provided buffer?
-    // Would need changes to ciphers with block boundaries
 
     // TODO: decompression will need another buffer
-    /// Accumulated input or output buffer.
-    /// Should be sized to fit the largest packet allowed for input, or
+
+    /// Accumulated output buffer.
+    ///
+    /// Should be sized to fit the largest
     /// sequence of packets to be sent at once (see [`conn::MAX_RESPONSES`]).
-    /// Contains ciphertext or cleartext, encrypted/decrypted in-place.
+    /// Contains ciphertext or cleartext, encrypted in-place.
     /// Writing may contain multiple SSH packets to write out, encrypted
     /// in-place as they are written to `buf`.
     buf: &'a mut [u8],
@@ -31,17 +34,12 @@ pub(crate) struct TrafOut<'a> {
 }
 
 pub(crate) struct TrafIn<'a> {
-    // TODO: if smoltcp exposed both ends of a CircularBuffer to recv()
-    // we could perhaps just work directly in smoltcp's provided buffer?
-    // Would need changes to ciphers with block boundaries
-
     // TODO: decompression will need another buffer
-    /// Accumulated input or output buffer.
-    /// Should be sized to fit the largest packet allowed for input, or
-    /// sequence of packets to be sent at once (see [`conn::MAX_RESPONSES`]).
-    /// Contains ciphertext or cleartext, encrypted/decrypted in-place.
-    /// Writing may contain multiple SSH packets to write out, encrypted
-    /// in-place as they are written to `buf`.
+
+    /// Accumulated input buffer.
+    ///
+    /// Should be sized to fit the largest packet allowed for input.
+    /// Contains ciphertext or cleartext, decrypted in-place.
     /// Only contains a single SSH packet at a time.
     buf: &'a mut [u8],
     state: RxState,
@@ -118,14 +116,11 @@ impl<'a> TrafIn<'a> {
         debug_assert!(self.ready_input());
         if remote_version.version().is_none() && matches!(self.state, RxState::Idle) {
             // Handle initial version string
-            let l;
-            l = remote_version.consume(buf)?;
-            inlen += l;
+            inlen += remote_version.consume(buf)?;
         }
         let buf = &buf[inlen..];
 
         inlen += self.fill_input(keys, buf)?;
-        trace!("after inlen {inlen} state {:?}", self.state);
         Ok(inlen)
     }
 
@@ -224,7 +219,6 @@ impl<'a> TrafIn<'a> {
 
     /// Returns `(channel, dt, length)`
     pub fn ready_channel_input(&self) -> Option<(ChanNum, ChanData, usize)> {
-        trace!("ready_channel_input state {:?}", self.state);
         match self.state {
             RxState::InChannelData { chan, dt, idx, len } => {
                 debug_assert!(len > idx);
@@ -408,6 +402,7 @@ impl<'a> TrafOut<'a> {
                 let wlen = (len - *idx).min(buf.len());
                 buf[..wlen].copy_from_slice(&self.buf[*idx..*idx + wlen]);
                 *idx += wlen;
+                trace!("output wrote {wlen}");
 
                 if *idx == len {
                     // all done, read the next packet

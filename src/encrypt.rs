@@ -338,7 +338,7 @@ impl Keys {
         }
 
         let (data, mac) = buf.split_at_mut(buf.len() - size_integ);
-        
+
         // roundtrip tests are exhaustive over short packet lengths
         debug_assert!(data.len() >= size_block);
 

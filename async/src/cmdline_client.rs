@@ -29,14 +29,13 @@ use crate::pty::win_size;
 enum CmdlineState<'a> {
     PreAuth,
     Authed,
-    // TODO split sending the channel open and the request strings
-    _ChanOpen,
-    _ChanReq,
     Ready { io: ChanInOut<'a>, extin: Option<ChanIn<'a>> },
 }
 
 enum Msg {
     Authed,
+    /// The SSH session exited
+    Exited,
 }
 
 pub struct CmdlineClient {
@@ -94,7 +93,7 @@ impl<'a> CmdlineRunner<'a> {
                 if l == 0 {
                     break;
                 }
-                so.write(&buf[..l]).await.map_err(|_| Error::ChannelEOF)?;
+                so.write_all(&buf[..l]).await.map_err(|_| Error::ChannelEOF)?;
             }
             #[allow(unreachable_code)]
             Ok::<_, sunset::Error>(())
@@ -105,6 +104,7 @@ impl<'a> CmdlineRunner<'a> {
             // if io_err is None we complete immediately
             if let Some(mut errin) = io_err {
                 let mut eo = crate::stderr_out().map_err(|e| {
+                    error!("open stderr: {e:?}");
                     Error::msg("opening stderr failed")
                 })?;
                 loop {
@@ -114,7 +114,7 @@ impl<'a> CmdlineRunner<'a> {
                     if l == 0 {
                         break;
                     }
-                    eo.write(&buf[..l]).await.map_err(|_| Error::ChannelEOF)?;
+                    eo.write_all(&buf[..l]).await.map_err(|_| Error::ChannelEOF)?;
                 }
                 #[allow(unreachable_code)]
                 Ok::<_, sunset::Error>(())
@@ -131,8 +131,9 @@ impl<'a> CmdlineRunner<'a> {
                 // TODO buffers
                 let mut buf = [0u8; 1000];
                 let l = si.read(&mut buf).await.map_err(|_| Error::ChannelEOF)?;
-                io.write(&buf[..l]).await?;
+                io.write_all(&buf[..l]).await?;
             }
+            #[allow(unreachable_code)]
             Ok::<_, sunset::Error>(())
         };
 
@@ -140,20 +141,20 @@ impl<'a> CmdlineRunner<'a> {
         // output needs to complete when the channel is closed
         let fi = embassy_futures::select::select(fi, io.until_closed());
 
-        let fo = fo.map(|x| {
-            error!("fo done {x:?}");
-            x
-        });
-        let fi = fi.map(|x| {
-            error!("fi done {x:?}");
-            x
-        });
-        let fe = fe.map(|x| {
-            error!("fe done {x:?}");
-            x
-        });
+        // let fo = fo.map(|x| {
+        //     error!("fo done {x:?}");
+        //     x
+        // });
+        // let fi = fi.map(|x| {
+        //     error!("fi done {x:?}");
+        //     x
+        // });
+        // let fe = fe.map(|x| {
+        //     error!("fe done {x:?}");
+        //     x
+        // });
 
-        embassy_futures::join::join3(fe, fi, fo).await;
+        let r = embassy_futures::join::join3(fe, fi, fo).await;
         // TODO handle errors from the join?
         Ok(())
     }
@@ -161,7 +162,7 @@ impl<'a> CmdlineRunner<'a> {
     /// Runs the `CmdlineClient` session. Requests a shell or command, performs
     /// channel IO.
     pub async fn run(&mut self, cli: &'a SSHClient<'a>) -> Result<()> {
-        let mut chanio = Fuse::terminated();
+        let chanio = Fuse::terminated();
         pin_mut!(chanio);
 
         let mut winch_signal = self.want_pty
@@ -173,7 +174,7 @@ impl<'a> CmdlineRunner<'a> {
             });
 
         loop {
-            let mut winch_fut = Fuse::terminated();
+            let winch_fut = Fuse::terminated();
             pin_mut!(winch_fut);
             if let Some(w) = winch_signal.as_mut() {
                 winch_fut.set(w.recv().fuse());
@@ -194,6 +195,10 @@ impl<'a> CmdlineRunner<'a> {
                                 chanio.set(Self::chan_run(io.clone(), extin.clone()).fuse())
                             }
                         }
+                        Msg::Exited => {
+                            trace!("SSH exited, finishing cli loop");
+                            break;
+                        }
                     }
                     Ok::<_, sunset::Error>(())
                 },
@@ -201,6 +206,7 @@ impl<'a> CmdlineRunner<'a> {
                 e = chanio => {
                     trace!("chanio finished: {e:?}");
                     cli.exit().await;
+                    trace!("break");
                     break;
                 }
 
@@ -286,6 +292,13 @@ impl<'a> CmdlineHooks<'a> {
             username,
             notify,
         }
+    }
+
+    /// Notify the `CmdlineClient` that the main SSH session has exited.
+    ///
+    /// This will cause the `CmdlineRunner` to finish flushing output and terminate.
+    pub async fn exited(&mut self) {
+        self.notify.send(Msg::Exited).await
     }
 }
 

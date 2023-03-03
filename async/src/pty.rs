@@ -52,7 +52,9 @@ pub fn current_pty() -> Result<Pty, IoError> {
 
 }
 
-/// Puts stdin/stdout into raw mode. This assumes that stdin/stdout
+/// Puts stdin/stdout into raw mode.
+///
+/// This assumes that stdin/stdout
 /// share a common file descriptor, as is the case with a pty.
 /// The returned `RawPtyGuard` reverts to previous terminal settings
 /// when it is dropped.

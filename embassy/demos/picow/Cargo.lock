@@ -177,9 +177,9 @@ dependencies = [
 
 [[package]]
 name = "cortex-m-rt"
-version = "0.7.2"
+version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d6d3328b8b5534f0c90acd66b68950f2763b37e0173cac4d8b4937c4a80761f9"
+checksum = "ee84e813d593101b1723e13ec38b6ab6abbdbaaa4546553f5395ed274079ddb1"
 dependencies = [
  "cortex-m-rt-macros",
 ]
@@ -242,7 +242,7 @@ dependencies = [
 [[package]]
 name = "cyw43"
 version = "0.1.0"
-source = "git+https://github.com/embassy-rs/cyw43/#9900ac2c9a1e5c4ad2a30b2057f25cb19a27369b"
+source = "git+https://github.com/embassy-rs/cyw43/#e3492862e994b0c46b23b486cae2935c2c0e05a0"
 dependencies = [
  "atomic-polyfill 0.1.11",
  "cortex-m",
@@ -439,7 +439,7 @@ dependencies = [
  "embassy-net-driver",
  "embassy-sync",
  "embassy-time",
- "embedded-io 0.4.0",
+ "embedded-io",
  "embedded-nal-async",
  "futures",
  "generic-array 0.14.6",
@@ -488,7 +488,7 @@ dependencies = [
  "embedded-hal 1.0.0-alpha.9",
  "embedded-hal-async",
  "embedded-hal-nb",
- "embedded-io 0.4.0",
+ "embedded-io",
  "embedded-storage",
  "futures",
  "nb 1.0.0",
@@ -504,7 +504,7 @@ source = "git+https://github.com/embassy-rs/embassy?rev=e1eac15c429f88b1176109d6
 dependencies = [
  "cfg-if",
  "critical-section 1.1.1",
- "embedded-io 0.4.0",
+ "embedded-io",
  "futures-util",
  "heapless",
 ]
@@ -569,18 +569,12 @@ dependencies = [
 
 [[package]]
 name = "embedded-io"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "33dfba9e6c113f2fd8537c943780a7345945e66c86972e356b1152e19481bcf5"
-dependencies = [
- "defmt",
-]
-
-[[package]]
-name = "embedded-io"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ef1a6892d9eef45c8fa6b9e0086428a2cca8491aca8f787c534a3d6d0bcb3ced"
+dependencies = [
+ "defmt",
+]
 
 [[package]]
 name = "embedded-nal"
@@ -599,7 +593,7 @@ version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "27ce84f518ca912777ec143db235f4d615e3bf8d4e46d507d6ef12daf5b1df98"
 dependencies = [
- "embedded-io 0.4.0",
+ "embedded-io",
  "embedded-nal",
  "heapless",
  "no-std-net 0.6.0",
@@ -844,9 +838,9 @@ checksum = "546c37ac5d9e56f55e73b677106873d9d9f5190605e41a856503623648488cae"
 
 [[package]]
 name = "no-panic"
-version = "0.1.19"
+version = "0.1.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9f3ff7cb37ce690ee3b1bab16e77f6eae6320d91a9770ec1497f58a88c1f35c9"
+checksum = "826c989b63ca62c4f2737e4c9e836a2124927d8aa13f9566b197ef0d191d8ac7"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -876,18 +870,18 @@ dependencies = [
 
 [[package]]
 name = "num_enum"
-version = "0.5.9"
+version = "0.5.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8d829733185c1ca374f17e52b762f24f535ec625d2cc1f070e34c8a9068f341b"
+checksum = "1f646caf906c20226733ed5b1374287eb97e3c2a5c227ce668c1f2ce20ae57c9"
 dependencies = [
  "num_enum_derive",
 ]
 
 [[package]]
 name = "num_enum_derive"
-version = "0.5.9"
+version = "0.5.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2be1598bf1c313dcdd12092e3f1920f463462525a21b7b4e11b4168353d0123e"
+checksum = "dcbff9bc912032c62bf65ef1d5aea88983b420f4f839db1e9b0c281a25c9c799"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1190,7 +1184,7 @@ dependencies = [
  "cipher",
  "ctr",
  "digest",
- "embedded-io 0.4.0",
+ "embedded-io",
  "heapless",
  "hmac",
  "log",
@@ -1229,8 +1223,7 @@ dependencies = [
  "embassy-time",
  "embedded-hal 1.0.0-alpha.9",
  "embedded-hal-async",
- "embedded-io 0.3.1",
- "futures",
+ "embedded-io",
  "getrandom",
  "heapless",
  "menu",
@@ -1249,7 +1242,7 @@ version = "0.2.0-alpha"
 dependencies = [
  "embassy-futures",
  "embassy-sync",
- "embedded-io 0.4.0",
+ "embedded-io",
  "log",
  "pin-utils",
  "sunset",
@@ -1264,9 +1257,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "1.0.107"
+version = "1.0.109"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1f4064b5b16e03ae50984a5a8ed5d4f8803e6bc1fd170a3cda91a1be4b18e3f5"
+checksum = "72b64191b275b66ffe2469e8af2c1cfe3bafa67b529ead792a6d0160888b4237"
 dependencies = [
  "proc-macro2",
  "quote",

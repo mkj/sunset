@@ -491,7 +491,7 @@ pub enum ChannelReqType<'a> {
     #[sshwire(variant = "exec")]
     Exec(Exec<'a>),
     #[sshwire(variant = "pty-req")]
-    Pty(Pty<'a>),
+    Pty(PtyReq<'a>),
     #[sshwire(variant = "subsystem")]
     Subsystem(Subsystem<'a>),
     #[sshwire(variant = "window-change")]
@@ -518,10 +518,11 @@ pub struct Exec<'a> {
     pub command: TextString<'a>,
 }
 
-/// The contents of a `"pty-req"` request. Note that most calls use [`channel::Pty`]
-/// rather than this struct.
+/// The contents of a `"pty-req"` request.
+///
+/// Note that most function arguments use [`channel::Pty`] rather than this struct.
 #[derive(Debug, SSHEncode, SSHDecode)]
-pub struct Pty<'a> {
+pub struct PtyReq<'a> {
     pub term: TextString<'a>,
     pub cols: u32,
     pub rows: u32,
@@ -543,6 +544,7 @@ pub struct WinChange {
     pub height: u32,
 }
 
+/// A unix signal channel request
 #[derive(Debug, SSHEncode, SSHDecode)]
 pub struct Signal<'a> {
     pub sig: &'a str,

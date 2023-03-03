@@ -6,12 +6,14 @@ use {
 use core::future::{poll_fn, Future};
 use core::task::{Poll, Context};
 use core::ops::ControlFlow;
+use core::sync::atomic::{Ordering::Relaxed, AtomicBool};
 
 use embassy_sync::waitqueue::WakerRegistration;
 use embassy_sync::blocking_mutex::raw::{NoopRawMutex, RawMutex};
 use embassy_sync::mutex::Mutex;
 use embassy_sync::signal::Signal;
-use embassy_futures::select::{select3, Either3};
+use embassy_futures::select::select;
+use embassy_futures::join;
 use embedded_io::asynch;
 
 use pin_utils::pin_mut;
@@ -28,7 +30,6 @@ pub type SunsetMutex<T> = Mutex<SunsetRawMutex, T>;
 
 pub(crate) struct Inner<'a> {
     runner: Runner<'a>,
-    exit: bool,
 
     chan_read_wakers: [WakerRegistration; MAX_CHANNELS],
 
@@ -46,13 +47,14 @@ pub struct EmbassySunset<'a> {
     pub(crate) inner: Mutex<SunsetRawMutex, Inner<'a>>,
 
     progress_notify: Signal<SunsetRawMutex, ()>,
+    exit: AtomicBool,
+    flushing: AtomicBool,
 }
 
 impl<'a> EmbassySunset<'a> {
     pub fn new(runner: Runner<'a>) -> Self {
         let inner = Inner {
             runner,
-            exit: false,
             chan_read_wakers: Default::default(),
             chan_write_wakers: Default::default(),
             chan_ext_wakers: Default::default(),
@@ -64,6 +66,8 @@ impl<'a> EmbassySunset<'a> {
 
         Self {
             inner,
+            exit: AtomicBool::new(false),
+            flushing: AtomicBool::new(false),
             progress_notify,
          }
     }
@@ -75,11 +79,18 @@ impl<'a> EmbassySunset<'a> {
         where
             for<'f> Behaviour<'f>: From<&'f mut B>
     {
+        // Some loops need to terminate other loops on completion.
+        // prog finish -> stop rx
+        // rx finish -> stop tx
+        let tx_stop = Signal::<SunsetRawMutex, ()>::new();
+        let rx_stop = Signal::<SunsetRawMutex, ()>::new();
+
         let tx = async {
             loop {
-                // TODO: make sunset read directly from socket, no intermediate buffer.
+                // TODO: make sunset read directly from socket, no intermediate buffer?
+                // Perhaps not possible async, might deadlock.
                 let mut buf = [0; 1024];
-                let l = self.read(&mut buf).await?;
+                let l = self.output(&mut buf).await?;
                 let mut buf = &buf[..l];
                 while buf.len() > 0 {
                     let n = wsock.write(buf).await.expect("TODO handle write error");
@@ -89,6 +100,7 @@ impl<'a> EmbassySunset<'a> {
             #[allow(unreachable_code)]
             Ok::<_, sunset::Error>(())
         };
+        let tx = select(tx, tx_stop.wait());
 
         let rx = async {
             loop {
@@ -96,35 +108,50 @@ impl<'a> EmbassySunset<'a> {
                 let mut buf = [0; 1024];
                 let l = rsock.read(&mut buf).await.expect("TODO handle read error");
                 if l == 0 {
+                    self.flushing.store(true, Relaxed);
                     trace!("net EOF");
                     break
                 }
                 let mut buf = &buf[..l];
                 while buf.len() > 0 {
-                    let n = self.write(&buf).await?;
+                    let n = self.input(&buf).await?;
                     buf = &buf[n..];
                 }
             }
             Ok::<_, sunset::Error>(())
         };
+        let rx = select(rx, rx_stop.wait());
+        let rx = async {
+            let r = rx.await;
+            tx_stop.signal(());
+            r
+        };
 
         let prog = async {
             loop {
                 if self.progress(b).await?.is_break() {
-                    break
+                    break Ok(())
                 }
             }
-            Ok(())
+        };
+        let prog = async {
+            let r = prog.await;
+            // self.with_runner(|runner| runner.close()).await;
+            rx_stop.signal(());
+            r
         };
 
         // TODO: we might want to let `prog` run until buffers are drained
         // in case a disconnect message was received.
         // TODO Is there a nice way than this?
-        match select3(rx, tx, prog).await {
-            Either3::First(v) => v,
-            Either3::Second(v) => v,
-            Either3::Third(v) => v,
-        }
+        let f = join::join3(prog, rx, tx).await;
+        let (fp, _frx, _ftx) = f;
+
+        // TODO: is this a good way to do cancellation...?
+        // self.with_runner(|runner| runner.close()).await;
+        let mut inner = self.inner.lock().await;
+        self.wake_channels(&mut inner)?;
+        fp
     }
 
     fn wake_progress(&self) {
@@ -132,12 +159,12 @@ impl<'a> EmbassySunset<'a> {
     }
 
     pub async fn exit(&self) {
-        let mut inner = self.inner.lock().await;
-        inner.exit = true;
+        self.exit.store(true, Relaxed);
         self.wake_progress()
     }
 
     fn wake_channels(&self, inner: &mut Inner) -> Result<()> {
+        trace!("wake_channels");
         // Read wakers
         if let Some((num, dt, _len)) = inner.runner.ready_channel_input() {
             // TODO: if there isn't any waker waiting, could we just drop the packet?
@@ -171,6 +198,7 @@ impl<'a> EmbassySunset<'a> {
             }
 
             if inner.runner.channel_closed(num) {
+                trace!("wake chan {num} closed");
                 inner.chan_close_wakers[num.0 as usize].wake();
             }
         }
@@ -184,16 +212,19 @@ impl<'a> EmbassySunset<'a> {
         where
             for<'f> Behaviour<'f>: From<&'f mut B>
         {
-            let mut progressed = false;
+            let progressed;
 
             trace!("embassy progress");
         {
+            if self.exit.load(Relaxed) {
+                error!("exit progress");
+                return Ok(ControlFlow::Break(()))
+            } else {
+                trace!("not exit progress");
+            }
+
             let mut inner = self.inner.lock().await;
             {
-                if inner.exit {
-                    return Ok(ControlFlow::Break(()))
-                }
-
                 {
                     trace!("embassy progress inner");
                     let mut b = b.lock().await;
@@ -211,7 +242,12 @@ impl<'a> EmbassySunset<'a> {
             // inner dropped
         }
 
+        trace!("progressed {progressed:?}");
         if !progressed {
+            if self.flushing.load(Relaxed) {
+                // if we're flushing, we exit once there is no progress
+                return Ok(ControlFlow::Break(()))
+            }
             // Idle until input is received
             // TODO do we also want to wake in other situations?
             self.progress_notify.wait().await;
@@ -247,9 +283,12 @@ impl<'a> EmbassySunset<'a> {
         .await
     }
 
-    pub async fn read(&self, buf: &mut [u8]) -> Result<usize> {
+    pub async fn output(&self, buf: &mut [u8]) -> Result<usize> {
         self.poll_inner(|inner, cx| {
-            match inner.runner.output(buf) {
+            match inner.runner.output(buf).map(|r| {
+                debug!("embassy output {r:?}");
+                r
+            }) {
                 // no output ready
                 Ok(0) => {
                     inner.runner.set_output_waker(cx.waker());
@@ -261,7 +300,7 @@ impl<'a> EmbassySunset<'a> {
         }).await
     }
 
-    pub async fn write(&self, buf: &[u8]) -> Result<usize> {
+    pub async fn input(&self, buf: &[u8]) -> Result<usize> {
         self.poll_inner(|inner, cx| {
             if inner.runner.ready_input() {
                 let r = match inner.runner.input(buf) {

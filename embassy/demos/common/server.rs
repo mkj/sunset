@@ -17,6 +17,7 @@ use embassy_net_driver::Driver;
 use embassy_futures::join::join;
 
 use menu::Runner as MenuRunner;
+use embedded_io::asynch::Read;
 
 use sunset::*;
 use sunset_embassy::SSHServer;
@@ -47,11 +48,17 @@ impl SSHConfig {
 
 // main entry point
 pub async fn listener<D: Driver>(stack: &'static Stack<D>, config: &SSHConfig) -> ! {
-    let mut rx_buffer = [0; 4096];
-    let mut tx_buffer = [0; 4096];
+    // TODO: buffer size?
+    // Does it help to be larger than ethernet MTU?
+    // Should TX and RX be symmetrical? Or larger TX might fill ethernet
+    // frames more efficiently, RX doesn't matter so much?
+    // How does this interact with the channel copy buffer sizes?
+    let mut rx_buffer = [0; 1550];
+    let mut tx_buffer = [0; 1550];
 
     loop {
         let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
+        // TODO: disable nagle. smoltcp supports it, requires embassy-net addition
 
         info!("Listening on TCP:22...");
         if let Err(e) = socket.accept(22).await {
@@ -127,11 +134,13 @@ struct DemoShell {
 }
 
 impl DemoShell {
-    async fn run<'f>(&self, serv: &SSHServer<'f>) -> Result<()>
+    async fn run<'f>(&self, serv: &'f SSHServer<'f>) -> Result<()>
     {
         let session = async {
             // wait for a shell to start
             let chan = self.notify.wait().await;
+
+            let mut stdio = serv.stdio(chan);
 
             let mut menu_buf = [0u8; 64];
             let menu_out = demo_menu::Output::default();
@@ -140,11 +149,11 @@ impl DemoShell {
 
             loop {
                 let mut b = [0u8; 20];
-                let lr = serv.read_channel_stdin(chan, &mut b).await?;
+                let lr = stdio.read(&mut b).await?;
                 let b = &mut b[..lr];
                 for c in b.iter() {
                     menu.input_byte(*c);
-                    menu.context.flush(serv, chan).await?;
+                    menu.context.flush(&mut stdio).await?;
                 }
             }
             // Ok(())
@@ -173,7 +182,9 @@ async fn session(socket: &mut TcpSocket<'_>, config: &SSHConfig) -> sunset::Resu
 
     let run = serv.run(&mut rsock, &mut wsock, app);
 
-    join(run, session).await;
+    let (r1, r2) = join(run, session).await;
+    r1?;
+    r2?;
 
     Ok(())
 }

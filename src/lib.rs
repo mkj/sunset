@@ -16,7 +16,6 @@ pub mod error;
 pub mod ident;
 pub mod kex;
 pub mod test;
-pub mod traffic;
 pub mod namelist;
 pub mod random;
 pub mod sshnames;
@@ -38,6 +37,7 @@ mod runner;
 mod behaviour;
 mod termmodes;
 mod ssh_chapoly;
+mod traffic;
 
 pub mod packets;
 pub mod sshwire;
