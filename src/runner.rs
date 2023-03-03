@@ -31,6 +31,7 @@ pub struct Runner<'a> {
     pub output_waker: Option<Waker>,
     /// Waker when ready to consume input.
     pub input_waker: Option<Waker>,
+    closed: bool,
 }
 
 impl core::fmt::Debug for Runner<'_> {
@@ -57,6 +58,7 @@ impl<'a> Runner<'a> {
             keys: KeyState::new_cleartext(),
             output_waker: None,
             input_waker: None,
+            closed: false,
         };
 
         Ok(runner)
@@ -74,6 +76,7 @@ impl<'a> Runner<'a> {
             keys: KeyState::new_cleartext(),
             output_waker: None,
             input_waker: None,
+            closed: false,
         };
 
         Ok(runner)
@@ -129,6 +132,9 @@ impl<'a> Runner<'a> {
 
     /// Write any pending output to the wire, returning the size written
     pub fn output(&mut self, buf: &mut [u8]) -> Result<usize, Error> {
+        if self.closed {
+            return error::ChannelEOF.fail()
+        }
         let r = self.traf_out.output(buf);
         if r > 0 {
             trace!("output() wake");
@@ -138,11 +144,11 @@ impl<'a> Runner<'a> {
     }
 
     pub fn ready_input(&self) -> bool {
-        self.conn.initial_sent() && self.traf_in.ready_input()
+        (self.conn.initial_sent() && self.traf_in.ready_input()) || self.closed
     }
 
     pub fn output_pending(&self) -> bool {
-        self.traf_out.output_pending()
+        self.traf_out.output_pending() || self.closed
     }
 
     /// Set a waker to be notified when the `Runner` is ready
@@ -166,6 +172,14 @@ impl<'a> Runner<'a> {
         }
         self.output_waker.replace(waker.clone())
         .map(|w| w.wake());
+    }
+
+    pub fn close(&mut self) {
+        trace!("runner close");
+        self.closed = true;
+        if let Some(w) = self.output_waker.take() {
+            w.wake()
+        }
     }
 
     // TODO: move somewhere client specific?
@@ -202,6 +216,10 @@ impl<'a> Runner<'a> {
         dt: ChanData,
         buf: &[u8],
     ) -> Result<usize> {
+        if self.closed {
+            return error::ChannelEOF.fail()
+        }
+
         if buf.len() == 0 {
             return Ok(0)
         }
@@ -231,6 +249,9 @@ impl<'a> Runner<'a> {
         dt: ChanData,
         buf: &mut [u8],
     ) -> Result<usize> {
+        if self.closed {
+            return error::ChannelEOF.fail()
+        }
 
         dt.validate_receive(self.conn.is_client())?;
 
@@ -292,11 +313,11 @@ impl<'a> Runner<'a> {
     }
 
     pub fn channel_eof(&self, chan: ChanNum) -> bool {
-        self.conn.channels.have_recv_eof(chan)
+        self.conn.channels.have_recv_eof(chan) || self.closed
     }
 
     pub fn channel_closed(&self, chan: ChanNum) -> bool {
-        self.conn.channels.is_closed(chan)
+        self.conn.channels.is_closed(chan) || self.closed
     }
 
     /// Returns the maximum data that may be sent to a channel
@@ -305,6 +326,9 @@ impl<'a> Runner<'a> {
     ///
     /// May fail with `BadChannelData` if dt is invalid for this session.
     pub fn ready_channel_send(&self, chan: ChanNum, dt: ChanData) -> Result<Option<usize>> {
+        if self.closed {
+            return Ok(None)
+        }
         // TODO: return 0 if InKex means we can't transmit packets.
 
         // Avoid apps polling forever on a packet type that won't come
