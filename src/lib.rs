@@ -1,7 +1,4 @@
 // Tests use std as it's easier
-// The "std" feature at present uses Box for async fn in traits,
-// though that may change later and the 'feature = "std" predicate
-// won't be needed.
 #![cfg_attr(not(any(feature = "std", test)), no_std)]
 
 #![forbid(unsafe_code)]

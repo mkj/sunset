@@ -7,7 +7,6 @@ use {
 use rand::{RngCore, Rng, CryptoRng};
 use core::num::Wrapping;
 
-#[cfg(feature = "getrandom")]
 pub type SunsetRng = rand::rngs::OsRng;
 
 pub fn fill_random(buf: &mut [u8]) -> Result<(), Error> {
