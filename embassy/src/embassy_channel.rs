@@ -13,138 +13,112 @@ use crate::*;
 use embassy_sunset::EmbassySunset;
 use sunset::{Result, ChanData, ChanHandle, ChanNum};
 
-pub struct ChanInOut<'a> {
+/// Common implementation
+struct ChanIO<'a> {
     num: ChanNum,
     dt: ChanData,
     sunset: &'a EmbassySunset<'a>,
 }
 
-pub struct ChanIn<'a> {
-    num: ChanNum,
-    dt: ChanData,
-    sunset: &'a EmbassySunset<'a>,
-}
-
-pub struct ChanOut<'a> {
-    num: ChanNum,
-    dt: ChanData,
-    sunset: &'a EmbassySunset<'a>,
-}
-
-impl core::fmt::Debug for ChanInOut<'_> {
+impl core::fmt::Debug for ChanIO<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("ChanInOut")
+        f.debug_struct("ChanInner")
             .field("num", &self.num)
             .field("dt", &self.dt)
             .finish_non_exhaustive()
     }
 }
 
-impl core::fmt::Debug for ChanIn<'_> {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("ChanExtIn")
-            .field("num", &self.num)
-            .field("dt", &self.dt)
-            .finish_non_exhaustive()
+impl ChanIO<'_> {
+    pub async fn until_closed(&self) -> Result<()> {
+        self.sunset.until_channel_closed(self.num).await
     }
 }
 
-impl core::fmt::Debug for ChanOut<'_> {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("ChanOut")
-            .field("num", &self.num)
-            .field("dt", &self.dt)
-            .finish_non_exhaustive()
+impl Drop for ChanIO<'_> {
+    fn drop(&mut self) {
+        self.sunset.dec_chan(self.num)
     }
 }
+
+impl Clone for ChanIO<'_> {
+    fn clone(&self) -> Self {
+        self.sunset.inc_chan(self.num);
+        Self {
+            num: self.num,
+            dt: self.dt,
+            sunset: self.sunset,
+        }
+    }
+}
+
+impl Io for ChanIO<'_> {
+    type Error = sunset::Error;
+}
+
+impl<'a> asynch::Read for ChanIO<'a> {
+    async fn read(&mut self, buf: &mut [u8]) -> Result<usize, sunset::Error> {
+        self.sunset.read_channel(self.num, self.dt, buf).await
+    }
+}
+
+impl<'a> asynch::Write for ChanIO<'a> {
+    async fn write(&mut self, buf: &[u8]) -> Result<usize, sunset::Error> {
+        self.sunset.write_channel(self.num, self.dt, buf).await
+    }
+
+    // TODO: not sure how easy end-to-end flush is
+    // async fn flush(&mut self) -> Result<(), Self::Error> {
+    // }
+}
+
+
+/// Public wrappers for In vs Out
+#[derive(Clone, Debug)]
+pub struct ChanIn<'a>(ChanIO<'a>);
+
+#[derive(Clone, Debug)]
+pub struct ChanInOut<'a>(ChanIO<'a>);
+
+#[derive(Clone, Debug)]
+pub struct ChanOut<'a>(ChanIO<'a>);
 
 impl<'a> ChanInOut<'a> {
     // caller must have already incremented the refcount
     pub(crate) fn new(num: ChanNum, dt: ChanData, sunset: &'a EmbassySunset<'a>) -> Self {
-        Self {
+        Self(ChanIO {
             num, dt, sunset,
-        }
+        })
     }
 
     pub async fn until_closed(&self) -> Result<()> {
-        self.sunset.until_channel_closed(self.num).await
+        self.0.until_closed().await
     }
 
     pub async fn term_window_change(&self, winch: sunset::packets::WinChange) -> Result<()> {
-        self.sunset.term_window_change(self.num, winch).await
+        self.0.sunset.term_window_change(self.0.num, winch).await
     }
 }
 
 impl<'a> ChanIn<'a> {
     // caller must have already incremented the refcount
     pub(crate) fn new(num: ChanNum, dt: ChanData, sunset: &'a EmbassySunset<'a>) -> Self {
-        Self {
+        Self(ChanIO {
             num, dt, sunset,
-        }
+        })
     }
 }
 
 impl<'a> ChanOut<'a> {
     // caller must have already incremented the refcount
     pub(crate) fn new(num: ChanNum, dt: ChanData, sunset: &'a EmbassySunset<'a>) -> Self {
-        Self {
+        Self(ChanIO {
             num, dt, sunset,
-        }
+        })
     }
 
     pub async fn until_closed(&self) -> Result<()> {
-        self.sunset.until_channel_closed(self.num).await
-    }
-}
-
-impl Drop for ChanIn<'_> {
-    fn drop(&mut self) {
-        self.sunset.dec_chan(self.num)
-    }
-}
-
-impl Drop for ChanOut<'_> {
-    fn drop(&mut self) {
-        self.sunset.dec_chan(self.num)
-    }
-}
-
-impl Drop for ChanInOut<'_> {
-    fn drop(&mut self) {
-        self.sunset.dec_chan(self.num)
-    }
-}
-
-impl Clone for ChanIn<'_> {
-    fn clone(&self) -> Self {
-        self.sunset.inc_chan(self.num);
-        Self {
-            num: self.num,
-            dt: self.dt,
-            sunset: self.sunset,
-        }
-    }
-}
-
-impl Clone for ChanOut<'_> {
-    fn clone(&self) -> Self {
-        self.sunset.inc_chan(self.num);
-        Self {
-            num: self.num,
-            dt: self.dt,
-            sunset: self.sunset,
-        }
-    }
-}
-
-impl Clone for ChanInOut<'_> {
-    fn clone(&self) -> Self {
-        self.sunset.inc_chan(self.num);
-        Self {
-            num: self.num,
-            dt: self.dt,
-            sunset: self.sunset,
-        }
+        self.0.until_closed().await
     }
 }
 
@@ -163,28 +137,24 @@ impl Io for ChanOut<'_> {
 
 impl<'a> asynch::Read for ChanInOut<'a> {
     async fn read(&mut self, buf: &mut [u8]) -> Result<usize, sunset::Error> {
-        self.sunset.read_channel(self.num, self.dt, buf).await
+        self.0.read(buf).await
     }
 }
 
 impl<'a> asynch::Write for ChanInOut<'a> {
     async fn write(&mut self, buf: &[u8]) -> Result<usize, sunset::Error> {
-        self.sunset.write_channel(self.num, self.dt, buf).await
+        self.0.write(buf).await
     }
-
-    // TODO: not sure how easy end-to-end flush is
-    // async fn flush(&mut self) -> Result<(), Self::Error> {
-    // }
 }
 
 impl<'a> asynch::Read for ChanIn<'a> {
     async fn read(&mut self, buf: &mut [u8]) -> Result<usize, sunset::Error> {
-        self.sunset.read_channel(self.num, self.dt, buf).await
+        self.0.read(buf).await
     }
 }
 
 impl<'a> asynch::Write for ChanOut<'a> {
     async fn write(&mut self, buf: &[u8]) -> Result<usize, sunset::Error> {
-        self.sunset.write_channel(self.num, self.dt, buf).await
+        self.0.write(buf).await
     }
 }
