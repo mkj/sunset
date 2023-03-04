@@ -94,7 +94,7 @@ impl<'a> TrafIn<'a> {
         Self { buf, state: RxState::Idle }
     }
 
-    pub fn ready_input(&self) -> bool {
+    pub fn is_input_ready(&self) -> bool {
         match self.state {
             | RxState::Idle
             | RxState::ReadInitial { .. }
@@ -113,7 +113,7 @@ impl<'a> TrafIn<'a> {
         buf: &[u8],
     ) -> Result<usize, Error> {
         let mut inlen = 0;
-        debug_assert!(self.ready_input());
+        debug_assert!(self.is_input_ready());
         if remote_version.version().is_none() && matches!(self.state, RxState::Idle) {
             // Handle initial version string
             inlen += remote_version.consume(buf)?;
@@ -358,7 +358,7 @@ impl<'a> TrafOut<'a> {
 
     }
 
-    pub fn output_pending(&self) -> bool {
+    pub fn is_output_pending(&self) -> bool {
         match self.state {
             TxState::Write { .. } => true,
             _ => false

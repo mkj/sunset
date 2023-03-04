@@ -65,7 +65,7 @@ impl<'a> Behaviour<'a> {
     }
 
     /// Calls either client or server
-    pub(crate) fn open_tcp_forwarded(&mut self, chan: ChanNum,
+    pub(crate) fn open_tcp_forwarded(&mut self, chan: ChanHandle,
         t: &ForwardedTcpip) -> channel::ChanOpened {
         match self {
             Self::Client(b) => b.open_tcp_forwarded(chan, t),
@@ -74,7 +74,7 @@ impl<'a> Behaviour<'a> {
     }
 
     /// Calls either client or server
-    pub(crate) fn open_tcp_direct(&mut self, chan: ChanNum,
+    pub(crate) fn open_tcp_direct(&mut self, chan: ChanHandle,
         t: &DirectTcpip) -> channel::ChanOpened {
         match self {
             Self::Client(b) => b.open_tcp_direct(chan, t),
@@ -139,27 +139,27 @@ pub trait CliBehaviour {
     fn authenticated(&mut self);
 
     /// Show a banner sent from a server. Arguments are provided
-    /// by the server so could be hazardous, they should be escaped with
-    /// [`banner.escape_default()`](core::str::escape_default) or similar.
+    /// by the server so could be hazardous, `banner` should be escaped with
+    /// [`str::escape_default()`](str::escape_default) or similar.
     /// Language may be empty, is provided by the server.
 
-    /// This is a `Behaviour` method rather than an [`Event`] because
-    /// it must be displayed prior to other authentication
-    /// functions. `Events` may be handled asynchronously so wouldn't
-    /// guarantee that.
+    // This is a `Behaviour` method rather than an [`Event`] because
+    // it must be displayed prior to other authentication
+    // functions. `Events` may be handled asynchronously so wouldn't
+    // guarantee that.
     #[allow(unused)]
     fn show_banner(&self, banner: TextString, language: TextString) {
     }
     // TODO: postauth channel callbacks
 
     #[allow(unused)]
-    fn open_tcp_forwarded(&self, chan: ChanNum, t: &ForwardedTcpip) -> ChanOpened {
-        ChanOpened::Failure(ChanFail::SSH_OPEN_UNKNOWN_CHANNEL_TYPE)
+    fn open_tcp_forwarded(&mut self, chan: ChanHandle, t: &ForwardedTcpip) -> ChanOpened {
+        ChanOpened::Failure((ChanFail::SSH_OPEN_UNKNOWN_CHANNEL_TYPE, chan))
     }
 
     #[allow(unused)]
-    fn open_tcp_direct(&self, chan: ChanNum, t: &DirectTcpip) -> ChanOpened {
-        ChanOpened::Failure(ChanFail::SSH_OPEN_UNKNOWN_CHANNEL_TYPE)
+    fn open_tcp_direct(&mut self, chan: ChanHandle, t: &DirectTcpip) -> ChanOpened {
+        ChanOpened::Failure((ChanFail::SSH_OPEN_UNKNOWN_CHANNEL_TYPE, chan))
     }
 }
 
@@ -220,28 +220,31 @@ pub trait ServBehaviour {
     }
 
     /// Returns whether a session can be opened
-    fn open_session(&mut self, chan: ChanNum) -> channel::ChanOpened;
+    fn open_session(&mut self, chan: ChanHandle) -> channel::ChanOpened;
 
     #[allow(unused)]
-    fn open_tcp_forwarded(&mut self, chan: ChanNum, t: &ForwardedTcpip) -> ChanOpened {
-        ChanOpened::Failure(ChanFail::SSH_OPEN_UNKNOWN_CHANNEL_TYPE)
+    fn open_tcp_forwarded(&mut self, chan: ChanHandle, t: &ForwardedTcpip) -> ChanOpened {
+        ChanOpened::Failure((ChanFail::SSH_OPEN_UNKNOWN_CHANNEL_TYPE, chan))
     }
 
     #[allow(unused)]
-    fn open_tcp_direct(&mut self, chan: ChanNum, t: &DirectTcpip) -> ChanOpened {
-        ChanOpened::Failure(ChanFail::SSH_OPEN_UNKNOWN_CHANNEL_TYPE)
+    fn open_tcp_direct(&mut self, chan: ChanHandle, t: &DirectTcpip) -> ChanOpened {
+        ChanOpened::Failure((ChanFail::SSH_OPEN_UNKNOWN_CHANNEL_TYPE, chan))
     }
 
+    /// Returns a boolean request success status
     #[allow(unused)]
     fn sess_shell(&mut self, chan: ChanNum) -> bool {
         false
     }
 
+    /// Returns a boolean request success status
     #[allow(unused)]
     fn sess_exec(&mut self, chan: ChanNum, cmd: TextString) -> bool {
         false
     }
 
+    /// Returns a boolean request success status
     #[allow(unused)]
     fn sess_pty(&mut self, chan: ChanNum, pty: &Pty) -> bool {
         false

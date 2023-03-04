@@ -1,5 +1,8 @@
 #![allow(unused_imports)]
 
+// avoid mysterious missing awaits
+#![deny(unused_must_use)]
+
 mod pty;
 mod cmdline_client;
 

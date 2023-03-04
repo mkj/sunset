@@ -77,8 +77,8 @@ pub async fn listener<D: Driver>(stack: &'static Stack<D>, config: &SSHConfig) -
 struct DemoServer<'a> {
     config: &'a SSHConfig,
 
+    handle: Option<ChanHandle>,
     sess: Option<ChanNum>,
-    shell_started: bool,
 
     shell: &'a DemoShell,
 }
@@ -87,9 +87,9 @@ impl<'a> DemoServer<'a> {
     fn new(shell: &'a DemoShell, config: &'a SSHConfig) -> Result<Self> {
 
         Ok(Self {
+            handle: None,
             sess: None,
             config,
-            shell_started: false,
             shell,
         })
     }
@@ -105,21 +105,29 @@ impl<'a> ServBehaviour for DemoServer<'a> {
         true
     }
 
-    fn open_session(&mut self, chan: ChanNum) -> ChanOpened {
+    fn open_session(&mut self, chan: ChanHandle) -> ChanOpened {
         if self.sess.is_some() {
-            ChanOpened::Failure(ChanFail::SSH_OPEN_ADMINISTRATIVELY_PROHIBITED)
+            ChanOpened::Failure((ChanFail::SSH_OPEN_ADMINISTRATIVELY_PROHIBITED, chan))
         } else {
-            self.sess = Some(chan);
+            self.sess = Some(chan.num());
+            self.handle = Some(chan);
             ChanOpened::Success
         }
     }
 
     fn sess_shell(&mut self, chan: ChanNum) -> bool {
-        let r = !self.shell_started && self.sess == Some(chan);
-        self.shell_started = true;
-        self.shell.notify.signal(chan);
-        trace!("req want shell");
-        r
+        if self.sess != Some(chan) {
+            return false
+        }
+
+        if let Some(handle) = self.handle.take() {
+            debug_assert_eq!(self.sess, Some(handle.num()));
+            self.shell.notify.signal(handle);
+            trace!("req want shell");
+            true
+        } else {
+            false
+        }
     }
 
     fn sess_pty(&mut self, chan: ChanNum, _pty: &Pty) -> bool {
@@ -130,7 +138,7 @@ impl<'a> ServBehaviour for DemoServer<'a> {
 
 #[derive(Default)]
 struct DemoShell {
-    notify: Signal<NoopRawMutex, ChanNum>,
+    notify: Signal<NoopRawMutex, ChanHandle>,
 }
 
 impl DemoShell {
@@ -138,9 +146,9 @@ impl DemoShell {
     {
         let session = async {
             // wait for a shell to start
-            let chan = self.notify.wait().await;
+            let chan_handle = self.notify.wait().await;
 
-            let mut stdio = serv.stdio(chan);
+            let mut stdio = serv.stdio(chan_handle).await?;
 
             let mut menu_buf = [0u8; 64];
             let menu_out = demo_menu::Output::default();

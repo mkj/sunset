@@ -16,6 +16,11 @@ use traffic::{TrafIn, TrafOut, TrafSend};
 
 use conn::{Conn, Dispatched};
 
+// Runner public methods take a `ChanHandle` which cannot be cloned. This prevents
+// confusion if an application were to continue using a channel after the channel
+// was completed. The `ChanHandle` is consumed by `Runner::channel_done()`.
+// Internally sunset uses `ChanNum`, which is just a newtype around u32.
+
 pub struct Runner<'a> {
     conn: Conn,
 
@@ -144,12 +149,12 @@ impl<'a> Runner<'a> {
         Ok(r)
     }
 
-    pub fn ready_input(&self) -> bool {
-        (self.conn.initial_sent() && self.traf_in.ready_input()) || self.closed
+    pub fn is_input_ready(&self) -> bool {
+        (self.conn.initial_sent() && self.traf_in.is_input_ready()) || self.closed
     }
 
-    pub fn output_pending(&self) -> bool {
-        self.traf_out.output_pending() || self.closed
+    pub fn is_output_pending(&self) -> bool {
+        self.traf_out.is_output_pending() || self.closed
     }
 
     /// Set a waker to be notified when the `Runner` is ready
@@ -184,7 +189,7 @@ impl<'a> Runner<'a> {
     }
 
     // TODO: move somewhere client specific?
-    pub fn open_client_session(&mut self, exec: Option<&str>, pty: Option<channel::Pty>) -> Result<ChanNum> {
+    pub fn open_client_session(&mut self, exec: Option<&str>, pty: Option<channel::Pty>) -> Result<ChanHandle> {
         trace!("open_client_session");
         let mut init_req = channel::InitReqs::new();
         if let Some(pty) = pty {
@@ -197,23 +202,18 @@ impl<'a> Runner<'a> {
         } else {
             init_req.push(channel::ReqDetails::Shell).trap()?;
         }
-        let (ch, p) = self.conn.channels.open(packets::ChannelOpenType::Session, init_req)?;
-        let chan = ch.num();
+        let (chan, p) = self.conn.channels.open(packets::ChannelOpenType::Session, init_req)?;
         self.traf_out.send_packet(p, &mut self.keys)?;
         self.wake();
-        Ok(chan)
+        Ok(ChanHandle(chan))
     }
-
-    // pub fn channel_type(&self, chan: ChanNum) -> Result<channel::ChanType> {
-    //     self.conn.channels.get(chan).map(|c| c.ty)
-    // }
 
     /// Send data from this application out the wire.
     /// Returns `Ok(len)` consumed, `Err(Error::ChannelEof)` on EOF,
     /// or other errors.
     pub fn channel_send(
         &mut self,
-        chan: ChanNum,
+        chan: &ChanHandle,
         dt: ChanData,
         buf: &[u8],
     ) -> Result<usize> {
@@ -234,7 +234,7 @@ impl<'a> Runner<'a> {
 
         let len = len.min(buf.len());
 
-        let p = self.conn.channels.send_data(chan, dt, &buf[..len])?;
+        let p = self.conn.channels.send_data(chan.0, dt, &buf[..len])?;
         self.traf_out.send_packet(p, &mut self.keys)?;
         self.wake();
         Ok(len)
@@ -246,7 +246,7 @@ impl<'a> Runner<'a> {
     /// TODO: EOF is unimplemented
     pub fn channel_input(
         &mut self,
-        chan: ChanNum,
+        chan: &ChanHandle,
         dt: ChanData,
         buf: &mut [u8],
     ) -> Result<usize> {
@@ -256,15 +256,15 @@ impl<'a> Runner<'a> {
 
         dt.validate_receive(self.conn.is_client())?;
 
-        if self.channel_eof(chan) {
+        if self.is_channel_eof(chan) {
             return error::ChannelEOF.fail()
         }
 
         trace!("runner chan in");
-        let (len, complete) = self.traf_in.channel_input(chan, dt, buf);
+        let (len, complete) = self.traf_in.channel_input(chan.0, dt, buf);
         trace!("runner chan in, len {len} complete {complete:?} dt {dt:?}");
         if let Some(len) = complete {
-            let wind_adjust = self.conn.channels.finished_input(chan, len)?;
+            let wind_adjust = self.conn.channels.finished_input(chan.0, len)?;
             if let Some(wind_adjust) = wind_adjust {
                 self.traf_out.send_packet(wind_adjust, &mut self.keys)?;
             }
@@ -276,14 +276,14 @@ impl<'a> Runner<'a> {
     /// Receives input data, either dt or normal.
     pub fn channel_input_either(
         &mut self,
-        chan: ChanNum,
+        chan: &ChanHandle,
         buf: &mut [u8],
     ) -> Result<(usize, ChanData)> {
         trace!("runner chan in");
-        let (len, complete, dt) = self.traf_in.channel_input_either(chan, buf);
+        let (len, complete, dt) = self.traf_in.channel_input_either(chan.0, buf);
         trace!("runner chan in, len {len} complete {complete:?} dt {dt:?}");
         if let Some(len) = complete {
-            let wind_adjust = self.conn.channels.finished_input(chan, len)?;
+            let wind_adjust = self.conn.channels.finished_input(chan.0, len)?;
             if let Some(wind_adjust) = wind_adjust {
                 self.traf_out.send_packet(wind_adjust, &mut self.keys)?;
             }
@@ -295,9 +295,9 @@ impl<'a> Runner<'a> {
 
     /// Discards any channel input data pending for `chan`, regardless of whether
     /// normal or `dt`.
-    pub fn discard_channel_input(&mut self, chan: ChanNum) -> Result<()> {
-        let len = self.traf_in.discard_channel_input(chan);
-        let wind_adjust = self.conn.channels.finished_input(chan, len)?;
+    pub fn discard_channel_input(&mut self, chan: &ChanHandle) -> Result<()> {
+        let len = self.traf_in.discard_channel_input(chan.0);
+        let wind_adjust = self.conn.channels.finished_input(chan.0, len)?;
         if let Some(wind_adjust) = wind_adjust {
             self.traf_out.send_packet(wind_adjust, &mut self.keys)?;
         }
@@ -305,20 +305,25 @@ impl<'a> Runner<'a> {
         Ok(())
     }
 
+    /// Indicates when channel data is ready.
+    ///
     /// When channel data is ready, returns a tuple
     /// `Some((channel, dt, len))`
     /// `len` is the amount of data ready remaining to read, will always be non-zero.
+    /// Note that this returns a `ChanNum` index rather than a `ChanHandle` (which would
+    /// be owned by the caller already.
+    ///
     /// Returns `None` if no data ready.
     pub fn ready_channel_input(&self) -> Option<(ChanNum, ChanData, usize)> {
         self.traf_in.ready_channel_input()
     }
 
-    pub fn channel_eof(&self, chan: ChanNum) -> bool {
-        self.conn.channels.have_recv_eof(chan) || self.closed
+    pub fn is_channel_eof(&self, chan: &ChanHandle) -> bool {
+        self.conn.channels.have_recv_eof(chan.0) || self.closed
     }
 
-    pub fn channel_closed(&self, chan: ChanNum) -> bool {
-        self.conn.channels.is_closed(chan) || self.closed
+    pub fn is_channel_closed(&self, chan: &ChanHandle) -> bool {
+        self.conn.channels.is_closed(chan.0) || self.closed
     }
 
     /// Returns the maximum data that may be sent to a channel
@@ -326,7 +331,7 @@ impl<'a> Runner<'a> {
     /// Returns `Ok(None)` on channel closed.
     ///
     /// May fail with `BadChannelData` if dt is invalid for this session.
-    pub fn ready_channel_send(&self, chan: ChanNum, dt: ChanData) -> Result<Option<usize>> {
+    pub fn ready_channel_send(&self, chan: &ChanHandle, dt: ChanData) -> Result<Option<usize>> {
         if self.closed {
             return Ok(None)
         }
@@ -339,40 +344,37 @@ impl<'a> Runner<'a> {
         let payload_space = self.traf_out.send_allowed(&self.keys);
         // subtract space for packet headers prior to data
         let payload_space = payload_space.saturating_sub(dt.packet_offset());
-        Ok(self.conn.channels.send_allowed(chan).map(|s| s.min(payload_space)))
+        Ok(self.conn.channels.send_allowed(chan.0).map(|s| s.min(payload_space)))
     }
 
     /// Returns `true` if the channel and `dt` are currently valid for writing.
     /// Note that they may not be ready to send output.
-    pub fn valid_channel_send(&self, chan: ChanNum, dt: ChanData) -> bool {
-        self.conn.channels.valid_send(chan, dt)
+    pub fn valid_channel_send(&self, chan: &ChanHandle, dt: ChanData) -> bool {
+        self.conn.channels.valid_send(chan.0, dt)
     }
 
     /// Must be called when an application has finished with a channel.
     ///
     /// Channel numbers will not be re-used without calling this, so
     /// failing to call this may result in running out of channels.
-    ///
-    /// Any further calls using the same channel number may result
-    /// in data from a different channel re-using the same number.
-    pub fn channel_done(&mut self, chan: ChanNum) -> Result<()> {
-        self.conn.channels.done(chan)
+    pub fn channel_done(&mut self, chan: ChanHandle) -> Result<()> {
+        self.conn.channels.done(chan.0)
     }
 
     /// Send a terminal window size change report.
     ///
     /// Only call on a client session with a pty
-    pub fn term_window_change(&mut self, chan: ChanNum, winch: packets::WinChange) -> Result<()> {
+    pub fn term_window_change(&mut self, chan: &ChanHandle, winch: packets::WinChange) -> Result<()> {
         if self.is_client() {
             let mut s = self.traf_out.sender(&mut self.keys);
-            self.conn.channels.term_window_change(chan, winch, &mut s)
+            self.conn.channels.term_window_change(chan.0, winch, &mut s)
         } else {
             error::BadChannelData.fail()
         }
     }
 
     fn wake(&mut self) {
-        if self.ready_input() {
+        if self.is_input_ready() {
             trace!("wake ready_input, waker {:?}", self.input_waker);
             if let Some(w) = self.input_waker.take() {
                 trace!("wake input waker");
@@ -380,7 +382,7 @@ impl<'a> Runner<'a> {
             }
         }
 
-        if self.output_pending() {
+        if self.is_output_pending() {
             if let Some(w) = self.output_waker.take() {
                 trace!("wake output waker");
                 w.wake()
@@ -388,6 +390,31 @@ impl<'a> Runner<'a> {
                 trace!("no waker");
             }
         }
+    }
+}
+
+/// Represents an open channel, owned by the application.
+///
+/// Must be released by calling [`Runner::channel_done()`]
+pub struct ChanHandle(pub(crate) ChanNum);
+
+impl ChanHandle {
+    /// Returns the channel number
+    ///
+    /// This can be used by applications as an index.
+    /// Channel numbers satisfy
+    /// `0 <= num < sunset::config::MAX_CHANNELS`.
+    /// An index may be reused after a call to [`Runner::channel_done()`],
+    /// applications must take care not to keep using this `num()` index after
+    /// that.
+    pub fn num(&self) -> ChanNum {
+        self.0
+    }
+}
+
+impl core::fmt::Debug for ChanHandle {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "ChanHandle({})", self.num())
     }
 }
 

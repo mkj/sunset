@@ -3,6 +3,9 @@
 
 #![forbid(unsafe_code)]
 
+// avoids headscratching
+#![deny(unused_must_use)]
+
 // XXX unused_imports only during dev churn
 #![allow(unused_imports)]
 
@@ -52,3 +55,4 @@ pub use error::{Error,Result};
 pub use channel::{ChanMsg, ChanMsgDetails, Pty, ChanOpened};
 pub use sshnames::ChanFail;
 pub use channel::{ChanData, ChanNum};
+pub use runner::ChanHandle;

@@ -66,6 +66,14 @@ pub enum Error {
     /// network data in the incorrect direction, instead that data is dropped.
     BadChannelData,
 
+    /// Bad application usage
+    ///
+    /// Returned from an API call when the API is used incorrectly.
+    /// Examples could include:
+    /// - A `ChanHandle` is used incorrectly, for example being cloned
+    ///   (millions of times) and not released.
+    BadUsage,
+
     /// SSH packet contents doesn't match length
     WrongPacketLength,
 

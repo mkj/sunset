@@ -11,25 +11,22 @@ use embedded_io::{asynch, Io};
 
 use crate::*;
 use embassy_sunset::EmbassySunset;
-use sunset::{Result, ChanData, ChanNum};
+use sunset::{Result, ChanData, ChanHandle, ChanNum};
 
-#[derive(Clone)]
 pub struct ChanInOut<'a> {
-    chan: ChanNum,
+    num: ChanNum,
     dt: ChanData,
     sunset: &'a EmbassySunset<'a>,
 }
 
-#[derive(Clone)]
 pub struct ChanIn<'a> {
-    chan: ChanNum,
+    num: ChanNum,
     dt: ChanData,
     sunset: &'a EmbassySunset<'a>,
 }
 
-#[derive(Clone)]
 pub struct ChanOut<'a> {
-    chan: ChanNum,
+    num: ChanNum,
     dt: ChanData,
     sunset: &'a EmbassySunset<'a>,
 }
@@ -37,7 +34,7 @@ pub struct ChanOut<'a> {
 impl core::fmt::Debug for ChanInOut<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("ChanInOut")
-            .field("chan", &self.chan)
+            .field("num", &self.num)
             .field("dt", &self.dt)
             .finish_non_exhaustive()
     }
@@ -46,7 +43,7 @@ impl core::fmt::Debug for ChanInOut<'_> {
 impl core::fmt::Debug for ChanIn<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("ChanExtIn")
-            .field("chan", &self.chan)
+            .field("num", &self.num)
             .field("dt", &self.dt)
             .finish_non_exhaustive()
     }
@@ -55,47 +52,99 @@ impl core::fmt::Debug for ChanIn<'_> {
 impl core::fmt::Debug for ChanOut<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("ChanOut")
-            .field("chan", &self.chan)
+            .field("num", &self.num)
             .field("dt", &self.dt)
             .finish_non_exhaustive()
     }
 }
 
-
 impl<'a> ChanInOut<'a> {
-    pub(crate) fn new(chan: ChanNum, dt: ChanData, sunset: &'a EmbassySunset<'a>) -> Self {
+    // caller must have already incremented the refcount
+    pub(crate) fn new(num: ChanNum, dt: ChanData, sunset: &'a EmbassySunset<'a>) -> Self {
         Self {
-            chan, dt, sunset,
+            num, dt, sunset,
         }
     }
 
     pub async fn until_closed(&self) -> Result<()> {
-        self.sunset.until_channel_closed(self.chan).await
+        self.sunset.until_channel_closed(self.num).await
     }
 
     pub async fn term_window_change(&self, winch: sunset::packets::WinChange) -> Result<()> {
-        error!("term_winch {:?}", winch);
-        self.sunset.with_runner(|runner| runner.term_window_change(self.chan, winch)).await
+        self.sunset.term_window_change(self.num, winch).await
     }
 }
 
 impl<'a> ChanIn<'a> {
-    pub(crate) fn new(chan: ChanNum, dt: ChanData, sunset: &'a EmbassySunset<'a>) -> Self {
+    // caller must have already incremented the refcount
+    pub(crate) fn new(num: ChanNum, dt: ChanData, sunset: &'a EmbassySunset<'a>) -> Self {
         Self {
-            chan, dt, sunset,
+            num, dt, sunset,
         }
     }
 }
 
 impl<'a> ChanOut<'a> {
-    pub(crate) fn new(chan: ChanNum, dt: ChanData, sunset: &'a EmbassySunset<'a>) -> Self {
+    // caller must have already incremented the refcount
+    pub(crate) fn new(num: ChanNum, dt: ChanData, sunset: &'a EmbassySunset<'a>) -> Self {
         Self {
-            chan, dt, sunset,
+            num, dt, sunset,
         }
     }
 
     pub async fn until_closed(&self) -> Result<()> {
-        self.sunset.until_channel_closed(self.chan).await
+        self.sunset.until_channel_closed(self.num).await
+    }
+}
+
+impl Drop for ChanIn<'_> {
+    fn drop(&mut self) {
+        self.sunset.dec_chan(self.num)
+    }
+}
+
+impl Drop for ChanOut<'_> {
+    fn drop(&mut self) {
+        self.sunset.dec_chan(self.num)
+    }
+}
+
+impl Drop for ChanInOut<'_> {
+    fn drop(&mut self) {
+        self.sunset.dec_chan(self.num)
+    }
+}
+
+impl Clone for ChanIn<'_> {
+    fn clone(&self) -> Self {
+        self.sunset.inc_chan(self.num);
+        Self {
+            num: self.num,
+            dt: self.dt,
+            sunset: self.sunset,
+        }
+    }
+}
+
+impl Clone for ChanOut<'_> {
+    fn clone(&self) -> Self {
+        self.sunset.inc_chan(self.num);
+        Self {
+            num: self.num,
+            dt: self.dt,
+            sunset: self.sunset,
+        }
+    }
+}
+
+impl Clone for ChanInOut<'_> {
+    fn clone(&self) -> Self {
+        self.sunset.inc_chan(self.num);
+        Self {
+            num: self.num,
+            dt: self.dt,
+            sunset: self.sunset,
+        }
     }
 }
 
@@ -114,13 +163,13 @@ impl Io for ChanOut<'_> {
 
 impl<'a> asynch::Read for ChanInOut<'a> {
     async fn read(&mut self, buf: &mut [u8]) -> Result<usize, sunset::Error> {
-        self.sunset.read_channel(self.chan, self.dt, buf).await
+        self.sunset.read_channel(self.num, self.dt, buf).await
     }
 }
 
 impl<'a> asynch::Write for ChanInOut<'a> {
     async fn write(&mut self, buf: &[u8]) -> Result<usize, sunset::Error> {
-        self.sunset.write_channel(self.chan, self.dt, buf).await
+        self.sunset.write_channel(self.num, self.dt, buf).await
     }
 
     // TODO: not sure how easy end-to-end flush is
@@ -130,12 +179,12 @@ impl<'a> asynch::Write for ChanInOut<'a> {
 
 impl<'a> asynch::Read for ChanIn<'a> {
     async fn read(&mut self, buf: &mut [u8]) -> Result<usize, sunset::Error> {
-        self.sunset.read_channel(self.chan, self.dt, buf).await
+        self.sunset.read_channel(self.num, self.dt, buf).await
     }
 }
 
 impl<'a> asynch::Write for ChanOut<'a> {
     async fn write(&mut self, buf: &[u8]) -> Result<usize, sunset::Error> {
-        self.sunset.write_channel(self.chan, self.dt, buf).await
+        self.sunset.write_channel(self.num, self.dt, buf).await
     }
 }

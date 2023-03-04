@@ -8,7 +8,7 @@ use core::mem;
 
 use heapless::{Deque, String, Vec};
 
-use crate::{sshwire::SSHEncodeEnum, *};
+use crate::*;
 use config::*;
 use conn::Dispatched;
 use packets::{
@@ -16,8 +16,9 @@ use packets::{
     ChannelReqType, ChannelRequest, Packet,
 };
 use sshnames::*;
-use sshwire::{BinString, TextString};
+use sshwire::{BinString, TextString, SSHEncodeEnum};
 use traffic::TrafSend;
+use runner::ChanHandle;
 
 use snafu::ErrorCompat;
 
@@ -30,7 +31,7 @@ impl Channels {
         &mut self,
         ty: packets::ChannelOpenType<'b>,
         init_req: InitReqs,
-    ) -> Result<(&Channel, Packet<'b>)> {
+    ) -> Result<(ChanNum, Packet<'b>)> {
         let num = self.unused_chan()?;
 
         let chan = Channel::new(num, (&ty).into(), init_req);
@@ -45,7 +46,7 @@ impl Channels {
         let ch = ch.insert(chan);
         // *ch = Some(chan);
         // let ch = ch.as_ref().unwrap();
-        Ok((ch, p))
+        Ok((ch.num(), p))
     }
 
     /// Returns a `Channel` for a local number, any state including `InOpen`.
@@ -94,7 +95,9 @@ impl Channels {
 
     /// Must be called when an application has finished with a channel.
     pub fn done(&mut self, num: ChanNum) -> Result<()> {
-        self.get_mut(num)?.app_done = true;
+        let ch = self.get_mut(num)?;
+        debug_assert!(!ch.app_done);
+        ch.app_done = true;
         Ok(())
     }
 
@@ -245,17 +248,19 @@ impl Channels {
             _ => self.reserve_chan(p)?,
         };
 
+        let handle = ChanHandle(ch.num());
+
         // beware that a reserved channel must be cleaned up on failure
 
         // run the Behaviour function
         let r = match &p.ty {
             ChannelOpenType::Session => {
-                // unwrap: earlier test ensures b.server() succeeds
+                // OK unwrap: earlier test ensures b.server() succeeds
                 let bserv = b.server().unwrap();
-                bserv.open_session(ch.num())
+                bserv.open_session(handle)
             }
-            ChannelOpenType::ForwardedTcpip(t) => b.open_tcp_forwarded(ch.num(), t),
-            ChannelOpenType::DirectTcpip(t) => b.open_tcp_direct(ch.num(), t),
+            ChannelOpenType::ForwardedTcpip(t) => b.open_tcp_forwarded(handle, t),
+            ChannelOpenType::DirectTcpip(t) => b.open_tcp_direct(handle, t),
             ChannelOpenType::Unknown(_) => {
                 unreachable!()
             }
@@ -265,10 +270,14 @@ impl Channels {
             ChanOpened::Success => {
                 s.send(ch.open_done()?)?;
             }
-            ChanOpened::Failure(f) => {
+            ChanOpened::Failure((failure, rhandle)) => {
                 let n = ch.num();
+                if n != rhandle.num() {
+                    trace!("application returned a different ChanHandle!");
+                    return Err(error::BadUsage.build().into())
+                }
                 self.remove(n)?;
-                return Err(f.into());
+                return Err(failure.into());
             }
             ChanOpened::Defer => {
                 // application will reply later
@@ -688,6 +697,7 @@ impl Channel {
     }
 
 
+    /// Returns Ok(want_reply: bool) on success
     fn dispatch_server_request(
         &self,
         p: &packets::ChannelRequest,
@@ -720,11 +730,12 @@ impl Channel {
         }
     }
 
+    /// Returns Ok(want_reply: bool) on success
     fn dispatch_client_request(
         &mut self,
         p: &packets::ChannelRequest,
         s: &mut TrafSend,
-        b: &mut dyn CliBehaviour,
+        _b: &mut dyn CliBehaviour,
     ) -> Result<bool> {
         if !matches!(self.ty, ChanType::Session) {
             return Ok(false);
@@ -732,10 +743,12 @@ impl Channel {
 
         match &p.req {
             ChannelReqType::ExitStatus(st) => {
+                // TODO
                 self.handle_close(s)?;
                 Ok(true)
             }
             ChannelReqType::ExitSignal(sig) => {
+                // TODO
                 self.handle_close(s)?;
                 Ok(true)
             }
@@ -754,7 +767,7 @@ impl Channel {
         }
     }
 
-    fn handle_eof(&mut self, s: &mut TrafSend, b: &mut Behaviour<'_>) -> Result<()> {
+    fn handle_eof(&mut self, s: &mut TrafSend, _b: &mut Behaviour<'_>) -> Result<()> {
         //TODO: check existing state?
         if !self.sent_eof {
             s.send(packets::ChannelEof { num: self.send_num()? })?;
@@ -796,7 +809,7 @@ impl Channel {
         self.send.as_ref().map(|s| usize::max(s.window, s.max_packet))
     }
 
-    pub(crate) fn valid_send(&self, dt: ChanData) -> bool {
+    pub(crate) fn valid_send(&self, _dt: ChanData) -> bool {
         // TODO: later we should only allow non-pty "session" channels
         // to have dt, for stderr only.
         true
@@ -842,15 +855,19 @@ pub enum ChanOpened {
     Success,
     /// A channel open response will be sent later (for eg TCP open)
     Defer,
-    /// A SSH failure code
-    Failure(ChanFail),
+    /// A SSH failure code, as well as returning the passed channel handle
+    Failure((ChanFail, ChanHandle))
 }
 
 pub(crate) struct Channels {
     ch: [Option<Channel>; config::MAX_CHANNELS],
 }
 
-/// A SSH protocol channel number
+/// A SSH protocol local channel number
+///
+/// The number will always be in the range `0 <= num < MAX_CHANNELS`
+/// and can be used as an index by applications.
+/// Most external application API methods take a `ChanHandle` instead.
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub struct ChanNum(pub u32);
 
@@ -903,7 +920,9 @@ pub(crate) type InitReqs = Vec<ReqDetails, MAX_INIT_REQS>;
 
 // for dispatch_open_inner()
 enum DispatchOpenError {
+    /// A program error
     Error(Error),
+    /// A SSH failure response
     Failure(ChanFail),
 }
 

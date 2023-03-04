@@ -6,7 +6,8 @@ use {
 use core::future::{poll_fn, Future};
 use core::task::{Poll, Context};
 use core::ops::ControlFlow;
-use core::sync::atomic::{Ordering::Relaxed, AtomicBool};
+use core::sync::atomic::{AtomicBool, AtomicUsize};
+use core::sync::atomic::Ordering::{Relaxed, SeqCst};
 
 use embassy_sync::waitqueue::WakerRegistration;
 use embassy_sync::blocking_mutex::raw::{NoopRawMutex, RawMutex};
@@ -18,7 +19,7 @@ use embedded_io::asynch;
 
 use pin_utils::pin_mut;
 
-use sunset::{Runner, Result, Error, Behaviour, sshnames, ChanData, ChanNum};
+use sunset::{Runner, Result, Error, error, Behaviour, sshnames, ChanData, ChanHandle, ChanNum};
 use sunset::config::MAX_CHANNELS;
 
 // For now we only support single-threaded executors.
@@ -28,37 +29,69 @@ pub type SunsetRawMutex = NoopRawMutex;
 
 pub type SunsetMutex<T> = Mutex<SunsetRawMutex, T>;
 
-pub(crate) struct Inner<'a> {
-    runner: Runner<'a>,
+struct Wakers {
+    chan_read: [WakerRegistration; MAX_CHANNELS],
 
-    chan_read_wakers: [WakerRegistration; MAX_CHANNELS],
-
-    chan_write_wakers: [WakerRegistration; MAX_CHANNELS],
+    chan_write: [WakerRegistration; MAX_CHANNELS],
 
     /// Will be a stderr read waker for a client, or stderr write waker for
     /// a server.
-    chan_ext_wakers: [WakerRegistration; MAX_CHANNELS],
+    chan_ext: [WakerRegistration; MAX_CHANNELS],
 
     // TODO: do we need a separate waker for this?
-    chan_close_wakers: [WakerRegistration; MAX_CHANNELS],
+    chan_close: [WakerRegistration; MAX_CHANNELS],
+}
+
+struct Inner<'a> {
+    runner: Runner<'a>,
+
+    wakers: Wakers,
+
+    // May only be safely modified when `chan_refcounts` is zero.
+    chan_handles: [Option<ChanHandle>; MAX_CHANNELS],
+}
+
+impl<'a> Inner<'a> {
+    /// Helper to lookup the corresponding ChanHandle
+    ///
+    /// Returns split references that will be required by many callers
+    fn fetch(&mut self, num: ChanNum) -> Result<(&mut Runner<'a>, &ChanHandle, &mut Wakers)> {
+        self.chan_handles[num.0 as usize].as_ref().map(|ch| {
+            (&mut self.runner, ch, &mut self.wakers)
+        })
+        .ok_or_else(|| Error::bug())
+    }
 }
 
 pub struct EmbassySunset<'a> {
-    pub(crate) inner: Mutex<SunsetRawMutex, Inner<'a>>,
+    inner: Mutex<SunsetRawMutex, Inner<'a>>,
 
     progress_notify: Signal<SunsetRawMutex, ()>,
+
+    // wake_progress() should be called after modifying these atomics, to
+    // trigger the progress loop to handle state changes
+
     exit: AtomicBool,
     flushing: AtomicBool,
+
+    // Refcount for `Inner::chan_handles`. Must be non-async so it can be
+    // decremented on `ChanIn::drop()` etc.
+    // The pending chan_refcount=0 handling occurs in the `progress()` loop.
+    chan_refcounts: [AtomicUsize; MAX_CHANNELS],
 }
 
 impl<'a> EmbassySunset<'a> {
     pub fn new(runner: Runner<'a>) -> Self {
+        let wakers = Wakers {
+            chan_read: Default::default(),
+            chan_write: Default::default(),
+            chan_ext: Default::default(),
+            chan_close: Default::default(),
+        };
         let inner = Inner {
             runner,
-            chan_read_wakers: Default::default(),
-            chan_write_wakers: Default::default(),
-            chan_ext_wakers: Default::default(),
-            chan_close_wakers: Default::default(),
+            wakers,
+            chan_handles: Default::default(),
         };
         let inner = Mutex::new(inner);
 
@@ -69,6 +102,7 @@ impl<'a> EmbassySunset<'a> {
             exit: AtomicBool::new(false),
             flushing: AtomicBool::new(false),
             progress_notify,
+            chan_refcounts: Default::default(),
          }
     }
 
@@ -108,8 +142,9 @@ impl<'a> EmbassySunset<'a> {
                 let mut buf = [0; 1024];
                 let l = rsock.read(&mut buf).await.expect("TODO handle read error");
                 if l == 0 {
-                    self.flushing.store(true, Relaxed);
                     trace!("net EOF");
+                    self.flushing.store(true, Relaxed);
+                    self.wake_progress();
                     break
                 }
                 let mut buf = &buf[..l];
@@ -149,8 +184,9 @@ impl<'a> EmbassySunset<'a> {
 
         // TODO: is this a good way to do cancellation...?
         // self.with_runner(|runner| runner.close()).await;
-        let mut inner = self.inner.lock().await;
-        self.wake_channels(&mut inner)?;
+        // // Wake any channels that were awoken after the runner closed
+        // let mut inner = self.inner.lock().await;
+        // self.wake_channels(&mut inner)?;
         fp
     }
 
@@ -166,40 +202,64 @@ impl<'a> EmbassySunset<'a> {
     fn wake_channels(&self, inner: &mut Inner) -> Result<()> {
         trace!("wake_channels");
         // Read wakers
+        let w = &mut inner.wakers;
         if let Some((num, dt, _len)) = inner.runner.ready_channel_input() {
             // TODO: if there isn't any waker waiting, could we just drop the packet?
             match dt {
-                ChanData::Normal => inner.chan_read_wakers[num.0 as usize].wake(),
-                ChanData::Stderr => inner.chan_ext_wakers[num.0 as usize].wake(),
+                ChanData::Normal => w.chan_read[num.0 as usize].wake(),
+                ChanData::Stderr => w.chan_ext[num.0 as usize].wake(),
             }
         }
 
-        for chan in 0..MAX_CHANNELS {
+        for (idx, c) in inner.chan_handles.iter().enumerate() {
+            let ch = if let Some(ch) = c.as_ref() {
+                ch
+            } else {
+                continue
+            };
+
             // Write wakers
-            let num = ChanNum(chan as u32);
+
+
             // TODO: if this is slow we could be smarter about aggregating dt vs standard,
             // or handling the case of full out payload buffers.
-            if inner.runner.ready_channel_send(num, ChanData::Normal)?.unwrap_or(0) > 0 {
-                inner.chan_write_wakers[chan].wake()
+            if inner.runner.ready_channel_send(ch, ChanData::Normal)?.unwrap_or(0) > 0 {
+                w.chan_write[idx].wake()
             }
 
             if !inner.runner.is_client() {
-                if inner.runner.ready_channel_send(num, ChanData::Stderr)?.unwrap_or(0) > 0 {
-                    inner.chan_ext_wakers[chan].wake()
+                if inner.runner.ready_channel_send(ch, ChanData::Stderr)?.unwrap_or(0) > 0 {
+                    w.chan_ext[idx].wake()
                 }
             }
 
             // TODO: do we want to keep waking it?
-            if inner.runner.channel_eof(num) {
-                inner.chan_read_wakers[num.0 as usize].wake();
+            if inner.runner.is_channel_eof(ch) {
+                w.chan_read[idx].wake();
                 if inner.runner.is_client() {
-                    inner.chan_ext_wakers[num.0 as usize].wake();
+                    w.chan_ext[idx].wake();
                 }
             }
 
-            if inner.runner.channel_closed(num) {
-                trace!("wake chan {num} closed");
-                inner.chan_close_wakers[num.0 as usize].wake();
+            if inner.runner.is_channel_closed(ch) {
+                trace!("wake chan {ch:?} closed");
+                w.chan_close[idx].wake();
+            }
+        }
+        Ok(())
+    }
+
+    fn clear_refcounts(&self, inner: &mut Inner) -> Result<()> {
+        for (ch, count) in inner.chan_handles.iter_mut().zip(self.chan_refcounts.iter()) {
+            let count = count.load(Relaxed);
+            if count > 0 {
+                debug_assert!(ch.is_some());
+                continue;
+            }
+            if let Some(ch) = ch.take() {
+                // done with the channel
+                trace!("done with {ch:?}");
+                inner.runner.channel_done(ch)?;
             }
         }
         Ok(())
@@ -237,7 +297,9 @@ impl<'a> EmbassySunset<'a> {
                 }
 
                 trace!("embassy progress wake chans");
-                self.wake_channels(&mut inner)?
+                self.wake_channels(&mut inner)?;
+
+                self.clear_refcounts(&mut inner)?;
             }
             // inner dropped
         }
@@ -302,7 +364,7 @@ impl<'a> EmbassySunset<'a> {
 
     pub async fn input(&self, buf: &[u8]) -> Result<usize> {
         self.poll_inner(|inner, cx| {
-            if inner.runner.ready_input() {
+            if inner.runner.is_input_ready() {
                 let r = match inner.runner.input(buf) {
                     Ok(0) => {
                         inner.runner.set_input_waker(cx.waker());
@@ -328,17 +390,16 @@ impl<'a> EmbassySunset<'a> {
             return sunset::error::BadChannel { num }.fail()
         }
         self.poll_inner(|inner, cx| {
-            let i = match inner.runner.channel_input(num, dt, buf) {
+            let (runner, h, wakers) = inner.fetch(num)?;
+            let i = match runner.channel_input(h, dt, buf) {
                 Ok(0) => {
                     // 0 bytes read, pending
                     match dt {
                         ChanData::Normal => {
-                            trace!("register channel read {num} waker {:?}", cx.waker());
-                            inner.chan_read_wakers[num.0 as usize].register(cx.waker());
+                            wakers.chan_read[num.0 as usize].register(cx.waker());
                         }
                         ChanData::Stderr => {
-                            trace!("register channel dt {num} waker {:?}", cx.waker());
-                            inner.chan_ext_wakers[num.0 as usize].register(cx.waker());
+                            wakers.chan_ext[num.0 as usize].register(cx.waker());
                         }
                     }
                     Poll::Pending
@@ -362,13 +423,14 @@ impl<'a> EmbassySunset<'a> {
             return sunset::error::BadChannel { num }.fail()
         }
         self.poll_inner(|inner, cx| {
-            let l = inner.runner.channel_input(num, ChanData::Normal, buf);
+            let (runner, h, wakers) = inner.fetch(num)?;
+            let l = runner.channel_input(h, ChanData::Normal, buf);
             if let Ok(0) = l {
                 // 0 bytes read, pending
                 trace!("register channel {num} waker {:?}", cx.waker());
-                inner.chan_read_wakers[num.0 as usize].register(cx.waker());
+                wakers.chan_read[num.0 as usize].register(cx.waker());
                 // discard any `dt` input for this channel
-                match inner.runner.discard_channel_input(num) {
+                match runner.discard_channel_input(h) {
                     // bad channel is OK, perhaps the channel isn't running yet
                     Err(Error::BadChannel { .. }) => Ok(()),
                     r => r,
@@ -406,17 +468,18 @@ impl<'a> EmbassySunset<'a> {
             return sunset::error::BadChannel { num }.fail()
         }
         self.poll_inner(|inner, cx| {
-            let l = inner.runner.channel_send(num, dt, buf);
+            let (runner, h, wakers) = inner.fetch(num)?;
+            let l = runner.channel_send(h, dt, buf);
             if let Ok(0) = l {
                 // 0 bytes written, pending
                 match dt {
                     ChanData::Normal => {
                         trace!("register channel write {num} waker {:?}", cx.waker());
-                        inner.chan_write_wakers[num.0 as usize].register(cx.waker());
+                        wakers.chan_write[num.0 as usize].register(cx.waker());
                     }
                     ChanData::Stderr => {
                         trace!("register channel dt {num} waker {:?}", cx.waker());
-                        inner.chan_ext_wakers[num.0 as usize].register(cx.waker());
+                        wakers.chan_ext[num.0 as usize].register(cx.waker());
                     }
                 }
                 Poll::Pending
@@ -429,13 +492,55 @@ impl<'a> EmbassySunset<'a> {
 
     pub(crate) async fn until_channel_closed(&self, num: ChanNum) -> Result<()> {
         self.poll_inner(|inner, cx| {
-            if inner.runner.channel_closed(num) {
+            let (runner, h, wakers) = inner.fetch(num)?;
+            if runner.is_channel_closed(h) {
                 Poll::Ready(Ok(()))
             } else {
-                inner.chan_close_wakers[num.0 as usize].register(cx.waker());
+                wakers.chan_close[num.0 as usize].register(cx.waker());
                 Poll::Pending
             }
         }).await
+    }
+
+    pub async fn term_window_change(&self, num: ChanNum, winch: sunset::packets::WinChange) -> Result<()> {
+        let mut inner = self.inner.lock().await;
+        let (runner, h, _) = inner.fetch(num)?;
+        runner.term_window_change(h, winch)
+    }
+
+    /// Adds a new channel
+    ///
+    /// EmbassySunset will take ownership of the handle, and set the initial
+    /// refcount. ChanInOut etc will take care of `inc_chan()` on clone,
+    /// `dec_chan()` on drop.
+    pub(crate) async fn add_channel(&self, handle: ChanHandle, init_refcount: usize) -> Result<()> {
+        let mut inner = self.inner.lock().await;
+        let idx = handle.num().0 as usize;
+        if inner.chan_handles[idx].is_some() {
+            return error::Bug.fail()
+        }
+
+        debug_assert_eq!(self.chan_refcounts[idx].load(Relaxed), 0);
+
+        inner.chan_handles[idx] = Some(handle);
+        self.chan_refcounts[idx].store(init_refcount, Relaxed);
+        Ok(())
+    }
+
+    pub(crate) fn inc_chan(&self, num: ChanNum) {
+        let c = self.chan_refcounts[num.0 as usize].fetch_add(1, SeqCst);
+        debug_assert_ne!(c, 0);
+        // overflow shouldn't be possible unless ChanIn etc is leaking
+        debug_assert_ne!(c, usize::MAX);
+        // perhaps not necessary? is cheap?
+        self.wake_progress();
+    }
+
+    pub(crate) fn dec_chan(&self, num: ChanNum) {
+        let c = self.chan_refcounts[num.0 as usize].fetch_sub(1, SeqCst);
+        debug_assert_ne!(c, 0);
+        // perhaps not necessary? is cheap?
+        self.wake_progress();
     }
 }
 

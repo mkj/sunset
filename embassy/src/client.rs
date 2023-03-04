@@ -41,8 +41,11 @@ impl<'a> SSHClient<'a> {
             runner.open_client_session(exec, None)
         }).await?;
 
-        let cstd = ChanInOut::new(chan, ChanData::Normal, &self.sunset);
-        let cerr = ChanIn::new(chan, ChanData::Stderr, &self.sunset);
+        let num = chan.num();
+        self.sunset.add_channel(chan, 2).await?;
+
+        let cstd = ChanInOut::new(num, ChanData::Normal, &self.sunset);
+        let cerr = ChanIn::new(num, ChanData::Stderr, &self.sunset);
         Ok((cstd, cerr))
     }
 
@@ -53,7 +56,9 @@ impl<'a> SSHClient<'a> {
             runner.open_client_session(exec, Some(pty))
         }).await?;
 
-        let cstd = ChanInOut::new(chan, ChanData::Normal, &self.sunset);
+        let num = chan.num();
+        self.sunset.add_channel(chan, 1).await?;
+        let cstd = ChanInOut::new(num, ChanData::Normal, &self.sunset);
         Ok(cstd)
     }
 }

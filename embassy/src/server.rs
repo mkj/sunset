@@ -30,11 +30,11 @@ impl<'a> SSHServer<'a> {
         self.sunset.run(rsock, wsock, b).await
     }
 
-    pub fn stdio(&'a self, ch: ChanNum) -> ChanInOut<'a> {
-        ChanInOut::new(ch, ChanData::Normal, &self.sunset)
+    pub async fn stdio(&'a self, ch: ChanHandle) -> Result<ChanInOut<'a>> {
+        let num = ch.num();
+        self.sunset.add_channel(ch, 1).await?;
+        Ok(ChanInOut::new(num, ChanData::Normal, &self.sunset))
     }
 
-    pub fn stderr(&'a self, ch: ChanNum) -> ChanOut<'a> {
-        ChanOut::new(ch, ChanData::Stderr, &self.sunset)
-    }
+    // TODO: add stdio_stderr()
 }
