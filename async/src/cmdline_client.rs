@@ -83,7 +83,6 @@ impl<'a> CmdlineRunner<'a> {
         let fo = async {
             let mut io = io.clone();
             let mut so = crate::stdout().map_err(|e| {
-                error!("open stdout: {e:?}");
                 Error::msg("opening stdout failed")
             })?;
             loop {

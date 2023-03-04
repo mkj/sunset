@@ -144,7 +144,8 @@ impl Error {
         }
     }
 
-    /// Like [`bug()`] but with a message
+    /// Like [`bug()`](Error::bug) but with a message
+    ///
     /// The message can be used instead of a code comment, is logged at `debug` level.
     #[cold]
     pub fn bug_fmt(args: Arguments) -> Error {
@@ -196,7 +197,7 @@ pub trait TrapBug<T> {
     /// (or debug builds may panic)
     fn trap(self) -> Result<T, Error>;
 
-    /// Like [`trap()`] but with a message, calls [`Error::bug_msg()`]
+    /// Like `trap()` but with a message, calls [`Error::bug_msg()`]
     /// The message can be used instead of a comment.
     fn trap_msg(self, args: Arguments) -> Result<T, Error>;
 }

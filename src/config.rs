@@ -4,6 +4,9 @@ pub const DEFAULT_MAX_PACKET: usize = 1000;
 
 // TODO: perhaps this is a parameter, the Channel Vec storage type itself is a parameter
 // and boundless for alloc.
+
+// This can be increased arbitrarily, though note that some code paths assume
+// a linear scan of channels can happen quickly, so may need reworking for performance.
 pub const MAX_CHANNELS: usize = 2;
 
 // TODO

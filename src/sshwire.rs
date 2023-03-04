@@ -1,6 +1,6 @@
 //! SSH wire format reading/writing.
 //!
-//! Used in conjunction with [`sshwire_derive`] and the [`packet`](crate::packets) format
+//! Used in conjunction with [`sunset_sshwire_derive`] and the [`packet`](crate::packets) format
 //! definitions.
 //!
 //! SSH wire format is described in [RFC4251](https://tools.ietf.org/html/rfc4251) SSH Architecture
