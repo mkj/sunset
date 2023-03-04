@@ -6,7 +6,7 @@ use {
 use core::future::{poll_fn, Future};
 use core::task::{Poll, Context};
 use core::ops::ControlFlow;
-use core::sync::atomic::{AtomicBool, AtomicUsize};
+use core::sync::atomic::AtomicBool;
 use core::sync::atomic::Ordering::{Relaxed, SeqCst};
 
 use embassy_sync::waitqueue::WakerRegistration;
@@ -16,6 +16,9 @@ use embassy_sync::signal::Signal;
 use embassy_futures::select::select;
 use embassy_futures::join;
 use embedded_io::asynch;
+
+// thumbv6m has no atomic usize add/sub
+use atomic_polyfill::AtomicUsize;
 
 use pin_utils::pin_mut;
 
