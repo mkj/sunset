@@ -36,8 +36,7 @@ no-panic = "0.1"
 # allows avoiding utf8 for SSH identifier names
 ascii = { version = "1.0", default-features = false }
 
-rand = { version = "0.8", default-features = false, features = ["getrandom"] }
-rand_core = { version = "0.6", default-features = false }
+getrandom = "0.2"
 
 ctr = { version = "0.9", features = ["zeroize"] }
 aes = { version = "0.8", features = ["zeroize"] }
