@@ -72,8 +72,7 @@ fn parse_args() -> Result<Args> {
         }
     }
     if args.username.is_none() {
-        // TODO current user
-        args.username = Some("matt".into());
+        args.username = Some(whoami::username());
     }
 
     Ok(args)
