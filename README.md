@@ -7,19 +7,19 @@ A SSH client and server implementation.
 - `sunset` (this toplevel) is the core SSH implementation. It provides a
   non-async API, runs with `no_std` and no alloc.
 
-- [`sunset-embassy`](embassy/) - async SSH client and server library, also
+- [`sunset-embassy`](embassy) - async SSH client and server library, also
   `no_std`. This uses [Embassy](https://embassy.dev/) crate but is async
   executor agnostic.
 
-- [embassy/demos] has demos with Embassy executor for wifi on a Raspberry Pi
+- [`embassy/demos`](embassy/demos) has demos with Embassy executor for wifi on a Raspberry Pi
   [Pico W](embassy/demos/picow) or a
   [tun device on `std`](embassy/demos/std) running locally.
 
   At present the Pico W build is around 150kB binary size
-  (plus ~200KB cyw43 wifi blob),
+  (plus ~200KB [cyw43](https://github.com/embassy-rs/cyw43/) wifi blob),
   using about 30kB RAM per concurrent SSH session (max stack size not confirmed).
 
-- [`sunset-async`] adds functionality to use Sunset as a normal SSH client or
+- [`sunset-async`](async/) adds functionality to use Sunset as a normal SSH client or
   server async library in normal Rust (not `no_std`). The
   [examples](async/examples) include a Linux commandline SSH client.
   This uses Tokio or async-std.
