@@ -9,7 +9,7 @@ use {
 use defmt::{debug, info, warn, panic, error, trace};
 
 use embassy_sync::mutex::Mutex;
-use embassy_sync::blocking_mutex::raw::{NoopRawMutex, CriticalSectionRawMutex};
+use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::signal::Signal;
 use embassy_net::tcp::TcpSocket;
 use embassy_net::Stack;
@@ -61,7 +61,7 @@ pub async fn listener<D: Driver>(stack: &'static Stack<D>, config: &SSHConfig) -
         // TODO: disable nagle. smoltcp supports it, requires embassy-net addition
 
         info!("Listening on TCP:22...");
-        if let Err(e) = socket.accept(22).await {
+        if let Err(_) = socket.accept(22).await {
             warn!("accept error");
             continue;
         }
@@ -133,8 +133,11 @@ impl<'a> ServBehaviour for DemoServer<'a> {
     fn sess_pty(&mut self, chan: ChanNum, _pty: &Pty) -> bool {
         self.sess == Some(chan)
     }
-}
 
+    fn disconnected(&mut self, desc: TextString) {
+        info!("Disconnect by client: {}", desc.as_str().unwrap_or("bad"));
+    }
+}
 
 #[derive(Default)]
 struct DemoShell {
@@ -155,16 +158,25 @@ impl DemoShell {
 
             let mut menu = MenuRunner::new(&demo_menu::ROOT_MENU, &mut menu_buf, menu_out);
 
+            // bodge
+            for c in "help\r\n".bytes() {
+                menu.input_byte(c);
+            }
+            menu.context.flush(&mut stdio).await?;
+
             loop {
                 let mut b = [0u8; 20];
                 let lr = stdio.read(&mut b).await?;
+                if lr == 0 {
+                    break
+                }
                 let b = &mut b[..lr];
                 for c in b.iter() {
                     menu.input_byte(*c);
-                    menu.context.flush(&mut stdio).await?;
                 }
+                menu.context.flush(&mut stdio).await?;
             }
-            // Ok(())
+            Ok(())
         };
 
         session.await
@@ -173,6 +185,10 @@ impl DemoShell {
 
 
 async fn session(socket: &mut TcpSocket<'_>, config: &SSHConfig) -> sunset::Result<()> {
+    // OK unwrap: has been accepted
+    let src = socket.remote_endpoint().unwrap();
+    info!("Connection from {}:{}", src.addr, src.port);
+
     let shell = DemoShell::default();
 
     let app = DemoServer::new(&shell, config)?;

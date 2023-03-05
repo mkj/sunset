@@ -20,7 +20,7 @@ mod demo_common;
 
 use demo_common::SSHConfig;
 
-const NUM_LISTENERS: usize = 4;
+const NUM_LISTENERS: usize = 2;
 // +1 for dhcp
 const NUM_SOCKETS: usize = NUM_LISTENERS+1;
 

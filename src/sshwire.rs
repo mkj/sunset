@@ -298,17 +298,19 @@ impl<'de> SSHDecode<'de> for BinString<'de> {
 /// The SSH protocol defines it to be UTF-8, though
 /// in some applications it could be treated as ASCII-only.
 /// Sunset treats it as an opaque `&[u8]`, leaving
-/// decoding to the [`Behaviour`].
+/// interpretation to the [`Behaviour`].
 ///
-/// Note that SSH protocol identifiers in `Packet`
+/// Note that SSH protocol identifiers in [`Packet`]
 /// are `&str` rather than `TextString`, and always defined as ASCII. For
-/// example `"publickey"`, `"ssh-rsa"`.
+/// example `"publickey"`, `"ssh-ed25519"`.
+///
 /// Application API
 #[derive(Clone,PartialEq,Copy,Default)]
 pub struct TextString<'a>(pub &'a [u8]);
 
 impl TextString<'_> {
     /// Returns the UTF-8 decoded string, using [`core::str::from_utf8`]
+    ///
     /// Don't call this if you are avoiding including UTF-8 routines in
     /// the binary.
     pub fn as_str(&self) -> Result<&str> {
@@ -650,7 +652,6 @@ pub(crate) mod tests {
                 key: BinString(&[0x11, 0x22, 0x33]),
             })),
         }).into();
-        let s = SignKey::generate(KeyType::Ed25519).unwrap();
         ctx.cli_auth_type = Some(auth::AuthType::PubKey);
         test_roundtrip_context(&p, &ctx);
     }
@@ -684,7 +685,7 @@ pub(crate) mod tests {
     fn wrong_packet_size() {
         let p1 = packets::NewKeys {};
         let p1: Packet = p1.into();
-        let mut ctx = ParseContext::new();
+        let ctx = ParseContext::new();
 
         let mut buf1 = vec![88; 1000];
         let l = write_ssh(&mut buf1, &p1).unwrap();

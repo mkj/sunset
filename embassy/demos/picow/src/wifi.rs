@@ -8,7 +8,6 @@ use embassy_rp::gpio::{Flex, Output};
 use embassy_rp::peripherals::{PIN_23, PIN_24, PIN_25, PIN_29};
 use embedded_hal_1::spi::ErrorType;
 use embedded_hal_async::spi::{ExclusiveDevice, SpiBusFlush, SpiBusRead, SpiBusWrite};
-use embedded_io::asynch::Write;
 
 #[embassy_executor::task]
 pub(crate) async fn wifi_task(

@@ -67,7 +67,6 @@ openssh-key = ["dep:ssh-key"]
 embedded-io = ["dep:embedded-io"]
 
 [dev-dependencies]
-# toml = "0.5"
 # examples want std::error
 snafu = { version = "0.7", default-features = true }
 anyhow = { version = "1.0" }
@@ -75,13 +74,6 @@ pretty-hex = "0.3"
 simplelog = { version = "0.12", features = ["test"] }
 proptest = "1.0"
 
-# embassy is not released yet
 [patch.crates-io]
-# embassy-time = { git = "https://github.com/embassy-rs/embassy", rev = "e1eac15c429f88b1176109d6ce42185e2774ac86" }
-# embassy-futures = { git = "https://github.com/embassy-rs/embassy", rev = "e1eac15c429f88b1176109d6ce42185e2774ac86" }
-
 # needed for Default WakerRegistration, https://github.com/embassy-rs/embassy/commit/14a2d1524080593f7795fe14950a3f0ee6e2b409
 embassy-sync = { git = "https://github.com/embassy-rs/embassy", rev = "e1eac15c429f88b1176109d6ce42185e2774ac86" }
-
-# embassy-net = { git = "https://github.com/embassy-rs/embassy", rev = "e1eac15c429f88b1176109d6ce42185e2774ac86" }
-# embassy-sync = { path = "/home/matt/3rd/rs/embassy/embassy-sync" }

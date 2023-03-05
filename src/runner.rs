@@ -50,6 +50,12 @@ impl core::fmt::Debug for Runner<'_> {
     }
 }
 
+#[derive(Default, Debug)]
+pub struct Progress {
+    pub progressed: bool,
+    pub disconnected: bool,
+}
+
 impl<'a> Runner<'a> {
     /// `inbuf` must be sized to fit the largest SSH packet allowed.
     pub fn new_client(
@@ -93,7 +99,7 @@ impl<'a> Runner<'a> {
     }
 
     /// Drives connection progress, handling received payload and queueing
-    /// other packets to send as required.
+    /// packets to send as required.
     ///
     /// This must be polled/awaited regularly, passing in `behaviour`.
     ///
@@ -103,13 +109,15 @@ impl<'a> Runner<'a> {
     ///
     /// Returns Ok(true) if an input packet was handled, Ok(false) if no packet was ready
     /// (Can also return various errors)
-    pub async fn progress(&mut self, behaviour: &mut Behaviour<'_>) -> Result<bool> {
-        let mut progressed = false;
+    pub async fn progress(&mut self, behaviour: &mut Behaviour<'_>) -> Result<Progress> {
+        let mut prog = Progress::default();
+
         let mut s = self.traf_out.sender(&mut self.keys);
         // Handle incoming packets
         if let Some((payload, seq)) = self.traf_in.payload() {
-            progressed = true;
+            prog.progressed = true;
             let d = self.conn.handle_payload(payload, seq, &mut s, behaviour).await?;
+            prog.disconnected = d.disconnect;
 
             if let Some(data_in) = d.data_in {
                 // incoming channel data, we haven't finished with payload
@@ -125,7 +133,7 @@ impl<'a> Runner<'a> {
         self.conn.progress(&mut s, behaviour).await?;
         self.wake();
 
-        Ok(progressed)
+        Ok(prog)
     }
 
     pub fn input(&mut self, buf: &[u8]) -> Result<usize, Error> {

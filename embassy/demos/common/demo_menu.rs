@@ -1,8 +1,6 @@
-use sunset_embassy::SSHServer;
-use sunset::{Result, ChanData, ChanNum};
+use sunset::Result;
 
 use embedded_io::asynch;
-use embedded_io::asynch::Write as _;
 
 use menu::*;
 use core::fmt::Write;

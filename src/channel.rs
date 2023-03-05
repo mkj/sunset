@@ -44,8 +44,6 @@ impl Channels {
         .into();
         let ch = &mut self.ch[num.0 as usize];
         let ch = ch.insert(chan);
-        // *ch = Some(chan);
-        // let ch = ch.as_ref().unwrap();
         Ok((ch.num(), p))
     }
 
@@ -98,6 +96,12 @@ impl Channels {
         let ch = self.get_mut(num)?;
         debug_assert!(!ch.app_done);
         ch.app_done = true;
+        Ok(())
+    }
+
+    fn remove_any(&mut self, num: ChanNum) -> Result<()> {
+        trace!("remove_any channel {}", num);
+        self.ch[num.0 as usize] = None;
         Ok(())
     }
 
@@ -268,15 +272,17 @@ impl Channels {
 
         match r {
             ChanOpened::Success => {
+                trace!("chanop success");
                 s.send(ch.open_done()?)?;
             }
             ChanOpened::Failure((failure, rhandle)) => {
+                trace!("chanop fail {:?} rh {:?}", failure, rhandle);
                 let n = ch.num();
                 if n != rhandle.num() {
                     trace!("application returned a different ChanHandle!");
                     return Err(error::BadUsage.build().into())
                 }
-                self.remove(n)?;
+                self.remove_any(n)?;
                 return Err(failure.into());
             }
             ChanOpened::Defer => {
@@ -408,7 +414,7 @@ impl Channels {
 
         match r {
             Err(Error::BadChannel { num, .. }) => {
-                warn!("Ignoring bad channel number {:?}", r);
+                warn!("Ignoring bad channel number {:?}", num);
                 // warn!("Ignoring bad channel number {:?}", r.unwrap_err().backtrace());
                 Ok(None)
             }
@@ -528,22 +534,22 @@ impl Req {
     }
 }
 
-// Variants match packets::ChannelReqType, without data
-enum ReqKind {
-    Shell,
-    Exec,
-    Pty,
-    Subsystem,
-    WinChange,
-    Signal,
-    ExitStatus,
-    ExitSignal,
-    Break,
-}
+// // Variants match packets::ChannelReqType, without data
+// enum ReqKind {
+//     Shell,
+//     Exec,
+//     Pty,
+//     Subsystem,
+//     WinChange,
+//     Signal,
+//     ExitStatus,
+//     ExitSignal,
+//     Break,
+// }
 
 // shell+pty. or perhaps this should match the hook queue size and then
 // we can stop servicing the hook queue if this limit is reached.
-const MAX_OUTSTANDING_REQS: usize = 2;
+// const MAX_OUTSTANDING_REQS: usize = 2;
 const MAX_INIT_REQS: usize = 2;
 
 /// Per-direction channel variables
@@ -587,8 +593,8 @@ pub(crate) struct Channel {
     state: ChanState,
     sent_eof: bool,
     sent_close: bool,
-    // queue of requests sent with want_reply
-    last_req: heapless::Deque<ReqKind, MAX_OUTSTANDING_REQS>,
+    // // queue of requests sent with want_reply
+    // last_req: heapless::Deque<ReqKind, MAX_OUTSTANDING_REQS>,
 
     recv: ChanDir,
     /// populated in all states except `Opening`
@@ -612,7 +618,7 @@ impl Channel {
             state: ChanState::Opening { init_req },
             sent_close: false,
             sent_eof: false,
-            last_req: Deque::new(),
+            // last_req: Deque::new(),
             recv: ChanDir {
                 num: num.0,
                 max_packet: config::DEFAULT_MAX_PACKET,
@@ -742,12 +748,12 @@ impl Channel {
         }
 
         match &p.req {
-            ChannelReqType::ExitStatus(st) => {
+            ChannelReqType::ExitStatus(_st) => {
                 // TODO
                 self.handle_close(s)?;
                 Ok(true)
             }
-            ChannelReqType::ExitSignal(sig) => {
+            ChannelReqType::ExitSignal(_sig) => {
                 // TODO
                 self.handle_close(s)?;
                 Ok(true)

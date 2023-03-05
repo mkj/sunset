@@ -5,7 +5,7 @@ use embedded_io::asynch;
 use sunset::*;
 
 use crate::*;
-use sunset::{ChanData, ChanNum};
+use sunset::ChanData;
 use embassy_sunset::EmbassySunset;
 use embassy_channel::{ChanInOut, ChanIn};
 

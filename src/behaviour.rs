@@ -82,12 +82,16 @@ impl<'a> Behaviour<'a> {
         }
     }
 
-    pub(crate) fn is_client(&self) -> bool {
-        matches!(self, Self::Client(_))
+    /// Calls either client or server
+    pub(crate) fn disconnected(&mut self, desc: TextString) {
+        match self {
+            Self::Client(b) => b.disconnected(desc),
+            Self::Server(b) => b.disconnected(desc),
+        }
     }
 
-    pub(crate) fn is_server(&self) -> bool {
-        !self.is_client()
+    pub(crate) fn is_client(&self) -> bool {
+        matches!(self, Self::Client(_))
     }
 
     pub(crate) fn client(&mut self) -> Result<&mut dyn CliBehaviour> {
@@ -137,6 +141,14 @@ pub trait CliBehaviour {
     /// Called after authentication has succeeded
     // TODO: perhaps this should be an eventstream not a behaviour?
     fn authenticated(&mut self);
+
+    /// Provides the disconnect message sent by a server
+    ///
+    /// Note that this may not be called in cases where the SSH TCP connection
+    /// is simply closed.
+    #[allow(unused)]
+    fn disconnected(&mut self, desc: TextString) {
+    }
 
     /// Show a banner sent from a server. Arguments are provided
     /// by the server so could be hazardous, `banner` should be escaped with
@@ -199,7 +211,7 @@ pub trait ServBehaviour {
     #[allow(unused)]
     // TODO: change password
     /// Implementations should perform password hash comparisons
-    /// in constant time, using 
+    /// in constant time, using
     /// [`subtle::ConstantTimeEq`](subtle::ConstantTimeEq) or similar.
     ///
     /// Implementations may need to take care to avoid leaking user existence
@@ -248,5 +260,13 @@ pub trait ServBehaviour {
     #[allow(unused)]
     fn sess_pty(&mut self, chan: ChanNum, pty: &Pty) -> bool {
         false
+    }
+
+    /// Provides the disconnect message sent by a client
+    ///
+    /// Note that this may not be called in cases where the SSH TCP connection
+    /// is simply closed.
+    #[allow(unused)]
+    fn disconnected(&mut self, desc: TextString) {
     }
 }

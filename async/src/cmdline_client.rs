@@ -17,7 +17,6 @@ use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::signal::unix::{signal, SignalKind};
 
-
 use futures::{select_biased, future::Fuse};
 use futures::FutureExt;
 
@@ -82,7 +81,7 @@ impl<'a> CmdlineRunner<'a> {
         // out
         let fo = async {
             let mut io = io.clone();
-            let mut so = crate::stdout().map_err(|e| {
+            let mut so = crate::stdout().map_err(|_| {
                 Error::msg("opening stdout failed")
             })?;
             loop {
@@ -153,7 +152,7 @@ impl<'a> CmdlineRunner<'a> {
         //     x
         // });
 
-        let r = embassy_futures::join::join3(fe, fi, fo).await;
+        let _ = embassy_futures::join::join3(fe, fi, fo).await;
         // TODO handle errors from the join?
         Ok(())
     }
@@ -337,7 +336,6 @@ impl<'a> sunset::CliBehaviour for CmdlineHooks<'a> {
         // TODO: need better handling, what else could we do?
         while self.notify.try_send(Msg::Authed).is_err() {
             warn!("Full notification queue");
-            // tokio::task::yield_now();
         }
     }
 }

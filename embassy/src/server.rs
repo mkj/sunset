@@ -30,10 +30,25 @@ impl<'a> SSHServer<'a> {
         self.sunset.run(rsock, wsock, b).await
     }
 
+    /// Returns a [`ChanInOut`] representing a channel.
+    ///
+    /// For a shell this is stdin/stdout, for other channel types it is the only
+    /// data type.
+    /// `ch` is the [`ChanHandle`] passed to the application's `Behaviour`
+    /// methods.
     pub async fn stdio(&'a self, ch: ChanHandle) -> Result<ChanInOut<'a>> {
         let num = ch.num();
         self.sunset.add_channel(ch, 1).await?;
         Ok(ChanInOut::new(num, ChanData::Normal, &self.sunset))
+    }
+
+    pub async fn stdio_stderr(&'a self, ch: ChanHandle)
+        -> Result<(ChanInOut<'a>, ChanOut<'a>)> {
+        let num = ch.num();
+        self.sunset.add_channel(ch, 2).await?;
+        let i = ChanInOut::new(num, ChanData::Normal, &self.sunset);
+        let e = ChanOut::new(num, ChanData::Stderr, &self.sunset);
+        Ok((i, e))
     }
 
     // TODO: add stdio_stderr()

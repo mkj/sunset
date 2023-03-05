@@ -22,7 +22,7 @@ use atomic_polyfill::AtomicUsize;
 
 use pin_utils::pin_mut;
 
-use sunset::{Runner, Result, Error, error, Behaviour, sshnames, ChanData, ChanHandle, ChanNum};
+use sunset::{Runner, Result, Error, error, Behaviour, ChanData, ChanHandle, ChanNum};
 use sunset::config::MAX_CHANNELS;
 
 // For now we only support single-threaded executors.
@@ -66,7 +66,13 @@ impl<'a> Inner<'a> {
     }
 }
 
-pub struct EmbassySunset<'a> {
+/// Provides an async wrapper for sunset core
+///
+/// A `ChanHandle` provided by sunset core must be added with `add_channel()` before
+/// a method can be called with the equivalent ChanNum.
+///
+/// Applications use `embassy_sunset::{Client,Server}`.
+pub(crate) struct EmbassySunset<'a> {
     inner: Mutex<SunsetRawMutex, Inner<'a>>,
 
     progress_notify: Signal<SunsetRawMutex, ()>,
@@ -172,9 +178,10 @@ impl<'a> EmbassySunset<'a> {
                 }
             }
         };
+
         let prog = async {
             let r = prog.await;
-            // self.with_runner(|runner| runner.close()).await;
+            self.with_runner(|runner| runner.close()).await;
             rx_stop.signal(());
             r
         };
@@ -252,6 +259,11 @@ impl<'a> EmbassySunset<'a> {
         Ok(())
     }
 
+    /// Check for channels that have reached zero refcount
+    ///
+    /// This runs periodically from an async context to clean up channels
+    /// that were refcounted down to 0 called from an async context (when
+    /// a ChanIO is dropped)
     fn clear_refcounts(&self, inner: &mut Inner) -> Result<()> {
         for (ch, count) in inner.chan_handles.iter_mut().zip(self.chan_refcounts.iter()) {
             let count = count.load(Relaxed);
@@ -269,13 +281,13 @@ impl<'a> EmbassySunset<'a> {
     }
 
     /// Returns ControlFlow::Break on session exit.
-    pub async fn progress<B: ?Sized, M: RawMutex>(&self,
+    async fn progress<B: ?Sized, M: RawMutex>(&self,
         b: &Mutex<M, B>)
         -> Result<ControlFlow<()>>
         where
             for<'f> Behaviour<'f>: From<&'f mut B>
         {
-            let progressed;
+            let ret;
 
             trace!("embassy progress");
         {
@@ -294,7 +306,7 @@ impl<'a> EmbassySunset<'a> {
                     trace!("embassy progress behaviour lock");
                     let b: &mut B = &mut b;
                     let mut b: Behaviour = b.into();
-                    progressed = inner.runner.progress(&mut b).await?;
+                    ret = inner.runner.progress(&mut b).await?;
                     trace!("embassy progress runner done");
                     // b is dropped, allowing other users
                 }
@@ -307,8 +319,11 @@ impl<'a> EmbassySunset<'a> {
             // inner dropped
         }
 
-        trace!("progressed {progressed:?}");
-        if !progressed {
+        if ret.disconnected {
+            return Ok(ControlFlow::Break(()))
+        }
+
+        if !ret.progressed {
             if self.flushing.load(Relaxed) {
                 // if we're flushing, we exit once there is no progress
                 return Ok(ControlFlow::Break(()))
@@ -419,53 +434,6 @@ impl<'a> EmbassySunset<'a> {
         }).await
     }
 
-    /// Reads normal channel data. If extended data is pending it will be discarded.
-    // TODO delete this
-    pub(crate) async fn read_channel_stdin(&self, num: ChanNum, buf: &mut [u8]) -> Result<usize> {
-        if num.0 as usize > MAX_CHANNELS {
-            return sunset::error::BadChannel { num }.fail()
-        }
-        self.poll_inner(|inner, cx| {
-            let (runner, h, wakers) = inner.fetch(num)?;
-            let l = runner.channel_input(h, ChanData::Normal, buf);
-            if let Ok(0) = l {
-                // 0 bytes read, pending
-                trace!("register channel {num} waker {:?}", cx.waker());
-                wakers.chan_read[num.0 as usize].register(cx.waker());
-                // discard any `dt` input for this channel
-                match runner.discard_channel_input(h) {
-                    // bad channel is OK, perhaps the channel isn't running yet
-                    Err(Error::BadChannel { .. }) => Ok(()),
-                    r => r,
-                }?;
-                Poll::Pending
-            } else {
-                Poll::Ready(l)
-            }
-        }).await
-    }
-
-    // /// Reads channel data, returning the length read and optionally
-    // /// whether it was dt data. Should only be called from
-    // /// a single waker for both stdin and stderr, otherwise
-    // /// will keep alternating wakers.
-    // pub async fn read_channel_either(&self, ch: u32, buf: &mut [u8]) -> Result<(usize, Option<u32>)> {
-    //     if ch as usize > MAX_CHANNELS {
-    //         return sunset::error::BadChannel { num: ch }.fail()
-    //     }
-    //     self.poll_inner(|inner, cx| {
-    //         let (l, dt) = inner.runner.channel_input_either(ch, buf);
-    //         if let Ok(0) = l {
-    //             // 0 bytes read, pending
-    //             trace!("register channel {ch} waker {:?}", cx.waker());
-    //             inner.chan_read_wakers[ch as usize].register(cx.waker());
-    //             Poll::Pending
-    //         } else {
-    //             Poll::Ready((l, dt))
-    //         }
-    //     }).await
-    // }
-
     pub(crate) async fn write_channel(&self, num: ChanNum, dt: ChanData, buf: &[u8]) -> Result<usize> {
         if num.0 as usize > MAX_CHANNELS {
             return sunset::error::BadChannel { num }.fail()
@@ -511,11 +479,13 @@ impl<'a> EmbassySunset<'a> {
         runner.term_window_change(h, winch)
     }
 
-    /// Adds a new channel
+    /// Adds a new channel handle provided by sunset core.
     ///
-    /// EmbassySunset will take ownership of the handle, and set the initial
-    /// refcount. ChanInOut etc will take care of `inc_chan()` on clone,
-    /// `dec_chan()` on drop.
+    /// EmbassySunset will take ownership of the handle. An initial refcount
+    /// must be provided, this will match the number of ChanIO that
+    /// will be created. (A zero initial refcount would be prone to immediate
+    /// garbage collection).
+    /// ChanIO will take care of `inc_chan()` on clone, `dec_chan()` on drop.
     pub(crate) async fn add_channel(&self, handle: ChanHandle, init_refcount: usize) -> Result<()> {
         let mut inner = self.inner.lock().await;
         let idx = handle.num().0 as usize;

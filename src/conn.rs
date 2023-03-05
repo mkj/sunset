@@ -55,16 +55,11 @@ impl ClientServer {
     pub fn is_client(&self) -> bool {
         matches!(self, ClientServer::Client(_))
     }
-
-    pub fn is_server(&self) -> bool {
-        matches!(self, ClientServer::Server(_))
-    }
 }
 
 #[derive(Debug)]
 enum ConnState {
     SendIdent,
-    SendFirstKexInit,
     /// Prior to SSH binary packet protocol, receiving remote version identification
     ReceiveIdent,
     /// Binary packet protocol has started, KexInit not yet received
@@ -90,7 +85,10 @@ enum ConnState {
 pub(crate) struct Dispatched {
     pub data_in: Option<channel::DataIn>,
     /// set for sensitive payloads such as password auth
+    // TODO is this really worthwhile? channel data can be just as sensitive.
     pub zeroize_payload: bool,
+    /// packet was Disconnect
+    pub disconnect: bool,
 }
 
 impl Conn {
@@ -123,6 +121,7 @@ impl Conn {
     }
 
     /// Updates `ConnState` and sends any packets required to progress the connection state.
+    // TODO can this just move to the bottom of handle_payload(), and make module-private?
     pub(crate) async fn progress(
         &mut self,
         s: &mut TrafSend<'_, '_>,
@@ -166,9 +165,7 @@ impl Conn {
 
     pub(crate) fn initial_sent(&self) -> bool {
         match self.state {
-            | ConnState::SendIdent
-            | ConnState::SendFirstKexInit
-            => false,
+            ConnState::SendIdent => false,
             _ => true,
         }
     }
@@ -341,8 +338,10 @@ impl Conn {
                 warn!("SSH debug message from remote host: '{:?}'", p.message);
             }
             Packet::Disconnect(p) => {
-                // TODO: SSH2_DISCONNECT_BY_APPLICATION is normal, sent by openssh client.
-                info!("Received disconnect: {:?}", p.desc);
+                // We ignore p.reason.
+                // SSH2_DISCONNECT_BY_APPLICATION is normal, sent by openssh client.
+                b.disconnected(p.desc);
+                disp.disconnect = true;
             }
             Packet::UserauthRequest(p) => {
                 if let ClientServer::Server(serv) = &mut self.cliserv {

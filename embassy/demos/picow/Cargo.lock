@@ -435,6 +435,7 @@ dependencies = [
  "as-slice 0.2.1",
  "atomic-polyfill 1.0.1",
  "atomic-pool",
+ "defmt",
  "embassy-hal-common",
  "embassy-net-driver",
  "embassy-sync",
@@ -444,7 +445,6 @@ dependencies = [
  "futures",
  "generic-array 0.14.6",
  "heapless",
- "log",
  "managed",
  "smoltcp",
  "stable_deref_trait",
@@ -454,6 +454,9 @@ dependencies = [
 name = "embassy-net-driver"
 version = "0.1.0"
 source = "git+https://github.com/embassy-rs/embassy?rev=e1eac15c429f88b1176109d6ce42185e2774ac86#e1eac15c429f88b1176109d6ce42185e2774ac86"
+dependencies = [
+ "defmt",
+]
 
 [[package]]
 name = "embassy-net-driver-channel"
@@ -748,6 +751,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "db04bc24a18b9ea980628ecf00e6c0264f3c1426dac36c00cb49b6fbad8b0743"
 dependencies = [
  "atomic-polyfill 0.1.11",
+ "defmt",
  "hash32",
  "rustc_version 0.4.0",
  "spin",
@@ -1112,6 +1116,7 @@ dependencies = [
  "bitflags",
  "byteorder",
  "cfg-if",
+ "defmt",
  "heapless",
  "managed",
 ]
@@ -1185,14 +1190,13 @@ dependencies = [
  "ctr",
  "digest",
  "embedded-io",
+ "getrandom",
  "heapless",
  "hmac",
  "log",
  "no-panic",
  "poly1305",
  "pretty-hex",
- "rand",
- "rand_core",
  "salty",
  "sha2",
  "signature 2.0.0",

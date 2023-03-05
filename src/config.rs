@@ -7,7 +7,7 @@ pub const DEFAULT_MAX_PACKET: usize = 1000;
 
 // This can be increased arbitrarily, though note that some code paths assume
 // a linear scan of channels can happen quickly, so may need reworking for performance.
-pub const MAX_CHANNELS: usize = 2;
+pub const MAX_CHANNELS: usize = 4;
 
 // TODO
 pub const MAX_EXEC: usize = 200;

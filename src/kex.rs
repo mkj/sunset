@@ -147,7 +147,7 @@ impl KexHash {
     /// internally.
     fn finish(mut self, k: &[u8]) -> SessId {
         hash_mpint(&mut self.hash_ctx, k);
-        // unwrap is OK, hash sized
+        // OK unwrap, hash sized
         SessId::from_slice(&self.hash_ctx.finalize()).unwrap()
     }
 
@@ -212,11 +212,10 @@ impl Kex {
         debug!("{algos}");
         self.kex_hash =
             Some(KexHash::new(self, &algos, algo_conf, remote_version, p)?);
-        self.algos = Some(algos);
+        let algos = self.algos.insert(algos);
 
         if is_client {
-            // unwrap safe: was just set
-            let p = self.algos.as_ref().unwrap().kex.make_kexdhinit()?;
+            let p = algos.kex.make_kexdhinit()?;
             s.send(p)?;
         }
 
@@ -251,14 +250,6 @@ impl Kex {
 
     pub fn send_kexinit(&self, conf: &AlgoConfig, s: &mut TrafSend) -> Result<()> {
         s.send(self.make_kexinit(conf))
-    }
-
-    fn make_kexdhinit(&self) -> Result<Packet> {
-        let algos = self.algos.as_ref().trap()?;
-        if !algos.is_client {
-            return Err(Error::bug());
-        }
-        algos.kex.make_kexdhinit()
     }
 
     // returns kex output, consumes self.
@@ -451,7 +442,7 @@ impl SharedSecret {
         mut kex: Kex, p: &packets::KexDHInit, sess_id: &Option<SessId>,
         s: &mut TrafSend, b: &mut dyn ServBehaviour,
     ) -> Result<KexOutput> {
-        let mut algos = kex.algos.as_mut().trap()?;
+        let algos = kex.algos.as_mut().trap()?;
         // hostkeys list must contain the signature type
         trace!("hostkeys {:?}", b.hostkeys());
         let hostkey = b.hostkeys()?.iter().find(|k| k.can_sign(algos.hostsig)).trap()?;
@@ -638,15 +629,15 @@ mod tests {
             Ok(self.keys.as_slice())
         }
 
-        fn have_auth_pubkey(&self, userame: TextString) -> bool {
+        fn have_auth_pubkey(&self, _username: TextString) -> bool {
             false
         }
 
-        fn have_auth_password(&self, userame: TextString) -> bool {
+        fn have_auth_password(&self, _username: TextString) -> bool {
             false
         }
 
-        fn open_session(&mut self, chan: ChanNum) -> ChanOpened {
+        fn open_session(&mut self, _chan: ChanHandle) -> ChanOpened {
             ChanOpened::Success
         }
     }
@@ -689,17 +680,17 @@ mod tests {
             keys: vec![]
         };
         let mut sb = Behaviour::new_server(&mut sb);
-        let sb = sb.server().unwrap();
+        let _sb = sb.server().unwrap();
 
-        let mut cli = kex::Kex::new().unwrap();
-        let mut serv = kex::Kex::new().unwrap();
+        let cli = kex::Kex::new().unwrap();
+        let serv = kex::Kex::new().unwrap();
 
         // reencode so we end up with NameList::String not Local
         let ctx = ParseContext::new();
         let si = serv.make_kexinit(&serv_conf);
-        let si = reencode(&mut bufs, si, &ctx);
+        let _si = reencode(&mut bufs, si, &ctx);
         let ci = cli.make_kexinit(&cli_conf);
-        let ci = reencode(&mut bufc, ci, &ctx);
+        let _ci = reencode(&mut bufc, ci, &ctx);
 
         // TODO fix this
 

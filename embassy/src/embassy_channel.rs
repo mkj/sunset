@@ -2,16 +2,11 @@
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
 
-use core::future::Future;
-use core::pin::Pin;
-use core::task::{Context, Poll};
-use core::ops::DerefMut;
-
 use embedded_io::{asynch, Io};
 
 use crate::*;
 use embassy_sunset::EmbassySunset;
-use sunset::{Result, ChanData, ChanHandle, ChanNum};
+use sunset::{Result, ChanData, ChanNum};
 
 /// Common implementation
 struct ChanIO<'a> {
@@ -22,7 +17,7 @@ struct ChanIO<'a> {
 
 impl core::fmt::Debug for ChanIO<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("ChanInner")
+        f.debug_struct("ChanIO")
             .field("num", &self.num)
             .field("dt", &self.dt)
             .finish_non_exhaustive()
@@ -72,15 +67,18 @@ impl<'a> asynch::Write for ChanIO<'a> {
     // }
 }
 
+// Public wrappers for In only
 
-/// Public wrappers for In vs Out
+/// An standard bidirectional SSH channel
+#[derive(Clone, Debug)]
+pub struct ChanInOut<'a>(ChanIO<'a>);
+
+/// An input-only SSH channel, such as stderr for a client
 #[derive(Clone, Debug)]
 pub struct ChanIn<'a>(ChanIO<'a>);
 
 #[derive(Clone, Debug)]
-pub struct ChanInOut<'a>(ChanIO<'a>);
-
-#[derive(Clone, Debug)]
+/// An output-only SSH channel, such as stderr for a server
 pub struct ChanOut<'a>(ChanIO<'a>);
 
 impl<'a> ChanInOut<'a> {
@@ -91,10 +89,14 @@ impl<'a> ChanInOut<'a> {
         })
     }
 
+    /// A future that waits until the channel closes
     pub async fn until_closed(&self) -> Result<()> {
         self.0.until_closed().await
     }
 
+    /// Send a terminal size change notification
+    ///
+    /// Only applicable to client shell channels with a PTY
     pub async fn term_window_change(&self, winch: sunset::packets::WinChange) -> Result<()> {
         self.0.sunset.term_window_change(self.0.num, winch).await
     }
@@ -117,13 +119,13 @@ impl<'a> ChanOut<'a> {
         })
     }
 
+    /// A future that waits until the channel closes
     pub async fn until_closed(&self) -> Result<()> {
         self.0.until_closed().await
     }
 }
 
 impl Io for ChanInOut<'_> {
-    // TODO or something else?
     type Error = sunset::Error;
 }
 

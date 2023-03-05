@@ -69,6 +69,10 @@ async fn main(spawner: Spawner) {
 
     spawner.spawn(wifi::wifi_task(runner)).unwrap();
 
+    control.init(clm).await;
+    control.set_power_management(cyw43::PowerManagementMode::PowerSave).await;
+
+
     let net = option_env!("WIFI_NETWORK").unwrap_or("guest");
     let pw = option_env!("WIFI_PASSWORD");
     if let Some(pw) = pw {

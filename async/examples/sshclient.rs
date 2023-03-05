@@ -160,7 +160,6 @@ async fn run(args: Args) -> Result<()> {
 
     let wantpty = wantpty && !args.force_no_pty;
 
-
     let ssh_task = spawn_local(async move {
         let mut app = sunset_async::CmdlineClient::new(
             args.username.as_ref().unwrap(),

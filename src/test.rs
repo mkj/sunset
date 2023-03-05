@@ -13,6 +13,7 @@ mod tests {
     }
 
     fn test_roundtrip_packet(p: &Packet) -> Result<(), Error> {
+        init_log();
         let mut buf1 = vec![99; 500];
         let w1 = sshwire::write_ssh(&mut buf1, p)?;
 

@@ -59,6 +59,7 @@ pub const SSH_EXTENDED_DATA_STDERR: u32 = 1;
 
 /// [RFC4254](https://tools.ietf.org/html/rfc4254)
 #[allow(non_camel_case_types)]
+#[derive(Debug)]
 pub enum ChanFail {
     SSH_OPEN_ADMINISTRATIVELY_PROHIBITED = 1,
     SSH_OPEN_CONNECT_FAILED = 2,
