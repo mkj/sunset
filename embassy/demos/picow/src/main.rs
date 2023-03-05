@@ -69,9 +69,13 @@ async fn main(spawner: Spawner) {
 
     spawner.spawn(wifi::wifi_task(runner)).unwrap();
 
-    //control.join_open(env!("WIFI_NETWORK")).await;
-    control.join_wpa2(env!("WIFI_NETWORK"), env!("WIFI_PASSWORD")).await;
-    //control.join_wpa2("WIFI_NETWORK", "WIFI_PASSWORD").await;
+    let net = option_env!("WIFI_NETWORK").unwrap_or("guest");
+    let pw = option_env!("WIFI_PASSWORD");
+    if let Some(pw) = pw {
+        control.join_wpa2(net, pw).await;
+    } else {
+        control.join_open(net).await;
+    }
 
     let config = embassy_net::Config::Dhcp(Default::default());
     //let config = embassy_net::ConfigStrategy::Static(embassy_net::Config {
