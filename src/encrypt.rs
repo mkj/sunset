@@ -66,6 +66,7 @@ impl KeyState {
 
     /// Updates with new keys, keeping the same sequence numbers
     pub fn rekey(&mut self, keys: Keys) {
+        trace!("rekey");
         self.keys = keys
     }
 
@@ -156,12 +157,11 @@ impl Keys {
         }
     }
 
-    pub fn derive(
-        k: &[u8], h: &SessId, sess_id: &SessId, algos: &kex::Algos,
+    pub fn derive(kex_out: kex::KexOutput,
+        sess_id: &SessId, algos: &kex::Algos,
     ) -> Result<Self, Error> {
         let mut key = [0u8; MAX_KEY_LEN];
         let mut iv = [0u8; MAX_IV_LEN];
-        let mut hash = algos.kex.hash();
 
         let (iv_e, iv_d, k_e, k_d, i_e, i_d) = if algos.is_client {
             ('A', 'B', 'C', 'D', 'E', 'F')
@@ -170,114 +170,58 @@ impl Keys {
         };
 
         let enc = {
-            let ci = Self::compute_key(
+            let ci = kex_out.compute_key(
                 iv_e,
                 algos.cipher_enc.iv_len(),
                 &mut iv,
-                &mut hash,
-                k,
-                h,
                 sess_id,
             )?;
-            let ck = Self::compute_key(
+            let ck = kex_out.compute_key(
                 k_e,
                 algos.cipher_enc.key_len(),
                 &mut key,
-                &mut hash,
-                k,
-                h,
                 sess_id,
             )?;
             EncKey::from_cipher(&algos.cipher_enc, ck, ci)?
         };
 
         let dec = {
-            let ci = Self::compute_key(
+            let ci = kex_out.compute_key(
                 iv_d,
                 algos.cipher_dec.iv_len(),
                 &mut iv,
-                &mut hash,
-                k,
-                h,
                 sess_id,
             )?;
-            let ck = Self::compute_key(
+            let ck = kex_out.compute_key(
                 k_d,
                 algos.cipher_dec.key_len(),
                 &mut key,
-                &mut hash,
-                k,
-                h,
                 sess_id,
             )?;
             DecKey::from_cipher(&algos.cipher_dec, ck, ci)?
         };
 
         let integ_enc = {
-            let ck = Self::compute_key(
+            let ck = kex_out.compute_key(
                 i_e,
                 algos.integ_enc.key_len(),
                 &mut key,
-                &mut hash,
-                k,
-                h,
                 sess_id,
             )?;
             IntegKey::from_integ(&algos.integ_enc, ck)?
         };
 
         let integ_dec = {
-            let ck = Self::compute_key(
+            let ck = kex_out.compute_key(
                 i_d,
                 algos.integ_dec.key_len(),
                 &mut key,
-                &mut hash,
-                k,
-                h,
                 sess_id,
             )?;
             IntegKey::from_integ(&algos.integ_dec, ck)?
         };
 
         Ok(Keys { enc, dec, integ_enc, integ_dec })
-    }
-
-    /// RFC4253 7.2. `K1 = HASH(K || H || "A" || session_id)` etc
-    fn compute_key<'a>(
-        letter: char, len: usize, out: &'a mut [u8],
-        hash_ctx: &mut dyn digest::DynDigest, k: &[u8], h: &SessId, sess_id: &SessId,
-    ) -> Result<&'a [u8], Error> {
-        if len > out.len() {
-            return Err(Error::bug());
-        }
-        let w = &mut [0u8; 32];
-        debug_assert!(w.len() >= hash_ctx.output_size());
-        // two rounds is sufficient with sha256 and current max key
-        debug_assert!(2 * hash_ctx.output_size() >= out.len());
-
-        let l = len.min(hash_ctx.output_size());
-        let (k1, rest) = out.split_at_mut(l);
-        let (k2, _) = rest.split_at_mut(len - l);
-
-        hash_ctx.reset();
-        hash_mpint(hash_ctx, k);
-        hash_ctx.update(h.as_ref());
-        hash_ctx.update(&[letter as u8]);
-        hash_ctx.update(sess_id.as_ref());
-        hash_ctx.finalize_into_reset(w).trap()?;
-
-        // fill first part
-        k1.copy_from_slice(&w[..k1.len()]);
-
-        if k2.len() > 0 {
-            // generate next block K2 = HASH(K || H || K1)
-            hash_mpint(hash_ctx, k);
-            hash_ctx.update(h.as_ref());
-            hash_ctx.update(k1);
-            hash_ctx.finalize_into_reset(w).trap()?;
-            k2.copy_from_slice(&w[..k2.len()]);
-        }
-        Ok(&out[..len])
     }
 
     /// Decrypts the first block in the buffer, returning the length of the
@@ -325,6 +269,7 @@ impl Keys {
         }
         if buf.len() < SSH_MIN_PACKET_SIZE + size_integ {
             debug!("Bad packet, {} smaller than min packet size", buf.len());
+            trace!("{:?}", buf.hex_dump());
             return Err(Error::SSHProtoError);
         }
         // "MUST be a multiple of the cipher block size".
@@ -709,6 +654,7 @@ impl IntegKey {
 mod tests {
     use crate::sunsetlog::*;
     use crate::encrypt::*;
+    use crate::kex::KexOutput;
     use crate::error::Error;
     use crate::sshnames::SSH_NAME_CURVE25519;
     #[allow(unused_imports)]
@@ -810,9 +756,11 @@ mod tests {
                 let h = SessId::from_slice(&Sha256::digest("some exchange hash".as_bytes())).unwrap();
                 let sess_id = SessId::from_slice(&Sha256::digest("some sessid".as_bytes())).unwrap();
                 let sharedkey = b"hello";
+                let ko = KexOutput::make_test(sharedkey, &algos, &h);
+                let ko_b = KexOutput::make_test(sharedkey, &algos, &h);
 
                 trace!("algos enc {algos:?}");
-                let newkeys = Keys::derive(sharedkey, &h, &sess_id, &algos).unwrap();
+                let newkeys = Keys::derive(ko, &sess_id, &algos).unwrap();
                 keys_enc.rekey(newkeys);
 
                 // client and server enc/dec keys are derived differently, we need them
@@ -821,7 +769,7 @@ mod tests {
                 core::mem::swap(&mut algos.cipher_enc, &mut algos.cipher_dec);
                 core::mem::swap(&mut algos.integ_enc, &mut algos.integ_dec);
                 trace!("algos dec {algos:?}");
-                let newkeys_b = Keys::derive(sharedkey, &h, &sess_id, &algos).unwrap();
+                let newkeys_b = Keys::derive(ko_b, &sess_id, &algos).unwrap();
                 keys_dec.rekey(newkeys_b);
 
             } else {
@@ -847,8 +795,8 @@ mod tests {
                 let h = SessId::from_slice(&Sha256::digest(b"some exchange hash")).unwrap();
                 let sess_id = SessId::from_slice(&Sha256::digest(b"some sessid")).unwrap();
                 let sharedkey = b"hello";
-                let newkeys =
-                    Keys::derive(sharedkey, &h, &sess_id, &algos).unwrap();
+                let ko = KexOutput::make_test(sharedkey, &algos, &h);
+                let newkeys = Keys::derive(ko, &sess_id, &algos).unwrap();
 
                 keys.rekey(newkeys);
                 trace!("algos {algos:?}");

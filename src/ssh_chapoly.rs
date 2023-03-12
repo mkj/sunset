@@ -13,6 +13,8 @@ use subtle::ConstantTimeEq;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 use digest::KeyInit;
 
+use pretty_hex::PrettyHex;
+
 use crate::*;
 use encrypt::SSH_LENGTH_SIZE;
 
@@ -61,6 +63,7 @@ impl SSHChaPoly {
         let mut b: [u8; SSH_LENGTH_SIZE] = buf[..SSH_LENGTH_SIZE].try_into().unwrap();
         let mut c = Self::cha20(&self.k1, seq);
         c.apply_keystream(&mut b);
+        trace!("packet_length {:?}", b.hex_dump());
         Ok(u32::from_be_bytes(b.try_into().unwrap()))
     }
 

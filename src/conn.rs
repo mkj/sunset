@@ -21,14 +21,14 @@ use server::Server;
 use traffic::TrafSend;
 use channel::Channels;
 use config::MAX_CHANNELS;
-use kex::{SessId, AlgoConfig};
+use kex::{Kex, SessId, AlgoConfig};
 
 /// The core state of a SSH instance.
 pub(crate) struct Conn {
     state: ConnState,
 
-    /// Next kex to run
-    kex: kex::Kex,
+    // State of any current Key Exchange
+    kex: Kex,
 
     sess_id: Option<SessId>,
 
@@ -59,21 +59,13 @@ impl ClientServer {
 
 #[derive(Debug)]
 enum ConnState {
+    /// The initial state
     SendIdent,
     /// Prior to SSH binary packet protocol, receiving remote version identification
     ReceiveIdent,
-    /// Binary packet protocol has started, KexInit not yet received
-    PreKex,
-    /// At any time between receiving KexInit and NewKeys.
-    ///
-    /// Can occur multiple times during a session, at later key exchanges.
-    /// Non-kex packets are not allowed during that time
-    InKex {
-        done_auth: bool,
-        output: Option<kex::KexOutput>,
-    },
-
-    /// After first NewKeys, prior to auth success.
+    /// Waiting for first Kex to complete
+    FirstKex,
+    /// Binary protocol has started, auth hasn't succeeded
     PreAuth,
     /// After auth success
     Authed,
@@ -97,16 +89,15 @@ impl Conn {
         Self::new(ClientServer::Client(client::Client::new()), algo_conf)
     }
 
-    pub fn new_server(
-        ) -> Result<Self> {
+    pub fn new_server() -> Result<Self> {
         let algo_conf = AlgoConfig::new(false);
         Self::new(ClientServer::Server(server::Server::new()), algo_conf)
     }
 
     fn new(cliserv: ClientServer, algo_conf: AlgoConfig) -> Result<Self, Error> {
         Ok(Conn {
-            kex: kex::Kex::new()?,
             sess_id: None,
+            kex: Kex::new(),
             remote_version: ident::RemoteVersion::new(),
             state: ConnState::SendIdent,
             algo_conf,
@@ -131,15 +122,20 @@ impl Conn {
         match self.state {
             ConnState::SendIdent => {
                 s.send_version()?;
-                self.kex.send_kexinit(&self.algo_conf, s)?;
+                // send early to avoid round trip latency
                 // TODO: first_follows would have a second packet here
+                self.kex.send_kexinit(&self.algo_conf, s)?;
                 self.state = ConnState::ReceiveIdent
             }
             ConnState::ReceiveIdent => {
                 if self.remote_version.version().is_some() {
-                    trace!("got ident, state {:?} -> {:?}",
-                        self.state, ConnState::PreKex);
-                    self.state = ConnState::PreKex;
+                    // Ready to start binary packets. We've already send our KexInit with SendIdent.
+                    self.state = ConnState::FirstKex
+                }
+            }
+            ConnState::FirstKex => {
+                if self.sess_id.is_some() {
+                    self.state = ConnState::PreAuth
                 }
             }
             ConnState::PreAuth => {
@@ -147,7 +143,7 @@ impl Conn {
                 // and backpressure. can_output() should have a size check?
                 if s.can_output() {
                     if let ClientServer::Client(cli) = &mut self.cliserv {
-                        cli.auth.start(s, b.client()?).await?;
+                        cli.auth.progress(s, b.client()?).await?;
                     }
                 }
                 // send userauth request
@@ -199,12 +195,7 @@ impl Conn {
     fn check_packet(&self, p: &Packet) -> Result<()> {
         let r = match p.category() {
             packets::Category::All => Ok(()),
-            packets::Category::Kex => {
-                match self.state {
-                    ConnState::InKex {..} => Ok(()),
-                    _ => Err(Error::SSHProtoError),
-                }
-            }
+            packets::Category::Kex => Ok(()),
             packets::Category::Auth => {
                 match self.state {
                     | ConnState::PreAuth
@@ -221,6 +212,8 @@ impl Conn {
                 }
             }
         };
+
+        // TODO: reject other packets while kex is in progress?
 
         if r.is_err() {
             error!("Received unexpected packet {}",
@@ -240,16 +233,9 @@ impl Conn {
         self.check_packet(&packet)?;
 
         match packet {
-            Packet::KexInit(_) => {
-                if matches!(self.state, ConnState::InKex { .. }) {
-                    return error::PacketWrong.fail();
-                }
-                self.state = ConnState::InKex {
-                    done_auth: matches!(self.state, ConnState::Authed),
-                    output: None,
-                };
+            Packet::KexInit(k) => {
                 self.kex.handle_kexinit(
-                    &packet,
+                    k,
                     self.cliserv.is_client(),
                     &self.algo_conf,
                     &self.remote_version,
@@ -257,64 +243,25 @@ impl Conn {
                 )?;
             }
             Packet::KexDHInit(p) => {
-                match self.state {
-                    ConnState::InKex { ref mut output, .. } => {
-                        if self.cliserv.is_client() {
-                            // TODO: client/server validity checks should move somewhere more general
-                            trace!("kexdhinit not server");
-                            return Err(Error::SSHProtoError);
-                        }
-                        if self.kex.maybe_discard_packet() {
-                            // ok
-                        } else {
-                            let kex =
-                                core::mem::replace(&mut self.kex, kex::Kex::new()?);
-                            *output = Some(kex.handle_kexdhinit(&p, &self.sess_id, s, b.server()?)?);
-                        }
-                    }
-                    _ => return Err(Error::PacketWrong),
+                if self.cliserv.is_client() {
+                    // TODO: client/server validity checks should move somewhere more general
+                    trace!("kexdhinit not server");
+                    return Err(Error::SSHProtoError);
                 }
+
+                self.kex.handle_kexdhinit(&p, s, b.server()?)?;
             }
             Packet::KexDHReply(p) => {
-                match self.state {
-                    ConnState::InKex { ref mut output, .. } => {
-                        if let ClientServer::Client(_cli) = &mut self.cliserv {
-                            if self.kex.maybe_discard_packet() {
-                                // ok
-                            } else {
-                                let kex =
-                                    core::mem::replace(&mut self.kex, kex::Kex::new()?);
-                                *output = Some(kex.handle_kexdhreply(&p, &self.sess_id, s, b.client()?).await?);
-                            }
-                        } else {
-                            // TODO: client/server validity checks should move somewhere more general
-                            trace!("Not kexdhreply not client");
-                            return Err(Error::SSHProtoError);
-                        }
-                    }
-                    _ => return Err(Error::PacketWrong),
+                if !self.cliserv.is_client() {
+                    // TODO: client/server validity checks should move somewhere more general
+                    trace!("kexdhreply not server");
+                    return Err(Error::SSHProtoError);
                 }
+
+                self.kex.handle_kexdhreply(&p, s, b.client()?).await?;
             }
             Packet::NewKeys(_) => {
-                match self.state {
-                    ConnState::InKex { done_auth, ref mut output } => {
-                        // NewKeys shouldn't be received before kexdhinit/kexdhreply.
-
-                        // .as_ref() rather than .take(), so we can zeroize later
-                        let ko = output.as_ref().ok_or(Error::PacketWrong)?;
-                        // keys.take() leaves remnant memory in output, but output will zeroize soon
-                        s.rekey(ko.keys.clone());
-                        self.sess_id.get_or_insert(ko.h.clone());
-                        // zeroize output.keys via ZeroizeOnDrop
-                        *output = None;
-                        self.state = if done_auth {
-                            ConnState::Authed
-                        } else {
-                            ConnState::PreAuth
-                        };
-                    }
-                    _ => return Err(Error::PacketWrong),
-                }
+                self.kex.handle_newkeys(&mut self.sess_id, s)?;
             }
             Packet::ServiceRequest(p) => {
                 if let ClientServer::Server(serv) = &mut self.cliserv {

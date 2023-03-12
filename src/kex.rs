@@ -68,21 +68,43 @@ impl AlgoConfig {
     }
 }
 
-pub(crate) struct Kex {
-    // TODO: we could enum only keeping currently required fields.
-    // To be done once the structure stabilises
 
-    // Cookie sent in our KexInit packet. Kept so that we can reproduce the
-    // KexInit packet when calculating the exchange hash.
-    our_cookie: [u8; 16],
+/// The current state of the Kex
+#[derive(Debug)]
+pub(crate) enum Kex {
+    /// No key exchange in progress
+    Idle,
 
-    // populated once we have sent and received KexInit
-    algos: Option<Algos>,
+    /// Waiting for a KexInit packet, have sent one.
+    KexInit {
+        // Cookie sent in our KexInit packet. Kept so that we can reproduce the
+        // KexInit packet when calculating the exchange hash.
+        our_cookie: KexCookie,
+    },
+    /// Waiting for KexDHInit (server) or KexDHReply (client)
+    KexDH {
+        algos: Algos,
+        kex_hash: KexHash,
+    },
+    /// Waiting for NewKeys. `output` is new keys to take into use
+    NewKeys {
+        output: KexOutput,
+        algos: Algos,
+    },
 
-    kex_hash: Option<KexHash>,
+    /// A transient state use internally to transition between other states.
+    ///
+    /// Returned from .take()
+    /// Should only ever occur while inside a method call, a proper state
+    /// will be set before returning. (Could remain set if an error occurs,
+    /// but an error returned from Kex is not recoverable anyway).
+    Taken,
 }
 
-struct KexHash {
+type KexCookie = [u8; 16];
+
+#[derive(Debug)]
+pub(crate) struct KexHash {
     // Could be made generic if we add other kex methods
     hash_ctx: Sha256,
 }
@@ -90,7 +112,7 @@ struct KexHash {
 // kexhash state. progessively include version idents, kexinit payloads, hostsig, e/f, secret
 impl KexHash {
     fn new(
-        kex: &Kex, algos: &Algos, algo_conf: &AlgoConfig,
+        kex: &Kex, algos: &Algos, algo_conf: &AlgoConfig, our_cookie: &KexCookie,
         remote_version: &RemoteVersion, remote_kexinit: &packets::Packet,
     ) -> Result<Self> {
         // RFC4253 section 8:
@@ -110,7 +132,7 @@ impl KexHash {
         let mut kh = KexHash { hash_ctx: Sha256::new() };
         let remote_version = remote_version.version().trap()?;
         // Recreate our own kexinit packet to hash.
-        let own_kexinit = kex.make_kexinit(algo_conf);
+        let own_kexinit = Kex::make_kexinit(our_cookie, algo_conf);
         if algos.is_client {
             kh.hash_slice(ident::OUR_VERSION);
             kh.hash_slice(remote_version);
@@ -195,44 +217,60 @@ impl fmt::Display for Algos {
 }
 
 impl Kex {
-    pub fn new() -> Result<Self> {
+    pub fn new() -> Self {
+        Kex::Idle
+    }
+
+    fn take(&mut self) -> Self {
+        core::mem::replace(self, Kex::Taken)
+    }
+
+    /// Sends a `KexInit` message. Must be called from `Idle` state
+    pub fn send_kexinit(&mut self, conf: &AlgoConfig, s: &mut TrafSend) -> Result<()> {
+        if !matches!(self, Kex::Idle) {
+            return Err(Error::bug());
+        }
         let mut our_cookie = [0u8; 16];
         random::fill_random(our_cookie.as_mut_slice())?;
-        Ok(Kex { our_cookie, algos: None, kex_hash: None })
+        s.send(Kex::make_kexinit(&our_cookie, conf))?;
+        *self = Kex::KexInit { our_cookie };
+        Ok(())
     }
 
     pub fn handle_kexinit(
-        &mut self, p: &packets::Packet, is_client: bool, algo_conf: &AlgoConfig,
+        &mut self, remote_kexinit: packets::KexInit, is_client: bool, algo_conf: &AlgoConfig,
         remote_version: &RemoteVersion,
         s: &mut TrafSend,
     ) -> Result<()> {
-        let remote_kexinit =
-            if let Packet::KexInit(k) = p { k } else { return Err(Error::bug()) };
-        let algos = Self::algo_negotiation(is_client, remote_kexinit, algo_conf)?;
-        debug!("{algos}");
-        self.kex_hash =
-            Some(KexHash::new(self, &algos, algo_conf, remote_version, p)?);
-        let algos = self.algos.insert(algos);
+        // Reply if we haven't already received one. This will bump the state to Kex::KexInit
+        if let Kex::Idle = self {
+            self.send_kexinit(algo_conf, s)?;
+        }
 
+        let our_cookie = if let Kex::KexInit { ref our_cookie } = self {
+            our_cookie
+        } else {
+            // already received a KexInit
+            return error::PacketWrong.fail();
+        };
+
+        let algos = Self::algo_negotiation(is_client, &remote_kexinit, algo_conf)?;
+        debug!("{algos}");
         if is_client {
             let p = algos.kex.make_kexdhinit()?;
             s.send(p)?;
         }
-
+        let kex_hash = KexHash::new(self, &algos, algo_conf, our_cookie, remote_version, &remote_kexinit.into())?;
+        *self = Kex::KexDH {
+            algos,
+            kex_hash
+        };
         Ok(())
     }
 
-    pub fn maybe_discard_packet(&mut self) -> bool {
-        if let Some(ref mut a) = self.algos {
-            core::mem::replace(&mut a.discard_next, false)
-        } else {
-            false
-        }
-    }
-
-    fn make_kexinit<'a>(&self, conf: &'a AlgoConfig) -> Packet<'a> {
+    fn make_kexinit<'a>(cookie: &KexCookie, conf: &'a AlgoConfig) -> Packet<'a> {
         packets::KexInit {
-            cookie: self.our_cookie,
+            cookie: cookie.clone(),
             kex: (&conf.kexs).into(),
             hostsig: (&conf.hostsig).into(),
             cipher_c2s: (&conf.ciphers).into(),
@@ -248,36 +286,73 @@ impl Kex {
         }.into()
     }
 
-    pub fn send_kexinit(&self, conf: &AlgoConfig, s: &mut TrafSend) -> Result<()> {
-        s.send(self.make_kexinit(conf))
-    }
-
-    // returns kex output, consumes self.
     pub fn handle_kexdhinit(
-        self, p: &packets::KexDHInit, sess_id: &Option<SessId>,
+        &mut self, p: &packets::KexDHInit,
         s: &mut TrafSend, b: &mut dyn ServBehaviour,
-    ) -> Result<KexOutput> {
-        if self.algos.as_ref().trap()?.is_client {
-            return Err(Error::bug());
+    ) -> Result<()> {
+        if let Kex::KexDH { algos, ..} = self {
+            if algos.is_client {
+                return Err(Error::bug());
+            }
+
+            if algos.discard_next {
+                algos.discard_next = false;
+                // Ignore this packet
+                return Ok(())
+            }
         }
-        let kex_out = SharedSecret::handle_kexdhinit(self, p, sess_id, s, b)?;
-        s.send(packets::NewKeys {})?;
-        Ok(kex_out)
+
+        if let Kex::KexDH { mut algos, kex_hash } = self.take() {
+            let output = SharedSecret::handle_kexdhinit(&mut algos, kex_hash, p, s, b)?;
+            *self = Kex::NewKeys { output, algos };
+            s.send(packets::NewKeys {})?;
+            Ok(())
+        } else {
+            error::PacketWrong.fail()
+        }
     }
 
-    // returns packet to send, and H exchange hash.
-    // consumes self.
     pub async fn handle_kexdhreply<'f>(
-        self, p: &packets::KexDHReply<'f>, sess_id: &Option<SessId>,
+        &mut self, p: &packets::KexDHReply<'f>,
         s: &mut TrafSend<'_, '_>,
         b: &mut dyn CliBehaviour,
-    ) -> Result<KexOutput> {
-        if !self.algos.as_ref().trap()?.is_client {
-            return Err(Error::bug());
+    ) -> Result<()> {
+        if let Kex::KexDH { algos, ..} = self {
+            if !algos.is_client {
+                return Err(Error::bug());
+            }
+
+            if algos.discard_next {
+                algos.discard_next = false;
+                // Ignore this packet
+                return Ok(())
+            }
         }
-        let kex_out = SharedSecret::handle_kexdhreply(self, p, sess_id, b).await?;
-        s.send(packets::NewKeys {})?;
-        Ok(kex_out)
+
+        if let Kex::KexDH { mut algos, kex_hash } = self.take() {
+            let output = SharedSecret::handle_kexdhreply(&mut algos, kex_hash, p, b).await?;
+            *self = Kex::NewKeys { output, algos };
+            s.send(packets::NewKeys {})?;
+            Ok(())
+        } else {
+            error::PacketWrong.fail()
+        }
+    }
+
+    pub fn handle_newkeys(&mut self, sess_id: &mut Option<SessId>, s: &mut TrafSend<'_, '_>) -> Result<()> {
+        if let Kex::NewKeys { output, algos } = self.take() {
+            // We will have already sent our own NewKeys message if we reach thi
+            // state.
+
+            // The first KEX's H becomes the persistent sess_id
+            let sess_id = sess_id.get_or_insert(output.h.clone());
+            let keys = Keys::derive(output, sess_id, &algos)?;
+            s.rekey(keys);
+            *self = Kex::Idle;
+            Ok(())
+        } else {
+            error::PacketWrong.fail()
+        }
     }
 
     /// Perform SSH algorithm negotiation
@@ -413,16 +488,15 @@ impl SharedSecret {
 
     // client only
     async fn handle_kexdhreply<'f>(
-        mut kex: Kex, p: &packets::KexDHReply<'f>, sess_id: &Option<SessId>,
+        algos: &mut Algos, mut kex_hash: KexHash,
+        p: &packets::KexDHReply<'f>,
         b: &mut dyn CliBehaviour
     ) -> Result<KexOutput> {
-        let algos = kex.algos.as_mut().trap()?;
-        let mut kex_hash = kex.kex_hash.take().trap()?;
         kex_hash.prefinish(&p.k_s.0, algos.kex.pubkey(), p.q_s.0)?;
         // consumes the sharedsecret private key in algos
         let kex_out = match algos.kex {
             SharedSecret::KexCurve25519(_) => {
-                KexCurve25519::secret(algos, p.q_s.0, kex_hash, sess_id)?
+                KexCurve25519::secret(algos, p.q_s.0, kex_hash)?
             }
         };
 
@@ -437,21 +511,20 @@ impl SharedSecret {
         }
     }
 
-    // server only. consumes kex.
+    // server only. consumes algos and kex_hash
     fn handle_kexdhinit<'a>(
-        mut kex: Kex, p: &packets::KexDHInit, sess_id: &Option<SessId>,
+        algos: &mut Algos, mut kex_hash: KexHash,
+        p: &packets::KexDHInit,
         s: &mut TrafSend, b: &mut dyn ServBehaviour,
     ) -> Result<KexOutput> {
-        let algos = kex.algos.as_mut().trap()?;
         // hostkeys list must contain the signature type
         trace!("hostkeys {:?}", b.hostkeys());
         let hostkey = b.hostkeys()?.iter().find(|k| k.can_sign(algos.hostsig)).trap()?;
 
-        let mut kex_hash = kex.kex_hash.take().trap()?;
         kex_hash.prefinish(&hostkey.pubkey(), p.q_c.0, algos.kex.pubkey())?;
         let (kex_out, kex_pub) = match algos.kex {
             SharedSecret::KexCurve25519(_) => {
-                let kex_out = KexCurve25519::secret(algos, p.q_c.0, kex_hash, sess_id)?;
+                let kex_out = KexCurve25519::secret(algos, p.q_c.0, kex_hash)?;
                 (kex_out, algos.kex.pubkey())
             }
         };
@@ -479,8 +552,11 @@ impl SharedSecret {
 }
 
 pub(crate) struct KexOutput {
-    pub h: SessId,
-    pub keys: Keys,
+    /// `H` for this exchange, conn takes the first as sess_id
+    h: SessId,
+    /// An digest instance that has already hashed `HASH(K || H` (see rfc4253).
+    /// Always Sha256 for the time being.
+    partial_hash: Sha256,
 }
 
 impl fmt::Debug for KexOutput {
@@ -491,16 +567,67 @@ impl fmt::Debug for KexOutput {
 }
 
 impl KexOutput {
-    fn make(
-        k: &[u8], algos: &Algos, kex_hash: KexHash, sess_id: &Option<SessId>,
-    ) -> Result<Self> {
+    fn make(k: &[u8], _algos: &Algos, kex_hash: KexHash) -> Self {
         let h = kex_hash.finish(k);
 
-        let sess_id = sess_id.as_ref().unwrap_or(&h);
-        let keys = Keys::derive(k, &h, &sess_id, algos)?;
+        let mut partial_hash = Sha256::new();
+        hash_mpint(&mut partial_hash, k);
+        partial_hash.update(&h);
 
-        Ok(KexOutput { h, keys })
+        KexOutput { h, partial_hash }
     }
+
+    /// Constructor from a direct SessId
+    #[cfg(test)]
+    pub fn make_test(k: &[u8], algos: &Algos, h: &SessId) -> Self {
+        let mut partial_hash = Sha256::new();
+        hash_mpint(&mut partial_hash, k);
+        partial_hash.update(h);
+
+        KexOutput { h: h.clone(), partial_hash }
+    }
+
+    /// RFC4253 7.2. `K1 = HASH(K || H || "A" || session_id)` etc
+    pub fn compute_key<'a>(&self,
+        letter: char, len: usize, out: &'a mut [u8],
+        sess_id: &SessId,
+    ) -> Result<&'a [u8], Error> {
+        if len > out.len() {
+            return Err(Error::bug());
+        }
+        // TODO: will Sha256::output_size() become const?
+        let hsz = Sha256::output_size();
+        let w = &mut [0u8; 32];
+        debug_assert!(w.len() >= hsz);
+        // two rounds is sufficient with sha256 and current max key
+        debug_assert!(2 * hsz >= out.len());
+
+        let l = len.min(hsz);
+        let (k1, rest) = out.split_at_mut(l);
+        let (k2, _) = rest.split_at_mut(len - l);
+
+        let sess_id: &[u8] = &sess_id;
+
+        let mut hash_ctx = self.partial_hash.clone();
+        // K || H is already included
+        hash_ctx.update(&[letter as u8]);
+        hash_ctx.update(sess_id);
+        hash_ctx.finalize_into(w.into());
+
+        // fill first part
+        k1.copy_from_slice(&w[..k1.len()]);
+
+        if k2.len() > 0 {
+            // generate next block K2 = HASH(K || H || K1)
+            let mut hash_ctx = self.partial_hash.clone();
+            // K || H is already included
+            hash_ctx.update(k1);
+            hash_ctx.finalize_into(w.into());
+            k2.copy_from_slice(&w[..k2.len()]);
+        }
+        Ok(&out[..len])
+    }
+
 
 }
 
@@ -536,10 +663,7 @@ impl KexCurve25519 {
         &self.pubkey
     }
 
-    fn secret(
-        algos: &mut Algos, theirs: &[u8], kex_hash: KexHash,
-        sess_id: &Option<SessId>,
-    ) -> Result<KexOutput> {
+    fn secret(algos: &mut Algos, theirs: &[u8], kex_hash: KexHash) -> Result<KexOutput> {
         #[allow(irrefutable_let_patterns)] // until we have other algos
         let kex = if let SharedSecret::KexCurve25519(k) = &mut algos.kex {
             k
@@ -551,7 +675,7 @@ impl KexCurve25519 {
         let theirs = theirs.try_into().map_err(|_| Error::BadKex)?;
         let shsec = ours.agree(&theirs);
         kex.ours = None;
-        KexOutput::make(&shsec.to_bytes(), algos, kex_hash, sess_id)
+        Ok(KexOutput::make(&shsec.to_bytes(), algos, kex_hash))
     }
 }
 
@@ -562,6 +686,7 @@ mod tests {
     use crate::encrypt;
     use crate::error::Error;
     use crate::ident::RemoteVersion;
+    use crate::kex::*;
     use crate::kex;
     use crate::packets::{Packet,ParseContext};
     use crate::*;
@@ -665,8 +790,8 @@ mod tests {
     #[test]
     fn test_agree_kex() {
         init_test_log();
-        let mut bufc = [0u8; 1000];
-        let mut bufs = [0u8; 1000];
+        // let mut bufc = [0u8; 1000];
+        // let mut bufs = [0u8; 1000];
         let cli_conf = kex::AlgoConfig::new(true);
         let serv_conf = kex::AlgoConfig::new(false);
         let mut serv_version = RemoteVersion::new();
@@ -682,15 +807,15 @@ mod tests {
         let mut sb = Behaviour::new_server(&mut sb);
         let _sb = sb.server().unwrap();
 
-        let cli = kex::Kex::new().unwrap();
-        let serv = kex::Kex::new().unwrap();
+        let cli = kex::Kex::new();
+        let serv = kex::Kex::new();
 
-        // reencode so we end up with NameList::String not Local
-        let ctx = ParseContext::new();
-        let si = serv.make_kexinit(&serv_conf);
-        let _si = reencode(&mut bufs, si, &ctx);
-        let ci = cli.make_kexinit(&cli_conf);
-        let _ci = reencode(&mut bufc, ci, &ctx);
+        // // reencode so we end up with NameList::String not Local
+        // let ctx = ParseContext::new();
+        // let si = serv.make_kexinit(&serv_conf);
+        // let _si = reencode(&mut bufs, si, &ctx);
+        // let ci = cli.make_kexinit(&cli_conf);
+        // let _ci = reencode(&mut bufc, ci, &ctx);
 
         // TODO fix this
 

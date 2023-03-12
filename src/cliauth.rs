@@ -94,7 +94,7 @@ impl CliAuth {
     }
 
     // May be called multiple times
-    pub async fn start<'b>(
+    pub async fn progress<'b>(
         &'b mut self,
         s: &mut TrafSend<'_, '_>,
         b: &mut dyn CliBehaviour,
