@@ -3,6 +3,8 @@
 set -v
 set -e
 
+# Set OFFLINE=1 to avoid rustup. cargo might still run offline.
+
 if ! grep -sq '^name = "sunset"' Cargo.toml; then
     echo "Run ci.sh from the toplevel sunset directory"
     exit 2
@@ -12,11 +14,13 @@ mkdir -p ci_out
 OUT="$(realpath ci_out)"
 
 # disabled for now, doesn't like unstable features
-#export RUSTDOCFLAGS='-D warnings'
+export RUSTDOCFLAGS='-D warnings'
 
 # dependencies
 which cargo-bloat > /dev/null || cargo install cargo-bloat
-rustup toolchain add nightly
+if [ -z "$OFFLINE" ]; then
+    rustup toolchain add nightly
+fi
 
 # stable
 cargo test

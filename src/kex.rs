@@ -112,7 +112,7 @@ pub(crate) struct KexHash {
 // kexhash state. progessively include version idents, kexinit payloads, hostsig, e/f, secret
 impl KexHash {
     fn new(
-        kex: &Kex, algos: &Algos, algo_conf: &AlgoConfig, our_cookie: &KexCookie,
+        algos: &Algos, algo_conf: &AlgoConfig, our_cookie: &KexCookie,
         remote_version: &RemoteVersion, remote_kexinit: &packets::Packet,
     ) -> Result<Self> {
         // RFC4253 section 8:
@@ -260,7 +260,7 @@ impl Kex {
             let p = algos.kex.make_kexdhinit()?;
             s.send(p)?;
         }
-        let kex_hash = KexHash::new(self, &algos, algo_conf, our_cookie, remote_version, &remote_kexinit.into())?;
+        let kex_hash = KexHash::new(&algos, algo_conf, our_cookie, remote_version, &remote_kexinit.into())?;
         *self = Kex::KexDH {
             algos,
             kex_hash
@@ -567,10 +567,10 @@ impl fmt::Debug for KexOutput {
 }
 
 impl KexOutput {
-    fn make(k: &[u8], _algos: &Algos, kex_hash: KexHash) -> Self {
+    fn make(k: &[u8], algos: &Algos, kex_hash: KexHash) -> Self {
         let h = kex_hash.finish(k);
 
-        let mut partial_hash = Sha256::new();
+        let mut partial_hash = algos.kex.hash();
         hash_mpint(&mut partial_hash, k);
         partial_hash.update(&h);
 
@@ -580,7 +580,7 @@ impl KexOutput {
     /// Constructor from a direct SessId
     #[cfg(test)]
     pub fn make_test(k: &[u8], algos: &Algos, h: &SessId) -> Self {
-        let mut partial_hash = Sha256::new();
+        let mut partial_hash = algos.kex.hash();
         hash_mpint(&mut partial_hash, k);
         partial_hash.update(h);
 
@@ -740,7 +740,7 @@ mod tests {
     }
 
     /// Round trip a `Packet`
-    fn reencode<'a>(out_buf: &'a mut [u8], p: Packet, ctx: &ParseContext) -> Packet<'a> {
+    fn _reencode<'a>(out_buf: &'a mut [u8], p: Packet, ctx: &ParseContext) -> Packet<'a> {
         let l = sshwire::write_ssh(out_buf, &p).unwrap();
         sshwire::packet_from_bytes(&out_buf[..l], &ctx).unwrap()
     }
@@ -789,6 +789,7 @@ mod tests {
 
     #[test]
     fn test_agree_kex() {
+        #![allow(unused)]
         init_test_log();
         // let mut bufc = [0u8; 1000];
         // let mut bufs = [0u8; 1000];
