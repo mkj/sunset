@@ -26,8 +26,6 @@ use ssh_chapoly::SSHChaPoly;
 type Aes256Ctr32BE = ctr::Ctr32BE<aes::Aes256>;
 type HmacSha256 = hmac::Hmac<sha2::Sha256>;
 
-// RFC4253 Section 6. Including length u32 length field, excluding MAC
-const SSH_MIN_PACKET_SIZE: usize = 16;
 const SSH_MIN_PADLEN: usize = 4;
 const SSH_MIN_BLOCK: usize = 8;
 pub const SSH_LENGTH_SIZE: usize = 4;
@@ -124,13 +122,7 @@ impl KeyState {
             space = space.saturating_sub(extra_block);
         }
 
-        space = space.saturating_sub(overhead);
-
-        if space + overhead < SSH_MIN_PACKET_SIZE {
-            0
-        } else {
-            space
-        }
+        space.saturating_sub(overhead)
     }
 }
 
@@ -250,6 +242,7 @@ impl Keys {
         let total_len = len
             .checked_add((SSH_LENGTH_SIZE + self.integ_dec.size_out()) as u32)
             .ok_or(Error::BadDecrypt)?;
+        trace!("len {len:?} total {total_len:?}");
 
         Ok(total_len)
     }
@@ -265,11 +258,6 @@ impl Keys {
 
         if buf.len() < size_block + size_integ {
             debug!("Bad packet, {} smaller than block size", buf.len());
-            return Err(Error::SSHProtoError);
-        }
-        if buf.len() < SSH_MIN_PACKET_SIZE + size_integ {
-            debug!("Bad packet, {} smaller than min packet size", buf.len());
-            trace!("{:?}", buf.hex_dump());
             return Err(Error::SSHProtoError);
         }
         // "MUST be a multiple of the cipher block size".
@@ -350,11 +338,6 @@ impl Keys {
             padlen += size_block
         }
 
-        // The minimum size of a packet is 16 (plus mac)
-        // We know we already have at least 8 bytes because of blocksize rounding.
-        if SSH_LENGTH_SIZE + 1 + payload_len + padlen < SSH_MIN_PACKET_SIZE {
-            padlen += size_block;
-        }
         padlen
     }
 
