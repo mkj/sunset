@@ -1,45 +1,10 @@
-use sunset::Result;
-
-use embedded_io::asynch;
-
 use menu::*;
+pub use super::BufOutput;
 use core::fmt::Write;
-
-#[derive(Default)]
-pub struct Output {
-    s: heapless::String<1024>,
-}
-
-impl Output {
-    pub async fn flush<W>(&mut self, w: &mut W) -> Result<()>
-    where W: asynch::Write + embedded_io::Io<Error = sunset::Error>
-    {
-
-        let mut b = self.s.as_str().as_bytes();
-        while b.len() > 0 {
-            let l = w.write(b).await?;
-            b = &b[l..];
-        }
-        self.s.clear();
-        Ok(())
-    }
-}
-
-impl core::fmt::Write for Output {
-    fn write_str(&mut self, s: &str) -> Result<(), core::fmt::Error> {
-        for c in s.chars() {
-            if c == '\n' {
-                self.s.push('\r').map_err(|_| core::fmt::Error)?;
-            }
-            self.s.push(c).map_err(|_| core::fmt::Error)?;
-        }
-        Ok(())
-    }
-}
 
 // from menu crate examples/simple.rs
 
-pub const ROOT_MENU: Menu<Output> = Menu {
+pub const ROOT_MENU: Menu<BufOutput> = Menu {
     label: "root",
     items: &[
         &Item {
@@ -115,15 +80,15 @@ It contains multiple paragraphs and should be preceeded by the parameter list.
     exit: Some(exit_root),
 };
 
-fn enter_root(_menu: &Menu<Output>, context: &mut Output) {
+fn enter_root(_menu: &Menu<BufOutput>, context: &mut BufOutput) {
     writeln!(context, "In enter_root").unwrap();
 }
 
-fn exit_root(_menu: &Menu<Output>, context: &mut Output) {
+fn exit_root(_menu: &Menu<BufOutput>, context: &mut BufOutput) {
     writeln!(context, "In exit_root").unwrap();
 }
 
-fn select_foo<'a>(_menu: &Menu<Output>, item: &Item<Output>, args: &[&str], context: &mut Output) {
+fn select_foo<'a>(_menu: &Menu<BufOutput>, item: &Item<BufOutput>, args: &[&str], context: &mut BufOutput) {
     writeln!(context, "In select_foo. Args = {:?}", args).unwrap();
     writeln!(
         context,
@@ -157,27 +122,27 @@ fn select_foo<'a>(_menu: &Menu<Output>, item: &Item<Output>, args: &[&str], cont
     .unwrap();
 }
 
-fn select_bar<'a>(_menu: &Menu<Output>, _item: &Item<Output>, args: &[&str], context: &mut Output) {
+fn select_bar<'a>(_menu: &Menu<BufOutput>, _item: &Item<BufOutput>, args: &[&str], context: &mut BufOutput) {
     writeln!(context, "In select_bar. Args = {:?}", args).unwrap();
 }
 
-fn enter_sub(_menu: &Menu<Output>, context: &mut Output) {
+fn enter_sub(_menu: &Menu<BufOutput>, context: &mut BufOutput) {
     writeln!(context, "In enter_sub").unwrap();
 }
 
-fn exit_sub(_menu: &Menu<Output>, context: &mut Output) {
+fn exit_sub(_menu: &Menu<BufOutput>, context: &mut BufOutput) {
     writeln!(context, "In exit_sub").unwrap();
 }
 
-fn select_baz<'a>(_menu: &Menu<Output>, _item: &Item<Output>, args: &[&str], context: &mut Output) {
+fn select_baz<'a>(_menu: &Menu<BufOutput>, _item: &Item<BufOutput>, args: &[&str], context: &mut BufOutput) {
     writeln!(context, "In select_baz: Args = {:?}", args).unwrap();
 }
 
 fn select_quux<'a>(
-    _menu: &Menu<Output>,
-    _item: &Item<Output>,
+    _menu: &Menu<BufOutput>,
+    _item: &Item<BufOutput>,
     args: &[&str],
-    context: &mut Output,
+    context: &mut BufOutput,
 ) {
     writeln!(context, "In select_quux: Args = {:?}", args).unwrap();
 }

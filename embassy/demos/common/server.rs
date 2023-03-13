@@ -1,3 +1,4 @@
+//! Shared between `picow` and `std` Embassy demos
 #[allow(unused_imports)]
 #[cfg(not(feature = "defmt"))]
 use {
@@ -10,19 +11,18 @@ use defmt::{debug, info, warn, panic, error, trace};
 
 use embassy_sync::mutex::Mutex;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
-use embassy_sync::signal::Signal;
 use embassy_net::tcp::TcpSocket;
 use embassy_net::Stack;
 use embassy_net_driver::Driver;
 use embassy_futures::join::join;
 
-use menu::Runner as MenuRunner;
-use embedded_io::asynch::Read;
+use embedded_io::asynch;
 
 use sunset::*;
 use sunset_embassy::SSHServer;
 
-mod demo_menu;
+// TODO move
+pub mod demo_menu;
 
 #[macro_export]
 macro_rules! singleton {
@@ -46,8 +46,8 @@ impl SSHConfig {
     }
 }
 
-// main entry point
-pub async fn listener<D: Driver>(stack: &'static Stack<D>, config: &SSHConfig) -> ! {
+// common entry point
+pub async fn listener<D: Driver, S: Shell>(stack: &'static Stack<D>, config: &SSHConfig) -> ! {
     // TODO: buffer size?
     // Does it help to be larger than ethernet MTU?
     // Should TX and RX be symmetrical? Or larger TX might fill ethernet
@@ -66,7 +66,7 @@ pub async fn listener<D: Driver>(stack: &'static Stack<D>, config: &SSHConfig) -
             continue;
         }
 
-        let r = session(&mut socket, &config).await;
+        let r = session::<S>(&mut socket, &config).await;
         if let Err(_e) = r {
             // warn!("Ended with error: {:?}", e);
             warn!("Ended with error");
@@ -74,17 +74,47 @@ pub async fn listener<D: Driver>(stack: &'static Stack<D>, config: &SSHConfig) -
     }
 }
 
-struct DemoServer<'a> {
+/// Run a SSH session when a socket accepts a connection
+async fn session<S: Shell>(socket: &mut TcpSocket<'_>, config: &SSHConfig) -> sunset::Result<()> {
+    // OK unwrap: has been accepted
+    let src = socket.remote_endpoint().unwrap();
+    info!("Connection from {}:{}", src.addr, src.port);
+
+    let shell = S::default();
+
+    let app = DemoServer::new(&shell, config)?;
+    let app = Mutex::<NoopRawMutex, _>::new(app);
+    let app = &app as &Mutex::<NoopRawMutex, dyn ServBehaviour>;
+
+    let mut ssh_rxbuf = [0; 2000];
+    let mut ssh_txbuf = [0; 2000];
+    let serv = SSHServer::new(&mut ssh_rxbuf, &mut ssh_txbuf)?;
+    let serv = &serv;
+
+    let session = shell.run(serv);
+
+    let (mut rsock, mut wsock) = socket.split();
+
+    let run = serv.run(&mut rsock, &mut wsock, app);
+
+    let (r1, r2) = join(run, session).await;
+    r1?;
+    r2?;
+
+    Ok(())
+}
+
+struct DemoServer<'a, S: Shell> {
     config: &'a SSHConfig,
 
     handle: Option<ChanHandle>,
     sess: Option<ChanNum>,
 
-    shell: &'a DemoShell,
+    shell: &'a S,
 }
 
-impl<'a> DemoServer<'a> {
-    fn new(shell: &'a DemoShell, config: &'a SSHConfig) -> Result<Self> {
+impl<'a, S: Shell> DemoServer<'a, S> {
+    fn new(shell: &'a S, config: &'a SSHConfig) -> Result<Self> {
 
         Ok(Self {
             handle: None,
@@ -95,7 +125,7 @@ impl<'a> DemoServer<'a> {
     }
 }
 
-impl<'a> ServBehaviour for DemoServer<'a> {
+impl<'a, S: Shell> ServBehaviour for DemoServer<'a, S> {
     fn hostkeys(&mut self) -> BhResult<&[SignKey]> {
         Ok(&self.config.keys)
     }
@@ -122,8 +152,7 @@ impl<'a> ServBehaviour for DemoServer<'a> {
 
         if let Some(handle) = self.handle.take() {
             debug_assert_eq!(self.sess, Some(handle.num()));
-            self.shell.notify.signal(handle);
-            trace!("req want shell");
+            self.shell.open_shell(handle);
             true
         } else {
             false
@@ -139,76 +168,51 @@ impl<'a> ServBehaviour for DemoServer<'a> {
     }
 }
 
-#[derive(Default)]
-struct DemoShell {
-    notify: Signal<NoopRawMutex, ChanHandle>,
+pub trait Shell : Default {
+    #[allow(unused_variables)]
+    // TODO: eventually the compiler should add must_use automatically?
+    fn authed(&self, handle: ChanHandle) {
+        info!("Authenticated")
+    }
+
+    fn open_shell(&self, handle: ChanHandle);
+
+    #[must_use]
+    async fn run<'f>(&self, serv: &'f SSHServer<'f>) -> Result<()>;
 }
 
-impl DemoShell {
-    async fn run<'f>(&self, serv: &'f SSHServer<'f>) -> Result<()>
+
+/// A wrapper writing `Menu` output into a buffer that can be later written
+/// asynchronously to a channel.
+#[derive(Default)]
+pub struct BufOutput {
+    s: heapless::String<1024>,
+}
+
+impl BufOutput {
+    pub async fn flush<W>(&mut self, w: &mut W) -> Result<()>
+    where W: asynch::Write + embedded_io::Io<Error = sunset::Error>
     {
-        let session = async {
-            // wait for a shell to start
-            let chan_handle = self.notify.wait().await;
 
-            let mut stdio = serv.stdio(chan_handle).await?;
-
-            let mut menu_buf = [0u8; 64];
-            let menu_out = demo_menu::Output::default();
-
-            let mut menu = MenuRunner::new(&demo_menu::ROOT_MENU, &mut menu_buf, menu_out);
-
-            // bodge
-            for c in "help\r\n".bytes() {
-                menu.input_byte(c);
-            }
-            menu.context.flush(&mut stdio).await?;
-
-            loop {
-                let mut b = [0u8; 20];
-                let lr = stdio.read(&mut b).await?;
-                if lr == 0 {
-                    break
-                }
-                let b = &mut b[..lr];
-                for c in b.iter() {
-                    menu.input_byte(*c);
-                }
-                menu.context.flush(&mut stdio).await?;
-            }
-            Ok(())
-        };
-
-        session.await
+        let mut b = self.s.as_str().as_bytes();
+        while b.len() > 0 {
+            let l = w.write(b).await?;
+            b = &b[l..];
+        }
+        self.s.clear();
+        Ok(())
     }
 }
 
-
-async fn session(socket: &mut TcpSocket<'_>, config: &SSHConfig) -> sunset::Result<()> {
-    // OK unwrap: has been accepted
-    let src = socket.remote_endpoint().unwrap();
-    info!("Connection from {}:{}", src.addr, src.port);
-
-    let shell = DemoShell::default();
-
-    let app = DemoServer::new(&shell, config)?;
-    let app = Mutex::<NoopRawMutex, _>::new(app);
-    let app = &app as &Mutex::<NoopRawMutex, dyn ServBehaviour>;
-
-    let mut ssh_rxbuf = [0; 2000];
-    let mut ssh_txbuf = [0; 2000];
-    let serv = SSHServer::new(&mut ssh_rxbuf, &mut ssh_txbuf)?;
-    let serv = &serv;
-
-    let session = shell.run(serv);
-
-    let (mut rsock, mut wsock) = socket.split();
-
-    let run = serv.run(&mut rsock, &mut wsock, app);
-
-    let (r1, r2) = join(run, session).await;
-    r1?;
-    r2?;
-
-    Ok(())
+impl core::fmt::Write for BufOutput {
+    fn write_str(&mut self, s: &str) -> Result<(), core::fmt::Error> {
+        for c in s.chars() {
+            if c == '\n' {
+                self.s.push('\r').map_err(|_| core::fmt::Error)?;
+            }
+            self.s.push(c).map_err(|_| core::fmt::Error)?;
+        }
+        Ok(())
+    }
 }
+

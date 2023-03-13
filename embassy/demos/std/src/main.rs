@@ -1,4 +1,6 @@
 #![feature(type_alias_impl_trait)]
+#![feature(async_fn_in_trait)]
+#![allow(incomplete_features)]
 
 #[allow(unused_imports)]
 use {
@@ -12,13 +14,21 @@ use static_cell::StaticCell;
 use rand::rngs::OsRng;
 use rand::RngCore;
 
+use menu::Runner as MenuRunner;
+use embedded_io::asynch::Read;
+use embassy_sync::signal::Signal;
+use embassy_sync::blocking_mutex::raw::NoopRawMutex;
+
 use crate::tuntap::TunTapDevice;
+
+use sunset::*;
+use sunset_embassy::SSHServer;
 
 mod tuntap;
 #[path = "../../common/server.rs"]
 mod demo_common;
 
-use demo_common::SSHConfig;
+use demo_common::{SSHConfig, demo_menu, Shell, BufOutput};
 
 const NUM_LISTENERS: usize = 2;
 // +1 for dhcp
@@ -31,8 +41,6 @@ async fn net_task(stack: &'static Stack<TunTapDevice>) -> ! {
 
 #[embassy_executor::task]
 async fn main_task(spawner: Spawner) {
-    info!("Hello World!");
-
     // TODO config
     let opt_tap0 = "tap0";
     let config = Config::Dhcp(Default::default());
@@ -62,11 +70,60 @@ async fn main_task(spawner: Spawner) {
     }
 }
 
+#[derive(Default)]
+struct DemoShell {
+    notify: Signal<NoopRawMutex, ChanHandle>,
+}
+
+impl Shell for DemoShell {
+    fn open_shell(&self, handle: ChanHandle) {
+        self.notify.signal(handle);
+    }
+
+    async fn run<'f>(&self, serv: &'f SSHServer<'f>) -> Result<()>
+    {
+        let session = async {
+            // wait for a shell to start
+            let chan_handle = self.notify.wait().await;
+            trace!("got handle");
+
+            let mut stdio = serv.stdio(chan_handle).await?;
+
+            let mut menu_buf = [0u8; 64];
+            let menu_out = BufOutput::default();
+
+            let mut menu = MenuRunner::new(&demo_menu::ROOT_MENU, &mut menu_buf, menu_out);
+
+            // bodge
+            for c in "help\r\n".bytes() {
+                menu.input_byte(c);
+            }
+            menu.context.flush(&mut stdio).await?;
+
+            loop {
+                let mut b = [0u8; 20];
+                let lr = stdio.read(&mut b).await?;
+                if lr == 0 {
+                    break
+                }
+                let b = &mut b[..lr];
+                for c in b.iter() {
+                    menu.input_byte(*c);
+                }
+                menu.context.flush(&mut stdio).await?;
+            }
+            Ok(())
+        };
+
+        session.await
+    }
+}
+
 // TODO: pool_size should be NUM_LISTENERS but needs a literal
 #[embassy_executor::task(pool_size = 4)]
 async fn listener(stack: &'static Stack<TunTapDevice>, config: &'static SSHConfig) -> ! {
 
-    demo_common::listener(stack, config).await
+    demo_common::listener::<_, DemoShell>(stack, config).await
 }
 
 
@@ -77,6 +134,9 @@ fn main() {
         .filter_level(log::LevelFilter::Trace)
         .filter_module("sunset::runner", log::LevelFilter::Info)
         .filter_module("sunset::traffic", log::LevelFilter::Info)
+        .filter_module("sunset::encrypt", log::LevelFilter::Info)
+        .filter_module("sunset::conn", log::LevelFilter::Info)
+        .filter_module("sunset_embassy::embassy_sunset", log::LevelFilter::Info)
         .filter_module("async_io", log::LevelFilter::Info)
         .filter_module("polling", log::LevelFilter::Info)
         .format_timestamp_nanos()

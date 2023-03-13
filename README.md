@@ -13,7 +13,7 @@ A SSH client and server implementation.
 
 - [`embassy/demos`](embassy/demos) has demos with Embassy executor for wifi on a Raspberry Pi
   [Pico W](embassy/demos/picow) or a
-  [tun device on `std`](embassy/demos/std) running locally.
+  [Linux tap device on `std`](embassy/demos/std) running locally.
 
   At present the Pico W build is around 150kB binary size
   (plus ~200KB [cyw43](https://github.com/embassy-rs/cyw43/) wifi blob),
