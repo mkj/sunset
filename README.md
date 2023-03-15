@@ -48,6 +48,10 @@ Desirable:
 - SFTP
 - `~.` client escape sequences
 
+## License
+
+Currently MPL2, though may possibly move to MIT-style in future (I'm undecided)
+
 ## Rust versions
 
 `sunset` core builds on stable Rust. There's no MSRV guarantee now since it's early.
