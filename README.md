@@ -1,6 +1,9 @@
 # Sunset SSH
 
-A SSH client and server implementation.
+A SSH client and server implementation. It is intended to be very flexible to
+embed pretty much anywhere, I'm collecting possible use cases in
+[discussions](https://github.com/mkj/sunset/discussions/1). Don't hesitate to
+suggest something!
 
 ** This software is incomplete but nearly ready to be used **
 
