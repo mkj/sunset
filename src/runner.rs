@@ -137,6 +137,9 @@ impl<'a> Runner<'a> {
     }
 
     pub fn input(&mut self, buf: &[u8]) -> Result<usize, Error> {
+        if self.closed {
+            return error::ChannelEOF.fail()
+        }
         self.traf_in.input(
             &mut self.keys,
             &mut self.conn.remote_version,
