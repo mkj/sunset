@@ -67,3 +67,5 @@ pub enum ChanFail {
     SSH_OPEN_RESOURCE_SHORTAGE = 4,
 }
 
+pub const SSH_PORT: u16 = 22;
+

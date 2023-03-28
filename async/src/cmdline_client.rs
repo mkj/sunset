@@ -44,6 +44,8 @@ pub struct CmdlineClient {
     // to be passed to hooks
     authkeys: VecDeque<SignKey>,
     username: String,
+    host: String,
+    port: u16,
 
     notify: Channel<SunsetRawMutex, Msg, 1>,
 }
@@ -61,6 +63,8 @@ pub struct CmdlineRunner<'a> {
 pub struct CmdlineHooks<'a> {
     authkeys: VecDeque<SignKey>,
     username: &'a str,
+    host: &'a str,
+    port: u16,
 
     notify: Sender<'a, SunsetRawMutex, Msg, 1>,
 }
@@ -257,7 +261,8 @@ impl<'a> CmdlineRunner<'a> {
 }
 
 impl CmdlineClient {
-    pub fn new(username: impl AsRef<str>, cmd: Option<impl AsRef<str>>, want_pty: bool) -> Self {
+    pub fn new(username: impl AsRef<str>, host: impl AsRef<str>, port: u16,
+        cmd: Option<impl AsRef<str>>, want_pty: bool) -> Self {
         Self {
 
             // TODO: shorthand for this?
@@ -267,13 +272,15 @@ impl CmdlineClient {
             notify: Channel::new(),
 
             username: username.as_ref().into(),
+            host: host.as_ref().into(),
+            port,
             authkeys: Default::default(),
         }
     }
 
     pub fn split(&mut self) -> (CmdlineHooks, CmdlineRunner) {
         let ak = core::mem::replace(&mut self.authkeys, Default::default());
-        let hooks = CmdlineHooks::new(&self.username, ak, self.notify.sender());
+        let hooks = CmdlineHooks::new(&self.username, &self.host, self.port, ak, self.notify.sender());
         let runner = CmdlineRunner::new(&self.cmd, self.want_pty, self.notify.receiver());
         (hooks, runner)
     }
@@ -284,10 +291,12 @@ impl CmdlineClient {
 }
 
 impl<'a> CmdlineHooks<'a> {
-    fn new(username: &'a str, authkeys: VecDeque<SignKey>, notify: Sender<'a, SunsetRawMutex, Msg, 1>) -> Self {
+    fn new(username: &'a str, host: &'a str, port: u16, authkeys: VecDeque<SignKey>, notify: Sender<'a, SunsetRawMutex, Msg, 1>) -> Self {
         Self {
             authkeys,
             username,
+            host,
+            port,
             notify,
         }
     }
@@ -306,8 +315,15 @@ impl<'a> sunset::CliBehaviour for CmdlineHooks<'a> {
     }
 
     fn valid_hostkey(&mut self, key: &sunset::PubKey) -> BhResult<bool> {
-        trace!("valid_hostkey for {key:?}");
-        Ok(true)
+        trace!("checking hostkey for {key:?}");
+
+        match known_hosts::check_known_hosts(self.host, self.port, key) {
+            Ok(()) => Ok(true),
+            Err(e) => {
+                debug!("Error for hostkey: {e:?}");
+                Ok(false)
+            }
+        }
     }
 
     fn next_authkey(&mut self) -> BhResult<Option<sunset::SignKey>> {

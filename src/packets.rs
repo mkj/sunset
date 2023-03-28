@@ -273,6 +273,19 @@ impl PubKey<'_> {
     }
 }
 
+#[cfg(feature = "openssh-key")]
+impl TryFrom<&PubKey<'_>> for ssh_key::PublicKey {
+    type Error = Error;
+    fn try_from(k: &PubKey<'_>) -> Result<Self> {
+        match k {
+            PubKey::Ed25519(e) => {
+                let eb: &[u8; 32] = e.key.0.try_into().map_err(|_| Error::BadKey)?;
+                Ok(ssh_key::public::Ed25519PublicKey(*eb).into())
+            }
+            _ => Err(Error::msg("Unsupported OpenSSH key"))
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, SSHEncode, SSHDecode)]
 pub struct Ed25519PubKey<'a> {

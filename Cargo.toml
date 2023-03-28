@@ -27,7 +27,7 @@ debug = 1
 [dependencies]
 sunset-sshwire-derive = { version = "0.1", path = "sshwire-derive" }
 
-snafu = { version = "0.7", default-features = false, features = ["rust_1_46"] }
+snafu = { version = "0.7", default-features = false, features = ["rust_1_61"] }
 # TODO: check that log macro calls disappear in no_std builds
 log = { version = "0.4" }
 heapless = "0.7.10"
@@ -60,7 +60,7 @@ embedded-io = { version = "0.4", optional = true }
 pretty-hex = { version = "0.3", default-features = false }
 
 [features]
-std = ["snafu/std", "snafu/backtraces"]
+std = ["snafu/std", "snafu/backtraces", "salty/alloc" ]
 # allows conversion to/from OpenSSH key formats
 openssh-key = ["dep:ssh-key"]
 # implements embedded_io::Error for sunset::Error
@@ -72,7 +72,6 @@ snafu = { version = "0.7", default-features = true }
 anyhow = { version = "1.0" }
 pretty-hex = "0.3"
 simplelog = { version = "0.12", features = ["test"] }
-proptest = "1.0"
 
 [patch.crates-io]
 # needed for Default WakerRegistration, https://github.com/embassy-rs/embassy/commit/14a2d1524080593f7795fe14950a3f0ee6e2b409

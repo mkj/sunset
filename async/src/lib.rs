@@ -5,6 +5,7 @@
 
 mod pty;
 mod cmdline_client;
+mod known_hosts;
 
 #[cfg(unix)]
 mod fdio;

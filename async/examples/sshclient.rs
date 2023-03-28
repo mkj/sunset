@@ -163,6 +163,8 @@ async fn run(args: Args) -> Result<()> {
     let ssh_task = spawn_local(async move {
         let mut app = sunset_async::CmdlineClient::new(
             args.username.as_ref().unwrap(),
+            &args.host,
+            args.port,
             cmd,
             wantpty,
             );

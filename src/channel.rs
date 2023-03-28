@@ -463,7 +463,7 @@ pub struct Pty {
 impl TryFrom<&packets::PtyReq<'_>> for Pty {
     type Error = Error;
     fn try_from(p: &packets::PtyReq) -> Result<Self, Self::Error> {
-        error!("TODO implement pty modes");
+        debug!("TODO implement pty modes");
         let term = p.term.as_ascii()?.try_into().map_err(|_| Error::BadString)?;
         Ok(Pty {
             term,
@@ -513,7 +513,7 @@ impl Req {
         let ty = match &self.details {
             ReqDetails::Shell => ChannelReqType::Shell,
             ReqDetails::Pty(pty) => {
-                error!("TODO implement pty modes");
+                debug!("TODO implement pty modes");
                 ChannelReqType::Pty(packets::PtyReq {
                     term: TextString(pty.term.as_bytes()),
                     cols: pty.cols,

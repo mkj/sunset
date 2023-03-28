@@ -95,6 +95,7 @@ impl<'a> TrafIn<'a> {
     }
 
     pub fn is_input_ready(&self) -> bool {
+        info!("is_input_ready {:?}", self.state);
         match self.state {
             | RxState::Idle
             | RxState::ReadInitial { .. }
@@ -113,6 +114,7 @@ impl<'a> TrafIn<'a> {
         buf: &[u8],
     ) -> Result<usize, Error> {
         let mut inlen = 0;
+        info!("assert");
         debug_assert!(self.is_input_ready());
         if remote_version.version().is_none() && matches!(self.state, RxState::Idle) {
             // Handle initial version string
