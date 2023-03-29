@@ -567,7 +567,7 @@ impl fmt::Debug for KexOutput {
 }
 
 impl KexOutput {
-    fn make(k: &[u8], algos: &Algos, kex_hash: KexHash) -> Self {
+    fn new(k: &[u8], algos: &Algos, kex_hash: KexHash) -> Self {
         let h = kex_hash.finish(k);
 
         let mut partial_hash = algos.kex.hash();
@@ -579,7 +579,7 @@ impl KexOutput {
 
     /// Constructor from a direct SessId
     #[cfg(test)]
-    pub fn make_test(k: &[u8], algos: &Algos, h: &SessId) -> Self {
+    pub fn new_test(k: &[u8], algos: &Algos, h: &SessId) -> Self {
         let mut partial_hash = algos.kex.hash();
         hash_mpint(&mut partial_hash, k);
         partial_hash.update(h);
@@ -675,7 +675,7 @@ impl KexCurve25519 {
         let theirs = theirs.try_into().map_err(|_| Error::BadKex)?;
         let shsec = ours.agree(&theirs);
         kex.ours = None;
-        Ok(KexOutput::make(&shsec.to_bytes(), algos, kex_hash))
+        Ok(KexOutput::new(&shsec.to_bytes(), algos, kex_hash))
     }
 }
 

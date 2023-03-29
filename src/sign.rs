@@ -128,6 +128,7 @@ pub enum KeyType {
 /// or other entitiy.
 #[derive(ZeroizeOnDrop)]
 pub enum SignKey {
+    // TODO bloat: this is an expanded keypair, we should store the raw bytes
     Ed25519(salty::Keypair),
 }
 

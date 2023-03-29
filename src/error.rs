@@ -269,8 +269,6 @@ pub(crate) mod tests {
     use crate::error::*;
     use crate::sunsetlog::init_test_log;
     use crate::packets::Unknown;
-    use proptest::prelude::*;
-
 
 }
 

@@ -200,7 +200,6 @@ mod tests {
     use pretty_hex::PrettyHex;
     use std::vec::Vec;
     use crate::sunsetlog::init_test_log;
-    use proptest::prelude::*;
 
     #[test]
     fn test_match() {

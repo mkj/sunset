@@ -155,10 +155,10 @@ impl Keys {
         let mut key = [0u8; MAX_KEY_LEN];
         let mut iv = [0u8; MAX_IV_LEN];
 
-        let (iv_e, iv_d, k_e, k_d, i_e, i_d) = if algos.is_client {
-            ('A', 'B', 'C', 'D', 'E', 'F')
+        let [iv_e, iv_d, k_e, k_d, i_e, i_d] = if algos.is_client {
+            ['A', 'B', 'C', 'D', 'E', 'F']
         } else {
-            ('B', 'A', 'D', 'C', 'F', 'E')
+            ['B', 'A', 'D', 'C', 'F', 'E']
         };
 
         let enc = {
@@ -739,8 +739,8 @@ mod tests {
                 let h = SessId::from_slice(&Sha256::digest("some exchange hash".as_bytes())).unwrap();
                 let sess_id = SessId::from_slice(&Sha256::digest("some sessid".as_bytes())).unwrap();
                 let sharedkey = b"hello";
-                let ko = KexOutput::make_test(sharedkey, &algos, &h);
-                let ko_b = KexOutput::make_test(sharedkey, &algos, &h);
+                let ko = KexOutput::new_test(sharedkey, &algos, &h);
+                let ko_b = KexOutput::new_test(sharedkey, &algos, &h);
 
                 trace!("algos enc {algos:?}");
                 let newkeys = Keys::derive(ko, &sess_id, &algos).unwrap();
@@ -778,7 +778,7 @@ mod tests {
                 let h = SessId::from_slice(&Sha256::digest(b"some exchange hash")).unwrap();
                 let sess_id = SessId::from_slice(&Sha256::digest(b"some sessid")).unwrap();
                 let sharedkey = b"hello";
-                let ko = KexOutput::make_test(sharedkey, &algos, &h);
+                let ko = KexOutput::new_test(sharedkey, &algos, &h);
                 let newkeys = Keys::derive(ko, &sess_id, &algos).unwrap();
 
                 keys.rekey(newkeys);

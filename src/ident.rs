@@ -159,7 +159,6 @@ mod tests {
     use crate::ident;
     use crate::error::{Error,TrapBug,Result};
     use crate::sunsetlog::init_test_log;
-    use proptest::prelude::*;
 
     fn test_version(v: &str, split: usize, expect: &str) -> Result<usize> {
         let mut r = ident::RemoteVersion::new();
