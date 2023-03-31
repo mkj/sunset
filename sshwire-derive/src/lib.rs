@@ -216,7 +216,7 @@ fn encode_struct(gen: &mut Generator, body: StructBody) -> Result<()> {
         .with_return_type("crate::sshwire::WireResult<()>")
         .body(|fn_body| {
             match &body.fields {
-                Fields::Tuple(v) => {
+                Some(Fields::Tuple(v)) => {
                     for (fname, f) in v.iter().enumerate() {
                         // we're only using single elements for newtype, don't bother with atts for now
                         if !f.attributes.is_empty() {
@@ -225,7 +225,7 @@ fn encode_struct(gen: &mut Generator, body: StructBody) -> Result<()> {
                         fn_body.push_parsed(format!("crate::sshwire::SSHEncode::enc(&self.{fname}, s)?;"))?;
                     }
                 }
-                Fields::Struct(v) => {
+                Some(Fields::Struct(v)) => {
                     for f in v {
                         let fname = &f.0;
                         let atts = take_field_atts(&f.1.attributes)?;
@@ -239,9 +239,9 @@ fn encode_struct(gen: &mut Generator, body: StructBody) -> Result<()> {
                     }
 
                 }
-                _ => {
-                    // other variants are only for enums
-                    unreachable!()
+                None => {
+                    // nothing to do.
+                    // either an empty braced struct or a unit struct.
                 }
 
             }
@@ -283,10 +283,10 @@ fn encode_enum(
 
                     let mut rhs = StreamBuilder::new();
                     match var.fields {
-                        Fields::Unit => {
-                            // nothing to do
+                        None => {
+                            // Unit enum
                         }
-                        Fields::Tuple(ref f) if f.len() == 1 => {
+                        Some(Fields::Tuple(ref f)) if f.len() == 1 => {
                             match_arm.group(Delimiter::Parenthesis, |item| {
                                 item.ident_str("ref");
                                 item.ident_str("i");
@@ -359,10 +359,10 @@ fn encode_enum_names(
                     }
 
                     match var.fields {
-                        Fields::Unit => {
+                        None => {
                             // nothing to do
                         }
-                        Fields::Tuple(ref f) if f.len() == 1 => {
+                        Some(Fields::Tuple(ref f)) if f.len() == 1 => {
                             match_arm.group(Delimiter::Parenthesis, |item| {
                                 item.ident_str("_");
                                 Ok(())
@@ -390,13 +390,19 @@ fn encode_enum_names(
 
 fn decode_struct(gen: &mut Generator, body: StructBody) -> Result<()> {
     gen.impl_for_with_lifetimes("crate::sshwire::SSHDecode", ["de"])
+        .modify_generic_constraints(|generics, where_constraints| {
+            for lt in generics.iter_lifetimes() {
+                where_constraints.push_parsed_constraint(format!("'de: '{}", lt.ident))?;
+            }
+            Ok(())
+        })?
         .generate_fn("dec")
         .with_generic_deps("S", ["crate::sshwire::SSHSource<'de>"])
         .with_arg("s", "&mut S")
         .with_return_type("crate::sshwire::WireResult<Self>")
         .body(|fn_body| {
             let mut named_enums = HashSet::new();
-            if let Fields::Struct(v) = &body.fields {
+            if let Some(Fields::Struct(v)) = &body.fields {
                 for f in v {
                     let atts = take_field_atts(&f.1.attributes)?;
                     for a in atts {
@@ -417,17 +423,17 @@ fn decode_struct(gen: &mut Generator, body: StructBody) -> Result<()> {
             fn_body.ident_str("Ok");
             fn_body.group(Delimiter::Parenthesis, |fn_body| {
                 match &body.fields {
-                    Fields::Tuple(_) => {
+                    Some(Fields::Tuple(f)) => {
                         // we don't handle attributes for Tuple Structs - only use as newtype
                         fn_body.ident_str("Self");
                         fn_body.group(Delimiter::Parenthesis, |args| {
-                            for _ in body.fields.names() {
+                            for _ in f.iter() {
                                 args.push_parsed(format!("crate::sshwire::SSHDecode::dec(s)?,"))?;
                             }
                             Ok(())
                         })?;
                     }
-                    Fields::Struct(v) => {
+                    Some(Fields::Struct(v)) => {
                         fn_body.ident_str("Self");
                         fn_body.group(Delimiter::Brace, |args| {
                             for f in v {
@@ -437,11 +443,11 @@ fn decode_struct(gen: &mut Generator, body: StructBody) -> Result<()> {
                             Ok(())
                         })?;
                     }
-                    _ => {
-                        // other variants are only for enums
-                        unreachable!()
+                    None => {
+                        // An empty struct (or unit or empty tuple-struct)
+                        fn_body.ident_str("Self");
+                        fn_body.group(Delimiter::Brace, |_| Ok(()))?;
                     }
-
                 }
                 Ok(())
             })?;
@@ -481,6 +487,12 @@ fn decode_enum_variant_prefix(
     _body: &EnumBody,
 ) -> Result<()> {
     gen.impl_for_with_lifetimes("crate::sshwire::SSHDecode", ["de"])
+        .modify_generic_constraints(|generics, where_constraints| {
+            for lt in generics.iter_lifetimes() {
+                where_constraints.push_parsed_constraint(format!("'de: '{}", lt.ident))?;
+            }
+            Ok(())
+        })?
         .generate_fn("dec")
         .with_generic_deps("S", ["crate::sshwire::SSHSource<'de>"])
         .with_arg("s", "&mut S")
@@ -501,6 +513,12 @@ fn decode_enum_names(
     body: &EnumBody,
 ) -> Result<()> {
     gen.impl_for_with_lifetimes("crate::sshwire::SSHDecodeEnum", ["de"])
+        .modify_generic_constraints(|generics, where_constraints| {
+            for lt in generics.iter_lifetimes() {
+                where_constraints.push_parsed_constraint(format!("'de: '{}", lt.ident))?;
+            }
+            Ok(())
+        })?
         .generate_fn("dec_enum")
         .with_generic_deps("S", ["crate::sshwire::SSHSource<'de>"])
         .with_arg("s", "&mut S")
@@ -527,10 +545,10 @@ fn decode_enum_names(
                         match_arm.push_parsed(format!("Some({}) => ", var_name))?;
                         match_arm.group(Delimiter::Brace, |var_body| {
                             match var.fields {
-                                Fields::Unit => {
+                                None => {
                                     var_body.push_parsed(format!("Self::{}", var.name))?;
                                 }
-                                Fields::Tuple(ref f) if f.len() == 1 => {
+                                Some(Fields::Tuple(ref f)) if f.len() == 1 => {
                                     var_body.push_parsed(format!("Self::{}(crate::sshwire::SSHDecode::dec(s)?)", var.name))?;
                                 }
                             _ => return Err(Error::Custom { error: "SSHDecode currently only implements Unit or single value enum variants. ".into(), span: None})
