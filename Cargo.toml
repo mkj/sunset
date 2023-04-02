@@ -60,7 +60,7 @@ embedded-io = { version = "0.4", optional = true }
 pretty-hex = { version = "0.3", default-features = false }
 
 [features]
-std = ["snafu/std", "snafu/backtraces", "salty/alloc" ]
+std = ["snafu/std", "snafu/backtraces" ]
 # allows conversion to/from OpenSSH key formats
 openssh-key = ["dep:ssh-key"]
 # implements embedded_io::Error for sunset::Error

@@ -14,10 +14,13 @@ use {
 use core::str;
 use core::convert::AsRef;
 use core::fmt::{self,Debug};
+use digest::Output;
 use pretty_hex::PrettyHex;
 use snafu::{prelude::*, Location};
 
 use ascii::{AsAsciiStr, AsciiChar, AsciiStr};
+
+use digest::Digest;
 
 use crate::*;
 use packets::{Packet, ParseContext};
@@ -140,18 +143,18 @@ where
 }
 
 /// Hashes the SSH wire format representation of `value`, with a `u32` length prefix.
-pub fn hash_ser_length<T>(hash_ctx: &mut impl digest::DynDigest,
+pub fn hash_ser_length<T>(hash_ctx: &mut impl DigestUpdate,
     value: &T) -> Result<()>
 where
     T: SSHEncode,
 {
     let len: u32 = length_enc(value)?;
-    hash_ctx.update(&len.to_be_bytes());
+    hash_ctx.digest_update(&len.to_be_bytes());
     hash_ser(hash_ctx, value, None)
 }
 
 /// Hashes the SSH wire format representation of `value`
-pub fn hash_ser<T>(hash_ctx: &mut impl digest::DynDigest,
+pub fn hash_ser<T>(hash_ctx: &mut impl DigestUpdate,
     value: &T,
     parse_ctx: Option<&ParseContext>,
     ) -> Result<()>
@@ -202,13 +205,13 @@ impl SSHSink for EncodeLen {
 }
 
 struct EncodeHash<'a> {
-    hash_ctx: &'a mut dyn digest::DynDigest,
+    hash_ctx: &'a mut dyn DigestUpdate,
     parse_ctx: Option<ParseContext>,
 }
 
 impl SSHSink for EncodeHash<'_> {
     fn push(&mut self, v: &[u8]) -> WireResult<()> {
-        self.hash_ctx.update(v);
+        self.hash_ctx.digest_update(v);
         Ok(())
     }
 
@@ -245,14 +248,14 @@ impl<'de> SSHSource<'de> for DecodeBytes<'de> {
 
 // Hashes a slice to be treated as a mpint. Has u32 length prefix
 // and an extra 0x00 byte if the MSB is set.
-pub fn hash_mpint(hash_ctx: &mut dyn digest::DynDigest, m: &[u8]) {
+pub fn hash_mpint(hash_ctx: &mut dyn DigestUpdate, m: &[u8]) {
     let pad = m.len() > 0 && (m[0] & 0x80) != 0;
     let l = m.len() as u32 + pad as u32;
-    hash_ctx.update(&l.to_be_bytes());
+    hash_ctx.digest_update(&l.to_be_bytes());
     if pad {
-        hash_ctx.update(&[0x00]);
+        hash_ctx.digest_update(&[0x00]);
     }
-    hash_ctx.update(m);
+    hash_ctx.digest_update(m);
 }
 
 ///////////////////////////////////////////////
@@ -559,6 +562,25 @@ impl<'de, const N: usize> SSHDecode<'de> for [u8; N] {
         let mut l = [0u8; N];
         l.copy_from_slice(s.take(N)?);
         Ok(l)
+    }
+}
+
+/// Like `digest::DynDigest` but simpler.
+///
+/// Doesn't have any optional methods that depend on `alloc`.
+pub trait DigestUpdate {
+    fn digest_update(&mut self, data: &[u8]);
+}
+
+impl DigestUpdate for salty::Sha512 {
+    fn digest_update(&mut self, data: &[u8]) {
+        self.update(data)
+    }
+}
+
+impl DigestUpdate for sha2::Sha256 {
+    fn digest_update(&mut self, data: &[u8]) {
+        self.update(data)
     }
 }
 
