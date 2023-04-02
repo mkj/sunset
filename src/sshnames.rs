@@ -5,6 +5,8 @@
 //!
 //! This module also serves as an index of SSH specifications.
 
+pub const SSH_PORT: u16 = 22;
+
 /// [RFC8731](https://tools.ietf.org/html/rfc8731)
 pub const SSH_NAME_CURVE25519: &str = "curve25519-sha256";
 /// An older alias prior to standardisation. Eventually could be removed
@@ -67,5 +69,19 @@ pub enum ChanFail {
     SSH_OPEN_RESOURCE_SHORTAGE = 4,
 }
 
-pub const SSH_PORT: u16 = 22;
+/// SSH agent message numbers
+///
+/// [draft-miller-ssh-agent-04](https://tools.ietf.org/html/draft-miller-ssh-agent-04)
+#[allow(non_camel_case_types)]
+#[derive(Debug, Copy, Clone)]
+pub enum AgentMessageNum {
+    SSH_AGENT_FAILURE = 5,
+    SSH_AGENT_SUCCESS = 6,
+    SSH_AGENTC_REQUEST_IDENTITIES = 11,
+    SSH_AGENT_IDENTITIES_ANSWER = 12,
+    SSH_AGENTC_SIGN_REQUEST = 13,
+    SSH_AGENT_SIGN_RESPONSE = 14,
 
+}
+
+pub const SSH_AGENT_FLAG_RSA_SHA2_256: u32 = 0x02;

@@ -4,7 +4,7 @@ use log::{debug, error, info, log, trace, warn};
 
 use core::str::FromStr;
 
-use sunset::SignKey;
+use sunset::{AuthSigMsg, SignKey, OwnedSig};
 use sunset::{BhError, BhResult};
 use sunset::{ChanMsg, ChanMsgDetails, Error, Result, Runner};
 use sunset_embassy::*;
@@ -20,7 +20,9 @@ use tokio::signal::unix::{signal, SignalKind};
 use futures::{select_biased, future::Fuse};
 use futures::FutureExt;
 
+
 use crate::*;
+use crate::AgentClient;
 use crate::{raw_pty, RawPtyGuard};
 use crate::pty::win_size;
 
@@ -31,15 +33,17 @@ enum CmdlineState<'a> {
     Ready { io: ChanInOut<'a>, extin: Option<ChanIn<'a>> },
 }
 
-enum Msg {
+enum Msg<'m> {
     Authed,
+    AgentSign { key: &'m SignKey, msg: &'m AuthSigMsg<'m> },
     /// The SSH session exited
     Exited,
 }
 
-pub struct CmdlineClient {
+pub struct CmdlineClient<'m> {
     cmd: Option<String>,
     want_pty: bool,
+    agent: Option<AgentClient>,
 
     // to be passed to hooks
     authkeys: VecDeque<SignKey>,
@@ -47,35 +51,37 @@ pub struct CmdlineClient {
     host: String,
     port: u16,
 
-    notify: Channel<SunsetRawMutex, Msg, 1>,
+    notify: Channel<SunsetRawMutex, Msg<'m>, 1>,
 }
 
-pub struct CmdlineRunner<'a> {
+pub struct CmdlineRunner<'a, 'm> {
     state: CmdlineState<'a>,
     pty_guard: Option<RawPtyGuard>,
 
     cmd: &'a Option<String>,
     want_pty: bool,
+    agent: Option<AgentClient>,
 
-    notify: Receiver<'a, SunsetRawMutex, Msg, 1>,
+    notify: Receiver<'a, SunsetRawMutex, Msg<'m>, 1>,
 }
 
-pub struct CmdlineHooks<'a> {
+pub struct CmdlineHooks<'a, 'm> {
     authkeys: VecDeque<SignKey>,
     username: &'a str,
     host: &'a str,
     port: u16,
 
-    notify: Sender<'a, SunsetRawMutex, Msg, 1>,
+    notify: Sender<'a, SunsetRawMutex, Msg<'m>, 1>,
 }
 
-impl<'a> CmdlineRunner<'a> {
-    fn new(cmd: &'a Option<String>, want_pty: bool, notify: Receiver<'a, SunsetRawMutex, Msg, 1>) -> Self {
+impl<'a, 'm> CmdlineRunner<'a, 'm> {
+    fn new(cmd: &'a Option<String>, want_pty: bool, agent: Option<AgentClient>, notify: Receiver<'a, SunsetRawMutex, Msg<'m>, 1>) -> Self {
         Self {
             state: CmdlineState::PreAuth,
             pty_guard: None,
             cmd,
             want_pty,
+            agent,
             notify,
         }
     }
@@ -197,6 +203,9 @@ impl<'a> CmdlineRunner<'a> {
                                 chanio.set(Self::chan_run(io.clone(), extin.clone()).fuse())
                             }
                         }
+                        Msg::AgentSign { msg, key } => {
+                            todo!("agentsign for runner")
+                        }
                         Msg::Exited => {
                             trace!("SSH exited, finishing cli loop");
                             break;
@@ -260,14 +269,15 @@ impl<'a> CmdlineRunner<'a> {
     }
 }
 
-impl CmdlineClient {
+impl<'m> CmdlineClient<'m> {
     pub fn new(username: impl AsRef<str>, host: impl AsRef<str>, port: u16,
-        cmd: Option<impl AsRef<str>>, want_pty: bool) -> Self {
+        cmd: Option<impl AsRef<str>>, want_pty: bool, ) -> Self {
         Self {
 
             // TODO: shorthand for this?
             cmd: cmd.map(|c| c.as_ref().into()),
             want_pty,
+            agent: None,
 
             notify: Channel::new(),
 
@@ -278,10 +288,14 @@ impl CmdlineClient {
         }
     }
 
-    pub fn split(&mut self) -> (CmdlineHooks, CmdlineRunner) {
+    pub fn set_agent(&mut self, agent: AgentClient) {
+        self.agent = Some(agent)
+    }
+
+    pub fn split(&mut self) -> (CmdlineHooks<'_, 'm>, CmdlineRunner<'_, 'm>) {
         let ak = core::mem::replace(&mut self.authkeys, Default::default());
         let hooks = CmdlineHooks::new(&self.username, &self.host, self.port, ak, self.notify.sender());
-        let runner = CmdlineRunner::new(&self.cmd, self.want_pty, self.notify.receiver());
+        let runner = CmdlineRunner::new(&self.cmd, self.want_pty, self.agent.take(), self.notify.receiver());
         (hooks, runner)
     }
 
@@ -290,8 +304,8 @@ impl CmdlineClient {
     }
 }
 
-impl<'a> CmdlineHooks<'a> {
-    fn new(username: &'a str, host: &'a str, port: u16, authkeys: VecDeque<SignKey>, notify: Sender<'a, SunsetRawMutex, Msg, 1>) -> Self {
+impl<'a, 'm> CmdlineHooks<'a, 'm> {
+    fn new(username: &'a str, host: &'a str, port: u16, authkeys: VecDeque<SignKey>, notify: Sender<'a, SunsetRawMutex, Msg<'m>, 1>) -> Self {
         Self {
             authkeys,
             username,
@@ -309,7 +323,7 @@ impl<'a> CmdlineHooks<'a> {
     }
 }
 
-impl<'a> sunset::CliBehaviour for CmdlineHooks<'a> {
+impl sunset::CliBehaviour for CmdlineHooks<'_, '_> {
     fn username(&mut self) -> BhResult<sunset::ResponseString> {
         sunset::ResponseString::from_str(&self.username).map_err(|_| BhError::Fail)
     }
@@ -345,6 +359,11 @@ impl<'a> sunset::CliBehaviour for CmdlineHooks<'a> {
         } else {
             Ok(true)
         }
+    }
+
+    fn agent_sign(&mut self, key: &SignKey, msg: &AuthSigMsg<'_>) -> BhResult<OwnedSig> {
+        error!("agent signing TODO");
+        Err(BhError::Fail)
     }
 
     fn authenticated(&mut self) {

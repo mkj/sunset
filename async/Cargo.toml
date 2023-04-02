@@ -8,6 +8,7 @@ description = "Async wrapper for Sunset SSH"
 
 [dependencies]
 sunset = { path = "..", features = ["std", "openssh-key"] }
+sunset-sshwire-derive = { version = "0.1", path = "../sshwire-derive" }
 sunset-embassy = { path = "../embassy" }
 log = { version = "0.4", features = ["release_max_level_info"] }
 rpassword = "7.2"

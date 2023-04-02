@@ -130,7 +130,7 @@ impl ServAuth {
         };
 
         let msg = auth::AuthSigMsg::new(&p, sess_id);
-        match sig_type.verify(&m.pubkey.0, &msg, sig, None) {
+        match sig_type.verify(&m.pubkey.0, &&msg, sig, None) {
             Ok(()) => true,
             Err(e) => { trace!("sig failed  {e}"); false},
         }

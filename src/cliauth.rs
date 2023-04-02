@@ -78,7 +78,7 @@ pub(crate) struct CliAuth {
     // Not set false if the server rejects auth.
     try_password: bool,
 
-    // Set to false if hook.next_pubkey() returns None.
+    // Set to false if hook.next_authkey() returns None.
     try_pubkey: bool,
 }
 
@@ -128,25 +128,40 @@ impl CliAuth {
         }
     }
 
+    /// Retrieves the next pubkey to try from Behaviour, and returns the request.
+    /// Returns None if none are available. `self.try_pubkey` will be set false
+    /// when no more will be available.
     async fn make_pubkey_req(
         &mut self,
         b: &mut dyn CliBehaviour,
-    ) -> Result<Option<Req>> {
-        let k = b.next_authkey().map_err(|_| {
-            self.try_pubkey = false;
-            Error::BehaviourError { msg: "next_pubkey failed TODO" }
-        })?;
-        let k = k.map(|k| Req::PubKey { key: k });
-        if k.is_none() {
-            self.try_pubkey = false;
+    ) -> Option<Req> {
+        let k = b.next_authkey().unwrap_or_else(|e| {
+            warn!("Error getting pubkey for auth");
+            None
+        });
+
+        match k {
+            Some(key) => {
+                if key.is_agent() {
+                    warn!("TODO: skipping agent key");
+                    None
+                } else {
+                    Some(Req::PubKey { key })
+                }
+            }
+            None => {
+                trace!("stop iterating pubkeys");
+                self.try_pubkey = false;
+                None
+            }
         }
-        Ok(k)
     }
 
     pub fn auth_sig_msg(
         key: &SignKey,
         sess_id: &SessId,
         p: &Packet,
+        b: &mut dyn CliBehaviour,
     ) -> Result<OwnedSig> {
         if let Packet::UserauthRequest(UserauthRequest {
             username,
@@ -167,33 +182,39 @@ impl CliAuth {
             let msg = auth::AuthSigMsg::new(&sig_packet, sess_id);
             let mut ctx = ParseContext::default();
             ctx.method_pubkey_force_sig_bool = true;
-            key.sign(&msg, Some(&ctx))
+            if key.is_agent() {
+                Ok(b.agent_sign(key, &msg)?)
+            } else {
+                key.sign(&&msg, Some(&ctx))
+            }
         } else {
             Err(Error::bug())
         }
     }
 
-    pub async fn auth60<'b>(
-        &'b mut self,
+    pub async fn auth60(
+        &mut self,
         auth60: &packets::Userauth60<'_>,
         sess_id: &SessId,
         parse_ctx: &mut ParseContext,
         s: &mut TrafSend<'_, '_>,
+        b: &mut dyn CliBehaviour,
     ) -> Result<()> {
         parse_ctx.cli_auth_type = None;
 
         match auth60 {
-            Userauth60::PkOk(pkok) => self.auth_pkok(pkok, sess_id, parse_ctx, s),
+            Userauth60::PkOk(pkok) => self.auth_pkok(pkok, sess_id, parse_ctx, s, b),
             Userauth60::PwChangeReq(_req) => todo!("pwchange"),
         }
     }
 
-    fn auth_pkok<'b>(
-        &'b mut self,
+    fn auth_pkok(
+        &mut self,
         pkok: &UserauthPkOk<'_>,
         sess_id: &SessId,
         parse_ctx: &mut ParseContext,
         s: &mut TrafSend<'_, '_>,
+        b: &mut dyn CliBehaviour,
     ) -> Result<()> {
         // We are only sending keys one at a time so they shouldn't
         // get out of sync. In future we could change it to send
@@ -216,7 +237,7 @@ impl CliAuth {
                 let last_req = &last_req;
                 if let Req::PubKey { key, .. } = last_req {
                     // Create the signature
-                    let new_sig = Self::auth_sig_msg(&key, sess_id, &p)?;
+                    let new_sig = Self::auth_sig_msg(&key, sess_id, &p, b)?;
                     let rsig = sig.insert(new_sig);
 
                     // Put it in the packet
@@ -241,9 +262,8 @@ impl CliAuth {
         Err(Error::SSHProtoError)
     }
 
-    // mystery: not quite sure why the 'b lifetime is required
-    pub async fn failure<'b>(
-        &'b mut self,
+    pub async fn failure(
+        &mut self,
         failure: &packets::UserauthFailure<'_>,
         parse_ctx: &mut ParseContext,
         s: &mut TrafSend<'_, '_>,
@@ -255,7 +275,7 @@ impl CliAuth {
 
         if failure.methods.has_algo(SSH_AUTHMETHOD_PUBLICKEY)? {
             while self.try_pubkey {
-                let req = self.make_pubkey_req(b).await?;
+                let req = self.make_pubkey_req(b).await;
                 if let Some(req) = req {
                     self.state = AuthState::Request { last_req: req, sig: None };
                     break;

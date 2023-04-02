@@ -33,6 +33,8 @@ pub type ResponseString = heapless::String<100>;
 // methods could become async. Need to decide whether to be Send or not.
 //  Tracking Issue for static async fn in traits
 // https://github.com/rust-lang/rust/issues/91611
+//  And dyn traits
+// https://github.com/rust-lang/rust/issues/107011
 
 // TODO: another interim option would to split the async trait methods
 // into a separate trait (which impls the non-async trait)
@@ -131,11 +133,22 @@ pub trait CliBehaviour {
         Ok(false)
     }
 
-    /// Get the next private key to authenticate with. Will not be called
-    /// again once returning `HookError::Skip`
-    /// The default implementation returns `HookError::Skip`
+    /// Get the next private key used to attempt authentication.
+    ///
+    /// Will not be called again once returning `None`.
+    /// The default implementation returns `None`.
     fn next_authkey(&mut self) -> BhResult<Option<sign::SignKey>> {
         Ok(None)
+    }
+
+    /// Sign an authentication request with a key held externally
+    /// (most likely in an SSH agent).
+    ///
+    /// `key` is a key previously returned from `next_authkey()`,
+    /// it will be one of the `Agent...` variants.
+    #[allow(unused)]
+    fn agent_sign(&mut self, key: &sign::SignKey, msg: &AuthSigMsg<'_>) -> BhResult<sign::OwnedSig> {
+        Err(BhError::Fail)
     }
 
     /// Called after authentication has succeeded

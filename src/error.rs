@@ -116,6 +116,10 @@ pub enum Error {
     // TODO: these could eventually get categorised
     Custom { msg: &'static str },
 
+    /// IO Error
+    #[cfg(feature = "std")]
+    IoError { source: std::io::Error },
+
     // This state should not be reached, previous logic should have prevented it.
     // Create this using [`Error::bug()`] or [`.trap()`](TrapBug::trap).
     // Location is currently disabled due to bloat.
@@ -162,7 +166,7 @@ impl Error {
         if cfg!(debug_assertions) {
             panic!("Hit a bug: {args}");
         } else {
-            debug!("Hit a bug: {args}");
+            trace!("Hit a bug: {args}");
             // TODO: this bloats binaries with full paths
             // https://github.com/rust-lang/rust/issues/95529 is having function
             // let caller = core::panic::Location::caller();
@@ -261,6 +265,14 @@ impl From<BhError> for Error {
         match e {
             BhError::Fail => Error::BehaviourError { msg: "Unknown" }
         }
+    }
+}
+
+
+#[cfg(feature = "std")]
+impl From<std::io::Error> for Error {
+    fn from(value: std::io::Error) -> Self {
+        Self::IoError { source: value }
     }
 }
 

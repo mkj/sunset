@@ -77,7 +77,7 @@ impl SigType {
 
             (SigType::RSA256, PubKey::RSA(_k), Signature::RSA256(_s)) => {
                 // TODO
-                warn!("RSA256 is not implemented for no_std");
+                warn!("RSA256 is not implemented");
                 Err(Error::BadSig)
                 // // untested
                 // use rsa::{PublicKey, RsaPrivateKey, RsaPublicKey, PaddingScheme};
@@ -103,7 +103,7 @@ impl SigType {
     }
 }
 
-pub(crate) enum OwnedSig {
+pub enum OwnedSig {
     // salty::Signature doesn't let us borrow the inner bytes,
     // so we just store raw bytes here.
     Ed25519([u8; 64]),
@@ -114,9 +114,27 @@ impl From<salty::Signature> for OwnedSig {
     fn from(s: salty::Signature) -> Self {
         OwnedSig::Ed25519(s.to_bytes())
     }
-
 }
 
+impl TryFrom<Signature<'_>> for OwnedSig {
+    type Error = Error;
+    fn try_from(s: Signature) -> Result<Self> {
+        match s {
+            Signature::Ed25519(s) => {
+                let s: [u8; 64] = s.sig.0.try_into().map_err(|_| Error::BadSig)?;
+                Ok(OwnedSig::Ed25519(s))
+            }
+            Signature::RSA256(_s) => {
+                warn!("RSA256 is not implemented");
+                Err(Error::BadSig)
+            }
+            Signature::Unknown(u) => {
+                debug!("Unknown {u} signature");
+                Err(Error::UnknownMethod {kind: "signature" })
+            }
+        }
+    }
+}
 /// Signing key types.
 #[derive(Debug, Clone, Copy)]
 pub enum KeyType {
@@ -130,6 +148,9 @@ pub enum KeyType {
 pub enum SignKey {
     // TODO bloat: this is an expanded keypair, we should store the raw bytes
     Ed25519(salty::Keypair),
+
+    #[zeroize(skip)]
+    AgentEd25519(salty::PublicKey),
 }
 
 impl SignKey {
@@ -148,6 +169,9 @@ impl SignKey {
             SignKey::Ed25519(k) => {PubKey::Ed25519(Ed25519PubKey
                 { key: BinString(k.public.as_bytes()) } )
             }
+            SignKey::AgentEd25519(pk) => {PubKey::Ed25519(Ed25519PubKey
+                { key: BinString(pk.as_bytes()) } )
+            }
         }
     }
 
@@ -161,10 +185,24 @@ impl SignKey {
         k.try_into()
     }
 
+    pub fn from_agent_pubkey(pk: &PubKey) -> Result<Self> {
+        match pk {
+            PubKey::Ed25519(k) => {
+                let k: salty::PublicKey = k.try_into().map_err(|_| Error::BadKey)?;
+                Ok(Self::AgentEd25519(k))
+            },
+            _ => {
+                Err(Error::msg("Unsupported agent key"))
+            }
+        }
+    }
+
     /// Returns whether this `SignKey` can create a given signature type
     pub(crate) fn can_sign(&self, sig_type: SigType) -> bool {
         match self {
-            SignKey::Ed25519(_) => matches!(sig_type, SigType::Ed25519),
+            | SignKey::Ed25519(_)
+            | SignKey::AgentEd25519(_)
+            => matches!(sig_type, SigType::Ed25519),
         }
     }
 
@@ -176,6 +214,10 @@ impl SignKey {
                 })
                 .trap()
                 .map(|s| s.into())
+            },
+            SignKey::AgentEd25519(_) => {
+                // callers should check for agent keys first
+                return Error::bug_msg("agent sign")
             }
         }?;
 
@@ -190,12 +232,18 @@ impl SignKey {
 
         Ok(sig)
     }
+
+    pub(crate) fn is_agent(&self) -> bool {
+        match self {
+            SignKey::Ed25519(_) => false,
+            SignKey::AgentEd25519(_) => true,
+        }
+    }
 }
 
 impl core::fmt::Debug for SignKey {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("SignKey")
-        .field("Ed25519", &"...")
         .finish()
     }
 }

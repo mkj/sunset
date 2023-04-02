@@ -4,14 +4,13 @@
 //! SSH Binary Packet Protocol using [`sshwire`].
 //! SSH packet format is described in [RFC4253](https://tools.ietf.org/html/rfc5643) SSH Transport
 
-use core::borrow::BorrowMut;
-use core::cell::Cell;
-use core::fmt;
 #[allow(unused_imports)]
 use {
     crate::error::{Error, Result, TrapBug},
     log::{debug, error, info, log, trace, warn},
 };
+
+use core::fmt;
 
 use heapless::String;
 use pretty_hex::PrettyHex;
@@ -291,6 +290,15 @@ impl TryFrom<&PubKey<'_>> for ssh_key::PublicKey {
 pub struct Ed25519PubKey<'a> {
     pub key: BinString<'a>,
 }
+
+impl TryFrom<&Ed25519PubKey<'_>> for salty::PublicKey {
+    type Error = Error;
+    fn try_from(k: &Ed25519PubKey<'_>) -> Result<Self> {
+        let b: [u8; 32] = k.key.0.try_into().map_err(|_| Error::BadKey)?;
+        (&b).try_into().map_err(|_| Error::BadKey)
+    }
+}
+
 
 #[derive(Debug, Clone, PartialEq, SSHEncode, SSHDecode)]
 pub struct RSAPubKey<'a> {

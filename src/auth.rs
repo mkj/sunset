@@ -18,13 +18,16 @@ use sshwire::{BinString, SSHEncode, WireResult};
 use kex::SessId;
 
 /// The message to be signed in a pubkey authentication message,
-/// RFC4252 Section 7. The packet is a UserauthRequest, with None sig.
-pub(crate) struct AuthSigMsg<'a> {
-    pub sess_id: BinString<'a>,
-    pub u: &'a packets::UserauthRequest<'a>,
+/// RFC4252 Section 7.
+///
+/// The UserauthRequest's signature field None.
+#[derive(Debug)]
+pub struct AuthSigMsg<'a> {
+    pub(crate) sess_id: BinString<'a>,
+    pub(crate) u: &'a packets::UserauthRequest<'a>,
 }
 
-impl SSHEncode for AuthSigMsg<'_> {
+impl SSHEncode for &AuthSigMsg<'_> {
     fn enc<S>(&self, s: &mut S) -> WireResult<()>
     where S: sshwire::SSHSink {
         self.sess_id.enc(s)?;

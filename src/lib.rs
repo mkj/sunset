@@ -49,10 +49,11 @@ pub use behaviour::{Behaviour, ServBehaviour, CliBehaviour,
 pub use sshwire::TextString;
 
 pub use runner::Runner;
-pub use sign::{SignKey, KeyType};
-pub use packets::PubKey;
+pub use sign::{SignKey, KeyType, OwnedSig};
+pub use packets::{PubKey, Signature};
 pub use error::{Error,Result};
 pub use channel::{ChanMsg, ChanMsgDetails, Pty, ChanOpened};
 pub use sshnames::ChanFail;
 pub use channel::{ChanData, ChanNum};
 pub use runner::ChanHandle;
+pub use auth::AuthSigMsg;

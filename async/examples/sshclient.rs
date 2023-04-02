@@ -14,6 +14,8 @@ use std::io::Read;
 use sunset::*;
 use sunset_embassy::SSHClient;
 
+use sunset_async::{CmdlineClient, AgentClient};
+
 use embedded_io::adapters::FromTokio;
 
 use zeroize::Zeroizing;
@@ -147,6 +149,33 @@ fn read_key(p: &str) -> Result<SignKey> {
     SignKey::from_openssh(v).context("parsing openssh key")
 }
 
+async fn load_agent_keys(app: &mut CmdlineClient<'_>) -> Option<AgentClient> {
+    let e = match std::env::var("SSH_AUTH_SOCK") {
+        Ok(e) => e,
+        _ => return None
+    };
+    let mut agent = match AgentClient::new(e).await {
+        Ok(a) => a,
+        Err(e) => {
+            warn!("Error opening agent: {e}");
+            return None
+        }
+    };
+
+    let keys = match agent.keys().await {
+        Ok(k) => k,
+        Err(e) => {
+            warn!("Error fetching agent keys: {e}");
+            return None
+        }
+    };
+    trace!("Loaded {} agent keys", keys.len());
+    for k in keys {
+        app.add_authkey(k)
+    }
+    Some(agent)
+}
+
 async fn run(args: Args) -> Result<()> {
 
     trace!("tracing main");
@@ -161,7 +190,7 @@ async fn run(args: Args) -> Result<()> {
     let wantpty = wantpty && !args.force_no_pty;
 
     let ssh_task = spawn_local(async move {
-        let mut app = sunset_async::CmdlineClient::new(
+        let mut app = CmdlineClient::new(
             args.username.as_ref().unwrap(),
             &args.host,
             args.port,
@@ -170,6 +199,11 @@ async fn run(args: Args) -> Result<()> {
             );
         for i in &args.identityfile {
             app.add_authkey(read_key(&i).with_context(|| format!("loading key {i}"))?);
+        }
+
+        let agent = load_agent_keys(&mut app).await;
+        if let Some(agent) = agent {
+            app.set_agent(agent)
         }
 
         // Connect to a peer

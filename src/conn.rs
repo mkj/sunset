@@ -337,7 +337,7 @@ impl Conn {
                 // TODO: client only
                 if let ClientServer::Client(cli) = &mut self.cliserv {
                     let sess_id = self.sess_id.as_ref().trap()?;
-                    cli.auth.auth60(&p, sess_id, &mut self.parse_ctx, s).await?;
+                    cli.auth.auth60(&p, sess_id, &mut self.parse_ctx, s, b.client()?).await?;
                 } else {
                     debug!("Received userauth60 as a server");
                     return Err(Error::SSHProtoError)
