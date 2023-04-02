@@ -149,7 +149,7 @@ fn read_key(p: &str) -> Result<SignKey> {
     SignKey::from_openssh(v).context("parsing openssh key")
 }
 
-async fn load_agent_keys(app: &mut CmdlineClient<'_>) -> Option<AgentClient> {
+async fn load_agent_keys(app: &mut CmdlineClient) -> Option<AgentClient> {
     let e = match std::env::var("SSH_AUTH_SOCK") {
         Ok(e) => e,
         _ => return None
