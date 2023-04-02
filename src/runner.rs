@@ -13,6 +13,7 @@ use packets::{ChannelDataExt, ChannelData};
 use crate::channel::{ChanNum, ChanData};
 use encrypt::KeyState;
 use traffic::{TrafIn, TrafOut, TrafSend};
+use behaviour::{UnusedCli, UnusedServ};
 
 use conn::{Conn, Dispatched};
 
@@ -21,8 +22,8 @@ use conn::{Conn, Dispatched};
 // was completed. The `ChanHandle` is consumed by `Runner::channel_done()`.
 // Internally sunset uses `ChanNum`, which is just a newtype around u32.
 
-pub struct Runner<'a> {
-    conn: Conn,
+pub struct Runner<'a, C: CliBehaviour, S: ServBehaviour> {
+    conn: Conn<C, S>,
 
     /// Binary packet handling from the network buffer
     traf_in: TrafIn<'a>,
@@ -40,7 +41,7 @@ pub struct Runner<'a> {
     closed: bool,
 }
 
-impl core::fmt::Debug for Runner<'_> {
+impl<C: CliBehaviour, S: ServBehaviour> core::fmt::Debug for Runner<'_, C, S> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Runner")
         .field("keys", &self.keys)
@@ -56,12 +57,12 @@ pub struct Progress {
     pub disconnected: bool,
 }
 
-impl<'a> Runner<'a> {
+impl<'a, C: CliBehaviour> Runner<'a, C, UnusedServ> {
     /// `inbuf` must be sized to fit the largest SSH packet allowed.
     pub fn new_client(
         inbuf: &'a mut [u8],
         outbuf: &'a mut [u8],
-    ) -> Result<Runner<'a>, Error> {
+    ) -> Result<Runner<'a, C, UnusedServ>, Error> {
         let conn = Conn::new_client()?;
         let runner = Runner {
             conn,
@@ -75,11 +76,14 @@ impl<'a> Runner<'a> {
 
         Ok(runner)
     }
+}
 
+
+impl<'a, S: ServBehaviour> Runner<'a, UnusedCli, S> {
     pub fn new_server(
         inbuf: &'a mut [u8],
         outbuf: &'a mut [u8],
-    ) -> Result<Runner<'a>, Error> {
+    ) -> Result<Runner<'a, UnusedCli, S>, Error> {
         let conn = Conn::new_server()?;
         let runner = Runner {
             conn,
@@ -93,7 +97,9 @@ impl<'a> Runner<'a> {
 
         Ok(runner)
     }
+}
 
+impl<'a, C: CliBehaviour, S: ServBehaviour> Runner<'a, C, S> {
     pub fn is_client(&self) -> bool {
         self.conn.is_client()
     }
@@ -109,7 +115,9 @@ impl<'a> Runner<'a> {
     ///
     /// Returns Ok(true) if an input packet was handled, Ok(false) if no packet was ready
     /// (Can also return various errors)
-    pub async fn progress(&mut self, behaviour: &mut Behaviour<'_>) -> Result<Progress> {
+    pub async fn progress(&mut self, behaviour: &mut Behaviour<'_, C, S>)
+        -> Result<Progress>
+    {
         let mut prog = Progress::default();
 
         let mut s = self.traf_out.sender(&mut self.keys);

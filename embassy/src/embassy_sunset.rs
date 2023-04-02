@@ -22,7 +22,7 @@ use atomic_polyfill::AtomicUsize;
 
 use pin_utils::pin_mut;
 
-use sunset::{Runner, Result, Error, error, Behaviour, ChanData, ChanHandle, ChanNum};
+use sunset::{Runner, Result, Error, error, Behaviour, ChanData, ChanHandle, ChanNum, CliBehaviour, ServBehaviour};
 use sunset::config::MAX_CHANNELS;
 
 // For now we only support single-threaded executors.
@@ -45,8 +45,8 @@ struct Wakers {
     chan_close: [WakerRegistration; MAX_CHANNELS],
 }
 
-struct Inner<'a> {
-    runner: Runner<'a>,
+struct Inner<'a, C: CliBehaviour, S: ServBehaviour> {
+    runner: Runner<'a, C, S>,
 
     wakers: Wakers,
 
@@ -54,11 +54,11 @@ struct Inner<'a> {
     chan_handles: [Option<ChanHandle>; MAX_CHANNELS],
 }
 
-impl<'a> Inner<'a> {
+impl<'a, C: CliBehaviour, S: ServBehaviour> Inner<'a, C, S> {
     /// Helper to lookup the corresponding ChanHandle
     ///
     /// Returns split references that will be required by many callers
-    fn fetch(&mut self, num: ChanNum) -> Result<(&mut Runner<'a>, &ChanHandle, &mut Wakers)> {
+    fn fetch(&mut self, num: ChanNum) -> Result<(&mut Runner<'a, C, S>, &ChanHandle, &mut Wakers)> {
         self.chan_handles[num.0 as usize].as_ref().map(|ch| {
             (&mut self.runner, ch, &mut self.wakers)
         })
@@ -72,8 +72,8 @@ impl<'a> Inner<'a> {
 /// a method can be called with the equivalent ChanNum.
 ///
 /// Applications use `embassy_sunset::{Client,Server}`.
-pub(crate) struct EmbassySunset<'a> {
-    inner: Mutex<SunsetRawMutex, Inner<'a>>,
+pub(crate) struct EmbassySunset<'a, C: CliBehaviour, S: ServBehaviour> {
+    inner: Mutex<SunsetRawMutex, Inner<'a, C, S>>,
 
     progress_notify: Signal<SunsetRawMutex, ()>,
 
@@ -89,8 +89,8 @@ pub(crate) struct EmbassySunset<'a> {
     chan_refcounts: [AtomicUsize; MAX_CHANNELS],
 }
 
-impl<'a> EmbassySunset<'a> {
-    pub fn new(runner: Runner<'a>) -> Self {
+impl<'a, C: CliBehaviour, S: ServBehaviour> EmbassySunset<'a, C, S> {
+    pub fn new(runner: Runner<'a, C, S>) -> Self {
         let wakers = Wakers {
             chan_read: Default::default(),
             chan_write: Default::default(),
@@ -120,7 +120,7 @@ impl<'a> EmbassySunset<'a> {
         wsock: &mut impl asynch::Write,
         b: &Mutex<M, B>) -> Result<()>
         where
-            for<'f> Behaviour<'f>: From<&'f mut B>
+            for<'f> Behaviour<'f, C, S>: From<&'f mut B>
     {
         // Some loops need to terminate other loops on completion.
         // prog finish -> stop rx
@@ -209,7 +209,7 @@ impl<'a> EmbassySunset<'a> {
         self.wake_progress()
     }
 
-    fn wake_channels(&self, inner: &mut Inner) -> Result<()> {
+    fn wake_channels(&self, inner: &mut Inner<C, S>) -> Result<()> {
         trace!("wake_channels");
         // Read wakers
         let w = &mut inner.wakers;
@@ -264,7 +264,7 @@ impl<'a> EmbassySunset<'a> {
     /// This runs periodically from an async context to clean up channels
     /// that were refcounted down to 0 called from an async context (when
     /// a ChanIO is dropped)
-    fn clear_refcounts(&self, inner: &mut Inner) -> Result<()> {
+    fn clear_refcounts(&self, inner: &mut Inner<C, S>) -> Result<()> {
         for (ch, count) in inner.chan_handles.iter_mut().zip(self.chan_refcounts.iter()) {
             let count = count.load(Relaxed);
             if count > 0 {
@@ -285,7 +285,7 @@ impl<'a> EmbassySunset<'a> {
         b: &Mutex<M, B>)
         -> Result<ControlFlow<()>>
         where
-            for<'f> Behaviour<'f>: From<&'f mut B>
+            for<'f> Behaviour<'f, C, S>: From<&'f mut B>
         {
             let ret;
 
@@ -305,7 +305,7 @@ impl<'a> EmbassySunset<'a> {
                     let mut b = b.lock().await;
                     trace!("embassy progress behaviour lock");
                     let b: &mut B = &mut b;
-                    let mut b: Behaviour = b.into();
+                    let mut b: Behaviour<C, S> = b.into();
                     ret = inner.runner.progress(&mut b).await?;
                     trace!("embassy progress runner done");
                     // b is dropped, allowing other users
@@ -337,14 +337,14 @@ impl<'a> EmbassySunset<'a> {
     }
 
     pub(crate) async fn with_runner<F, R>(&self, f: F) -> R
-        where F: FnOnce(&mut Runner) -> R {
+        where F: FnOnce(&mut Runner<C, S>) -> R {
         let mut inner = self.inner.lock().await;
         f(&mut inner.runner)
     }
 
     /// helper to perform a function on the `inner`, returning a `Poll` value
     async fn poll_inner<F, T>(&self, mut f: F) -> T
-        where F: FnMut(&mut Inner, &mut Context) -> Poll<T> {
+        where F: FnMut(&mut Inner<C, S>, &mut Context) -> Poll<T> {
         poll_fn(|cx| {
             // Attempt to lock .inner
             let i = self.inner.lock();

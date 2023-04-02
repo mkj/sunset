@@ -24,7 +24,7 @@ use config::MAX_CHANNELS;
 use kex::{Kex, SessId, AlgoConfig};
 
 /// The core state of a SSH instance.
-pub(crate) struct Conn {
+pub(crate) struct Conn<C: CliBehaviour, S: ServBehaviour> {
     state: ConnState,
 
     // State of any current Key Exchange
@@ -41,7 +41,7 @@ pub(crate) struct Conn {
     /// Remote version string. Kept for later kexinit rekeying
     pub(crate) remote_version: ident::RemoteVersion,
 
-    pub(crate) channels: Channels,
+    pub(crate) channels: Channels<C, S>,
 }
 
 // TODO: what tricks can we do to optimise away client or server code if we only
@@ -83,7 +83,7 @@ pub(crate) struct Dispatched {
     pub disconnect: bool,
 }
 
-impl Conn {
+impl<C: CliBehaviour, S: ServBehaviour> Conn<C, S> {
     pub fn new_client() -> Result<Self> {
         let algo_conf = AlgoConfig::new(true);
         Self::new(ClientServer::Client(client::Client::new()), algo_conf)
@@ -116,7 +116,7 @@ impl Conn {
     pub(crate) async fn progress(
         &mut self,
         s: &mut TrafSend<'_, '_>,
-        b: &mut Behaviour<'_>,
+        b: &mut Behaviour<'_, C, S>,
     ) -> Result<(), Error> {
         trace!("progress conn state {:?}", self.state);
         match self.state {
@@ -172,7 +172,7 @@ impl Conn {
     pub(crate) async fn handle_payload(
         &mut self, payload: &[u8], seq: u32,
         s: &mut TrafSend<'_, '_>,
-        b: &mut Behaviour<'_>,
+        b: &mut Behaviour<'_, C, S>,
     ) -> Result<Dispatched, Error> {
         // Parse the packet
         let r = sshwire::packet_from_bytes(payload, &self.parse_ctx);
@@ -224,7 +224,7 @@ impl Conn {
     }
 
     async fn dispatch_packet(
-        &mut self, packet: Packet<'_>, s: &mut TrafSend<'_, '_>, b: &mut Behaviour<'_>,
+        &mut self, packet: Packet<'_>, s: &mut TrafSend<'_, '_>, b: &mut Behaviour<'_, C, S>,
     ) -> Result<Dispatched, Error> {
         // TODO: perhaps could consolidate packet client vs server checks
         trace!("Incoming {packet:#?}");

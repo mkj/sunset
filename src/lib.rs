@@ -34,7 +34,8 @@ pub mod sunsetlog;
 mod auth;
 mod channel;
 mod runner;
-mod behaviour;
+// TODO only public for UnusedCli etc. 
+pub mod behaviour;
 mod termmodes;
 mod ssh_chapoly;
 mod traffic;

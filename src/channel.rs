@@ -4,7 +4,7 @@ use {
     log::{debug, error, info, log, trace, warn},
 };
 
-use core::mem;
+use core::{mem, marker::PhantomData};
 
 use heapless::{Deque, String, Vec};
 
@@ -22,9 +22,12 @@ use runner::ChanHandle;
 
 use snafu::ErrorCompat;
 
-impl Channels {
+impl<C: CliBehaviour, S: ServBehaviour> Channels<C, S> {
     pub fn new() -> Self {
-        Channels { ch: Default::default() }
+        Channels {
+            ch: Default::default(),
+            _ph: Default::default()
+        }
     }
 
     pub fn open<'b>(
@@ -213,7 +216,7 @@ impl Channels {
         &mut self,
         p: &ChannelOpen<'_>,
         s: &mut TrafSend,
-        b: &mut Behaviour<'_>,
+        b: &mut Behaviour<'_, C, S>,
     ) -> Result<()> {
         match self.dispatch_open_inner(p, s, b) {
             Err(DispatchOpenError::Failure(f)) => {
@@ -235,7 +238,7 @@ impl Channels {
         &mut self,
         p: &ChannelOpen<'_>,
         s: &mut TrafSend,
-        b: &mut Behaviour<'_>,
+        b: &mut Behaviour<'_, C, S>,
     ) -> Result<(), DispatchOpenError> {
         if b.is_client() && matches!(p.ty, ChannelOpenType::Session) {
             // only server should receive session opens
@@ -299,7 +302,7 @@ impl Channels {
         packet: Packet<'_>,
         is_client: bool,
         s: &mut TrafSend<'_, '_>,
-        b: &mut Behaviour<'_>,
+        b: &mut Behaviour<'_, C, S>,
     ) -> Result<Option<DataIn>> {
         let mut data_in = None;
         match packet {
@@ -408,7 +411,7 @@ impl Channels {
         packet: Packet<'_>,
         is_client: bool,
         s: &mut TrafSend<'_, '_>,
-        b: &mut Behaviour<'_>,
+        b: &mut Behaviour<'_, C, S>,
     ) -> Result<Option<DataIn>> {
         let r = self.dispatch_inner(packet, is_client, s, b).await;
 
@@ -666,11 +669,11 @@ impl Channel {
         Ok(p)
     }
 
-    fn dispatch_request(
+    fn dispatch_request<C: CliBehaviour, S: ServBehaviour>(
         &mut self,
         p: &packets::ChannelRequest,
         s: &mut TrafSend,
-        b: &mut Behaviour<'_>,
+        b: &mut Behaviour<'_, C, S>,
     ) -> Result<()> {
         // only servers accept requests
         let r = match b {
@@ -708,7 +711,7 @@ impl Channel {
         &self,
         p: &packets::ChannelRequest,
         _s: &mut TrafSend,
-        b: &mut dyn ServBehaviour,
+        b: &mut impl ServBehaviour,
     ) -> Result<bool> {
         if !matches!(self.ty, ChanType::Session) {
             return Ok(false);
@@ -741,7 +744,7 @@ impl Channel {
         &mut self,
         p: &packets::ChannelRequest,
         s: &mut TrafSend,
-        _b: &mut dyn CliBehaviour,
+        _b: &mut impl CliBehaviour,
     ) -> Result<bool> {
         if !matches!(self.ty, ChanType::Session) {
             return Ok(false);
@@ -773,7 +776,7 @@ impl Channel {
         }
     }
 
-    fn handle_eof(&mut self, s: &mut TrafSend, _b: &mut Behaviour<'_>) -> Result<()> {
+    fn handle_eof<C: CliBehaviour, S: ServBehaviour>(&mut self, s: &mut TrafSend, _b: &mut Behaviour<'_, C, S>) -> Result<()> {
         //TODO: check existing state?
         if !self.sent_eof {
             s.send(packets::ChannelEof { num: self.send_num()? })?;
@@ -865,8 +868,10 @@ pub enum ChanOpened {
     Failure((ChanFail, ChanHandle))
 }
 
-pub(crate) struct Channels {
+pub(crate) struct Channels<C: CliBehaviour, S: ServBehaviour> {
     ch: [Option<Channel>; config::MAX_CHANNELS],
+
+    _ph: (PhantomData<C>, PhantomData<S>),
 }
 
 /// A SSH protocol local channel number

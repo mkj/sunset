@@ -3,16 +3,19 @@ use embassy_sync::blocking_mutex::raw::RawMutex;
 use embedded_io::asynch;
 
 use sunset::*;
+use sunset::behaviour::{UnusedCli, UnusedServ};
 
 use crate::*;
 use embassy_sunset::EmbassySunset;
 
-pub struct SSHServer<'a> {
-    sunset: EmbassySunset<'a>,
+pub struct SSHServer<'a, S: ServBehaviour> {
+    sunset: EmbassySunset<'a, UnusedCli, S>,
 }
 
-impl<'a> SSHServer<'a> {
-    /* May return an error if RNG fails */
+type C = UnusedCli;
+
+impl<'a, S: ServBehaviour> SSHServer<'a, S> {
+    // May return an error if RNG fails
     pub fn new(inbuf: &'a mut [u8], outbuf: &'a mut [u8],
         ) -> Result<Self> {
         let runner = Runner::new_server(inbuf, outbuf)?;
@@ -25,7 +28,7 @@ impl<'a> SSHServer<'a> {
         wsock: &mut impl asynch::Write,
         b: &Mutex<M, B>) -> Result<()>
         where
-            for<'f> Behaviour<'f>: From<&'f mut B>
+            for<'f> Behaviour<'f, UnusedCli, S>: From<&'f mut B>
     {
         self.sunset.run(rsock, wsock, b).await
     }
@@ -36,14 +39,14 @@ impl<'a> SSHServer<'a> {
     /// data type.
     /// `ch` is the [`ChanHandle`] passed to the application's `Behaviour`
     /// methods.
-    pub async fn stdio(&'a self, ch: ChanHandle) -> Result<ChanInOut<'a>> {
+    pub async fn stdio(&'a self, ch: ChanHandle) -> Result<ChanInOut<'a, C, S>> {
         let num = ch.num();
         self.sunset.add_channel(ch, 1).await?;
         Ok(ChanInOut::new(num, ChanData::Normal, &self.sunset))
     }
 
     pub async fn stdio_stderr(&'a self, ch: ChanHandle)
-        -> Result<(ChanInOut<'a>, ChanOut<'a>)> {
+        -> Result<(ChanInOut<'a, C, S>, ChanOut<'a, C, S>)> {
         let num = ch.num();
         self.sunset.add_channel(ch, 2).await?;
         let i = ChanInOut::new(num, ChanData::Normal, &self.sunset);

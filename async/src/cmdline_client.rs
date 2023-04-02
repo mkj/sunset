@@ -3,10 +3,12 @@ use futures::pin_mut;
 use log::{debug, error, info, log, trace, warn};
 
 use core::str::FromStr;
+use core::fmt::Debug;
 
 use sunset::{AuthSigMsg, SignKey, OwnedSig};
 use sunset::{BhError, BhResult};
 use sunset::{ChanMsg, ChanMsgDetails, Error, Result, Runner};
+use sunset::behaviour::{UnusedCli, UnusedServ};
 use sunset_embassy::*;
 
 use std::collections::VecDeque;
@@ -27,10 +29,13 @@ use crate::{raw_pty, RawPtyGuard};
 use crate::pty::win_size;
 
 #[derive(Debug)]
-enum CmdlineState<'a> {
+enum CmdlineState<'a, 'm> {
     PreAuth,
     Authed,
-    Ready { io: ChanInOut<'a>, extin: Option<ChanIn<'a>> },
+    Ready {
+        io: ChanInOut<'a, CmdlineHooks<'a, 'm>, UnusedServ>,
+        extin: Option<ChanIn<'a, CmdlineHooks<'a, 'm>, UnusedServ>>,
+    },
 }
 
 enum Msg<'m> {
@@ -55,7 +60,7 @@ pub struct CmdlineClient<'m> {
 }
 
 pub struct CmdlineRunner<'a, 'm> {
-    state: CmdlineState<'a>,
+    state: CmdlineState<'a, 'm>,
     pty_guard: Option<RawPtyGuard>,
 
     cmd: &'a Option<String>,
@@ -74,7 +79,13 @@ pub struct CmdlineHooks<'a, 'm> {
     notify: Sender<'a, SunsetRawMutex, Msg<'m>, 1>,
 }
 
-impl<'a, 'm> CmdlineRunner<'a, 'm> {
+impl<'a, 'm> Debug for CmdlineHooks<'a, 'm> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("CmdlineHooks")
+    }
+}
+
+impl<'a: 'm, 'm> CmdlineRunner<'a, 'm> {
     fn new(cmd: &'a Option<String>, want_pty: bool, agent: Option<AgentClient>, notify: Receiver<'a, SunsetRawMutex, Msg<'m>, 1>) -> Self {
         Self {
             state: CmdlineState::PreAuth,
@@ -86,7 +97,8 @@ impl<'a, 'm> CmdlineRunner<'a, 'm> {
         }
     }
 
-    async fn chan_run(io: ChanInOut<'a>, io_err: Option<ChanIn<'a>>) -> Result<()> {
+    async fn chan_run(io: ChanInOut<'a, CmdlineHooks<'a, 'm>, UnusedServ>,
+        io_err: Option<ChanIn<'a, CmdlineHooks<'a, 'm>, UnusedServ>>) -> Result<()> {
         trace!("chan_run top");
         // out
         let fo = async {
@@ -169,7 +181,7 @@ impl<'a, 'm> CmdlineRunner<'a, 'm> {
 
     /// Runs the `CmdlineClient` session. Requests a shell or command, performs
     /// channel IO.
-    pub async fn run(&mut self, cli: &'a SSHClient<'a>) -> Result<()> {
+    pub async fn run(&mut self, cli: &'a SSHClient<'a, CmdlineHooks<'a, 'm>>) -> Result<()> {
         let chanio = Fuse::terminated();
         pin_mut!(chanio);
 
@@ -231,7 +243,7 @@ impl<'a, 'm> CmdlineRunner<'a, 'm> {
         Ok(())
     }
 
-    async fn open_session(&mut self, cli: &'a SSHClient<'a>) -> Result<()> {
+    async fn open_session(&mut self, cli: &'a SSHClient<'a, CmdlineHooks<'a, 'm>>) -> Result<()> {
         debug_assert!(matches!(self.state, CmdlineState::Authed));
 
         let cmd = self.cmd.as_ref().map(|s| s.as_str());
@@ -292,7 +304,7 @@ impl<'m> CmdlineClient<'m> {
         self.agent = Some(agent)
     }
 
-    pub fn split(&mut self) -> (CmdlineHooks<'_, 'm>, CmdlineRunner<'_, 'm>) {
+    pub fn split(&'m mut self) -> (CmdlineHooks<'m, 'm>, CmdlineRunner<'m, 'm>) {
         let ak = core::mem::replace(&mut self.authkeys, Default::default());
         let hooks = CmdlineHooks::new(&self.username, &self.host, self.port, ak, self.notify.sender());
         let runner = CmdlineRunner::new(&self.cmd, self.want_pty, self.agent.take(), self.notify.receiver());

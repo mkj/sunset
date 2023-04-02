@@ -39,31 +39,34 @@ pub type ResponseString = heapless::String<100>;
 // TODO: another interim option would to split the async trait methods
 // into a separate trait (which impls the non-async trait)
 
-pub enum Behaviour<'a> {
-    Client(&'a mut (dyn CliBehaviour)),
-    Server(&'a mut (dyn ServBehaviour)),
+pub enum Behaviour<'a, C: CliBehaviour, S: ServBehaviour> {
+    Client(&'a mut C),
+    Server(&'a mut S),
 }
 
-impl<'a, 'b> From<&'a mut (dyn ServBehaviour + 'b)> for Behaviour<'a> {
-    fn from(b: &'a mut (dyn ServBehaviour + 'b)) -> Self {
-        Self::Server(b)
-    }
-}
-
-impl<'a, 'b> From<&'a mut (dyn CliBehaviour + 'b)> for Behaviour<'a> {
-    fn from(b: &'a mut (dyn CliBehaviour + 'b)) -> Self {
+impl<'a, C: CliBehaviour> From<&'a mut C> for Behaviour<'a, C, UnusedServ> {
+    fn from(b: &'a mut C) -> Self {
         Self::Client(b)
     }
 }
 
-impl<'a> Behaviour<'a> {
-    // TODO: make these From<>
-    pub fn new_client(b: &'a mut (dyn CliBehaviour + Send)) -> Self {
-        Self::Client(b)
+impl<'a, S: ServBehaviour> From<&'a mut S> for Behaviour<'a, UnusedCli, S> {
+    fn from(b: &'a mut S) -> Self {
+        Self::Server(b)
+    }
+}
+
+impl<'a, C, S> Behaviour<'a, C, S>
+    where C: CliBehaviour, S: ServBehaviour
+{
+    pub fn new_client(b: &'a mut C) -> Behaviour<C, UnusedServ> {
+        Behaviour::<C, UnusedServ>::Client(b)
+        // b.into()
     }
 
-    pub fn new_server(b: &'a mut (dyn ServBehaviour)) -> Self {
-        Self::Server(b)
+    pub fn new_server(b: &'a mut S) -> Behaviour<UnusedCli, S> {
+        // b.into()
+        Behaviour::<UnusedCli, S>::Server(b)
     }
 
     /// Calls either client or server
@@ -96,14 +99,14 @@ impl<'a> Behaviour<'a> {
         matches!(self, Self::Client(_))
     }
 
-    pub(crate) fn client(&mut self) -> Result<&mut dyn CliBehaviour> {
+    pub(crate) fn client(&mut self) -> Result<&mut C> {
         match self {
             Self::Client(c) => Ok(*c),
             _ => error::PacketWrong.fail()
         }
     }
 
-    pub(crate) fn server(&mut self) -> Result<&mut dyn ServBehaviour> {
+    pub(crate) fn server(&mut self) -> Result<&mut S> {
         match self {
             Self::Server(c) => Ok(*c),
             _ => error::PacketWrong.fail(),
@@ -281,5 +284,34 @@ pub trait ServBehaviour {
     /// is simply closed.
     #[allow(unused)]
     fn disconnected(&mut self, desc: TextString) {
+    }
+}
+
+/// A placeholder that will not be instantiated
+#[doc(hidden)]
+#[derive(Debug)]
+pub struct UnusedCli;
+impl CliBehaviour for UnusedCli {
+    fn username(&mut self) -> BhResult<ResponseString> {
+        unreachable!()
+    }
+    fn valid_hostkey(&mut self, key: &PubKey) -> BhResult<bool> {
+        unreachable!()
+    }
+    fn authenticated(&mut self) {
+        unreachable!()
+    }
+}
+
+/// A placeholder that will not be instantiated
+#[doc(hidden)]
+#[derive(Debug)]
+pub struct UnusedServ;
+impl ServBehaviour for UnusedServ {
+    fn hostkeys(&mut self) -> BhResult<&[sign::SignKey]> {
+        unreachable!()
+    }
+    fn open_session(&mut self, chan: ChanHandle) -> channel::ChanOpened {
+        unreachable!()
     }
 }

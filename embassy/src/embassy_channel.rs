@@ -6,16 +6,16 @@ use embedded_io::{asynch, Io};
 
 use crate::*;
 use embassy_sunset::EmbassySunset;
-use sunset::{Result, ChanData, ChanNum};
+use sunset::{Result, ChanData, ChanNum, CliBehaviour, ServBehaviour};
 
 /// Common implementation
-struct ChanIO<'a> {
+struct ChanIO<'a, C: CliBehaviour, S: ServBehaviour> {
     num: ChanNum,
     dt: ChanData,
-    sunset: &'a EmbassySunset<'a>,
+    sunset: &'a EmbassySunset<'a, C, S>,
 }
 
-impl core::fmt::Debug for ChanIO<'_> {
+impl<C: CliBehaviour, S: ServBehaviour> core::fmt::Debug for ChanIO<'_, C, S> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("ChanIO")
             .field("num", &self.num)
@@ -24,19 +24,19 @@ impl core::fmt::Debug for ChanIO<'_> {
     }
 }
 
-impl ChanIO<'_> {
+impl<C: CliBehaviour, S: ServBehaviour> ChanIO<'_, C, S> {
     pub async fn until_closed(&self) -> Result<()> {
         self.sunset.until_channel_closed(self.num).await
     }
 }
 
-impl Drop for ChanIO<'_> {
+impl<C: CliBehaviour, S: ServBehaviour> Drop for ChanIO<'_, C, S> {
     fn drop(&mut self) {
         self.sunset.dec_chan(self.num)
     }
 }
 
-impl Clone for ChanIO<'_> {
+impl<C: CliBehaviour, S: ServBehaviour> Clone for ChanIO<'_, C, S> {
     fn clone(&self) -> Self {
         self.sunset.inc_chan(self.num);
         Self {
@@ -47,17 +47,17 @@ impl Clone for ChanIO<'_> {
     }
 }
 
-impl Io for ChanIO<'_> {
+impl<C: CliBehaviour, S: ServBehaviour> Io for ChanIO<'_, C, S> {
     type Error = sunset::Error;
 }
 
-impl<'a> asynch::Read for ChanIO<'a> {
+impl<'a, C: CliBehaviour, S: ServBehaviour> asynch::Read for ChanIO<'a, C, S> {
     async fn read(&mut self, buf: &mut [u8]) -> Result<usize, sunset::Error> {
         self.sunset.read_channel(self.num, self.dt, buf).await
     }
 }
 
-impl<'a> asynch::Write for ChanIO<'a> {
+impl<'a, C: CliBehaviour, S: ServBehaviour> asynch::Write for ChanIO<'a, C, S> {
     async fn write(&mut self, buf: &[u8]) -> Result<usize, sunset::Error> {
         self.sunset.write_channel(self.num, self.dt, buf).await
     }
@@ -70,20 +70,38 @@ impl<'a> asynch::Write for ChanIO<'a> {
 // Public wrappers for In only
 
 /// An standard bidirectional SSH channel
-#[derive(Clone, Debug)]
-pub struct ChanInOut<'a>(ChanIO<'a>);
+#[derive(Debug)]
+pub struct ChanInOut<'a, C: CliBehaviour, S: ServBehaviour>(ChanIO<'a, C, S>);
 
 /// An input-only SSH channel, such as stderr for a client
-#[derive(Clone, Debug)]
-pub struct ChanIn<'a>(ChanIO<'a>);
+#[derive(Debug)]
+pub struct ChanIn<'a, C: CliBehaviour, S: ServBehaviour>(ChanIO<'a, C, S>);
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 /// An output-only SSH channel, such as stderr for a server
-pub struct ChanOut<'a>(ChanIO<'a>);
+pub struct ChanOut<'a, C: CliBehaviour, S: ServBehaviour>(ChanIO<'a, C, S>);
 
-impl<'a> ChanInOut<'a> {
+// derive(Clone) adds unwanted `: Clone` bounds on C and S, so we implement manually
+// https://github.com/rust-lang/rust/issues/26925
+impl<'a, C: CliBehaviour, S: ServBehaviour> Clone for ChanInOut<'a, C, S> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+impl<'a, C: CliBehaviour, S: ServBehaviour> Clone for ChanIn<'a, C, S> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+impl<'a, C: CliBehaviour, S: ServBehaviour> Clone for ChanOut<'a, C, S> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+impl<'a, C: CliBehaviour, S: ServBehaviour> ChanInOut<'a, C, S> {
     // caller must have already incremented the refcount
-    pub(crate) fn new(num: ChanNum, dt: ChanData, sunset: &'a EmbassySunset<'a>) -> Self {
+    pub(crate) fn new(num: ChanNum, dt: ChanData, sunset: &'a EmbassySunset<'a, C, S>) -> Self {
         Self(ChanIO {
             num, dt, sunset,
         })
@@ -102,18 +120,18 @@ impl<'a> ChanInOut<'a> {
     }
 }
 
-impl<'a> ChanIn<'a> {
+impl<'a, C: CliBehaviour, S: ServBehaviour> ChanIn<'a, C, S> {
     // caller must have already incremented the refcount
-    pub(crate) fn new(num: ChanNum, dt: ChanData, sunset: &'a EmbassySunset<'a>) -> Self {
+    pub(crate) fn new(num: ChanNum, dt: ChanData, sunset: &'a EmbassySunset<'a, C, S>) -> Self {
         Self(ChanIO {
             num, dt, sunset,
         })
     }
 }
 
-impl<'a> ChanOut<'a> {
+impl<'a, C: CliBehaviour, S: ServBehaviour> ChanOut<'a, C, S> {
     // caller must have already incremented the refcount
-    pub(crate) fn new(num: ChanNum, dt: ChanData, sunset: &'a EmbassySunset<'a>) -> Self {
+    pub(crate) fn new(num: ChanNum, dt: ChanData, sunset: &'a EmbassySunset<'a, C, S>) -> Self {
         Self(ChanIO {
             num, dt, sunset,
         })
@@ -125,37 +143,37 @@ impl<'a> ChanOut<'a> {
     }
 }
 
-impl Io for ChanInOut<'_> {
+impl<C: CliBehaviour, S: ServBehaviour> Io for ChanInOut<'_, C, S> {
     type Error = sunset::Error;
 }
 
-impl Io for ChanIn<'_> {
+impl<C: CliBehaviour, S: ServBehaviour> Io for ChanIn<'_, C, S> {
     type Error = sunset::Error;
 }
 
-impl Io for ChanOut<'_> {
+impl<C: CliBehaviour, S: ServBehaviour> Io for ChanOut<'_, C, S> {
     type Error = sunset::Error;
 }
 
-impl<'a> asynch::Read for ChanInOut<'a> {
+impl<'a, C: CliBehaviour, S: ServBehaviour> asynch::Read for ChanInOut<'a, C, S> {
     async fn read(&mut self, buf: &mut [u8]) -> Result<usize, sunset::Error> {
         self.0.read(buf).await
     }
 }
 
-impl<'a> asynch::Write for ChanInOut<'a> {
+impl<'a, C: CliBehaviour, S: ServBehaviour> asynch::Write for ChanInOut<'a, C, S> {
     async fn write(&mut self, buf: &[u8]) -> Result<usize, sunset::Error> {
         self.0.write(buf).await
     }
 }
 
-impl<'a> asynch::Read for ChanIn<'a> {
+impl<'a, C: CliBehaviour, S: ServBehaviour> asynch::Read for ChanIn<'a, C, S> {
     async fn read(&mut self, buf: &mut [u8]) -> Result<usize, sunset::Error> {
         self.0.read(buf).await
     }
 }
 
-impl<'a> asynch::Write for ChanOut<'a> {
+impl<'a, C: CliBehaviour, S: ServBehaviour> asynch::Write for ChanOut<'a, C, S> {
     async fn write(&mut self, buf: &[u8]) -> Result<usize, sunset::Error> {
         self.0.write(buf).await
     }

@@ -190,6 +190,10 @@ async fn run(args: Args) -> Result<()> {
     let wantpty = wantpty && !args.force_no_pty;
 
     let ssh_task = spawn_local(async move {
+        let mut rxbuf = Zeroizing::new(vec![0; 3000]);
+        let mut txbuf = Zeroizing::new(vec![0; 3000]);
+        let cli = SSHClient::new(&mut rxbuf, &mut txbuf)?;
+
         let mut app = CmdlineClient::new(
             args.username.as_ref().unwrap(),
             &args.host,
@@ -212,17 +216,13 @@ async fn run(args: Args) -> Result<()> {
         let mut rsock = FromTokio::new(rsock);
         let mut wsock = FromTokio::new(wsock);
 
-        let mut rxbuf = Zeroizing::new(vec![0; 3000]);
-        let mut txbuf = Zeroizing::new(vec![0; 3000]);
-        let cli = SSHClient::new(&mut rxbuf, &mut txbuf)?;
-
         let (hooks, mut cmd) = app.split();
 
         let hooks = Mutex::<NoopRawMutex, _>::new(hooks);
-        let bhooks = &hooks as &Mutex::<NoopRawMutex, dyn CliBehaviour>;
+        // let bhooks = &hooks as &Mutex::<NoopRawMutex, CliBehaviour>;
 
         let ssh = async {
-            let r = cli.run(&mut rsock, &mut wsock, bhooks).await;
+            let r = cli.run(&mut rsock, &mut wsock, &hooks).await;
             trace!("ssh run finished");
             hooks.lock().await.exited().await;
             r
