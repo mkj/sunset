@@ -84,7 +84,6 @@ async fn session<S: Shell>(socket: &mut TcpSocket<'_>, config: &SSHConfig) -> su
 
     let app = DemoServer::new(&shell, config)?;
     let app = Mutex::<NoopRawMutex, _>::new(app);
-    let app = &app as &Mutex::<NoopRawMutex, dyn ServBehaviour>;
 
     let mut ssh_rxbuf = [0; 2000];
     let mut ssh_txbuf = [0; 2000];
@@ -95,7 +94,7 @@ async fn session<S: Shell>(socket: &mut TcpSocket<'_>, config: &SSHConfig) -> su
 
     let (mut rsock, mut wsock) = socket.split();
 
-    let run = serv.run(&mut rsock, &mut wsock, app);
+    let run = serv.run(&mut rsock, &mut wsock, &app);
 
     let (r1, r2) = join(run, session).await;
     r1?;
@@ -178,7 +177,7 @@ pub trait Shell : Default {
     fn open_shell(&self, handle: ChanHandle);
 
     #[must_use]
-    async fn run<'f>(&self, serv: &'f SSHServer<'f>) -> Result<()>;
+    async fn run<'f, S: ServBehaviour>(&self, serv: &'f SSHServer<'f, S>) -> Result<()>;
 }
 
 

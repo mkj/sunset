@@ -150,7 +150,7 @@ pub trait CliBehaviour {
     /// `key` is a key previously returned from `next_authkey()`,
     /// it will be one of the `Agent...` variants.
     #[allow(unused)]
-    fn agent_sign(&mut self, key: &sign::SignKey, msg: &AuthSigMsg<'_>) -> BhResult<sign::OwnedSig> {
+    async fn agent_sign(&mut self, key: &sign::SignKey, msg: &AuthSigMsg<'_>) -> BhResult<sign::OwnedSig> {
         Err(BhError::Fail)
     }
 

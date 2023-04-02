@@ -192,6 +192,15 @@ pub struct MethodPubKey<'a> {
 impl SSHEncode for MethodPubKey<'_> {
     fn enc<S>(&self, s: &mut S) -> WireResult<()>
     where S: SSHSink {
+        // byte      SSH_MSG_USERAUTH_REQUEST
+        // string    user name
+        // string    service name
+        // string    "publickey"
+        // boolean   TRUE
+        // string    public key algorithm name
+        // string    public key to be used for authentication
+        // string    signature
+
         // Signature bool will be set when signing
         let force_sig_bool = s.ctx().map_or(false, |c| c.method_pubkey_force_sig_bool);
         let sig = self.sig.is_some() || force_sig_bool;
@@ -626,6 +635,9 @@ impl core::fmt::Display for Unknown<'_> {
 /// Use this so the parser can select the correct enum variant to decode.
 #[derive(Default, Clone, Debug)]
 pub struct ParseContext {
+    // Beware that currently .ctx() is not used by `length_enc()` or `Blob`,
+    // so if ParseContext needs to modify output length it may not work correctly.
+
     pub cli_auth_type: Option<auth::AuthType>,
 
     // Used by auth_sig_msg()

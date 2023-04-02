@@ -135,10 +135,19 @@ pub fn read_ssh<'a, T: SSHDecode<'a>>(b: &'a [u8], ctx: Option<ParseContext>) ->
 
 pub fn write_ssh<T>(target: &mut [u8], value: &T) -> Result<usize>
 where
-    T: SSHEncode,
+    T: SSHEncode
 {
-    let mut s = EncodeBytes { target, pos: 0 };
+    let mut s = EncodeBytes { target, pos: 0, parse_ctx: None };
     value.enc(&mut s)?;
+    Ok(s.pos)
+}
+
+pub fn write_ssh_ctx<T>(target: &mut [u8], value: &T, ctx: ParseContext) -> Result<usize>
+where
+    T: SSHEncode
+{
+    let mut s = EncodeBytes { target, pos: 0, parse_ctx: Some(ctx) };
+        value.enc(&mut s)?;
     Ok(s.pos)
 }
 
@@ -179,6 +188,7 @@ where
 struct EncodeBytes<'a> {
     target: &'a mut [u8],
     pos: usize,
+    parse_ctx: Option<ParseContext>,
 }
 
 impl SSHSink for EncodeBytes<'_> {
@@ -190,6 +200,10 @@ impl SSHSink for EncodeBytes<'_> {
         self.target[self.pos..end].copy_from_slice(v);
         self.pos = end;
         Ok(())
+    }
+
+    fn ctx(&self) -> Option<&ParseContext> {
+        self.parse_ctx.as_ref()
     }
 }
 

@@ -80,7 +80,7 @@ impl Shell for DemoShell {
         self.notify.signal(handle);
     }
 
-    async fn run<'f>(&self, serv: &'f SSHServer<'f>) -> Result<()>
+    async fn run<'f, S: ServBehaviour>(&self, serv: &'f SSHServer<'f, S>) -> Result<()>
     {
         let session = async {
             // wait for a shell to start

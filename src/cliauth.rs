@@ -97,7 +97,7 @@ impl CliAuth {
     pub async fn progress<'b>(
         &'b mut self,
         s: &mut TrafSend<'_, '_>,
-        b: &mut dyn CliBehaviour,
+        b: &mut impl CliBehaviour,
     ) -> Result<()> {
         if let AuthState::Unstarted = self.state {
             self.state = AuthState::MethodQuery;
@@ -118,7 +118,7 @@ impl CliAuth {
 
     async fn make_password_req(
         &mut self,
-        b: &mut dyn CliBehaviour,
+        b: &mut impl CliBehaviour,
     ) -> Result<Option<Req>> {
         let mut pw = ResponseString::new();
         match b.auth_password(&mut pw) {
@@ -133,7 +133,7 @@ impl CliAuth {
     /// when no more will be available.
     async fn make_pubkey_req(
         &mut self,
-        b: &mut dyn CliBehaviour,
+        b: &mut impl CliBehaviour,
     ) -> Option<Req> {
         let k = b.next_authkey().unwrap_or_else(|e| {
             warn!("Error getting pubkey for auth");
@@ -142,12 +142,7 @@ impl CliAuth {
 
         match k {
             Some(key) => {
-                if key.is_agent() {
-                    warn!("TODO: skipping agent key");
-                    None
-                } else {
-                    Some(Req::PubKey { key })
-                }
+                Some(Req::PubKey { key })
             }
             None => {
                 trace!("stop iterating pubkeys");
@@ -157,11 +152,11 @@ impl CliAuth {
         }
     }
 
-    pub fn auth_sig_msg(
+    pub async fn auth_sig_msg(
         key: &SignKey,
         sess_id: &SessId,
-        p: &Packet,
-        b: &mut dyn CliBehaviour,
+        p: &Packet<'_>,
+        b: &mut impl CliBehaviour,
     ) -> Result<OwnedSig> {
         if let Packet::UserauthRequest(UserauthRequest {
             username,
@@ -183,7 +178,7 @@ impl CliAuth {
             let mut ctx = ParseContext::default();
             ctx.method_pubkey_force_sig_bool = true;
             if key.is_agent() {
-                Ok(b.agent_sign(key, &msg)?)
+                Ok(b.agent_sign(key, &msg).await?)
             } else {
                 key.sign(&&msg, Some(&ctx))
             }
@@ -198,23 +193,23 @@ impl CliAuth {
         sess_id: &SessId,
         parse_ctx: &mut ParseContext,
         s: &mut TrafSend<'_, '_>,
-        b: &mut dyn CliBehaviour,
+        b: &mut impl CliBehaviour,
     ) -> Result<()> {
         parse_ctx.cli_auth_type = None;
 
         match auth60 {
-            Userauth60::PkOk(pkok) => self.auth_pkok(pkok, sess_id, parse_ctx, s, b),
+            Userauth60::PkOk(pkok) => self.auth_pkok(pkok, sess_id, parse_ctx, s, b).await,
             Userauth60::PwChangeReq(_req) => todo!("pwchange"),
         }
     }
 
-    fn auth_pkok(
+    async fn auth_pkok(
         &mut self,
         pkok: &UserauthPkOk<'_>,
         sess_id: &SessId,
         parse_ctx: &mut ParseContext,
         s: &mut TrafSend<'_, '_>,
-        b: &mut dyn CliBehaviour,
+        b: &mut impl CliBehaviour,
     ) -> Result<()> {
         // We are only sending keys one at a time so they shouldn't
         // get out of sync. In future we could change it to send
@@ -237,7 +232,7 @@ impl CliAuth {
                 let last_req = &last_req;
                 if let Req::PubKey { key, .. } = last_req {
                     // Create the signature
-                    let new_sig = Self::auth_sig_msg(&key, sess_id, &p, b)?;
+                    let new_sig = Self::auth_sig_msg(&key, sess_id, &p, b).await?;
                     let rsig = sig.insert(new_sig);
 
                     // Put it in the packet
@@ -267,7 +262,7 @@ impl CliAuth {
         failure: &packets::UserauthFailure<'_>,
         parse_ctx: &mut ParseContext,
         s: &mut TrafSend<'_, '_>,
-        b: &mut dyn CliBehaviour,
+        b: &mut impl CliBehaviour,
     ) -> Result<()> {
         parse_ctx.cli_auth_type = None;
         // TODO: look at existing self.state, handle the failure.
@@ -306,7 +301,7 @@ impl CliAuth {
         Ok(())
     }
 
-    pub fn success(&mut self, b: &mut dyn CliBehaviour) -> Result<()> {
+    pub fn success(&mut self, b: &mut impl CliBehaviour) -> Result<()> {
         // TODO: check current state? Probably just informational
         self.state = AuthState::Idle;
         let _ = b.authenticated();

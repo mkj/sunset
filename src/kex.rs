@@ -288,7 +288,7 @@ impl Kex {
 
     pub fn handle_kexdhinit(
         &mut self, p: &packets::KexDHInit,
-        s: &mut TrafSend, b: &mut dyn ServBehaviour,
+        s: &mut TrafSend, b: &mut impl ServBehaviour,
     ) -> Result<()> {
         if let Kex::KexDH { algos, ..} = self {
             if algos.is_client {
@@ -315,7 +315,7 @@ impl Kex {
     pub async fn handle_kexdhreply<'f>(
         &mut self, p: &packets::KexDHReply<'f>,
         s: &mut TrafSend<'_, '_>,
-        b: &mut dyn CliBehaviour,
+        b: &mut impl CliBehaviour,
     ) -> Result<()> {
         if let Kex::KexDH { algos, ..} = self {
             if !algos.is_client {
@@ -490,7 +490,7 @@ impl SharedSecret {
     async fn handle_kexdhreply<'f>(
         algos: &mut Algos, mut kex_hash: KexHash,
         p: &packets::KexDHReply<'f>,
-        b: &mut dyn CliBehaviour
+        b: &mut impl CliBehaviour
     ) -> Result<KexOutput> {
         kex_hash.prefinish(&p.k_s.0, algos.kex.pubkey(), p.q_s.0)?;
         // consumes the sharedsecret private key in algos
@@ -515,7 +515,7 @@ impl SharedSecret {
     fn handle_kexdhinit<'a>(
         algos: &mut Algos, mut kex_hash: KexHash,
         p: &packets::KexDHInit,
-        s: &mut TrafSend, b: &mut dyn ServBehaviour,
+        s: &mut TrafSend, b: &mut impl ServBehaviour,
     ) -> Result<KexOutput> {
         // hostkeys list must contain the signature type
         trace!("hostkeys {:?}", b.hostkeys());

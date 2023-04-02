@@ -47,13 +47,13 @@ enum Msg {
 pub struct CmdlineClient {
     cmd: Option<String>,
     want_pty: bool,
-    agent: Option<AgentClient>,
 
     // to be passed to hooks
     authkeys: VecDeque<SignKey>,
     username: String,
     host: String,
     port: u16,
+    agent: Option<AgentClient>,
 
     notify: Channel<SunsetRawMutex, Msg, 1>,
 }
@@ -64,7 +64,6 @@ pub struct CmdlineRunner<'a> {
 
     cmd: &'a Option<String>,
     want_pty: bool,
-    agent: Option<AgentClient>,
 
     notify: Receiver<'a, SunsetRawMutex, Msg, 1>,
 }
@@ -74,6 +73,7 @@ pub struct CmdlineHooks<'a> {
     username: &'a str,
     host: &'a str,
     port: u16,
+    agent: Option<AgentClient>,
 
     notify: Sender<'a, SunsetRawMutex, Msg, 1>,
 }
@@ -85,13 +85,12 @@ impl<'a> Debug for CmdlineHooks<'a> {
 }
 
 impl<'a> CmdlineRunner<'a> {
-    fn new(cmd: &'a Option<String>, want_pty: bool, agent: Option<AgentClient>, notify: Receiver<'a, SunsetRawMutex, Msg, 1>) -> Self {
+    fn new(cmd: &'a Option<String>, want_pty: bool, notify: Receiver<'a, SunsetRawMutex, Msg, 1>) -> Self {
         Self {
             state: CmdlineState::PreAuth,
             pty_guard: None,
             cmd,
             want_pty,
-            agent,
             notify,
         }
     }
@@ -302,8 +301,8 @@ impl CmdlineClient {
 
     pub fn split(&mut self) -> (CmdlineHooks, CmdlineRunner) {
         let ak = core::mem::replace(&mut self.authkeys, Default::default());
-        let hooks = CmdlineHooks::new(&self.username, &self.host, self.port, ak, self.notify.sender());
-        let runner = CmdlineRunner::new(&self.cmd, self.want_pty, self.agent.take(), self.notify.receiver());
+        let hooks = CmdlineHooks::new(&self.username, &self.host, self.port, ak, self.agent.take(), self.notify.sender());
+        let runner = CmdlineRunner::new(&self.cmd, self.want_pty, self.notify.receiver());
         (hooks, runner)
     }
 
@@ -313,12 +312,14 @@ impl CmdlineClient {
 }
 
 impl<'a> CmdlineHooks<'a> {
-    fn new(username: &'a str, host: &'a str, port: u16, authkeys: VecDeque<SignKey>, notify: Sender<'a, SunsetRawMutex, Msg, 1>) -> Self {
+    fn new(username: &'a str, host: &'a str, port: u16, authkeys: VecDeque<SignKey>,
+        agent: Option<AgentClient>, notify: Sender<'a, SunsetRawMutex, Msg, 1>) -> Self {
         Self {
             authkeys,
             username,
             host,
             port,
+            agent,
             notify,
         }
     }
@@ -369,9 +370,16 @@ impl sunset::CliBehaviour for CmdlineHooks<'_> {
         }
     }
 
-    fn agent_sign(&mut self, key: &SignKey, msg: &AuthSigMsg<'_>) -> BhResult<OwnedSig> {
-        error!("agent signing TODO");
-        Err(BhError::Fail)
+    async fn agent_sign(&mut self, key: &SignKey, msg: &AuthSigMsg<'_>) -> BhResult<OwnedSig> {
+        if let Some(ref mut agent) = self.agent {
+            agent.sign_auth(key, msg).await.map_err(|e| {
+                error!("agent signing failed");
+                BhError::Fail
+            })
+        } else {
+            error!("agent signing wrong");
+            Err(BhError::Fail)
+        }
     }
 
     fn authenticated(&mut self) {

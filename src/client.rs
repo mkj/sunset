@@ -30,7 +30,7 @@ impl Client {
         &mut self,
         parse_ctx: &mut ParseContext,
         s: &mut TrafSend,
-        b: &mut dyn CliBehaviour,
+        b: &mut impl CliBehaviour,
     ) -> Result<()> {
         parse_ctx.cli_auth_type = None;
         s.send(packets::ServiceRequest { name: SSH_SERVICE_CONNECTION })?;
@@ -40,7 +40,7 @@ impl Client {
     pub(crate) fn banner(
         &mut self,
         banner: &packets::UserauthBanner<'_>,
-        b: &mut dyn CliBehaviour,
+        b: &mut impl CliBehaviour,
     ) {
         b.show_banner(banner.message, banner.lang)
     }

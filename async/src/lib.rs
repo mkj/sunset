@@ -3,6 +3,8 @@
 // avoid mysterious missing awaits
 #![deny(unused_must_use)]
 
+#![feature(async_fn_in_trait)]
+
 mod pty;
 mod cmdline_client;
 mod known_hosts;

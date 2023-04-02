@@ -26,7 +26,7 @@ impl ServAuth {
         mut p: packets::UserauthRequest,
         sess_id: &SessId,
         s: &mut TrafSend,
-        b: &mut dyn ServBehaviour,
+        b: &mut impl ServBehaviour,
     ) -> Result<bool> {
 
         enum AuthResp {
@@ -139,7 +139,7 @@ impl ServAuth {
     fn avail_methods<'f>(
         &self,
         user: TextString,
-        b: &mut dyn ServBehaviour,
+        b: &mut impl ServBehaviour,
     ) -> namelist::LocalNames {
         let mut l = namelist::LocalNames::new();
 

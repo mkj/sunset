@@ -209,7 +209,7 @@ struct DemoShell {
 }
 
 impl DemoShell {
-    async fn run<'f>(self, serv: &SSHServer<'_>) -> Result<()>
+    async fn run<'f, S: ServBehaviour>(self, serv: &SSHServer<'_, S>) -> Result<()>
     {
         let session = async {
             // wait for a shell to start
@@ -245,7 +245,6 @@ fn run_session(args: &Args, mut stream: TcpStream) -> Result<()> {
         // TODO: simplify
         let app = DemoServer::new(&shell, &args.hostkey)?;
         let app = Mutex::<NoopRawMutex, _>::new(app);
-        let app = &app as &Mutex::<NoopRawMutex, dyn ServBehaviour>;
 
         let mut rxbuf = vec![0; 3000];
         let mut txbuf = vec![0; 3000];
@@ -256,7 +255,7 @@ fn run_session(args: &Args, mut stream: TcpStream) -> Result<()> {
             let (rsock, wsock) = stream.split();
             let mut rsock = FromTokio::new(rsock);
             let mut wsock = FromTokio::new(wsock);
-            serv.run(&mut rsock, &mut wsock, app).await
+            serv.run(&mut rsock, &mut wsock, &app).await
         });
 
         spawn_local(shell.run(serv));
