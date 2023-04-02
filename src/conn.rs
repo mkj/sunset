@@ -354,10 +354,22 @@ impl<C: CliBehaviour, S: ServBehaviour> Conn<C, S> {
             | Packet::ChannelRequest(_)
             | Packet::ChannelSuccess(_)
             | Packet::ChannelFailure(_)
-            // TODO: maybe needs a conn or cliserv argument.
+
             => {
                 disp.data_in = self.channels.dispatch(packet, self.cliserv.is_client(), s, b).await?;
-           }
+            }
+            Packet::GlobalRequest(p) => {
+                trace!("Got global request {p:?}");
+                if p.want_reply {
+                    s.send(packets::RequestFailure {})?;
+                }
+            }
+            Packet::RequestSuccess(p) => {
+                trace!("Got global request success")
+            }
+            Packet::RequestFailure(_) => {
+                trace!("Got global request failure")
+            }
         };
         Ok(disp)
     }

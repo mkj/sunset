@@ -400,17 +400,59 @@ pub struct RSA256Sig<'a> {
     pub sig: BinString<'a>,
 }
 
-// #[derive(Debug)]
-// pub struct GlobalRequest<'a> {
-//     name: &'a str,
-//     want_reply: bool,
-//     request: GlobalRequestMethod<'a>,
+#[derive(Debug, SSHEncode, SSHDecode)]
+pub struct GlobalRequest<'a> {
+    #[sshwire(variant_name = req)]
+
+    pub want_reply: bool,
+    pub req: GlobalRequestMethod<'a>,
+}
+
+#[derive(Debug, SSHEncode, SSHDecode)]
+pub enum GlobalRequestMethod<'a> {
+    // #[sshwire(variant = "tcpip-forward")]
+    // TcpipForward(TcipForward<'a>),
+    // #[sshwire(variant = "cancel-tcpip-forward")]
+    // CancelTcpipForward(CancelTcpipForward<'a>),
+    #[sshwire(unknown)]
+    Unknown(Unknown<'a>),
+}
+
+// pub struct TcpipForward<'a> {
+//     pub address: TextString<'a>,
+//     pub port: u32,
 // }
 
-// enum GlobalRequestMethod<'a> {
-//     TcpipForward<'a>,
-//     CancelTcpipForward,
+// pub struct CancelTcpipForward<'a> {
+//     pub address: TextString<'a>,
+//     pub port: u32,
 // }
+
+#[derive(Debug, SSHEncode)]
+#[sshwire(no_variant_names)]
+pub enum RequestSuccess {
+    SuccessEmpty,
+    // TcpPort(TcpPort),
+}
+
+impl<'de> SSHDecode<'de> for RequestSuccess {
+    fn dec<S>(s: &mut S) -> WireResult<Self> where S: SSHSource<'de> {
+        // if s.ctx().last_req_port {
+        //     Ok(Self::TcpPort(TcpPort::dec(s)?))
+        // } else {
+        //     Ok(Self::SuccessEmpty)
+        // }
+        Ok(Self::SuccessEmpty)
+    }
+}
+
+// #[derive(Debug, SSHEncode, SSHDecode)]
+// pub struct TcpPort {
+//     pub port: u32,
+// }
+
+#[derive(Debug, SSHEncode, SSHDecode)]
+pub struct RequestFailure {}
 
 #[derive(Debug, SSHEncode, SSHDecode)]
 pub struct ChannelOpen<'a> {
@@ -618,7 +660,7 @@ pub struct DirectTcpip<'a> {
 // Placeholder for unknown method names. These are sometimes non-fatal and
 // need to be handled by the relevant code, for example newly invented pubkey types
 // This is deliberately not Serializable, we only receive it.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct Unknown<'a>(pub &'a [u8]);
 
 impl core::fmt::Display for Unknown<'_> {
@@ -628,6 +670,12 @@ impl core::fmt::Display for Unknown<'_> {
         } else {
             write!(f, "non-ascii {:?}", self.0.hex_dump())
         }
+    }
+}
+
+impl core::fmt::Debug for Unknown<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{self}")
     }
 }
 
@@ -804,6 +852,8 @@ messagetypes![
 (4, DebugPacket, DebugPacket<'a>, SSH_MSG_DEBUG, All),
 (5, ServiceRequest, ServiceRequest<'a>, SSH_MSG_SERVICE_REQUEST, Auth),
 (6, ServiceAccept, ServiceAccept<'a>, SSH_MSG_SERVICE_ACCEPT, Auth),
+// 7        SSH_MSG_EXT_INFO       RFC 8308
+// 8        SSH_MSG_NEWCOMPRESS    RFC 8308
 (20, KexInit, KexInit<'a>, SSH_MSG_KEXINIT, All),
 (21, NewKeys, NewKeys, SSH_MSG_NEWKEYS, Kex),
 (30, KexDHInit, KexDHInit<'a>, SSH_MSG_KEXDH_INIT, Kex),
@@ -820,9 +870,10 @@ messagetypes![
 (60, Userauth60, Userauth60<'a>, SSH_MSG_USERAUTH_60, Auth),
 // (61, SSH_MSG_USERAUTH_INFO_RESPONSE),
 
-// (80            SSH_MSG_GLOBAL_REQUEST),
-// (81            SSH_MSG_REQUEST_SUCCESS),
-// (82            SSH_MSG_REQUEST_FAILURE),
+(80, GlobalRequest, GlobalRequest<'a>, SSH_MSG_GLOBAL_REQUEST, Sess),
+(81, RequestSuccess, RequestSuccess, SSH_MSG_REQUEST_SUCCESS, Sess),
+(82, RequestFailure, RequestFailure, SSH_MSG_REQUEST_FAILURE, Sess),
+
 (90, ChannelOpen, ChannelOpen<'a>, SSH_MSG_CHANNEL_OPEN, Sess),
 (91, ChannelOpenConfirmation, ChannelOpenConfirmation, SSH_MSG_CHANNEL_OPEN_CONFIRMATION, Sess),
 (92, ChannelOpenFailure, ChannelOpenFailure<'a>, SSH_MSG_CHANNEL_OPEN_FAILURE, Sess),
