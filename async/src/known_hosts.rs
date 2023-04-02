@@ -6,35 +6,34 @@ use std::path::{Path, PathBuf};
 use std::io::{BufRead, Write};
 use std::io;
 
-use snafu::prelude::*;
-
 use crate::*;
 use sunset::packets::PubKey;
 
 type OpenSSHKey = ssh_key::PublicKey;
 
-#[derive(Snafu, Debug)]
-#[snafu(context(suffix(false)))]
+#[derive(Debug)]
 pub enum KnownHostsError {
     /// Host Key Mismatch
     Mismatch { path: PathBuf, line: usize, existing: OpenSSHKey },
-
-    /// New Host Key
-    NewHost { new_key: OpenSSHKey },
 
     /// User didn't accept new key
     NotAccepted,
 
     /// Failure
     Failure {
-        // The
-        // .map_err(|e| Box::new(e) as _).context(Failure)?;
-        // syntax is ugly, perhaps there's a better way
         source: Box<dyn std::error::Error>
     },
 
-    #[snafu(display("{msg}"))]
     Other { msg: String },
+}
+
+impl<E> From<E> for KnownHostsError
+where
+    E: std::error::Error + 'static
+{
+    fn from(e: E) -> Self {
+        KnownHostsError::Failure { source: Box::new(e) }
+    }
 }
 
 const USER_KNOWN_HOSTS: &str = &".ssh/known_hosts";
@@ -77,14 +76,12 @@ pub fn check_known_hosts_file(
     key: &PubKey,
     p: &Path,
 ) -> Result<(), KnownHostsError> {
-    let f = File::open(p)
-        .map_err(|e| Box::new(e) as _).context(Failure)?;
+    let f = File::open(p)?;
     let f = io::BufReader::new(f);
 
     let match_host = host_part(host, port);
 
-    let pubk: OpenSSHKey = key.try_into()
-        .map_err(|e| Box::new(e) as _).context(Failure)?;
+    let pubk: OpenSSHKey = key.try_into()?;
 
     for (line, (lh, lk)) in f.lines().enumerate()
         .filter_map(|(num, l)| {
@@ -130,14 +127,13 @@ fn ask_to_confirm(
     p: &Path,
 ) -> Result<(), KnownHostsError> {
 
-    let k: OpenSSHKey = key.try_into().map_err(|e| Box::new(e) as _).context(Failure)?;
+    let k: OpenSSHKey = key.try_into()?;
     let fp = k.fingerprint(Default::default());
     let h = host_part(host, port);
     println!("\nHost {h} is not in ~/.ssh/known_hosts\nFingerprint {fp}\nDo you want to continue connecting? (y/n)");
 
     let mut resp = String::new();
-    io::stdin().read_line(&mut resp)
-        .map_err(|e| Box::new(e) as _).context(Failure)?;
+    io::stdin().read_line(&mut resp)?;
 
     resp.make_ascii_lowercase();
     if resp.starts_with('y') {
@@ -154,21 +150,17 @@ fn add_key(
     p: &Path,
 ) -> Result<(), KnownHostsError> {
 
-    let k: OpenSSHKey = key.try_into()
-        .map_err(|e| Box::new(e) as _).context(Failure)?;
+    let k: OpenSSHKey = key.try_into()?;
     // encode it
-    let k = k.to_openssh()
-        .map_err(|e| Box::new(e) as _).context(Failure)?;
+    let k = k.to_openssh()?;
 
     let h = host_part(host, port);
 
     let entry = format!("{h} {k}\n");
 
-    let mut f = std::fs::OpenOptions::new().append(true).open(p)
-        .map_err(|e| Box::new(e) as _).context(Failure)?;
+    let mut f = std::fs::OpenOptions::new().append(true).open(p)?;
 
-    f.write_all(entry.as_bytes())
-        .map_err(|e| Box::new(e) as _).context(Failure)?;
+    f.write_all(entry.as_bytes())?;
 
     Ok(())
 }
