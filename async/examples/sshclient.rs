@@ -3,7 +3,7 @@ use {
     // crate::error::Error,
     log::{debug, error, info, log, trace, warn},
 };
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result, anyhow, bail};
 use embassy_sync::{mutex::Mutex, blocking_mutex::raw::NoopRawMutex};
 
 use tokio::net::TcpStream;
@@ -57,6 +57,10 @@ struct Args {
     #[argh(switch, short='T')]
     /// force no pty
     force_no_pty: bool,
+
+    #[argh(option, short='s')]
+    /// ssh subsystem (eg "sftp")
+    subsystem: Option<String>,
 
     #[argh(positional)]
     /// command
@@ -117,8 +121,8 @@ fn setup_log(args: &Args) -> Result<()> {
     .add_filter_allow_str("sshclient")
     // not debugging these bits of the stack at present
     // .add_filter_ignore_str("sunset::traffic")
-    .add_filter_ignore_str("sunset::runner")
-    .add_filter_ignore_str("sunset_embassy")
+    // .add_filter_ignore_str("sunset::runner")
+    // .add_filter_ignore_str("sunset_embassy")
     .set_time_offset_to_local().expect("Couldn't get local timezone")
     .build();
 
@@ -181,13 +185,25 @@ async fn run(args: Args) -> Result<()> {
     trace!("tracing main");
     debug!("verbose main");
 
-    let (cmd, wantpty) = if args.cmd.is_empty() {
-        (None, true)
+    if !args.cmd.is_empty() && args.subsystem.is_some() {
+        bail!("can't have '-s subsystem' with a command")
+    }
+
+    let mut want_pty = true;
+    let cmd = if args.cmd.is_empty() {
+        None
     } else {
-        (Some(args.cmd.join(" ")), false)
+        want_pty = false;
+        Some(args.cmd.join(" "))
     };
 
-    let wantpty = wantpty && !args.force_no_pty;
+    if args.subsystem.is_some() {
+        want_pty = false;
+    }
+
+    if args.force_no_pty {
+        want_pty = false
+    }
 
     let ssh_task = spawn_local(async move {
         let mut rxbuf = Zeroizing::new(vec![0; 3000]);
@@ -197,17 +213,26 @@ async fn run(args: Args) -> Result<()> {
         let mut app = CmdlineClient::new(
             args.username.as_ref().unwrap(),
             &args.host,
-            args.port,
-            cmd,
-            wantpty,
-            );
+        );
+
+        app.port(args.port);
+
+        if want_pty {
+            app.pty();
+        }
+        if let Some(c) = cmd {
+            app.exec(&c);
+        }
+        if let Some(c) = args.subsystem {
+            app.subsystem(&c);
+        }
         for i in &args.identityfile {
             app.add_authkey(read_key(&i).with_context(|| format!("loading key {i}"))?);
         }
 
         let agent = load_agent_keys(&mut app).await;
         if let Some(agent) = agent {
-            app.set_agent(agent)
+            app.agent(agent);
         }
 
         // Connect to a peer

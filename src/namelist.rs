@@ -233,7 +233,7 @@ mod tests {
             let n = LocalNames::try_from(*t).unwrap();
             let n = NameList::Local(&n);
             let mut buf = vec![99; 30];
-            let l = sshwire::write_ssh(&mut buf, &n, None).unwrap();
+            let l = sshwire::write_ssh(&mut buf, &n).unwrap();
             buf.truncate(l);
             let out1 = core::str::from_utf8(&buf).unwrap();
             // check that a join with std gives the same result.

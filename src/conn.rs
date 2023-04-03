@@ -325,7 +325,6 @@ impl<C: CliBehaviour, S: ServBehaviour> Conn<C, S> {
                 }
             }
             Packet::UserauthBanner(p) => {
-                // TODO: client only
                 if let ClientServer::Client(cli) = &mut self.cliserv {
                     cli.banner(&p, b.client()?);
                 } else {

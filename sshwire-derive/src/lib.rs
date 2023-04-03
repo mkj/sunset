@@ -77,10 +77,12 @@ enum FieldAtt {
     /// A variant method name will be encoded/decoded before the next field.
     /// eg `#[sshwire(variant_name = ch)]` for `ChannelRequest`
     VariantName(Ident),
+
     /// Any unknown variant name should be recorded here.
     /// This variant can't be written out.
     /// `#[sshwire(unknown))]`
     CaptureUnknown,
+
     /// The name of a variant, used by the parent struct
     /// `#[sshwire(variant = "exit-signal"))]`
     /// or
@@ -310,6 +312,8 @@ fn encode_enum(
                 }
                 Ok(())
             })?;
+            // an enum with only an Unknown variant will always return an earlier error
+            fn_body.push_parsed("#[allow(unreachable_code)]")?;
             fn_body.push_parsed("Ok(())")?;
             Ok(())
         })?;
@@ -380,7 +384,10 @@ fn encode_enum_names(
                 }
                 Ok(())
             })?;
-            fn_body.push_parsed("; Ok(r)")?;
+            fn_body.push_parsed(";")?;
+            // an enum with only an Unknown variant will always return an earlier error
+            fn_body.push_parsed("#[allow(unreachable_code)]")?;
+            fn_body.push_parsed("Ok(r)")?;
 
             Ok(())
         })?;

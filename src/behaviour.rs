@@ -176,9 +176,14 @@ pub trait CliBehaviour {
     // functions. `Events` may be handled asynchronously so wouldn't
     // guarantee that.
     #[allow(unused)]
-    fn show_banner(&self, banner: TextString, language: TextString) {
+    fn show_banner(&mut self, banner: TextString, language: TextString) {
     }
     // TODO: postauth channel callbacks
+
+    #[allow(unused)]
+    async fn session_opened(&mut self, chan: ChanNum, opener: &mut SessionOpener<'_, '_, '_>) -> BhResult<()> {
+        Err(BhError::Fail)
+    }
 
     #[allow(unused)]
     fn open_tcp_forwarded(&mut self, chan: ChanHandle, t: &ForwardedTcpip) -> ChanOpened {

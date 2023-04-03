@@ -590,6 +590,11 @@ pub struct Exec<'a> {
     pub command: TextString<'a>,
 }
 
+#[derive(Debug, SSHEncode, SSHDecode)]
+pub struct Subsystem<'a> {
+    pub subsystem: TextString<'a>,
+}
+
 /// The contents of a `"pty-req"` request.
 ///
 /// Note that most function arguments use [`channel::Pty`] rather than this struct.
@@ -601,11 +606,6 @@ pub struct PtyReq<'a> {
     pub width: u32,
     pub height: u32,
     pub modes: BinString<'a>,
-}
-
-#[derive(Debug, SSHEncode, SSHDecode)]
-pub struct Subsystem<'a> {
-    pub subsystem: &'a str,
 }
 
 #[derive(Debug, Clone, SSHEncode, SSHDecode)]

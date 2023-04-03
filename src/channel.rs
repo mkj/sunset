@@ -33,11 +33,10 @@ impl<C: CliBehaviour, S: ServBehaviour> Channels<C, S> {
     pub fn open<'b>(
         &mut self,
         ty: packets::ChannelOpenType<'b>,
-        init_req: InitReqs,
     ) -> Result<(ChanNum, Packet<'b>)> {
         let num = self.unused_chan()?;
 
-        let chan = Channel::new(num, (&ty).into(), init_req);
+        let chan = Channel::new(num, (&ty).into());
         let p = packets::ChannelOpen {
             num: num.0,
             initial_window: chan.recv.window as u32,
@@ -135,7 +134,7 @@ impl<C: CliBehaviour, S: ServBehaviour> Channels<C, S> {
     /// Creates a new channel in InOpen state.
     fn reserve_chan(&mut self, co: &ChannelOpen<'_>) -> Result<&mut Channel> {
         let num = self.unused_chan()?;
-        let mut chan = Channel::new(num, (&co.ty).into(), Vec::new());
+        let mut chan = Channel::new(num, (&co.ty).into());
         chan.send = Some(ChanDir {
             num: co.num,
             max_packet: co.max_packet as usize,
@@ -207,7 +206,7 @@ impl<C: CliBehaviour, S: ServBehaviour> Channels<C, S> {
         s: &mut TrafSend) -> Result<()> {
         let ch = self.get(num)?;
         match ch.ty {
-            ChanType::Session => ch.request(ReqDetails::WinChange(winch), s),
+            ChanType::Session => Req::WinChange(winch).send(ch, s),
             _ => error::BadChannelData.fail(),
         }
     }
@@ -313,21 +312,24 @@ impl<C: CliBehaviour, S: ServBehaviour> Channels<C, S> {
             Packet::ChannelOpenConfirmation(p) => {
                 let ch = self.get_any_mut(ChanNum(p.num))?;
                 match ch.state {
-                    ChanState::Opening { .. } => {
-                        let init_state =
-                            mem::replace(&mut ch.state, ChanState::Normal);
-                        if let ChanState::Opening { init_req } = init_state {
-                            debug_assert!(ch.send.is_none());
-                            ch.send = Some(ChanDir {
-                                num: p.sender_num,
-                                max_packet: p.max_packet as usize,
-                                window: p.initial_window as usize,
-                            });
-                            for r in init_req {
-                                ch.request(r, s)?
+                    ChanState::Opening => {
+                        debug_assert!(ch.send.is_none());
+                        ch.send = Some(ChanDir {
+                            num: p.sender_num,
+                            max_packet: p.max_packet as usize,
+                            window: p.initial_window as usize,
+                        });
+
+                        if matches!(ch.ty, ChanType::Session) {
+                            // let the CliBehaviour open a shell etc
+                            let mut opener = SessionOpener::new(&ch, s);
+                            let r = b.client()?.session_opened(ch.num(), &mut opener).await;
+                            if let Err(e) = r {
+                                trace!("Error from session_opened");
                             }
-                            ch.state = ChanState::Normal;
                         }
+
+                        ch.state = ChanState::Normal;
                     }
                     _ => {
                         trace!("Bad channel state");
@@ -395,7 +397,7 @@ impl<C: CliBehaviour, S: ServBehaviour> Channels<C, S> {
                 trace!("channel success, TODO");
             }
             Packet::ChannelFailure(_p) => {
-                todo!("ChannelFailure");
+                trace!("channel failure, TODO");
             }
             _ => Error::bug_msg("unreachable")?,
         };
@@ -453,13 +455,11 @@ pub struct ModePair {
 
 #[derive(Debug)]
 pub struct Pty {
-    // or could we put String into packets::PtyReq and serialize modes there...
     pub term: String<MAX_TERM>,
     pub cols: u32,
     pub rows: u32,
     pub width: u32,
     pub height: u32,
-    // TODO: perhaps we need something serializable here
     pub modes: Vec<ModePair, { termmodes::NUM_MODES }>,
 }
 
@@ -483,42 +483,29 @@ pub(crate) type ExecString = heapless::String<MAX_EXEC>;
 /// Like a `packets::ChannelReqType` but with storage.
 /// Lifetime-free variants have the packet part directly.
 #[derive(Debug)]
-pub enum ReqDetails {
+pub enum Req<'a> {
     // TODO let hook impls provide a string type?
     Shell,
-    Exec(ExecString),
+    Exec(&'a str),
+    Subsystem(&'a str),
     Pty(Pty),
-    // Subsytem { subsystem: heapless::String<MAX_EXEC> },
     WinChange(packets::WinChange),
     Break(packets::Break),
+    // Signal,
+    // ExitStatus,
+    // ExitSignal,
 }
 
-#[derive(Debug)]
-pub struct Req {
-    // recipient's channel number
-    num: u32,
-    details: ReqDetails,
-}
-
-impl ReqDetails {
-    fn want_reply(&self) -> bool {
-        match self {
-            Self::WinChange(_) => false,
-            _ => true,
-        }
-    }
-}
-
-impl Req {
-    pub(crate) fn packet<'a>(&'a self) -> Result<Packet<'a>> {
-        let num = self.num;
-        let want_reply = self.details.want_reply();
-        let ty = match &self.details {
-            ReqDetails::Shell => ChannelReqType::Shell,
-            ReqDetails::Pty(pty) => {
+impl Req<'_> {
+    pub(crate) fn send(self, ch: &Channel, s: &mut TrafSend) -> Result<()> {
+        let t;
+        let req = match self {
+            Req::Shell => ChannelReqType::Shell,
+            Req::Pty(pty) => {
                 debug!("TODO implement pty modes");
+                t = pty.term;
                 ChannelReqType::Pty(packets::PtyReq {
-                    term: TextString(pty.term.as_bytes()),
+                    term: TextString(t.as_bytes()),
                     cols: pty.cols,
                     rows: pty.rows,
                     width: pty.width,
@@ -526,16 +513,44 @@ impl Req {
                     modes: BinString(&[]),
                 })
             }
-            ReqDetails::Exec(cmd) => {
-                ChannelReqType::Exec(packets::Exec { command: cmd.as_str().into() })
+            Req::Exec(cmd) => {
+                ChannelReqType::Exec(packets::Exec { command: cmd.into() })
             }
-            ReqDetails::WinChange(rt) => ChannelReqType::WinChange(rt.clone()),
-            ReqDetails::Break(rt) => ChannelReqType::Break(rt.clone()),
+            Req::Subsystem(cmd) => {
+                ChannelReqType::Subsystem(packets::Subsystem { subsystem: cmd.into() })
+            }
+            Req::WinChange(rt) => ChannelReqType::WinChange(rt),
+            Req::Break(rt) => ChannelReqType::Break(rt),
         };
-        let p = ChannelRequest { num, want_reply, req: ty }.into();
-        Ok(p)
+
+        let p = ChannelRequest {
+            num: ch.send_num()?,
+            // we aren't handling responses for anything
+            want_reply: false,
+            req,
+        };
+        let p: Packet = p.into();
+        s.send(p)
     }
 }
+
+/// Convenience for the types of session channels that can be opened
+pub enum SessionCommand<S: AsRef<str>> {
+    Shell,
+    Exec(S),
+    Subsystem(S),
+}
+
+impl<'a, S: AsRef<str> + 'a> Into<Req<'a>> for &'a SessionCommand<S> {
+    fn into(self) -> Req<'a> {
+        match self  {
+            SessionCommand::Shell => Req::Shell,
+            SessionCommand::Exec(s) => Req::Exec(s.as_ref()),
+            SessionCommand::Subsystem(s) => Req::Subsystem(s.as_ref()),
+        }
+    }
+}
+
 
 // // Variants match packets::ChannelReqType, without data
 // enum ReqKind {
@@ -549,11 +564,6 @@ impl Req {
 //     ExitSignal,
 //     Break,
 // }
-
-// shell+pty. or perhaps this should match the hook queue size and then
-// we can stop servicing the hook queue if this limit is reached.
-// const MAX_OUTSTANDING_REQS: usize = 2;
-const MAX_INIT_REQS: usize = 2;
 
 /// Per-direction channel variables
 #[derive(Debug)]
@@ -572,17 +582,9 @@ enum ChanState {
     /// Not to be used for normal channel messages
     InOpen,
 
-    /// `init_req` are the request messages to be sent once the ChannelOpenConfirmation
-    /// is received
-
-    // TODO: this is wasting half a kB. where else could we store it? could
-    // the Behaviour own it? Or we don't store them here, just callback to the Behaviour.
-
     // TODO: perhaps .get() and .get_mut() should ignore Opening state channels?
 
-    Opening {
-        init_req: InitReqs,
-    },
+    Opening,
     Normal,
     RecvEof,
     // TODO: recvclose state probably shouldn't be possible, we remove it straight away?
@@ -615,10 +617,10 @@ pub(crate) struct Channel {
 }
 
 impl Channel {
-    fn new(num: ChanNum, ty: ChanType, init_req: InitReqs) -> Self {
+    fn new(num: ChanNum, ty: ChanType) -> Self {
         Channel {
             ty,
-            state: ChanState::Opening { init_req },
+            state: ChanState::Opening,
             sent_close: false,
             sent_eof: false,
             // last_req: Deque::new(),
@@ -645,12 +647,6 @@ impl Channel {
     /// This is the channel number included in most sent packets.
     pub(crate) fn send_num(&self) -> Result<u32> {
         Ok(self.send.as_ref().trap()?.num)
-    }
-
-    fn request(&self, req: ReqDetails, s: &mut TrafSend) -> Result<()> {
-        let num = self.send_num()?;
-        let r = Req { num, details: req };
-        s.send(r.packet()?)
     }
 
     /// Returns an open confirmation reply packet to send.
@@ -838,20 +834,6 @@ impl Channel {
     }
 }
 
-pub struct ChanMsg {
-    pub num: ChanNum,
-    pub msg: ChanMsgDetails,
-}
-
-pub enum ChanMsgDetails {
-    Data,
-    ExtData { ext: u32 },
-    // TODO: perhaps we don't need the storaged ReqDetails, just have the reqtype packet?
-    Req(ReqDetails),
-    // TODO closein/closeout/eof, etc. Should also return the exit status etc
-    Close,
-}
-
 #[derive(Debug)]
 pub(crate) struct DataIn {
     pub num: ChanNum,
@@ -927,8 +909,6 @@ impl ChanData {
     }
 }
 
-pub(crate) type InitReqs = Vec<ReqDetails, MAX_INIT_REQS>;
-
 // for dispatch_open_inner()
 enum DispatchOpenError {
     /// A program error
@@ -949,6 +929,47 @@ impl From<Error> for DispatchOpenError {
 impl From<ChanFail> for DispatchOpenError {
     fn from(f: ChanFail) -> Self {
         Self::Failure(f)
+    }
+}
+
+pub struct SessionOpener<'a, 's, 't> {
+    ch: &'a Channel,
+    s: &'a mut TrafSend<'s, 't>,
+}
+
+impl<'a, 's, 't> SessionOpener<'a, 's, 't> {
+    fn new(ch: &'a Channel, s: &'a mut TrafSend<'s, 't>) -> Self {
+        Self {
+            ch,
+            s,
+        }
+    }
+
+    pub fn cmd<S: AsRef<str>>(&mut self, cmd: &SessionCommand<S>) {
+        self.send(cmd.into())
+    }
+
+    pub fn shell(&mut self) {
+        self.send(Req::Shell)
+    }
+
+    pub fn exec(&mut self, cmd: &str) {
+        self.send(Req::Exec(cmd))
+    }
+
+    pub fn subsystem(&mut self, cmd: &str) {
+        self.send(Req::Subsystem(cmd))
+    }
+
+    pub fn pty(&mut self, pty: channel::Pty) {
+        self.send(Req::Pty(pty))
+    }
+
+    fn send(&mut self, req: Req) {
+        let r = req.send(self.ch, self.s);
+        if let Err(e) = r {
+            warn!("Error sending request: {e:?}")
+        }
     }
 }
 

@@ -38,10 +38,10 @@ impl<'a, C: CliBehaviour> SSHClient<'a, C> {
         self.sunset.exit().await
     }
 
-    pub async fn open_session_nopty(&'a self, exec: Option<&str>)
+    pub async fn open_session_nopty(&'a self)
     -> Result<(ChanInOut<'a, C, S>, ChanIn<'a, C, S>)> {
         let chan = self.sunset.with_runner(|runner| {
-            runner.open_client_session(exec, None)
+            runner.open_client_session()
         }).await?;
 
         let num = chan.num();
@@ -52,11 +52,9 @@ impl<'a, C: CliBehaviour> SSHClient<'a, C> {
         Ok((cstd, cerr))
     }
 
-    pub async fn open_session_pty(&'a self, exec: Option<&str>, pty: Pty)
-    -> Result<ChanInOut<'a, C, S>> {
-
+    pub async fn open_session_pty(&'a self) -> Result<ChanInOut<'a, C, S>> {
         let chan = self.sunset.with_runner(|runner| {
-            runner.open_client_session(exec, Some(pty))
+            runner.open_client_session()
         }).await?;
 
         let num = chan.num();

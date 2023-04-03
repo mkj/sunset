@@ -36,7 +36,7 @@ pub mod sunsetlog;
 mod auth;
 mod channel;
 mod runner;
-// TODO only public for UnusedCli etc. 
+// TODO only public for UnusedCli etc.
 pub mod behaviour;
 mod termmodes;
 mod ssh_chapoly;
@@ -55,7 +55,7 @@ pub use runner::Runner;
 pub use sign::{SignKey, KeyType, OwnedSig};
 pub use packets::{PubKey, Signature};
 pub use error::{Error,Result};
-pub use channel::{ChanMsg, ChanMsgDetails, Pty, ChanOpened};
+pub use channel::{Pty, ChanOpened, SessionOpener, SessionCommand};
 pub use sshnames::ChanFail;
 pub use channel::{ChanData, ChanNum};
 pub use runner::ChanHandle;

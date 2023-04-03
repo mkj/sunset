@@ -13,7 +13,7 @@ use {
 
 use core::str;
 use core::convert::AsRef;
-use core::fmt::{self,Debug};
+use core::fmt::{self,Debug,Display};
 use digest::Output;
 use pretty_hex::PrettyHex;
 use snafu::{prelude::*, Location};
@@ -358,6 +358,17 @@ impl Debug for TextString<'_> {
             write!(f, "TextString(\"{}\")", s.escape_default())
         } else {
             write!(f, "TextString(not utf8!, {:#?})", self.0.hex_dump())
+        }
+    }
+}
+
+impl Display for TextString<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let s = core::str::from_utf8(self.0);
+        if let Ok(s) = s {
+            write!(f, "\"{}\"", s.escape_default())
+        } else {
+            write!(f, "{:?}", self)
         }
     }
 }
