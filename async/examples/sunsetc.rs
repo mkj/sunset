@@ -4,6 +4,7 @@ use {
     log::{debug, error, info, log, trace, warn},
 };
 use anyhow::{Context, Result, anyhow, bail};
+use argh::FromArgs;
 use embassy_sync::{mutex::Mutex, blocking_mutex::raw::NoopRawMutex};
 
 use tokio::net::TcpStream;
@@ -23,7 +24,7 @@ use zeroize::Zeroizing;
 use simplelog::*;
 
 #[derive(argh::FromArgs)]
-/** con1
+/** Sunset SSH Client
  */
 struct Args {
     #[argh(switch, short='v')]
@@ -65,10 +66,60 @@ struct Args {
     #[argh(positional)]
     /// command
     cmd: Vec<String>,
+
+    // options for compatibility with sshfs, are ignored
+
+    #[allow(unused)]
+    #[argh(switch, short='x', hidden_help)]
+    /// no X11
+    no_x11: bool,
+
+    #[allow(unused)]
+    #[argh(switch, short='a', hidden_help)]
+    /// no agent forwarding
+    no_agent: bool,
+
+    #[allow(unused)]
+    #[argh(switch, short='2', hidden_help)]
+    /// ssh version 2
+    version_2: bool,
+
+    // openssh support -oThereWasNoSpace, so we preprocess that.
+    #[argh(option, short='o')]
+    /// extra options
+    option: Vec<String>,
 }
 
 fn parse_args() -> Result<Args> {
-    let mut args: Args = argh::from_env();
+    let mut in_args = std::env::args();
+
+    // OpenSSH has some quirks such as -oCommand, so we pre-process the commandline.
+    let cmd = in_args.next().expect("command name");
+    let mut mangled_args = vec![];
+
+    for a in in_args {
+        if a.starts_with("-o") {
+            let (o, v) = a.split_at(2);
+            mangled_args.push(o.to_string());
+            mangled_args.push(v.to_string());
+        } else {
+            mangled_args.push(a.to_string())
+        }
+    }
+
+    let mangled_args: Vec<&str> = mangled_args.iter().map(|i| i.as_str()).collect();
+
+    let mut args = Args::from_args(&[cmd.as_str()], mangled_args.as_slice())
+    .unwrap_or_else(|e| {
+        println!("{}", e.output);
+        std::process::exit(1)
+    });
+
+    // time crate won't read TZ if we're threaded, in case someone
+    // tries to mutate shared state with setenv.
+    // https://github.com/rust-lang/rust/issues/90308 etc
+    // logging uses the timezone, so we can't use async main.
+    setup_log(&args)?;
 
     if args.username.is_none() {
         // user@host syntax. rsplit for usernames with @ in them
@@ -81,17 +132,15 @@ fn parse_args() -> Result<Args> {
         args.username = Some(whoami::username());
     }
 
+    for o in args.option.iter() {
+        warn!("Ignoring -o {o}")
+    }
+
     Ok(args)
 }
 
 fn try_main() -> Result<()> {
     let args = parse_args()?;
-
-    // time crate won't read TZ if we're threaded, in case someone
-    // tries to mutate shared state with setenv.
-    // https://github.com/rust-lang/rust/issues/90308 etc
-    // logging uses the timezone, so we can't use async main.
-    setup_log(&args)?;
 
 
     tokio::runtime::Builder::new_current_thread()
