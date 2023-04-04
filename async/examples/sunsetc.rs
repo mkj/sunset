@@ -97,12 +97,22 @@ fn parse_args() -> Result<Args> {
     let cmd = in_args.next().expect("command name");
     let mut mangled_args = vec![];
 
+    let mut not_flags = 0;
+
     for a in in_args {
         if a.starts_with("-o") {
             let (o, v) = a.split_at(2);
             mangled_args.push(o.to_string());
             mangled_args.push(v.to_string());
         } else {
+
+            // Flag arguments after the remote command should get escaped
+            if !a.starts_with('-') {
+                not_flags += 1;
+                if not_flags == 2 {
+                    mangled_args.push("--".to_string());
+                }
+            }
             mangled_args.push(a.to_string())
         }
     }
