@@ -33,7 +33,10 @@ impl Client {
         b: &mut impl CliBehaviour,
     ) -> Result<()> {
         parse_ctx.cli_auth_type = None;
-        s.send(packets::ServiceRequest { name: SSH_SERVICE_CONNECTION })?;
+
+        // github.com doesn't like this, openssh doesn't send it
+        // s.send(packets::ServiceRequest { name: SSH_SERVICE_CONNECTION })?;
+
         self.auth.success(b)
     }
 
