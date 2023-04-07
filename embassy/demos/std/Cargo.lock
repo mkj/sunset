@@ -946,9 +946,8 @@ dependencies = [
 [[package]]
 name = "salty"
 version = "0.2.0"
-source = "git+https://github.com/mkj/salty?branch=sunset#89ba100e03a6ffe7f95e7ac60cabfb9e535be03b"
+source = "git+https://github.com/mkj/salty?branch=sunset#24b9b1e3bb9cca873ed63ef379c552dbe55633e3"
 dependencies = [
- "digest",
  "ed25519",
  "subtle",
  "zeroize",
