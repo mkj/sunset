@@ -97,9 +97,13 @@ pub fn check_known_hosts_file(
             continue;
         }
 
-        let known_key = OpenSSHKey::from_openssh(&lk).map_err(|_| {
-            KnownHostsError::Other { msg: format!("Bad key format {}:{}", p.display(), line) }
-        })?;
+        let known_key = match OpenSSHKey::from_openssh(&lk) {
+            Ok(k) => k,
+            Err(e) => {
+                warn!("Unparsed key for {} on line {}:{}", host, p.display(), line);
+                continue;
+            }
+        };
 
         if pubk.algorithm() != known_key.algorithm() {
             debug!("Line {line}, Ignoring other-format existing key {known_key:?}")
