@@ -46,7 +46,7 @@ pub trait SSHEncode {
     ///
     /// The state of the `SSHSink` is undefined after an error is returned, data may
     /// have been partially encoded.
-    fn enc<S>(&self, s: &mut S) -> WireResult<()> where S: SSHSink;
+    fn enc(&self, s: &mut dyn SSHSink) -> WireResult<()>;
 }
 
 /// For enums with an externally provided name
@@ -133,9 +133,7 @@ pub fn read_ssh<'a, T: SSHDecode<'a>>(b: &'a [u8], ctx: Option<ParseContext>) ->
     Ok(T::dec(&mut s)?)
 }
 
-pub fn write_ssh<T>(target: &mut [u8], value: &T) -> Result<usize>
-where
-    T: SSHEncode
+pub fn write_ssh(target: &mut [u8], value: &dyn SSHEncode) -> Result<usize>
 {
     let mut s = EncodeBytes { target, pos: 0, parse_ctx: None };
     value.enc(&mut s)?;
@@ -152,10 +150,8 @@ where
 }
 
 /// Hashes the SSH wire format representation of `value`, with a `u32` length prefix.
-pub fn hash_ser_length<T>(hash_ctx: &mut impl DigestUpdate,
-    value: &T) -> Result<()>
-where
-    T: SSHEncode,
+pub fn hash_ser_length(hash_ctx: &mut impl DigestUpdate,
+    value: &dyn SSHEncode) -> Result<()>
 {
     let len: u32 = length_enc(value)?;
     hash_ctx.digest_update(&len.to_be_bytes());
@@ -163,12 +159,10 @@ where
 }
 
 /// Hashes the SSH wire format representation of `value`
-pub fn hash_ser<T>(hash_ctx: &mut impl DigestUpdate,
-    value: &T,
+pub fn hash_ser(hash_ctx: &mut impl DigestUpdate,
+    value: &dyn SSHEncode,
     parse_ctx: Option<&ParseContext>,
     ) -> Result<()>
-where
-    T: SSHEncode,
 {
     let mut s = EncodeHash { hash_ctx, parse_ctx: parse_ctx.cloned() };
     value.enc(&mut s)?;
@@ -176,9 +170,7 @@ where
 }
 
 /// Returns `WireError::NoRoom` if larger than `u32`
-fn length_enc<T>(value: &T) -> WireResult<u32>
-where
-    T: SSHEncode,
+fn length_enc(value: &dyn SSHEncode) -> WireResult<u32>
 {
     let mut s = EncodeLen { pos: 0 };
     value.enc(&mut s)?;
@@ -293,8 +285,7 @@ impl Debug for BinString<'_> {
 }
 
 impl SSHEncode for BinString<'_> {
-    fn enc<S>(&self, s: &mut S) -> WireResult<()>
-    where S: sshwire::SSHSink {
+    fn enc(&self, s: &mut dyn SSHSink) -> WireResult<()> {
         (self.0.len() as u32).enc(s)?;
         self.0.enc(s)
     }
@@ -374,8 +365,7 @@ impl Display for TextString<'_> {
 }
 
 impl SSHEncode for TextString<'_> {
-    fn enc<S>(&self, s: &mut S) -> WireResult<()>
-    where S: sshwire::SSHSink {
+    fn enc(&self, s: &mut dyn SSHSink) -> WireResult<()> {
         (self.0.len() as u32).enc(s)?;
         self.0.enc(s)
     }
@@ -415,8 +405,7 @@ impl<B: SSHEncode + Debug> Debug for Blob<B> {
 }
 
 impl<B: SSHEncode> SSHEncode for Blob<B> {
-    fn enc<S>(&self, s: &mut S) -> WireResult<()>
-    where S: sshwire::SSHSink {
+    fn enc(&self, s: &mut dyn SSHSink) -> WireResult<()> {
         let len: u32 = sshwire::length_enc(&self.0)?;
         len.enc(s)?;
         self.0.enc(s)
@@ -455,46 +444,40 @@ impl<'de, B: SSHDecode<'de>> SSHDecode<'de> for Blob<B> {
 ///////////////////////////////////////////////
 
 impl SSHEncode for u8 {
-    fn enc<S>(&self, s: &mut S) -> WireResult<()>
-    where S: SSHSink {
+    fn enc(&self, s: &mut dyn SSHSink) -> WireResult<()> {
         s.push(&[*self])
     }
 }
 
 impl SSHEncode for bool {
-    fn enc<S>(&self, s: &mut S) -> WireResult<()>
-    where S: SSHSink {
+    fn enc(&self, s: &mut dyn SSHSink) -> WireResult<()> {
         (*self as u8).enc(s)
     }
 }
 
 impl SSHEncode for u32 {
-    fn enc<S>(&self, s: &mut S) -> WireResult<()>
-    where S: SSHSink {
+    fn enc(&self, s: &mut dyn SSHSink) -> WireResult<()> {
         s.push(&self.to_be_bytes())
     }
 }
 
 // no length prefix
 impl SSHEncode for &[u8] {
-    fn enc<S>(&self, s: &mut S) -> WireResult<()>
-    where S: SSHSink {
+    fn enc(&self, s: &mut dyn SSHSink) -> WireResult<()> {
         // data
         s.push(self)
     }
 }
 
 // no length prefix
-impl<const N: usize> SSHEncode for [u8; N] {
-    fn enc<S>(&self, s: &mut S) -> WireResult<()>
-    where S: SSHSink {
-        s.push(self)
+impl<const N: usize> SSHEncode for &[u8; N] {
+    fn enc(&self, s: &mut dyn SSHSink) -> WireResult<()> {
+        s.push(self.as_slice())
     }
 }
 
 impl SSHEncode for &str {
-    fn enc<S>(&self, s: &mut S) -> WireResult<()>
-    where S: SSHSink {
+    fn enc(&self, s: &mut dyn SSHSink) -> WireResult<()> {
         let v = self.as_bytes();
         // length prefix
         (v.len() as u32).enc(s)?;
@@ -503,8 +486,7 @@ impl SSHEncode for &str {
 }
 
 impl<T: SSHEncode> SSHEncode for Option<T> {
-    fn enc<S>(&self, s: &mut S) -> WireResult<()>
-    where S: SSHSink {
+    fn enc(&self, s: &mut dyn SSHSink) -> WireResult<()> {
         if let Some(t) = self.as_ref() {
             t.enc(s)?;
         }
@@ -513,8 +495,7 @@ impl<T: SSHEncode> SSHEncode for Option<T> {
 }
 
 impl SSHEncode for &AsciiStr{
-    fn enc<S>(&self, s: &mut S) -> WireResult<()>
-    where S: SSHSink {
+    fn enc(&self, s: &mut dyn SSHSink) -> WireResult<()> {
         let v = self.as_bytes();
         BinString(v).enc(s)
     }
@@ -527,10 +508,7 @@ impl<'de> SSHDecode<'de> for bool {
     }
 }
 
-// #[inline] seems to decrease code size somehow
-
 impl<'de> SSHDecode<'de> for u8 {
-    #[inline]
     fn dec<S>(s: &mut S) -> WireResult<Self>
     where S: SSHSource<'de> {
         let t = s.take(core::mem::size_of::<u8>())?;
@@ -539,7 +517,6 @@ impl<'de> SSHDecode<'de> for u8 {
 }
 
 impl<'de> SSHDecode<'de> for u32 {
-    #[inline]
     fn dec<S>(s: &mut S) -> WireResult<Self>
     where S: SSHSource<'de> {
         let t = s.take(core::mem::size_of::<u32>())?;
@@ -562,7 +539,6 @@ pub fn try_as_ascii_str(t: &[u8]) -> WireResult<&str> {
 }
 
 impl<'de: 'a, 'a> SSHDecode<'de> for &'a str {
-    #[inline]
     fn dec<S>(s: &mut S) -> WireResult<Self>
     where S: SSHSource<'de> {
         let len = u32::dec(s)?;
@@ -580,13 +556,11 @@ impl<'de: 'a, 'a> SSHDecode<'de> for &'de AsciiStr {
     }
 }
 
-impl<'de, const N: usize> SSHDecode<'de> for [u8; N] {
+impl<'de, const N: usize> SSHDecode<'de> for &'de [u8; N] {
     fn dec<S>(s: &mut S) -> WireResult<Self>
     where S: SSHSource<'de> {
-        // TODO is there a better way? Or can we return a slice?
-        let mut l = [0u8; N];
-        l.copy_from_slice(s.take(N)?);
-        Ok(l)
+        // OK unwrap: take() fails if the length is short
+        Ok(s.take(N)?.try_into().unwrap())
     }
 }
 

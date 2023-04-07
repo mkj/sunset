@@ -30,7 +30,7 @@ use sshwire::{SSHEncodeEnum, SSHDecodeEnum};
 
 #[derive(Debug, SSHEncode, SSHDecode)]
 pub struct KexInit<'a> {
-    pub cookie: [u8; 16],
+    pub cookie: &'a [u8; 16],
     pub kex: NameList<'a>,
     /// A list of signature algorithms
     ///
@@ -136,7 +136,7 @@ impl<'de: 'a, 'a> SSHDecode<'de> for ExtInfo<'a> {
 }
 
 impl SSHEncode for ExtInfo<'_> {
-    fn enc<S>(&self, s: &mut S) -> WireResult<()> where S: SSHSink {
+    fn enc(&self, s: &mut dyn SSHSink) -> WireResult<()> {
         if let Some(ref algs) = self.server_sig_algs {
             1u32.enc(s)?;
             SSH_EXT_SERVER_SIG_ALGS.enc(s)?;
@@ -239,8 +239,7 @@ pub struct MethodPubKey<'a> {
 }
 
 impl SSHEncode for MethodPubKey<'_> {
-    fn enc<S>(&self, s: &mut S) -> WireResult<()>
-    where S: SSHSink {
+    fn enc(&self, s: &mut dyn SSHSink) -> WireResult<()> {
         // byte      SSH_MSG_USERAUTH_REQUEST
         // string    user name
         // string    service name
@@ -706,9 +705,12 @@ pub struct DirectTcpip<'a> {
 }
 
 
-// Placeholder for unknown method names. These are sometimes non-fatal and
-// need to be handled by the relevant code, for example newly invented pubkey types
-// This is deliberately not Serializable, we only receive it.
+/// Placeholder for unknown method names.
+///
+///These are sometimes non-fatal and
+/// need to be handled by the relevant code, for example newly invented pubkey types
+/// This is deliberately not SSHEncode, we only receive it. sshwire-derive will
+/// automatically create instances.
 #[derive(Clone, PartialEq)]
 pub struct Unknown<'a>(pub &'a [u8]);
 
@@ -796,8 +798,7 @@ impl TryFrom<u8> for MessageNumber {
 }
 
 impl SSHEncode for Packet<'_> {
-    fn enc<S>(&self, s: &mut S) -> WireResult<()>
-    where S: SSHSink {
+    fn enc(&self, s: &mut dyn SSHSink) -> WireResult<()> {
         let t = self.message_num() as u8;
         t.enc(s)?;
         match self {

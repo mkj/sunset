@@ -48,8 +48,7 @@ enum AgentRequest<'a> {
 }
 
 impl SSHEncode for AgentRequest<'_> {
-    fn enc<S>(&self, s: &mut S) -> WireResult<()>
-    where S: SSHSink {
+    fn enc(&self, s: &mut dyn SSHSink) -> WireResult<()> {
         match self {
             Self::SignRequest(a) => {
                 let n = AgentMessageNum::SSH_AGENTC_SIGN_REQUEST as u8;

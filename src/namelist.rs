@@ -55,17 +55,16 @@ impl<'de: 'a, 'a> SSHDecode<'de> for NameList<'a> {
 
 /// Serialize the list of names with comma separators
 impl SSHEncode for &LocalNames {
-    fn enc<S>(&self, e: &mut S) -> WireResult<()>
-    where S: sshwire::SSHSink {
+    fn enc(&self, s: &mut dyn SSHSink) -> WireResult<()> {
         let names = self.0.as_slice();
         // space for names and commas
         let strlen = names.iter().map(|n| n.len()).sum::<usize>()
             + names.len().saturating_sub(1);
-        (strlen as u32).enc(e)?;
+        (strlen as u32).enc(s)?;
         for i in 0..names.len() {
-            names[i].as_bytes().enc(e)?;
+            names[i].as_bytes().enc(s)?;
             if i < names.len() - 1 {
-                b','.enc(e)?;
+                b','.enc(s)?;
             }
         }
         Ok(())

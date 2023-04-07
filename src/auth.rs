@@ -28,8 +28,7 @@ pub struct AuthSigMsg<'a> {
 }
 
 impl SSHEncode for &AuthSigMsg<'_> {
-    fn enc<S>(&self, s: &mut S) -> WireResult<()>
-    where S: sshwire::SSHSink {
+    fn enc(&self, s: &mut dyn sshwire::SSHSink) -> WireResult<()> {
         self.sess_id.enc(s)?;
 
         let m = packets::MessageNumber::SSH_MSG_USERAUTH_REQUEST as u8;

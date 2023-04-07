@@ -288,9 +288,9 @@ impl Kex {
         Ok(())
     }
 
-    fn make_kexinit<'a>(cookie: &KexCookie, conf: &'a AlgoConfig) -> Packet<'a> {
+    fn make_kexinit<'a>(cookie: &'a KexCookie, conf: &'a AlgoConfig) -> Packet<'a> {
         packets::KexInit {
-            cookie: cookie.clone(),
+            cookie: cookie,
             kex: (&conf.kexs).into(),
             hostsig: (&conf.hostsig).into(),
             cipher_c2s: (&conf.ciphers).into(),

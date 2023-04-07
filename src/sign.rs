@@ -48,7 +48,7 @@ impl SigType {
 
     /// Returns `Ok(())` on success
     pub fn verify(
-        &self, pubkey: &PubKey, msg: &impl SSHEncode, sig: &Signature, parse_ctx: Option<&ParseContext>) -> Result<()> {
+        &self, pubkey: &PubKey, msg: &dyn SSHEncode, sig: &Signature, parse_ctx: Option<&ParseContext>) -> Result<()> {
 
         // Check that the signature type is known
         let sig_type = sig.sig_type().map_err(|_| Error::BadSig)?;

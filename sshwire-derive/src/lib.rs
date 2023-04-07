@@ -212,9 +212,8 @@ fn take_field_atts(atts: &[Attribute]) -> Result<Vec<FieldAtt>> {
 fn encode_struct(gen: &mut Generator, body: StructBody) -> Result<()> {
     gen.impl_for("crate::sshwire::SSHEncode")
         .generate_fn("enc")
-        .with_generic_deps("E", ["crate::sshwire::SSHSink"])
         .with_self_arg(FnSelfArg::RefSelf)
-        .with_arg("s", "&mut E")
+        .with_arg("s", "&mut dyn crate::sshwire::SSHSink")
         .with_return_type("crate::sshwire::WireResult<()>")
         .body(|fn_body| {
             match &body.fields {
@@ -263,9 +262,8 @@ fn encode_enum(
 
     gen.impl_for("crate::sshwire::SSHEncode")
         .generate_fn("enc")
-        .with_generic_deps("S", ["crate::sshwire::SSHSink"])
         .with_self_arg(FnSelfArg::RefSelf)
-        .with_arg("s", "&mut S")
+        .with_arg("s", "&mut dyn crate::sshwire::SSHSink")
         .with_return_type("crate::sshwire::WireResult<()>")
         .body(|fn_body| {
             if cont_atts.iter().any(|c| matches!(c, ContainerAtt::VariantPrefix)) {
