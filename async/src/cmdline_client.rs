@@ -61,13 +61,13 @@ pub struct CmdlineClient {
     agent: Option<AgentClient>,
 
     notify: Channel<SunsetRawMutex, Msg, 1>,
-    pty_guard: Option<RawPtyGuard>,
 }
 
 pub struct CmdlineRunner<'a> {
     state: CmdlineState<'a>,
 
     want_pty: bool,
+    pty_guard: Option<RawPtyGuard>,
 
     notify: Receiver<'a, SunsetRawMutex, Msg, 1>,
 }
@@ -92,7 +92,6 @@ impl CmdlineClient {
             agent: None,
 
             notify: Channel::new(),
-            pty_guard: None,
 
             username: username.as_ref().into(),
             host: host.as_ref().into(),
@@ -159,17 +158,6 @@ impl CmdlineClient {
                 Err(e) => warn!("Failed getting current pty: {e:?}"),
             }
 
-            if pty.is_some() {
-                // switch to raw pty mode
-                match raw_pty() {
-                    Ok(p) => self.pty_guard = Some(p),
-                    Err(e) => {
-                        warn!("Failed getting raw pty: {e:?}");
-                        pty = None
-                    }
-                }
-
-            }
         }
         pty
     }
@@ -183,6 +171,7 @@ impl<'a> CmdlineRunner<'a> {
             state: CmdlineState::PreAuth,
             want_pty,
             notify,
+            pty_guard: None,
         }
     }
 
@@ -338,6 +327,13 @@ impl<'a> CmdlineRunner<'a> {
         debug_assert!(matches!(self.state, CmdlineState::Authed));
 
         let (io, extin) = if self.want_pty {
+            // switch to raw pty mode
+            match raw_pty() {
+                Ok(p) => self.pty_guard = Some(p),
+                Err(e) => {
+                    warn!("Failed getting raw pty: {e:?}");
+                }
+            }
             let io = cli.open_session_pty().await?;
             (io, None)
         } else {
