@@ -28,6 +28,7 @@ use sunset::config::MAX_CHANNELS;
 // For now we only support single-threaded executors.
 // In future this could be behind a cfg to allow different
 // RawMutex for std executors or other situations.
+// Also requires making CliBehaviour : Send, etc.
 pub type SunsetRawMutex = NoopRawMutex;
 
 pub type SunsetMutex<T> = Mutex<SunsetRawMutex, T>;

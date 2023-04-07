@@ -39,7 +39,6 @@ pretty-hex = "0.3"
 [dev-dependencies]
 anyhow = { version = "1.0" }
 pretty-hex = "0.3"
-simplelog = "0.12"
 whoami = "1.3"
 zeroize = "1.5"
 
@@ -47,3 +46,7 @@ tokio = { version = "1.17", features = ["full"] }
 
 # adapters for tokio and async-std
 embedded-io = { version = "0.4", features = ["tokio"] }
+
+simplelog = "0.12"
+# for simplelog
+time = { version = "0.3", features = ["local-offset"] }
