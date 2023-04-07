@@ -263,6 +263,12 @@ impl<C: CliBehaviour, S: ServBehaviour> Conn<C, S> {
             Packet::NewKeys(_) => {
                 self.kex.handle_newkeys(&mut self.sess_id, s)?;
             }
+            Packet::ExtInfo(p) => {
+                if let ClientServer::Client(cli) = &mut self.cliserv {
+                    cli.auth.handle_ext_info(&p);
+                }
+                // could potentially pass it to other handlers too
+            }
             Packet::ServiceRequest(p) => {
                 if let ClientServer::Server(serv) = &mut self.cliserv {
                     serv.service_request(&p, s)?;
@@ -282,7 +288,11 @@ impl<C: CliBehaviour, S: ServBehaviour> Conn<C, S> {
                 warn!("Received SSH unimplemented message");
             }
             Packet::DebugPacket(p) => {
-                warn!("SSH debug message from remote host: '{:?}'", p.message);
+                let level = match p.always_display {
+                    true => log::Level::Info,
+                    false => log::Level::Debug,
+                };
+                log!(level, "SSH debug message from remote host: {}", p.message);
             }
             Packet::Disconnect(p) => {
                 // We ignore p.reason.

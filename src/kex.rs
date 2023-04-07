@@ -34,6 +34,10 @@ use pretty_hex::PrettyHex;
 const fixed_options_kex: &[&'static str] =
     &[SSH_NAME_CURVE25519, SSH_NAME_CURVE25519_LIBSSH];
 
+/// Options that can't be negotiated
+const marker_only_kexs: &[&'static str] =
+    &[SSH_NAME_EXT_INFO_C, SSH_NAME_EXT_INFO_S, SSH_NAME_KEXGUESS2];
+
 const fixed_options_hostsig: &[&'static str] = &[
     SSH_NAME_ED25519,
     #[cfg(rsa)]
@@ -56,10 +60,20 @@ pub(crate) struct AlgoConfig {
 impl AlgoConfig {
     /// Creates the standard algorithm configuration
     /// TODO: ext-info-s and ext-info-c
-    pub fn new(_is_client: bool) -> Self {
-        AlgoConfig {
+    pub fn new(is_client: bool) -> Self {
+        // OK unwrap: static arrays are < MAX_LOCAL_NAMES
+        let mut kexs: LocalNames = fixed_options_kex.try_into().unwrap();
+
+        // Only clients are interested in ext-info
+        // TODO perhaps it could go behind cfg(rsa)?
+        if is_client {
             // OK unwrap: static arrays are < MAX_LOCAL_NAMES
-            kexs: fixed_options_kex.try_into().unwrap(),
+            kexs.0.push(SSH_NAME_EXT_INFO_C).unwrap();
+
+        }
+
+        AlgoConfig {
+            kexs,
             hostsig: fixed_options_hostsig.try_into().unwrap(),
             ciphers: fixed_options_cipher.try_into().unwrap(),
             macs: fixed_options_mac.try_into().unwrap(),
@@ -201,6 +215,9 @@ pub(crate) struct Algos {
     // avoid having to keep passing it separately, though this
     // is global state.
     pub is_client: bool,
+
+    // whether the remote side supports ext-info
+    pub ext_info: bool,
 }
 
 impl fmt::Display for Algos {
@@ -367,15 +384,26 @@ impl Kex {
             .kex
             .first_match(is_client, &conf.kexs)?
             .ok_or(Error::AlgoNoMatch { algo: "kex" })?;
-        if kex_method == SSH_NAME_KEXGUESS2 {
-            trace!("kexguess2 was negotiated, returning AlgoNoMatch");
+
+        // Certain kex method names aren't actual algorithms, just markers.
+        // If they are negotiated it means no valid method matched
+        if marker_only_kexs.contains(&kex_method) {
             return Err(Error::AlgoNoMatch { algo: "kex" });
         }
+
         let kex = SharedSecret::from_name(kex_method)?;
         let goodguess_kex = if kexguess2 {
             p.kex.first() == kex_method
         } else {
             p.kex.first() == conf.kexs.first()
+        };
+
+        // we only send MSG_EXT_INFO to a client, don't look
+        // for SSH_NAME_EXT_INFO_S
+        let ext_info = match is_client {
+            true => false,
+            // OK unwrap: p.kex is a remote list
+            false => p.kex.has_algo(SSH_NAME_EXT_INFO_C).unwrap(),
         };
 
         let hostsig_method = p
@@ -445,6 +473,7 @@ impl Kex {
             integ_dec,
             discard_next,
             is_client,
+            ext_info,
         })
     }
 }

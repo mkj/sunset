@@ -97,6 +97,55 @@ pub struct ServiceAccept<'a> {
     pub name: &'a str,
 }
 
+/// MSG_EXT_INFO
+///
+/// `ExtInfo` differs from most packet structs, it only tracks known extension types
+/// rather than an unknown-sized list.
+#[derive(Debug)]
+pub struct ExtInfo<'a> {
+    // Wire format is
+    // byte       SSH_MSG_EXT_INFO (value 7)
+    // uint32     nr-extensions
+    // repeat the following 2 fields "nr-extensions" times:
+    //   string   extension-name
+    //   string   extension-value (binary)
+
+    pub server_sig_algs: Option<NameList<'a>>,
+}
+
+impl<'de: 'a, 'a> SSHDecode<'de> for ExtInfo<'a> {
+    fn dec<S>(s: &mut S) -> WireResult<Self> where S: SSHSource<'de> {
+        let mut server_sig_algs = None;
+        let num = u32::dec(s)?;
+        for _ in 0..num {
+            let ext: &str = SSHDecode::dec(s)?;
+            match ext {
+                SSH_EXT_SERVER_SIG_ALGS => {
+                    server_sig_algs = Some(SSHDecode::dec(s)?);
+                },
+                _ => {
+                    // skip over
+                    let _: BinString = SSHDecode::dec(s)?;
+                },
+            }
+        }
+        Ok(Self {
+            server_sig_algs
+        })
+    }
+}
+
+impl SSHEncode for ExtInfo<'_> {
+    fn enc<S>(&self, s: &mut S) -> WireResult<()> where S: SSHSink {
+        if let Some(ref algs) = self.server_sig_algs {
+            1u32.enc(s)?;
+            SSH_EXT_SERVER_SIG_ALGS.enc(s)?;
+            algs.enc(s)?;
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, SSHEncode, SSHDecode)]
 pub struct UserauthRequest<'a> {
     pub username: TextString<'a>,
@@ -436,7 +485,7 @@ pub enum RequestSuccess {
 }
 
 impl<'de> SSHDecode<'de> for RequestSuccess {
-    fn dec<S>(s: &mut S) -> WireResult<Self> where S: SSHSource<'de> {
+    fn dec<S>(_s: &mut S) -> WireResult<Self> where S: SSHSource<'de> {
         // if s.ctx().last_req_port {
         //     Ok(Self::TcpPort(TcpPort::dec(s)?))
         // } else {
@@ -852,7 +901,7 @@ messagetypes![
 (4, DebugPacket, DebugPacket<'a>, SSH_MSG_DEBUG, All),
 (5, ServiceRequest, ServiceRequest<'a>, SSH_MSG_SERVICE_REQUEST, Auth),
 (6, ServiceAccept, ServiceAccept<'a>, SSH_MSG_SERVICE_ACCEPT, Auth),
-// 7        SSH_MSG_EXT_INFO       RFC 8308
+(7, ExtInfo, ExtInfo<'a>, SSH_MSG_EXT_INFO, All),
 // 8        SSH_MSG_NEWCOMPRESS    RFC 8308
 (20, KexInit, KexInit<'a>, SSH_MSG_KEXINIT, All),
 (21, NewKeys, NewKeys, SSH_MSG_NEWKEYS, Kex),

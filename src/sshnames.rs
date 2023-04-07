@@ -59,6 +59,9 @@ pub const SSH_AUTHMETHOD_INTERACTIVE: &str = "keyboard-interactive";
 /// [RFC4254](https://tools.ietf.org/html/rfc4254)
 pub const SSH_EXTENDED_DATA_STDERR: u32 = 1;
 
+/// [RFC8308](https://tools.ietf.org/html/rfc8308) Extension Negotiation
+pub const SSH_EXT_SERVER_SIG_ALGS: &str = "server-sig-algs";
+
 /// [RFC4254](https://tools.ietf.org/html/rfc4254)
 #[allow(non_camel_case_types)]
 #[derive(Debug)]

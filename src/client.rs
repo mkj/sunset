@@ -24,8 +24,6 @@ impl Client {
         Client { auth: CliAuth::new() }
     }
 
-    // pub fn check_hostkey(hostkey: )
-
     pub(crate) fn auth_success(
         &mut self,
         parse_ctx: &mut ParseContext,

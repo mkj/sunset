@@ -74,12 +74,15 @@ pub(crate) struct CliAuth {
 
     username: ResponseString,
 
-    // Starts as true, set to false if hook.auth_password() returns None.
-    // Not set false if the server rejects auth.
+    /// Starts as true, set to false if hook.auth_password() returns None.
+    /// Not set false if the server rejects auth.
     try_password: bool,
 
-    // Set to false if hook.next_authkey() returns None.
+    /// Set to false if hook.next_authkey() returns None.
     try_pubkey: bool,
+
+    /// Set once we are OKed from MSG_EXT_INFO
+    allow_rsa_sha2: bool,
 }
 
 impl CliAuth {
@@ -90,6 +93,7 @@ impl CliAuth {
             username: ResponseString::new(),
             try_password: true,
             try_pubkey: true,
+            allow_rsa_sha2: false,
         }
     }
 
@@ -307,5 +311,13 @@ impl CliAuth {
         let _ = b.authenticated();
         // TODO errors
         Ok(())
+    }
+
+    pub fn handle_ext_info(&mut self, p: &packets::ExtInfo<'_>) {
+        if let Some(ref algs) = p.server_sig_algs {
+            // OK unwrap: is a remote namelist
+            self.allow_rsa_sha2 = algs.has_algo(SSH_NAME_RSA_SHA256).unwrap();
+            trace!("setting allow_rsa_sha2 = {}", self.allow_rsa_sha2);
+        }
     }
 }

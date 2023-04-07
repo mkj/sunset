@@ -271,6 +271,7 @@ impl<'a> CmdlineRunner<'a> {
     /// Runs the `CmdlineClient` session. Requests a shell or command, performs
     /// channel IO.
     pub async fn run(&mut self, cli: &'a SSHClient<'a, CmdlineHooks<'a>>) -> Result<()> {
+        // chanio is only set once a channel is opened below
         let chanio = Fuse::terminated();
         pin_mut!(chanio);
 

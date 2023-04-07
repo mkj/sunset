@@ -72,7 +72,6 @@ impl SSHEncode for &LocalNames {
     }
 }
 
-// for tests
 impl<'a> TryFrom<&'a str> for StringNames<'a> {
     type Error = ();
     fn try_from(s: &'a str) -> Result<Self, Self::Error> {
@@ -86,6 +85,7 @@ impl<'a> TryFrom<&'a str> for NameList<'a> {
     }
 }
 
+// for tests
 impl TryFrom<&[&'static str]> for LocalNames {
     type Error = ();
     fn try_from(s: &[&'static str]) -> Result<Self, ()> {
@@ -123,6 +123,8 @@ impl NameList<'_> {
     }
 
     /// Returns whether the `algo` is contained in this list
+    ///
+    /// Fails iff given a Local variant
     pub fn has_algo(&self, algo: &str) -> Result<bool> {
         match self {
             NameList::String(s) => Ok(s.has_algo(algo)),
