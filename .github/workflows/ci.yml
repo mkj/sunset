@@ -42,3 +42,9 @@ jobs:
 
       - name: build
         run: ./testing/ci.sh
+
+      - name: picow bloat
+        uses: actions/upload-artifact@v3
+        with:
+          name: picow-bloat
+          path: ci_out/picow-bloat.txt

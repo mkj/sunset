@@ -14,7 +14,7 @@ mkdir -p ci_out
 OUT="$(realpath ci_out)"
 
 # disabled for now, doesn't like unstable features
-export RUSTDOCFLAGS='-D warnings'
+#export RUSTDOCFLAGS='-D warnings'
 
 # dependencies
 which cargo-bloat > /dev/null || cargo install cargo-bloat
@@ -22,20 +22,22 @@ if [ -z "$OFFLINE" ]; then
     rustup toolchain add nightly
 fi
 
-# stable
-cargo test
+# stable - disabled now due to async fn in Behaviour
+#cargo test
 # build non-testing, will be no_std
-cargo build
+#cargo build
+cargo +nightly build
 # nightly
 cargo +nightly test
-cargo doc
-cargo test --doc
+
+cargo +nightly doc
+cargo +nightly test --doc
 
 (
 cd async
 # only test lib since some examples are broken
 cargo test --lib
-cargo build --example sshclient
+cargo build --example sunsetc
 )
 
 (
