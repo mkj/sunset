@@ -285,18 +285,18 @@ impl CliAuth {
             let req = self.make_password_req(b).await?;
             if let Some(req) = req {
                 self.state = AuthState::Request { last_req: req, sig: None };
+            } else {
+                self.try_password = false;
             }
-        }
-
-        if !(self.try_pubkey || self.try_password) {
-            return Err(Error::BehaviourError {
-                msg: "No authentication methods left",
-            });
         }
 
         if let AuthState::Request { last_req, .. } = &self.state {
             let p = last_req.req_packet(&self.username, parse_ctx)?;
             s.send(p)?;
+        } else {
+            return Err(Error::BehaviourError {
+                msg: "No authentication methods left",
+            });
         }
         Ok(())
     }
