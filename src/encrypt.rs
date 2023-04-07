@@ -720,6 +720,7 @@ mod tests {
                 integ_dec: id.clone(),
                 discard_next: false,
                 is_client: false,
+                send_ext_info: true,
             })
         })
         // and plaintext

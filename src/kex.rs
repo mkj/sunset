@@ -32,7 +32,7 @@ use pretty_hex::PrettyHex;
 
 // TODO this will be configurable.
 const fixed_options_kex: &[&'static str] =
-    &[SSH_NAME_CURVE25519, SSH_NAME_CURVE25519_LIBSSH, SSH_NAME_KEXGUESS2];
+    &[SSH_NAME_CURVE25519, SSH_NAME_CURVE25519_LIBSSH];
 
 /// Options that can't be negotiated
 const marker_only_kexs: &[&'static str] =
@@ -67,10 +67,13 @@ impl AlgoConfig {
         // Only clients are interested in ext-info
         // TODO perhaps it could go behind cfg(rsa)?
         if is_client {
-            // OK unwrap: static arrays are < MAX_LOCAL_NAMES
+            // OK unwrap: static arrays are < MAX_LOCAL_NAMES+slack
             kexs.0.push(SSH_NAME_EXT_INFO_C).unwrap();
 
         }
+
+        // OK unwrap: static arrays are < MAX_LOCAL_NAMES+slack
+        kexs.0.push(SSH_NAME_KEXGUESS2).unwrap();
 
         AlgoConfig {
             kexs,
@@ -217,7 +220,7 @@ pub(crate) struct Algos {
     pub is_client: bool,
 
     // whether the remote side supports ext-info
-    pub ext_info: bool,
+    pub send_ext_info: bool,
 }
 
 impl fmt::Display for Algos {
@@ -400,7 +403,7 @@ impl Kex {
 
         // we only send MSG_EXT_INFO to a client, don't look
         // for SSH_NAME_EXT_INFO_S
-        let ext_info = match is_client {
+        let send_ext_info = match is_client {
             true => false,
             // OK unwrap: p.kex is a remote list
             false => p.kex.has_algo(SSH_NAME_EXT_INFO_C).unwrap(),
@@ -473,7 +476,7 @@ impl Kex {
             integ_dec,
             discard_next,
             is_client,
-            ext_info,
+            send_ext_info,
         })
     }
 }
@@ -834,7 +837,7 @@ mod tests {
             // TODO: put keys in
             keys: vec![]
         };
-        let mut sb = Behaviour::new_server(&mut sb);
+        let mut sb = Behaviour::<behaviour::UnusedCli, _>::new_server(&mut sb);
         let _sb = sb.server().unwrap();
 
         let cli = kex::Kex::new();
