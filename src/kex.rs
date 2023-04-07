@@ -32,7 +32,7 @@ use pretty_hex::PrettyHex;
 
 // TODO this will be configurable.
 const fixed_options_kex: &[&'static str] =
-    &[SSH_NAME_CURVE25519, SSH_NAME_CURVE25519_LIBSSH];
+    &[SSH_NAME_CURVE25519, SSH_NAME_CURVE25519_LIBSSH, SSH_NAME_KEXGUESS2];
 
 /// Options that can't be negotiated
 const marker_only_kexs: &[&'static str] =
