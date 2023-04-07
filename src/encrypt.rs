@@ -43,8 +43,8 @@ const MAX_KEY_LEN: usize = 64;
 pub(crate) struct KeyState {
     keys: Keys,
     // Packet sequence numbers. These don't reset with rekeying.
-    seq_encrypt: Wrapping<u32>,
-    seq_decrypt: Wrapping<u32>,
+    pub seq_encrypt: Wrapping<u32>,
+    pub seq_decrypt: Wrapping<u32>,
 }
 
 impl KeyState {

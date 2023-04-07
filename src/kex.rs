@@ -242,6 +242,7 @@ impl Kex {
     }
 
     fn take(&mut self) -> Self {
+        debug_assert!(!matches!(self, Kex::Taken));
         core::mem::replace(self, Kex::Taken)
     }
 
@@ -583,6 +584,8 @@ impl SharedSecret {
     }
 }
 
+// TODO ZeroizeOnDrop. Sha256 doesn't support it yet.
+// https://github.com/RustCrypto/hashes/issues/87
 pub(crate) struct KexOutput {
     /// `H` for this exchange, conn takes the first as sess_id
     h: SessId,

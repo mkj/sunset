@@ -19,7 +19,7 @@ suggest something!
   [Linux tap device on `std`](embassy/demos/std) running locally.
 
   At present the Pico W build is around 150kB binary size
-  (plus ~200KB [cyw43](https://github.com/embassy-rs/cyw43/) wifi blob),
+  (plus ~200KB [cyw43](https://github.com/embassy-rs/cyw43/) wifi firmware),
   using about 30kB RAM per concurrent SSH session (max stack size not confirmed).
 
 - [`sunset-async`](async/) adds functionality to use Sunset as a normal SSH client or
@@ -78,4 +78,4 @@ will not be cleared.
 Matt Johnston <matt@ucc.asn.au>
 
 It's built on top of lots of other work, particularly Embassy, the rust-crypto crates,
-and Salty.
+Virtue, and Salty.

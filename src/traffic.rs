@@ -325,7 +325,7 @@ impl<'a> TrafOut<'a> {
 
     /// Serializes and and encrypts a packet to send
     pub(crate) fn send_packet(&mut self, p: packets::Packet, keys: &mut KeyState) -> Result<()> {
-        trace!("send_packet {:?}", p.message_num());
+        trace!("send_packet seq {} {:?}", keys.seq_encrypt, p.message_num());
 
         // Either a fresh buffer or appending to write
         let (idx, len) = match self.state {
