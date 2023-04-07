@@ -101,6 +101,7 @@ pub fn check_known_hosts_file(
             Ok(k) => k,
             Err(e) => {
                 warn!("Unparsed key for {} on line {}:{}", host, p.display(), line);
+                trace!("{e:?}");
                 continue;
             }
         };
