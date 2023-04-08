@@ -23,34 +23,39 @@ use kex::SessId;
 use auth::AuthType;
 
 // pub for packets::ParseContext
-pub enum Req {
+enum Req {
     Password(ResponseString),
     PubKey { key: SignKey },
 }
 
-pub(crate) enum AuthState {
+enum AuthState {
     Unstarted,
     MethodQuery,
-    Request { last_req: Req, sig: Option<OwnedSig> },
+    Request { last_req: Req },
     Idle,
 }
 
 impl Req {
     // Creates a packet from the current request
+    // parse_ctx.cli_auth_type will be updated
+    // sig is an optional signature for pubkey auth
     fn req_packet<'b>(
         &'b self,
         username: &'b str,
         parse_ctx: &mut ParseContext,
+        sig: Option<&'b OwnedSig>,
     ) -> Result<Packet<'b>> {
+
         let username = username.into();
         let p = match self {
             Req::PubKey { key, .. } => {
                 // already checked by make_pubkey_req()
                 parse_ctx.cli_auth_type = Some(AuthType::PubKey);
+                let method = AuthMethod::PubKey(MethodPubKey::new(key.pubkey(), sig)?);
                 packets::UserauthRequest {
                     username,
                     service: SSH_SERVICE_CONNECTION,
-                    method: key.pubkey().try_into()?,
+                    method,
                 }.into()
             }
             Req::Password(pw) => {
@@ -215,42 +220,19 @@ impl CliAuth {
         s: &mut TrafSend<'_, '_>,
         b: &mut impl CliBehaviour,
     ) -> Result<()> {
-        // We are only sending keys one at a time so they shouldn't
-        // get out of sync. In future we could change it to send
-        // multiple requests pipelined, though unsure of server
-        // acceptance of that.
         match &mut self.state {
-            // Some tricky logistics to create the signature in self.state
-            // using a packet borrowed from other parts of self.state
-            AuthState::Request { last_req, ref mut sig } => {
-                if sig.is_some() {
-                    return Err(Error::SSHProtoError);
-                }
-                if let Req::PubKey { key, .. } = last_req {
+            AuthState::Request { last_req } => {
+                if let Req::PubKey { ref key } = last_req {
                     if key.pubkey() != pkok.key.0 {
+                        trace!("Received pkok for a different key");
                         return Err(Error::SSHProtoError);
                     }
-                }
 
-                let mut p = last_req.req_packet(&self.username, parse_ctx)?;
-                let last_req = &last_req;
-                if let Req::PubKey { key, .. } = last_req {
-                    // Create the signature
+                    // Sign the packet without the signature
+                    let p = last_req.req_packet(&self.username, parse_ctx, None)?;
                     let new_sig = Self::auth_sig_msg(&key, sess_id, &p, b).await?;
-                    let rsig = sig.insert(new_sig);
+                    let p = last_req.req_packet(&self.username, parse_ctx, Some(&new_sig))?;
 
-                    // Put it in the packet
-                    if let Packet::UserauthRequest(UserauthRequest {
-                        method:
-                            AuthMethod::PubKey(MethodPubKey {
-                                sig: ref mut psig, ..
-                            }),
-                        ..
-                    }) = p
-                    {
-                        let rsig = &*rsig;
-                        *psig = Some(Blob(rsig.into()))
-                    }
                     s.send(p)?;
                     return Ok(());
                 }
@@ -276,7 +258,7 @@ impl CliAuth {
             while self.try_pubkey {
                 let req = self.make_pubkey_req(b).await;
                 if let Some(req) = req {
-                    self.state = AuthState::Request { last_req: req, sig: None };
+                    self.state = AuthState::Request { last_req: req };
                     break;
                 }
             }
@@ -288,14 +270,14 @@ impl CliAuth {
         {
             let req = self.make_password_req(b).await?;
             if let Some(req) = req {
-                self.state = AuthState::Request { last_req: req, sig: None };
+                self.state = AuthState::Request { last_req: req };
             } else {
                 self.try_password = false;
             }
         }
 
         if let AuthState::Request { last_req, .. } = &self.state {
-            let p = last_req.req_packet(&self.username, parse_ctx)?;
+            let p = last_req.req_packet(&self.username, parse_ctx, None)?;
             s.send(p)?;
         } else {
             return Err(Error::BehaviourError {

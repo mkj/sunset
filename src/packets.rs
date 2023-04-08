@@ -167,20 +167,6 @@ pub enum AuthMethod<'a> {
     Unknown(Unknown<'a>),
 }
 
-impl<'a> TryFrom<PubKey<'a>> for AuthMethod<'a> {
-    type Error = Error;
-    fn try_from(pubkey: PubKey<'a>) -> Result<Self> {
-        let sig_algo =
-            Signature::sig_name_for_pubkey(&pubkey).trap()?;
-        Ok(AuthMethod::PubKey(MethodPubKey {
-            sig_algo,
-            pubkey: Blob(pubkey),
-            sig: None,
-        }))
-    }
-}
-
-
 #[derive(Debug, SSHEncode)]
 #[sshwire(no_variant_names)]
 pub enum Userauth60<'a> {
@@ -236,6 +222,20 @@ pub struct MethodPubKey<'a> {
     pub sig_algo: &'a str,
     pub pubkey: Blob<PubKey<'a>>,
     pub sig: Option<Blob<Signature<'a>>>,
+}
+
+impl<'a> MethodPubKey<'a> {
+    pub fn new(pubkey: PubKey<'a>, sig: Option<&'a OwnedSig>) -> Result<Self> {
+        let sig_algo =
+            Signature::sig_name_for_pubkey(&pubkey).trap()?;
+        let sig = sig.map(|s| Blob((s).into()));
+        Ok(MethodPubKey {
+            sig_algo,
+            pubkey: Blob(pubkey),
+            sig,
+        })
+
+    }
 }
 
 impl SSHEncode for MethodPubKey<'_> {
