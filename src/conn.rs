@@ -39,6 +39,8 @@ pub(crate) struct Conn<C: CliBehaviour, S: ServBehaviour> {
     parse_ctx: ParseContext,
 
     /// Remote version string. Kept for later kexinit rekeying
+    // TODO: could save space by hashing it into a KexHash and storing that instead.
+    // 256 bytes -> 112 bytes
     pub(crate) remote_version: ident::RemoteVersion,
 
     pub(crate) channels: Channels<C, S>,

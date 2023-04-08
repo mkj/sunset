@@ -109,8 +109,8 @@ impl Shell for DemoShell {
                 let b = &mut b[..lr];
                 for c in b.iter() {
                     menu.input_byte(*c);
+                    menu.context.flush(&mut stdio).await?;
                 }
-                menu.context.flush(&mut stdio).await?;
             }
             Ok(())
         };

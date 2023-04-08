@@ -185,7 +185,8 @@ pub trait Shell : Default {
 /// asynchronously to a channel.
 #[derive(Default)]
 pub struct BufOutput {
-    s: heapless::String<1024>,
+    /// Sufficient to hold output produced from a single keystroke input. Further output will be discarded
+    s: heapless::String<300>,
 }
 
 impl BufOutput {
@@ -205,12 +206,20 @@ impl BufOutput {
 
 impl core::fmt::Write for BufOutput {
     fn write_str(&mut self, s: &str) -> Result<(), core::fmt::Error> {
-        for c in s.chars() {
-            if c == '\n' {
-                self.s.push('\r').map_err(|_| core::fmt::Error)?;
+        let mut inner = || {
+            for c in s.chars() {
+                if c == '\n' {
+                    self.s.push('\r').map_err(|_| core::fmt::Error)?;
+                }
+                self.s.push(c).map_err(|_| core::fmt::Error)?;
             }
-            self.s.push(c).map_err(|_| core::fmt::Error)?;
+            Ok::<_, core::fmt::Error>(())
+        };
+
+        if inner().is_err() {
+            trace!("Buffer full in BufOutput");
         }
+
         Ok(())
     }
 }

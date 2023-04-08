@@ -3,7 +3,7 @@ use embassy_sync::blocking_mutex::raw::RawMutex;
 use embedded_io::asynch;
 
 use sunset::*;
-use sunset::behaviour::{UnusedCli, UnusedServ};
+use sunset::behaviour::UnusedCli;
 
 use crate::*;
 use embassy_sunset::EmbassySunset;

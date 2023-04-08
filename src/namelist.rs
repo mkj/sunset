@@ -18,7 +18,10 @@ use heapless::Vec;
 // - key types
 // - signature types
 // - auth types
-pub const MAX_LOCAL_NAMES: usize = 5;
+/// Max count of LocalNames entries
+///
+/// Current max is for kex, [curve25519, curve25519@libssh, ext-info, kexguess2]
+pub const MAX_LOCAL_NAMES: usize = 4;
 static EMPTY_LOCALNAMES: LocalNames = LocalNames::new();
 
 /// A comma separated string, can be decoded or encoded.
