@@ -541,7 +541,7 @@ fn decode_enum_names(
                     if atts.iter().any(|a| matches!(a, FieldAtt::CaptureUnknown)) {
                         // create the Unknown fallthrough but it will be at the end of the match list
                         let mut m = StreamBuilder::new();
-                        m.push_parsed(format!("_ => {{ s.ctx().seen_unknown = true; Self::{}(Unknown(variant))}}", var.name))?;
+                        m.push_parsed(format!("_ => {{ s.ctx().seen_unknown = true; Self::{}(Unknown::new(variant))}}", var.name))?;
                         if unknown_arm.replace(m).is_some() {
                             return Err(Error::Custom { error: "only one variant can have #[sshwire(unknown)]".into(), span: None})
                         }

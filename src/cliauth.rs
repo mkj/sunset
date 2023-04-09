@@ -144,19 +144,32 @@ impl CliAuth {
         &mut self,
         b: &mut impl CliBehaviour,
     ) -> Option<Req> {
-        let k = b.next_authkey().unwrap_or_else(|e| {
-            warn!("Error getting pubkey for auth");
-            None
-        });
-
-        match k {
-            Some(key) => {
-                Some(Req::PubKey { key })
-            }
-            None => {
-                trace!("stop iterating pubkeys");
-                self.try_pubkey = false;
+        loop {
+            let k = b.next_authkey().unwrap_or_else(|e| {
+                warn!("Error getting pubkey for auth");
                 None
+            });
+
+            match k {
+                Some(key) => {
+                    #[cfg(feature = "rsa")]
+                    match key {
+                        SignKey::RSA(_) | SignKey::AgentRSA(_) => {
+                            if !self.allow_rsa_sha2 {
+                                trace!("Skipping rsa key, no ext-info");
+                                continue
+                            }
+                        }
+                        _ => (),
+                    }
+
+                    break Some(Req::PubKey { key })
+                }
+                None => {
+                    trace!("stop iterating pubkeys");
+                    self.try_pubkey = false;
+                    break None
+                }
             }
         }
     }
@@ -297,6 +310,8 @@ impl CliAuth {
 
     pub fn handle_ext_info(&mut self, p: &packets::ExtInfo<'_>) {
         if let Some(ref algs) = p.server_sig_algs {
+            // we only worry about rsa-sha256, assuming other older key types are fine
+
             // OK unwrap: is a remote namelist
             self.allow_rsa_sha2 = algs.has_algo(SSH_NAME_RSA_SHA256).unwrap();
             trace!("setting allow_rsa_sha2 = {}", self.allow_rsa_sha2);

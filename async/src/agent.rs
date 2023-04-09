@@ -165,8 +165,11 @@ impl AgentClient {
     }
 
     pub async fn sign_auth(&mut self, key: &SignKey, msg: &AuthSigMsg<'_>) -> Result<OwnedSig> {
-        // TODO: rsa needs SSH_AGENT_FLAG_RSA_SHA2_256
-        let flags = 0u32;
+        let flags = match key {
+            SignKey::AgentRSA(_) => SSH_AGENT_FLAG_RSA_SHA2_256,
+            _ => 0,
+        };
+        trace!("flags {key:?}");
         let r = AgentRequest::SignRequest(AgentSignRequest {
             key_blob: Blob(key.pubkey()),
             msg: Blob(msg),

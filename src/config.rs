@@ -18,3 +18,5 @@ pub const MAX_TERM: usize = 32;
 
 pub const DEFAULT_TERM: &str = "xterm";
 
+pub const RSA_DEFAULT_KEYSIZE: usize = 2048;
+pub const RSA_MIN_KEYSIZE: usize = 1024;

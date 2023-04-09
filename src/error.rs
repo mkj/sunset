@@ -47,6 +47,9 @@ pub enum Error {
     /// Error in received SSH protocol. Will disconnect.
     SSHProtoError,
 
+    /// Received a key with invalid structure, or too large.
+    BadKeyFormat,
+
     /// Remote peer isn't SSH
     NotSSH,
 

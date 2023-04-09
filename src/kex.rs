@@ -40,7 +40,7 @@ const marker_only_kexs: &[&'static str] =
 
 const fixed_options_hostsig: &[&'static str] = &[
     SSH_NAME_ED25519,
-    #[cfg(rsa)]
+    #[cfg(feature = "rsa")]
     SSH_NAME_RSA_SHA256,
 ];
 
@@ -65,7 +65,7 @@ impl AlgoConfig {
         let mut kexs: LocalNames = fixed_options_kex.try_into().unwrap();
 
         // Only clients are interested in ext-info
-        // TODO perhaps it could go behind cfg(rsa)?
+        // TODO perhaps it could go behind cfg rsa?
         if is_client {
             // OK unwrap: static arrays are < MAX_LOCAL_NAMES+slack
             kexs.0.push(SSH_NAME_EXT_INFO_C).unwrap();
@@ -410,6 +410,7 @@ impl Kex {
             false => p.kex.has_algo(SSH_NAME_EXT_INFO_C).unwrap(),
         };
 
+        debug!("hostsig {:?}    vs   {:?}", p.hostsig, conf.hostsig);
         let hostsig_method = p
             .hostsig
             .first_match(is_client, &conf.hostsig)?

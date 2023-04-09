@@ -91,6 +91,8 @@ pub enum WireError {
 
     SSHProtoError,
 
+    BadKeyFormat,
+
     UnknownPacket { number: u8 },
 }
 
@@ -103,6 +105,7 @@ impl From<WireError> for Error {
             WireError::BadName => Error::BadName,
             WireError::SSHProtoError => Error::SSHProtoError,
             WireError::PacketWrong => Error::PacketWrong,
+            WireError::BadKeyFormat => Error::BadKeyFormat,
             WireError::UnknownVariant => Error::bug_err_msg("Can't encode Unknown"),
             WireError::UnknownPacket { number } => Error::UnknownPacket { number },
         }
@@ -583,6 +586,41 @@ impl DigestUpdate for sha2::Sha256 {
     }
 }
 
+fn top_bit_set(b: &[u8]) -> bool {
+    b.first().unwrap_or(&0) & 0x80 != 0
+}
+
+#[cfg(feature = "rsa")]
+impl SSHEncode for rsa::BigUint {
+    fn enc(&self, s: &mut dyn SSHSink) -> WireResult<()> {
+        let b = self.to_bytes_be();
+        let b = b.as_slice();
+
+        // rfc4251 mpint, need a leading zero byte if top bit is set
+        let pad = top_bit_set(b);
+        let len = b.len() as u32 + pad as u32;
+        len.enc(s)?;
+
+        if pad {
+            0u8.enc(s)?;
+        }
+
+        b.enc(s)
+    }
+}
+
+#[cfg(feature = "rsa")]
+impl<'de> SSHDecode<'de> for rsa::BigUint {
+    fn dec<S>(s: &mut S) -> WireResult<Self>
+    where S: SSHSource<'de> {
+        let b = BinString::dec(s)?;
+        if top_bit_set(b.0) {
+            trace!("received negative mpint");
+            return Err(WireError::BadKeyFormat)
+        }
+        Ok(rsa::BigUint::from_bytes_be(b.0))
+    }
+}
 
 #[cfg(test)]
 pub(crate) mod tests {
