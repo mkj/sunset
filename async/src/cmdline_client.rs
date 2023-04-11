@@ -204,7 +204,6 @@ impl<'a> CmdlineRunner<'a> {
             // if io_err is None we complete immediately
             if let Some(mut errin) = io_err {
                 let mut eo = crate::stderr_out().map_err(|e| {
-                    error!("open stderr: {e:?}");
                     Error::msg("opening stderr failed")
                 })?;
                 loop {
@@ -364,7 +363,6 @@ impl<'a> CmdlineRunner<'a> {
                 e = chanio => {
                     trace!("chanio finished: {e:?}");
                     cli.exit().await;
-                    trace!("break");
                     break;
                 }
 

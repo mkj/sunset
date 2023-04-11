@@ -120,7 +120,6 @@ impl<C: CliBehaviour, S: ServBehaviour> Conn<C, S> {
         s: &mut TrafSend<'_, '_>,
         b: &mut Behaviour<'_, C, S>,
     ) -> Result<(), Error> {
-        trace!("progress conn state {:?}", self.state);
         match self.state {
             ConnState::SendIdent => {
                 s.send_version()?;

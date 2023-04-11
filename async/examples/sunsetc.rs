@@ -116,7 +116,7 @@ async fn run(args: Args) -> Result<()> {
 
         let ssh = async {
             let r = cli.run(&mut rsock, &mut wsock, &hooks).await;
-            trace!("ssh run finished");
+            trace!("ssh run finished {r:?}");
             hooks.lock().await.exited().await;
             r
         };
@@ -264,7 +264,7 @@ fn setup_log(args: &Args, tz: UtcOffset) -> Result<()> {
     // not debugging these bits of the stack at present
     .add_filter_ignore_str("sunset::traffic")
     .add_filter_ignore_str("sunset::runner")
-    .add_filter_ignore_str("sunset_embassy")
+    // .add_filter_ignore_str("sunset_embassy")
     .set_time_offset(tz)
     .build();
 

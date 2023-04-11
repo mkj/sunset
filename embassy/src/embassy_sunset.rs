@@ -135,11 +135,11 @@ impl<'a, C: CliBehaviour, S: ServBehaviour> EmbassySunset<'a, C, S> {
                 // Perhaps not possible async, might deadlock.
                 let mut buf = [0; 1024];
                 let l = self.output(&mut buf).await?;
-                let mut buf = &buf[..l];
-                while buf.len() > 0 {
-                    let n = wsock.write(buf).await.expect("TODO handle write error");
-                    buf = &buf[n..];
-                }
+                wsock.write_all(&buf[..l]).await
+                .map_err(|e| {
+                    info!("socket write error: {e:?}");
+                    Error::ChannelEOF
+                })?;
             }
             #[allow(unreachable_code)]
             Ok::<_, sunset::Error>(())
@@ -150,9 +150,13 @@ impl<'a, C: CliBehaviour, S: ServBehaviour> EmbassySunset<'a, C, S> {
             loop {
                 // TODO: make sunset read directly from socket, no intermediate buffer.
                 let mut buf = [0; 1024];
-                let l = rsock.read(&mut buf).await.expect("TODO handle read error");
+                let l = rsock.read(&mut buf).await
+                .map_err(|e| {
+                    info!("socket read error: {e:?}");
+                    Error::ChannelEOF
+                })?;
                 if l == 0 {
-                    trace!("net EOF");
+                    debug!("net EOF");
                     self.flushing.store(true, Relaxed);
                     self.wake_progress();
                     break
@@ -193,6 +197,10 @@ impl<'a, C: CliBehaviour, S: ServBehaviour> EmbassySunset<'a, C, S> {
         let f = join::join3(prog, rx, tx).await;
         let (fp, _frx, _ftx) = f;
 
+        // debug!("fp {fp:?}");
+        // debug!("frx {_frx:?}");
+        // debug!("ftx {_ftx:?}");
+
         // TODO: is this a good way to do cancellation...?
         // self.with_runner(|runner| runner.close()).await;
         // // Wake any channels that were awoken after the runner closed
@@ -211,7 +219,6 @@ impl<'a, C: CliBehaviour, S: ServBehaviour> EmbassySunset<'a, C, S> {
     }
 
     fn wake_channels(&self, inner: &mut Inner<C, S>) -> Result<()> {
-        trace!("wake_channels");
         // Read wakers
         let w = &mut inner.wakers;
         if let Some((num, dt, _len)) = inner.runner.ready_channel_input() {
@@ -253,7 +260,6 @@ impl<'a, C: CliBehaviour, S: ServBehaviour> EmbassySunset<'a, C, S> {
             }
 
             if inner.runner.is_channel_closed(ch) {
-                trace!("wake chan {ch:?} closed");
                 w.chan_close[idx].wake();
             }
         }
@@ -274,7 +280,6 @@ impl<'a, C: CliBehaviour, S: ServBehaviour> EmbassySunset<'a, C, S> {
             }
             if let Some(ch) = ch.take() {
                 // done with the channel
-                trace!("done with {ch:?}");
                 inner.runner.channel_done(ch)?;
             }
         }
@@ -290,29 +295,21 @@ impl<'a, C: CliBehaviour, S: ServBehaviour> EmbassySunset<'a, C, S> {
         {
             let ret;
 
-            trace!("embassy progress");
         {
             if self.exit.load(Relaxed) {
-                error!("exit progress");
                 return Ok(ControlFlow::Break(()))
-            } else {
-                trace!("not exit progress");
             }
 
             let mut inner = self.inner.lock().await;
             {
                 {
-                    trace!("embassy progress inner");
                     let mut b = b.lock().await;
-                    trace!("embassy progress behaviour lock");
                     let b: &mut B = &mut b;
                     let mut b: Behaviour<C, S> = b.into();
                     ret = inner.runner.progress(&mut b).await?;
-                    trace!("embassy progress runner done");
                     // b is dropped, allowing other users
                 }
 
-                trace!("embassy progress wake chans");
                 self.wake_channels(&mut inner)?;
 
                 self.clear_refcounts(&mut inner)?;
@@ -366,10 +363,7 @@ impl<'a, C: CliBehaviour, S: ServBehaviour> EmbassySunset<'a, C, S> {
 
     pub async fn output(&self, buf: &mut [u8]) -> Result<usize> {
         self.poll_inner(|inner, cx| {
-            match inner.runner.output(buf).map(|r| {
-                debug!("embassy output {r:?}");
-                r
-            }) {
+            match inner.runner.output(buf) {
                 // no output ready
                 Ok(0) => {
                     inner.runner.set_output_waker(cx.waker());
@@ -446,11 +440,9 @@ impl<'a, C: CliBehaviour, S: ServBehaviour> EmbassySunset<'a, C, S> {
                 // 0 bytes written, pending
                 match dt {
                     ChanData::Normal => {
-                        trace!("register channel write {num} waker {:?}", cx.waker());
                         wakers.chan_write[num.0 as usize].register(cx.waker());
                     }
                     ChanData::Stderr => {
-                        trace!("register channel dt {num} waker {:?}", cx.waker());
                         wakers.chan_ext[num.0 as usize].register(cx.waker());
                     }
                 }
