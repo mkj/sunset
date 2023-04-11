@@ -3,7 +3,7 @@ use log::{debug, error, info, log, trace, warn};
 
 use std::fs::{File, OpenOptions};
 use std::path::{Path, PathBuf};
-use std::io::{BufRead, Write};
+use std::io::{BufRead, Write, Read};
 use std::io;
 
 use crate::*;
@@ -125,6 +125,23 @@ pub fn check_known_hosts_file(
     ask_to_confirm(host, port, key, p)
 }
 
+fn read_tty_response() -> Result<String, std::io::Error> {
+    let mut s;
+    let mut f = File::open("/dev/tty");
+    let f: &mut dyn Read = match f.as_mut() {
+        Ok(f) => f,
+        Err(_) => {
+            s = io::stdin();
+            &mut s
+        },
+    };
+
+    let mut f = io::BufReader::new(f);
+    let mut resp = String::new();
+    f.read_line(&mut resp)?;
+    Ok(resp)
+}
+
 fn ask_to_confirm(
     host: &str,
     port: u16,
@@ -135,11 +152,9 @@ fn ask_to_confirm(
     let k: OpenSSHKey = key.try_into()?;
     let fp = k.fingerprint(Default::default());
     let h = host_part(host, port);
-    println!("\nHost {h} is not in ~/.ssh/known_hosts\nFingerprint {fp}\nDo you want to continue connecting? (y/n)");
+    let _ = writeln!(io::stderr(), "\nHost {h} is not in ~/.ssh/known_hosts\nFingerprint {fp}\nDo you want to continue connecting? (y/n)");
 
-    let mut resp = String::new();
-    io::stdin().read_line(&mut resp)?;
-
+    let mut resp = read_tty_response()?;
     resp.make_ascii_lowercase();
     if resp.starts_with('y') {
         add_key(host, port, key, p)
