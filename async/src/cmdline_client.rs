@@ -239,6 +239,9 @@ impl<'a> CmdlineRunner<'a> {
                 // TODO buffers
                 let mut buf = [0u8; 1000];
                 let l = si.read(&mut buf).await.map_err(|_| Error::ChannelEOF)?;
+                if l == 0 {
+                    return Err(Error::ChannelEOF)
+                }
 
                 let buf = &buf[..l];
 
