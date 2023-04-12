@@ -536,6 +536,7 @@ impl SharedSecret {
 
         // TODO: error message on signature failure.
         let h: &[u8] = kex_out.h.as_ref();
+        trace!("verify  h {}", h.hex_dump());
         algos.hostsig.verify(&p.k_s.0, &h, &p.sig.0, None)?;
         debug!("Hostkey signature is valid");
         if matches!(b.valid_hostkey(&p.k_s.0), Ok(true)) {
@@ -572,6 +573,7 @@ impl SharedSecret {
         let q_s = BinString(kex_pub);
 
         let k_s = Blob(hostkey.pubkey());
+        trace!("sign kexreply h {}", ko.h.as_slice().hex_dump());
         let sig = hostkey.sign(&ko.h.as_slice(), None)?;
         let sig: Signature = (&sig).into();
         let sig = Blob(sig);
@@ -719,7 +721,7 @@ impl KexCurve25519 {
 mod tests {
     use pretty_hex::PrettyHex;
 
-    use crate::encrypt;
+    use crate::encrypt::{self, SSH_PAYLOAD_START, KeyState};
     use crate::error::Error;
     use crate::ident::RemoteVersion;
     use crate::kex::*;
@@ -727,6 +729,7 @@ mod tests {
     use crate::packets::{Packet,ParseContext};
     use crate::*;
     use crate::sunsetlog::init_test_log;
+    use std::collections::VecDeque;
 
     // TODO:
     // - test algo negotiation
@@ -776,7 +779,8 @@ mod tests {
     }
 
     /// Round trip a `Packet`
-    fn _reencode<'a>(out_buf: &'a mut [u8], p: Packet, ctx: &ParseContext) -> Packet<'a> {
+    fn reencode<'a>(out_buf: &'a mut [u8], p: Packet) -> Packet<'a> {
+        let ctx = Default::default();
         let l = sshwire::write_ssh(out_buf, &p).unwrap();
         sshwire::packet_from_bytes(&out_buf[..l], &ctx).unwrap()
     }
@@ -803,77 +807,193 @@ mod tests {
         }
     }
 
-    // struct BlankTrafSend {
-    //     buf: Vec<u8>,
-    //     keys: encrypt::KeyState,
-    // }
+    struct TestCliBehaviour {
+        allow_key: bool,
+    }
 
-    // impl BlankTrafSend {
-    //     fn new() -> Self {
-    //         Self {
-    //             buf: vec![0u8, 3000],
-    //             keys: encrypt::KeyState::new_cleartext(),
-    //         }
-    //     }
+    impl CliBehaviour for TestCliBehaviour {
+        fn username(&mut self) -> BhResult<ResponseString> {
+            Ok("matt".try_into().unwrap())
+        }
 
-    //     fn sender(&mut self) -> traffic::TrafSend {
-    //         let mut t = traffic::TrafOut::new(&mut self.buf);
-    //         t.sender(&mut self.keys)
-    //     }
-    // }
+        fn valid_hostkey(&mut self, key: &PubKey) -> BhResult<bool> {
+            Ok(self.allow_key)
+        }
 
+        fn authenticated(&mut self) {
+        }
+    }
+
+    /// A debug fixture to capture output then deserialize it.
+    /// Leaks lots.
+    struct TrafCatcher {
+        traf_out: traffic::TrafOut<'static>,
+        traf_in: traffic::TrafIn<'static>,
+        keys: encrypt::KeyState,
+        rv: RemoteVersion,
+
+        buf: VecDeque<u8>,
+    }
+
+    // Round trips packets through TrafOut/TrafIn, allowing
+    // to capture sent packets.
+    // This leaks vectors rather than dealing with borrowed Packets
+    impl TrafCatcher {
+        fn new() -> Self {
+            let traf_in = traffic::TrafIn::new(vec![0u8; 3000].leak());
+            let mut rv = RemoteVersion::new();
+            rv.consume(b"SSH-2.0-thing\r\n").unwrap();
+            rv.version().unwrap();
+
+            Self {
+                traf_out: traffic::TrafOut::new(vec![0u8; 3000].leak()),
+                traf_in,
+                keys: encrypt::KeyState::new_cleartext(),
+                rv,
+                buf: VecDeque::new(),
+            }
+        }
+
+        fn sender<'f>(&'f mut self) -> traffic::TrafSend<'f, 'static> {
+            self.traf_out.sender(&mut self.keys)
+        }
+
+        // Returns Some(packet), or None if empty
+        fn next(&mut self) -> Option<Packet<'static>> {
+            // get output
+            let mut b = vec![0u8; 3000];
+            let l = self.traf_out.output(b.as_mut_slice());
+            assert!(l < b.len(), "Not enough space");
+            let b = &b[..l];
+
+            self.buf.extend(b.iter());
+            let b = self.buf.make_contiguous();
+
+            self.traf_in.done_payload(false);
+            let l = self.traf_in.input(&mut self.keys, &mut self.rv, b).unwrap();
+            self.buf.drain(..l);
+
+            self.traf_in.payload().map(|(payload, _seq)| {
+                let payload = Vec::from(payload).leak();
+                sshwire::packet_from_bytes(payload, &Default::default()).unwrap()
+            })
+        }
+    }
 
     #[test]
-    fn test_agree_kex() {
+    fn test_agree_kex_allow_key() {
+        test_agree_kex(true)
+    }
+
+    #[test]
+    #[should_panic(expectd = "Host key rejected")]
+    fn test_agree_kex_disallow_key() {
+        test_agree_kex(false)
+    }
+
+    // other things to test:
+    // - first_follows, and kexguess2
+
+    fn test_agree_kex(allow_key: bool) {
         #![allow(unused)]
         init_test_log();
-        // let mut bufc = [0u8; 1000];
-        // let mut bufs = [0u8; 1000];
         let cli_conf = kex::AlgoConfig::new(true);
         let serv_conf = kex::AlgoConfig::new(false);
-        let mut serv_version = RemoteVersion::new();
-        // needs to be hardcoded because that's what we send.
-        serv_version.consume(b"SSH-2.0-sunset\r\n").unwrap();
-        let mut cli_version = RemoteVersion::new();
-        cli_version.consume(b"SSH-2.0-sunset\r\n").unwrap();
 
+        // needs to be hardcoded because that's what we send.
+        let mut s = Vec::from(crate::ident::OUR_VERSION);
+        s.extend_from_slice(b"\r\n");
+        let mut version = RemoteVersion::new();
+        version.consume(s.as_slice()).unwrap();
+
+        let mut keys = vec![];
+        keys.push(crate::SignKey::generate(crate::KeyType::Ed25519, None).unwrap());
         let mut sb = TestServBehaviour {
-            // TODO: put keys in
-            keys: vec![]
+            keys,
         };
         let mut sb = Behaviour::<behaviour::UnusedCli, _>::new_server(&mut sb);
-        let _sb = sb.server().unwrap();
+        let sb = sb.server().unwrap();
+        let mut cb = TestCliBehaviour {
+            allow_key
+        };
+        let mut cb = Behaviour::<_, behaviour::UnusedServ>::new_client(&mut cb);
+        let cb = cb.client().unwrap();
 
-        let cli = kex::Kex::new();
-        let serv = kex::Kex::new();
+        let mut ts = TrafCatcher::new();
+        let mut tc = TrafCatcher::new();
 
-        // // reencode so we end up with NameList::String not Local
-        // let ctx = ParseContext::new();
-        // let si = serv.make_kexinit(&serv_conf);
-        // let _si = reencode(&mut bufs, si, &ctx);
-        // let ci = cli.make_kexinit(&cli_conf);
-        // let _ci = reencode(&mut bufc, ci, &ctx);
+        let mut cli = kex::Kex::new();
+        let mut serv = kex::Kex::new();
 
-        // TODO fix this
+        serv.send_kexinit(&serv_conf, &mut ts.sender()).unwrap();
+        cli.send_kexinit(&cli_conf, &mut tc.sender()).unwrap();
 
-        // let ts = BlankTrafSend::new();
-        // let s = ts.sender();
-        // serv.handle_kexinit(&ci, false, &serv_conf, &cli_version, &mut s).unwrap();
-        // cli.handle_kexinit(&si, true, &cli_conf, &serv_version, &mut s).unwrap();
+        let cli_init = tc.next().unwrap();
+        let cli_init = if let Packet::KexInit(k) = cli_init { k } else { panic!() };
+        assert!(tc.next().is_none());
+        let serv_init = ts.next().unwrap();
+        let serv_init = if let Packet::KexInit(k) = serv_init { k } else { panic!() };
+        assert!(ts.next().is_none());
 
-        // let ci = cli.make_kexdhinit().unwrap();
-        // let ci = if let Packet::KexDHInit(k) = ci { k } else { panic!() };
-        // let sout = serv.handle_kexdhinit(&ci, &None, &mut s, sb).unwrap();
+        serv.handle_kexinit(cli_init, false, &serv_conf, &version, &mut ts.sender()).unwrap();
+        cli.handle_kexinit(serv_init, true, &cli_conf, &version, &mut tc.sender()).unwrap();
 
+        let cli_dhinit = tc.next().unwrap();
+        let cli_dhinit = if let Packet::KexDHInit(k) = cli_dhinit { k } else { panic!() };
+        assert!(tc.next().is_none());
 
-        // let kexreply = sout.make_kexdhreply(sb);
+        assert!(ts.next().is_none());
 
-        // let kexreply =
-        //     if let Packet::KexDHReply(k) = kexreply { k } else { panic!() };
+        serv.handle_kexdhinit(&cli_dhinit, &mut ts.sender(), sb).unwrap();
+        let serv_dhrep = ts.next().unwrap();
+        let serv_dhrep = if let Packet::KexDHReply(k) = serv_dhrep { k } else { panic!() };
+        assert!(matches!(ts.next().unwrap(), Packet::NewKeys(_)));
 
-        // TODO need host signatures for it to succeed
-        // let cout = cli.handle_kexdhreply(&kexreply, &None).unwrap();
+        let s = &mut tc.sender();
+        let f = cli.handle_kexdhreply(&serv_dhrep, s, cb);
+        let f = crate::non_async(f).unwrap();
+        f.unwrap();
+        assert!(matches!(tc.next().unwrap(), Packet::NewKeys(_)));
 
-        // assert_eq!(cout.h.as_ref(), sout.h.as_ref());
+        let (cout, calgos) = if let Kex::NewKeys { output, algos } = cli {
+            (output, algos)
+        } else {
+            panic!();
+        };
+        let (sout, salgos) = if let Kex::NewKeys { output, algos } = serv {
+            (output, algos)
+        } else {
+            panic!();
+        };
+
+        // output hash matches
+        assert_eq!(cout.h, sout.h);
+
+        // roundtrip with the derived keys
+        let sess_id = SessId::from_slice(&Sha256::digest(b"some sessid")).unwrap();
+
+        let mut skeys = crate::encrypt::KeyState::new_cleartext();
+        skeys.rekey(Keys::derive(sout, &sess_id, &salgos).unwrap());
+        let mut ckeys = crate::encrypt::KeyState::new_cleartext();
+        ckeys.rekey(Keys::derive(cout, &sess_id, &calgos).unwrap());
+
+        roundtrip(b"this", &mut skeys, &mut ckeys);
+        roundtrip(&[13u8; 50], &mut ckeys, &mut skeys);
+
+    }
+
+    fn roundtrip(payload: &[u8], enc: &mut KeyState, dec: &mut KeyState) {
+        let mut b = vec![];
+        b.resize(SSH_PAYLOAD_START, 0);
+        b.extend_from_slice(payload);
+        b.resize(100, 0);
+
+        let l = enc.encrypt(payload.len(), &mut b).unwrap();
+        let l_dec = dec.decrypt_first_block(&mut b).unwrap();
+        assert_eq!(l, l_dec);
+        b.resize(l_dec, 0u8);
+        let l = dec.decrypt(&mut b).unwrap();
+        let dec_payload = &b[SSH_PAYLOAD_START..SSH_PAYLOAD_START+l];
+        assert_eq!(payload, dec_payload);
     }
 }

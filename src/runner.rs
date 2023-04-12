@@ -113,7 +113,9 @@ impl<'a, C: CliBehaviour, S: ServBehaviour> Runner<'a, C, S> {
     /// does so. Note that some computationally intensive operations may be performed
     /// during key exchange.
     ///
-    /// Returns Ok(true) if an input packet was handled, Ok(false) if no packet was ready
+    /// Non-async callers can wrap this with the [`non_async`] helper function.
+    ///
+    /// Returns `Ok(true)` if an input packet was handled, `Ok(false)` if no packet was ready
     /// (Can also return various errors)
     pub async fn progress(&mut self, behaviour: &mut Behaviour<'_, C, S>)
         -> Result<Progress>
@@ -134,7 +136,7 @@ impl<'a, C: CliBehaviour, S: ServBehaviour> Runner<'a, C, S> {
             } else {
                 // other packets have been completed
                 trace!("handle_payload done");
-                self.traf_in.done_payload(d.zeroize_payload)?;
+                self.traf_in.done_payload(d.zeroize_payload);
             }
         }
 

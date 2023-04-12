@@ -20,7 +20,7 @@ suggest something!
 
   At present the Pico W build is around 150kB binary size
   (plus ~200KB [cyw43](https://github.com/embassy-rs/cyw43/) wifi firmware),
-  using about 30kB RAM per concurrent SSH session (max stack size not confirmed).
+  using about 15kB RAM per concurrent SSH session (max stack size not confirmed).
 
 - [`sunset-async`](async/) adds functionality to use Sunset as a normal SSH client or
   server async library in normal Rust (not `no_std`). The
@@ -37,16 +37,16 @@ Working:
 - curve25519 key exchange
 - chacha20-poly1305, aes256-ctr ciphers
 - hmac-sha256 integrity
+- rsa (will be `std`-only unless someone writes a `no_std` crate)
+- `~.` client escape sequences
 
 Desirable:
 
 - TCP forwarding
-- rsa (will be `std`-only unless someone writes a `no_std` crate)
 - dh-group14 (probably `std`-only, need to investigate crates)
 - Perhaps aes256-gcm
 - Perhaps ECDSA, hardware often supports it ahead of ed25519
 - SFTP
-- `~.` client escape sequences
 
 ## License
 
@@ -54,7 +54,9 @@ Currently MPL2, though may possibly move to MIT-style in future (I'm undecided)
 
 ## Rust versions
 
-`sunset` core builds on stable Rust. There's no MSRV guarantee now since it's early.
+At present `sunset` requires nightly Rust, in order to use async functions in
+the `Behaviour` traits. It is intended to switch to stable Rust once that
+feature stabilises.
 
 `sunset-embassy` requires a nightly Rust version, as required by Embassy. See the
 [embassy/rust-toolchain.toml](rust-toolchain.toml) for a known-good version.

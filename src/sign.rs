@@ -164,9 +164,10 @@ pub enum KeyType {
     RSA,
 }
 
-/// A SSH signing key. This may hold the private part locally
-/// or could potentially send the signing requests to a SSH agent
-/// or other entitiy.
+/// A SSH signing key.
+///
+/// This may hold the private key part locally
+/// or potentially send the signing requests to an SSH agent or other entity.
 #[derive(ZeroizeOnDrop)]
 pub enum SignKey {
     // TODO bloat: this is an expanded keypair, we should store the raw bytes

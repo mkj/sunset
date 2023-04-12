@@ -62,6 +62,9 @@ embedded-io = { version = "0.4", optional = true }
 # for debug printing
 pretty-hex = { version = "0.3", default-features = false }
 
+# for non_async
+futures = "0.3"
+
 [features]
 std = ["snafu/std", "snafu/backtraces", "rsa"]
 rsa = ["dep:rsa", "ssh-key/rsa"]
@@ -76,6 +79,7 @@ snafu = { version = "0.7", default-features = true }
 anyhow = { version = "1.0" }
 pretty-hex = "0.3"
 simplelog = { version = "0.12", features = ["test"] }
+
 
 [patch.crates-io]
 # needed for Default WakerRegistration, https://github.com/embassy-rs/embassy/commit/14a2d1524080593f7795fe14950a3f0ee6e2b409

@@ -95,7 +95,6 @@ impl<'a> TrafIn<'a> {
     }
 
     pub fn is_input_ready(&self) -> bool {
-        info!("is_input_ready {:?}", self.state);
         match self.state {
             | RxState::Idle
             | RxState::ReadInitial { .. }
@@ -114,7 +113,6 @@ impl<'a> TrafIn<'a> {
         buf: &[u8],
     ) -> Result<usize, Error> {
         let mut inlen = 0;
-        info!("assert");
         debug_assert!(self.is_input_ready());
         if remote_version.version().is_none() && matches!(self.state, RxState::Idle) {
             // Handle initial version string
@@ -127,20 +125,17 @@ impl<'a> TrafIn<'a> {
     }
 
     /// Called when `payload()` and `payload_reborrow()` are complete.
-    pub(crate) fn done_payload(&mut self, zeroize: bool) -> Result<(), Error> {
+    pub(crate) fn done_payload(&mut self, zeroize: bool) {
         match self.state {
             RxState::InPayload { len, .. } => {
                 if zeroize {
                     self.buf[SSH_PAYLOAD_START..SSH_PAYLOAD_START + len].zeroize();
                 }
-                trace!("channel_input idle was {:?} done_payload", self.state);
                 self.state = RxState::Idle;
-                Ok(())
             }
             _ => {
                 // Just ignore it
                 // warn!("done_payload called without payload, st {:?}", self.state);
-                Ok(())
             }
         }
     }

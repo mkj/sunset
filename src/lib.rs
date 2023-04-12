@@ -41,6 +41,7 @@ pub mod behaviour;
 mod termmodes;
 mod ssh_chapoly;
 mod traffic;
+mod noasync;
 
 pub mod packets;
 pub mod sshwire;
@@ -60,3 +61,4 @@ pub use sshnames::ChanFail;
 pub use channel::{ChanData, ChanNum};
 pub use runner::ChanHandle;
 pub use auth::AuthSigMsg;
+pub use noasync::non_async;

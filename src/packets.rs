@@ -754,9 +754,9 @@ pub struct DirectTcpip<'a> {
 
 /// Placeholder for unknown method names.
 ///
-///These are sometimes non-fatal and
-/// need to be handled by the relevant code, for example newly invented pubkey types
-/// This is deliberately not SSHEncode, we only receive it. sshwire-derive will
+/// These are sometimes non-fatal and
+/// need to be handled by the relevant code, for example newly invented pubkey types.
+/// This is deliberately not `SSHEncode`, we only receive it. sshwire-derive will
 /// automatically create instances.
 #[derive(Clone, PartialEq)]
 pub struct Unknown<'a>(pub &'a [u8]);
@@ -1018,11 +1018,12 @@ mod tests {
     fn roundtrip_authpubkey() {
         init_test_log();
         // with None sig
-        let k = SignKey::generate(KeyType::Ed25519).unwrap();
+        let k = SignKey::generate(KeyType::Ed25519, None).unwrap();
+        let method = AuthMethod::PubKey(MethodPubKey::new(k.pubkey(), None).unwrap());
         let p = UserauthRequest {
             username: "matt".into(),
             service: "conn".into(),
-            method: k.pubkey().try_into().unwrap(),
+            method,
         }.into();
         test_roundtrip(&p);
 
