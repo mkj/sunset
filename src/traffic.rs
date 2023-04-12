@@ -185,7 +185,7 @@ impl<'a> TrafIn<'a> {
         if let RxState::ReadInitial { idx } = self.state {
             if idx >= size_block {
                 let w = &mut self.buf[..size_block];
-                let total_len = keys.decrypt_first_block(w)? as usize;
+                let total_len = keys.decrypt_first_block(w)?;
                 if total_len > self.buf.len() {
                     // TODO: Or just BadDecrypt could make more sense if
                     // it were packet corruption/decryption failure

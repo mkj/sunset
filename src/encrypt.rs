@@ -73,7 +73,7 @@ impl KeyState {
     }
 
     /// Decrypts the first block in the buffer, returning the length.
-    pub fn decrypt_first_block(&mut self, buf: &mut [u8]) -> Result<u32, Error> {
+    pub fn decrypt_first_block(&mut self, buf: &mut [u8]) -> Result<usize, Error> {
         self.keys.decrypt_first_block(buf, self.seq_decrypt.0)
     }
 
@@ -223,7 +223,7 @@ impl Keys {
     /// handled later by [`decrypt`]. Bytes `buf[0..4]` may be left unmodified.
     fn decrypt_first_block(
         &mut self, buf: &mut [u8], seq: u32,
-    ) -> Result<u32, Error> {
+    ) -> Result<usize, Error> {
         if buf.len() < self.dec.size_block() {
             return Err(Error::bug());
         }
@@ -244,7 +244,7 @@ impl Keys {
             .ok_or(Error::BadDecrypt)?;
         trace!("len {len:?} total {total_len:?}");
 
-        Ok(total_len)
+        Ok(total_len as usize)
     }
 
     /// Decrypt the whole packet buffer and validate AEAD Tag or MAC.
@@ -659,7 +659,7 @@ mod tests {
                 v[SSH_PAYLOAD_START] ^= 4;
             }
 
-            let l = keys_dec.decrypt_first_block(v.as_mut_slice()).unwrap() as usize;
+            let l = keys_dec.decrypt_first_block(v.as_mut_slice()).unwrap();
             assert_eq!(l, v.len());
 
             let dec = keys_dec.decrypt(v.as_mut_slice());
