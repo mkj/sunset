@@ -39,7 +39,7 @@ pub struct SSHConfig {
 
 impl SSHConfig {
     pub fn new() -> Result<Self> {
-        let keys = [SignKey::generate(KeyType::Ed25519)?];
+        let keys = [SignKey::generate(KeyType::Ed25519, None)?];
         Ok(Self {
             keys
         })
