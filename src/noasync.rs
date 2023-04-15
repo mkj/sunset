@@ -9,6 +9,7 @@ use crate::*;
 use core::task::{Context, Poll};
 use core::future::Future;
 
+#[derive(Debug)]
 pub struct PendingAwait;
 
 /// Runs an async function that is not expected to `.await`.

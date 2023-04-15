@@ -3,11 +3,12 @@
 #![feature(type_alias_impl_trait)]
 #![feature(async_fn_in_trait)]
 #![allow(incomplete_features)]
+//#![feature(impl_trait_in_assoc_type)]
 
 use defmt::*;
 use embassy_executor::Spawner;
 use embassy_net::Stack;
-use embassy_rp::gpio::{Flex, Level, Output};
+use embassy_rp::pio::PioPeripheral;
 use {defmt_rtt as _, panic_probe as _};
 
 use static_cell::StaticCell;
@@ -45,13 +46,9 @@ async fn main(spawner: Spawner) {
     caprand::setup(&mut p.PIN_10).unwrap();
     getrandom::register_custom_getrandom!(caprand::getrandom);
 
-    let pwr = Output::new(p.PIN_23, Level::Low);
-    let cs = Output::new(p.PIN_25, Level::High);
-    let clk = Output::new(p.PIN_29, Level::Low);
-    let dio = Flex::new(p.PIN_24);
-
+    let (_, sm, _, _, _) = p.PIO0.split();
     // spawn the wifi stack
-    let stack = wifi::wifi_stack(&spawner, pwr, cs, clk, dio).await;
+    let stack = wifi::wifi_stack(&spawner, p.PIN_23, p.PIN_24, p.PIN_25, p.PIN_29, p.DMA_CH0, sm).await;
     let stack = &*singleton!(stack);
     unwrap!(spawner.spawn(net_task(&stack)));
 

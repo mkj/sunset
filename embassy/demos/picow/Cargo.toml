@@ -7,11 +7,12 @@ edition = "2021"
 # blank
 
 [dependencies]
-cyw43 = { git = "https://github.com/embassy-rs/cyw43/", features = ["defmt"]}
+cyw43 = { git = "https://github.com/embassy-rs/cyw43/", rev = "46efce6ea2d4280d5e8e1eaece53269a94fb4847", features = ["defmt"]}
+cyw43-pio = { git = "https://github.com/embassy-rs/cyw43/", rev = "46efce6ea2d4280d5e8e1eaece53269a94fb4847" }
 # cyw43 = { path = "/home/matt/3rd/rs/cyw43", features = ["defmt"]}
-embassy-executor = { version = "0.1.0",  features = ["defmt", "integrated-timers"] }
+embassy-executor = { version = "0.1.0",  features = ["defmt", "integrated-timers", "executor-thread", "arch-cortex-m"] }
 embassy-time = { version = "0.1.0",  features = ["defmt", "defmt-timestamp-uptime"] }
-embassy-rp = { version = "0.1.0",  features = ["defmt", "unstable-traits", "nightly", "unstable-pac"] }
+embassy-rp = { version = "0.1.0",  features = ["defmt", "unstable-traits", "nightly", "unstable-pac", "pio"] }
 # embassy-net/nightly is required for asynch::Read/Write on TcpReader/TcpWriter
 embassy-net = { version = "0.1.0", features = ["tcp", "dhcpv4", "medium-ethernet", "nightly", "defmt"] }
 embassy-net-driver = { version = "0.1.0" }
@@ -27,8 +28,8 @@ panic-probe = { version = "0.3", features = ["print-defmt"] }
 cortex-m = { version = "0.7.6", features = ["critical-section-single-core"]}
 cortex-m-rt = "0.7.0"
 
-embedded-hal-1 = { package = "embedded-hal", version = "1.0.0-alpha.8" }
-embedded-hal-async = { version = "0.2.0-alpha.0" }
+embedded-hal-1 = { package = "embedded-hal", version = "1.0.0-alpha.10" }
+embedded-hal-async = { version = "0.2.0-alpha.1" }
 embedded-io = { version = "0.4", features = ["async", "defmt"] }
 heapless = "0.7.15"
 
@@ -55,15 +56,15 @@ defmt = []
 romfw = []
 
 [patch.crates-io]
-embassy-executor = { git = "https://github.com/embassy-rs/embassy", rev = "e1eac15c429f88b1176109d6ce42185e2774ac86" }
-embassy-time = { git = "https://github.com/embassy-rs/embassy", rev = "e1eac15c429f88b1176109d6ce42185e2774ac86" }
-embassy-futures = { git = "https://github.com/embassy-rs/embassy", rev = "e1eac15c429f88b1176109d6ce42185e2774ac86" }
-embassy-sync = { git = "https://github.com/embassy-rs/embassy", rev = "e1eac15c429f88b1176109d6ce42185e2774ac86" }
-embassy-rp = { git = "https://github.com/embassy-rs/embassy", rev = "e1eac15c429f88b1176109d6ce42185e2774ac86" }
-embassy-net = { git = "https://github.com/embassy-rs/embassy", rev = "e1eac15c429f88b1176109d6ce42185e2774ac86" }
+embassy-executor = { git = "https://github.com/embassy-rs/embassy", rev = "5a03b2e9e802626127038cff5634795f576f1c69" }
+embassy-time = { git = "https://github.com/embassy-rs/embassy", rev = "5a03b2e9e802626127038cff5634795f576f1c69" }
+embassy-futures = { git = "https://github.com/embassy-rs/embassy", rev = "5a03b2e9e802626127038cff5634795f576f1c69" }
+embassy-sync = { git = "https://github.com/embassy-rs/embassy", rev = "5a03b2e9e802626127038cff5634795f576f1c69" }
+embassy-rp = { git = "https://github.com/embassy-rs/embassy", rev = "5a03b2e9e802626127038cff5634795f576f1c69" }
+embassy-net = { git = "https://github.com/embassy-rs/embassy", rev = "5a03b2e9e802626127038cff5634795f576f1c69" }
 # for cyw43
-embassy-net-driver-channel = { git = "https://github.com/embassy-rs/embassy", rev = "e1eac15c429f88b1176109d6ce42185e2774ac86" }
-embassy-net-driver = { git = "https://github.com/embassy-rs/embassy", rev = "e1eac15c429f88b1176109d6ce42185e2774ac86" }
+embassy-net-driver-channel = { git = "https://github.com/embassy-rs/embassy", rev = "5a03b2e9e802626127038cff5634795f576f1c69" }
+embassy-net-driver = { git = "https://github.com/embassy-rs/embassy", rev = "5a03b2e9e802626127038cff5634795f576f1c69" }
 
 [profile.dev]
 debug = 2

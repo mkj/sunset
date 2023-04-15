@@ -22,7 +22,7 @@ env_logger = "0.9.0"
 
 embedded-hal-1 = { package = "embedded-hal", version = "1.0.0-alpha.8" }
 embedded-hal-async = { version = "0.1.0-alpha.2" }
-embedded-io = { version = "0.4", features = ["async", "defmt"] }
+embedded-io = { version = "0.4", features = ["async"] }
 heapless = "0.7.15"
 
 # for tuntap
@@ -39,13 +39,13 @@ rand = { version = "0.8", default-features = false, features = ["getrandom"] }
 sha2 = { version = "0.10", default-features = false }
 
 [patch.crates-io]
-embassy-executor = { git = "https://github.com/embassy-rs/embassy", rev = "e1eac15c429f88b1176109d6ce42185e2774ac86" }
-embassy-time = { git = "https://github.com/embassy-rs/embassy", rev = "e1eac15c429f88b1176109d6ce42185e2774ac86" }
-embassy-futures = { git = "https://github.com/embassy-rs/embassy", rev = "e1eac15c429f88b1176109d6ce42185e2774ac86" }
-embassy-sync = { git = "https://github.com/embassy-rs/embassy", rev = "e1eac15c429f88b1176109d6ce42185e2774ac86" }
-embassy-net = { git = "https://github.com/embassy-rs/embassy", rev = "e1eac15c429f88b1176109d6ce42185e2774ac86" }
+embassy-executor = { git = "https://github.com/embassy-rs/embassy", rev = "5a03b2e9e802626127038cff5634795f576f1c69" }
+embassy-time = { git = "https://github.com/embassy-rs/embassy", rev = "5a03b2e9e802626127038cff5634795f576f1c69" }
+embassy-futures = { git = "https://github.com/embassy-rs/embassy", rev = "5a03b2e9e802626127038cff5634795f576f1c69" }
+embassy-sync = { git = "https://github.com/embassy-rs/embassy", rev = "5a03b2e9e802626127038cff5634795f576f1c69" }
+embassy-net = { git = "https://github.com/embassy-rs/embassy", rev = "5a03b2e9e802626127038cff5634795f576f1c69" }
 # for tuntap
-embassy-net-driver = { git = "https://github.com/embassy-rs/embassy", rev = "e1eac15c429f88b1176109d6ce42185e2774ac86" }
+embassy-net-driver = { git = "https://github.com/embassy-rs/embassy", rev = "5a03b2e9e802626127038cff5634795f576f1c69" }
 
 [profile.dev]
 debug = 2

@@ -586,6 +586,7 @@ impl DigestUpdate for sha2::Sha256 {
     }
 }
 
+#[cfg(feature = "rsa")]
 fn top_bit_set(b: &[u8]) -> bool {
     b.first().unwrap_or(&0) & 0x80 != 0
 }

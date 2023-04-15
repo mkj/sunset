@@ -2,14 +2,13 @@
 // Copyright (c) 2019-2022 Embassy project contributors
 // MIT or Apache-2.0 license
 
-use core::convert::Infallible;
-
-use embassy_rp::gpio::{Flex, Output};
-use embassy_rp::peripherals::{PIN_23, PIN_24, PIN_25, PIN_29};
+use embassy_rp::gpio::{Level, Output};
+use embassy_rp::pio::{PioStateMachineInstance, Sm0, Pio0};
+use embassy_rp::peripherals::*;
 use embassy_executor::Spawner;
 use embassy_net::{Stack, StackResources};
-use embedded_hal_1::spi::ErrorType;
-use embedded_hal_async::spi::{ExclusiveDevice, SpiBusFlush, SpiBusRead, SpiBusWrite};
+
+use cyw43_pio::PioSpi;
 
 use static_cell::StaticCell;
 
@@ -19,95 +18,58 @@ use rand::RngCore;
 use crate::singleton;
 
 #[embassy_executor::task]
-pub(crate) async fn wifi_task(
-    runner: cyw43::Runner<'static, Output<'static, PIN_23>, ExclusiveDevice<MySpi, Output<'static, PIN_25>>>,
+async fn wifi_task(
+    runner: cyw43::Runner<
+        'static,
+        Output<'static, PIN_23>,
+        PioSpi<PIN_25, PioStateMachineInstance<Pio0, Sm0>, DMA_CH0>,
+    >,
 ) -> ! {
     runner.run().await
 }
 
-pub(crate) struct MySpi {
-    /// SPI clock
-    pub clk: Output<'static, PIN_29>,
+// It would be nice to make Pio0, Sm0, DMA_CH0 generic, but wifi_task can't have generics.
+pub(crate) async fn wifi_stack(spawner: &Spawner,
+    p23: PIN_23, p24: PIN_24, p25: PIN_25, p29: PIN_29, dma: DMA_CH0,
+    sm: PioStateMachineInstance<Pio0, Sm0>,
+    ) -> embassy_net::Stack<cyw43::NetDriver<'static>>
+    {
 
-    /// 4 signals, all in one!!
-    /// - SPI MISO
-    /// - SPI MOSI
-    /// - IRQ
-    /// - strap to set to gSPI mode on boot.
-    pub dio: Flex<'static, PIN_24>,
-}
+    let (fw, clm) = get_fw();
 
-impl ErrorType for MySpi {
-    type Error = Infallible;
-}
+    let pwr = Output::new(p23, Level::Low);
+    let cs = Output::new(p25, Level::High);
+    let spi = PioSpi::new(sm, cs, p24, p29, dma);
 
-impl SpiBusFlush for MySpi {
-    async fn flush(&mut self) -> Result<(), Self::Error> {
-        Ok(())
+    let state = singleton!(cyw43::State::new());
+    let (net_device, mut control, runner) = cyw43::new(state, pwr, spi, fw).await;
+    spawner.spawn(wifi_task(runner)).unwrap();
+
+    control.init(clm).await;
+    // control.set_power_management(cyw43::PowerManagementMode::PowerSave).await;
+
+    let net = option_env!("WIFI_NETWORK").unwrap_or("guest");
+    let pw = option_env!("WIFI_PASSWORD");
+    if let Some(pw) = pw {
+        control.join_wpa2(net, pw).await;
+    } else {
+        control.join_open(net).await;
     }
+
+    let config = embassy_net::Config::Dhcp(Default::default());
+
+    let seed = OsRng.next_u64();
+
+    // Init network stack
+    Stack::new(
+        net_device,
+        config,
+        singleton!(StackResources::<{crate::NUM_SOCKETS}>::new()),
+        seed
+    )
 }
 
-impl SpiBusRead<u32> for MySpi {
-    async fn read(&mut self, words: &mut [u32]) -> Result<(), Self::Error> {
-        self.dio.set_as_input();
-        for word in words {
-            let mut w = 0;
-            for _ in 0..32 {
-                w = w << 1;
-
-                // rising edge, sample data
-                if self.dio.is_high() {
-                    w |= 0x01;
-                }
-                self.clk.set_high();
-
-                // falling edge
-                self.clk.set_low();
-            }
-            *word = w
-        }
-
-        Ok(())
-    }
-}
-
-impl SpiBusWrite<u32> for MySpi {
-    async fn write(&mut self, words: &[u32]) -> Result<(), Self::Error> {
-        self.dio.set_as_output();
-        for word in words {
-            let mut word = *word;
-            for _ in 0..32 {
-                // falling edge, setup data
-                self.clk.set_low();
-                if word & 0x8000_0000 == 0 {
-                    self.dio.set_low();
-                } else {
-                    self.dio.set_high();
-                }
-
-                // rising edge
-                self.clk.set_high();
-
-                word = word << 1;
-            }
-        }
-        self.clk.set_low();
-
-        self.dio.set_as_input();
-        Ok(())
-    }
-}
-
-pub(crate) async fn wifi_stack(spawner: &Spawner, pwr: Output<'static, PIN_23>, cs: Output<'static, PIN_25>,
-    clk: Output<'static, PIN_29>, mut dio: Flex<'static, PIN_24>)
-    -> embassy_net::Stack<cyw43::NetDriver<'static>> {
-
-    dio.set_low();
-    dio.set_as_output();
-
-    let bus = MySpi { clk, dio };
-    let spi = ExclusiveDevice::new(bus, cs);
-
+fn get_fw() -> (&'static [u8], &'static [u8]) {
     // Include the WiFi firmware and Country Locale Matrix (CLM) blobs.
     #[cfg(not(feature = "romfw"))]
     let (fw, clm) = (
@@ -125,39 +87,5 @@ pub(crate) async fn wifi_stack(spawner: &Spawner, pwr: Output<'static, PIN_23>, 
         unsafe { core::slice::from_raw_parts(0x10140000 as *const u8, 4752) },
         );
 
-    let state = singleton!(cyw43::State::new());
-    let (net_device, mut control, runner) = cyw43::new(state, pwr, spi, fw).await;
-
-    spawner.spawn(wifi_task(runner)).unwrap();
-
-    control.init(clm).await;
-    // control.set_power_management(cyw43::PowerManagementMode::PowerSave).await;
-
-
-    let net = option_env!("WIFI_NETWORK").unwrap_or("guest");
-    let pw = option_env!("WIFI_PASSWORD");
-    if let Some(pw) = pw {
-        control.join_wpa2(net, pw).await;
-    } else {
-        control.join_open(net).await;
-    }
-
-    let config = embassy_net::Config::Dhcp(Default::default());
-    //let config = embassy_net::ConfigStrategy::Static(embassy_net::Config {
-    //    address: Ipv4Cidr::new(Ipv4Address::new(192, 168, 69, 2), 24),
-    //    dns_servers: Vec::new(),
-    //    gateway: Some(Ipv4Address::new(192, 168, 69, 1)),
-    //});
-
-    let seed = OsRng.next_u64();
-
-    // Init network stack
-    let stack = Stack::new(
-        net_device,
-        config,
-        singleton!(StackResources::<{crate::NUM_SOCKETS}>::new()),
-        seed
-    );
-
-    stack
+    (fw, clm)
 }
