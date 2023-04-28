@@ -14,7 +14,7 @@ use crate::*;
 use packets::ParseContext;
 use sshnames::*;
 use packets::{PubKey, Signature, Ed25519PubKey};
-use sshwire::{BinString, SSHEncode};
+use sshwire::{BinString, SSHEncode, Blob};
 
 use pretty_hex::PrettyHex;
 
@@ -79,7 +79,7 @@ impl SigType {
         match (self, pubkey, sig) {
 
             (SigType::Ed25519, PubKey::Ed25519(k), Signature::Ed25519(s)) => {
-                let k: &[u8; 32] = k.key.0.try_into().map_err(|_| Error::BadKey)?;
+                let k: &[u8; 32] = &k.key.0;
                 let k: salty::PublicKey = k.try_into().map_err(|_| Error::BadKey)?;
                 let s: &[u8; 64] = s.sig.0.try_into().map_err(|_| Error::BadSig)?;
                 let s: salty::Signature = s.into();
@@ -170,8 +170,8 @@ pub enum KeyType {
 /// or potentially send the signing requests to an SSH agent or other entity.
 #[derive(ZeroizeOnDrop)]
 pub enum SignKey {
-    // TODO bloat: this is an expanded keypair, we should store the raw bytes
-    Ed25519(salty::Keypair),
+    // 32 byte seed value is the private key
+    Ed25519([u8; 32]),
 
     #[zeroize(skip)]
     AgentEd25519(salty::PublicKey),
@@ -194,8 +194,8 @@ impl SignKey {
                     return Err(Error::msg("Bad key size"));
                 }
                 let mut seed = [0u8; 32];
-                random::fill_random(seed.as_mut_slice())?;
-                Ok(Self::Ed25519((&seed).into()))
+                random::fill_random(&mut seed)?;
+                Ok(Self::Ed25519(seed))
             },
 
             #[cfg(feature = "rsa")]
@@ -220,11 +220,14 @@ impl SignKey {
 
     pub fn pubkey(&self) -> PubKey {
         match self {
-            SignKey::Ed25519(k) => PubKey::Ed25519(Ed25519PubKey
-                { key: BinString(k.public.as_bytes()) } ),
+            SignKey::Ed25519(seed) => {
+                let k = salty::Keypair::from(seed);
+                PubKey::Ed25519(Ed25519PubKey
+                { key: Blob(k.public.as_bytes().clone()) } )
+            },
 
             SignKey::AgentEd25519(pk) => PubKey::Ed25519(Ed25519PubKey
-                { key: BinString(pk.as_bytes()) } ),
+                { key: Blob(pk.as_bytes().clone()) } ),
 
 
             #[cfg(feature = "rsa")]
@@ -277,7 +280,8 @@ impl SignKey {
 
     pub(crate) fn sign(&self, msg: &impl SSHEncode, parse_ctx: Option<&ParseContext>) -> Result<OwnedSig> {
         let sig: OwnedSig = match self {
-            SignKey::Ed25519(k) => {
+            SignKey::Ed25519(seed) => {
+                let k = salty::Keypair::from(seed);
                 let sig = k.sign_parts(|h| {
                     sshwire::hash_ser(h, msg, parse_ctx).map_err(|_| salty::Error::ContextTooLong)
                 })
@@ -349,11 +353,7 @@ impl TryFrom<ssh_key::PrivateKey> for SignKey {
     fn try_from(k: ssh_key::PrivateKey) -> Result<Self> {
         match k.key_data() {
             ssh_key::private::KeypairData::Ed25519(k) => {
-                let key = salty::Keypair {
-                    secret: (&k.private.to_bytes()).into(),
-                    public: (&k.public.0).try_into().map_err(|_| Error::BadKey)?,
-                };
-                Ok(SignKey::Ed25519(key))
+                Ok(SignKey::Ed25519(k.private.to_bytes()))
             }
 
             #[cfg(feature = "rsa")]

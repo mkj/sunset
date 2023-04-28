@@ -21,30 +21,26 @@ use embedded_io::asynch;
 use sunset::*;
 use sunset_embassy::SSHServer;
 
-// TODO move
-pub mod demo_menu;
+use crate::SSHConfig;
 
+// #[macro_export]
+// macro_rules! singleton {
+//     ($val:expr) => {{
+//         type T = impl Sized;
+//         static STATIC_CELL: StaticCell<T> = StaticCell::new();
+//         STATIC_CELL.init($val)
+//     }};
+// }
 #[macro_export]
 macro_rules! singleton {
     ($val:expr) => {{
         type T = impl Sized;
         static STATIC_CELL: StaticCell<T> = StaticCell::new();
-        STATIC_CELL.init($val)
+        let (x,) = STATIC_CELL.init(($val,));
+        x
     }};
 }
 
-pub struct SSHConfig {
-    keys: [SignKey; 1],
-}
-
-impl SSHConfig {
-    pub fn new() -> Result<Self> {
-        let keys = [SignKey::generate(KeyType::Ed25519, None)?];
-        Ok(Self {
-            keys
-        })
-    }
-}
 
 // common entry point
 pub async fn listener<D: Driver, S: Shell>(stack: &'static Stack<D>, config: &SSHConfig) -> ! {
@@ -106,6 +102,9 @@ async fn session<S: Shell>(socket: &mut TcpSocket<'_>, config: &SSHConfig) -> su
 struct DemoServer<'a, S: Shell> {
     config: &'a SSHConfig,
 
+    // references config
+    hostkeys: [&'a SignKey; 1],
+
     handle: Option<ChanHandle>,
     sess: Option<ChanNum>,
 
@@ -120,13 +119,14 @@ impl<'a, S: Shell> DemoServer<'a, S> {
             sess: None,
             config,
             shell,
+            hostkeys: [&config.hostkey],
         })
     }
 }
 
 impl<'a, S: Shell> ServBehaviour for DemoServer<'a, S> {
-    fn hostkeys(&mut self) -> BhResult<&[SignKey]> {
-        Ok(&self.config.keys)
+    fn hostkeys(&mut self) -> BhResult<&[&SignKey]> {
+        Ok(&self.hostkeys)
     }
 
     fn auth_unchallenged(&mut self, username: TextString) -> bool {

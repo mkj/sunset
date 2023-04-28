@@ -7,12 +7,12 @@ edition = "2021"
 # blank
 
 [dependencies]
-embassy-executor = { version = "0.1.0",  features = ["log", "std", "nightly", "integrated-timers"] }
-embassy-time = { version = "0.1.0",  features = ["log", "std"] }
+embassy-executor = { version = "0.1.0",  default-features=false, features = ["log", "std", "nightly", "integrated-timers"] }
+embassy-time = { version = "0.1",  default-features=false, features = ["log", "std"] }
 # embassy-net/nightly is required for asynch::Read/Write on TcpReader/TcpWriter
-embassy-net = { version = "0.1.0", features = ["log", "tcp", "dhcpv4", "medium-ethernet", "nightly"] }
+embassy-net = { version = "0.1.0", features = ["tcp", "dhcpv4", "medium-ethernet", "nightly"] }
 embassy-net-driver = { version = "0.1.0" }
-embassy-sync = { version = "0.1.0" }
+embassy-sync = { version = "0.2.0" }
 embassy-futures = { version = "0.1.0" }
 atomic-polyfill = "0.1.5"
 static_cell = "1.0"
@@ -22,7 +22,7 @@ env_logger = "0.9.0"
 
 embedded-hal-1 = { package = "embedded-hal", version = "1.0.0-alpha.8" }
 embedded-hal-async = { version = "0.1.0-alpha.2" }
-embedded-io = { version = "0.4", features = ["async"] }
+embedded-io = { version = "0.4", default-features=false, features = ["async"] }
 heapless = "0.7.15"
 
 # for tuntap
@@ -33,19 +33,17 @@ menu = "0.3"
 
 sunset-embassy = { path = "../../" }
 sunset = { path = "../../.." }
+sunset-demo-embassy-common= { path = "../common", features = ["log"] }
 
 critical-section = "1.1"
 rand = { version = "0.8", default-features = false, features = ["getrandom"] }
 sha2 = { version = "0.10", default-features = false }
 
 [patch.crates-io]
-embassy-executor = { git = "https://github.com/embassy-rs/embassy", rev = "5a03b2e9e802626127038cff5634795f576f1c69" }
-embassy-time = { git = "https://github.com/embassy-rs/embassy", rev = "5a03b2e9e802626127038cff5634795f576f1c69" }
-embassy-futures = { git = "https://github.com/embassy-rs/embassy", rev = "5a03b2e9e802626127038cff5634795f576f1c69" }
-embassy-sync = { git = "https://github.com/embassy-rs/embassy", rev = "5a03b2e9e802626127038cff5634795f576f1c69" }
-embassy-net = { git = "https://github.com/embassy-rs/embassy", rev = "5a03b2e9e802626127038cff5634795f576f1c69" }
+embassy-futures = { git = "https://github.com/embassy-rs/embassy", rev = "3e730aa8b06401003202bf9e21a9c83ec6b21b0e" }
+embassy-net = { git = "https://github.com/embassy-rs/embassy", rev = "3e730aa8b06401003202bf9e21a9c83ec6b21b0e" }
 # for tuntap
-embassy-net-driver = { git = "https://github.com/embassy-rs/embassy", rev = "5a03b2e9e802626127038cff5634795f576f1c69" }
+embassy-net-driver = { git = "https://github.com/embassy-rs/embassy", rev = "3e730aa8b06401003202bf9e21a9c83ec6b21b0e" }
 
 [profile.dev]
 debug = 2

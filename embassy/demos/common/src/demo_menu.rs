@@ -1,5 +1,5 @@
 use menu::*;
-pub use super::BufOutput;
+pub use crate::server::BufOutput;
 use core::fmt::Write;
 
 // from menu crate examples/simple.rs

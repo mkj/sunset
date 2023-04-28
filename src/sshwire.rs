@@ -162,6 +162,8 @@ pub fn hash_ser_length(hash_ctx: &mut impl DigestUpdate,
 }
 
 /// Hashes the SSH wire format representation of `value`
+///
+/// Will only fail if `value.enc()` can return an error.
 pub fn hash_ser(hash_ctx: &mut impl DigestUpdate,
     value: &dyn SSHEncode,
     parse_ctx: Option<&ParseContext>,
@@ -383,17 +385,12 @@ impl<'de> SSHDecode<'de> for TextString<'de> {
 }
 
 /// A wrapper for a `u32` length prefixed data structure `B`, such as a public key blob
+#[derive(PartialEq, Clone)]
 pub struct Blob<B>(pub B);
 
 impl<B> AsRef<B> for Blob<B> {
     fn as_ref(&self) -> &B {
         &self.0
-    }
-}
-
-impl<B: Clone> Clone for Blob<B> {
-    fn clone(&self) -> Self {
-        Blob(self.0.clone())
     }
 }
 
@@ -474,6 +471,12 @@ impl SSHEncode for &[u8] {
 
 // no length prefix
 impl<const N: usize> SSHEncode for &[u8; N] {
+    fn enc(&self, s: &mut dyn SSHSink) -> WireResult<()> {
+        s.push(self.as_slice())
+    }
+}
+
+impl<const N: usize> SSHEncode for [u8; N] {
     fn enc(&self, s: &mut dyn SSHSink) -> WireResult<()> {
         s.push(self.as_slice())
     }
@@ -567,6 +570,14 @@ impl<'de, const N: usize> SSHDecode<'de> for &'de [u8; N] {
     }
 }
 
+impl<'de, const N: usize> SSHDecode<'de> for [u8; N] {
+    fn dec<S>(s: &mut S) -> WireResult<Self>
+    where S: SSHSource<'de> {
+        // OK unwrap: take() fails if the length is short
+        Ok(s.take(N)?.try_into().unwrap())
+    }
+}
+
 /// Like `digest::DynDigest` but simpler.
 ///
 /// Doesn't have any optional methods that depend on `alloc`.
@@ -622,6 +633,37 @@ impl<'de> SSHDecode<'de> for rsa::BigUint {
         Ok(rsa::BigUint::from_bytes_be(b.0))
     }
 }
+
+// TODO: is there already something like this?
+pub enum OwnOrBorrow<'a, T> {
+    Own(T),
+    Borrow(&'a T),
+}
+
+impl<T: SSHEncode> SSHEncode for OwnOrBorrow<'_, T> {
+    fn enc(&self, s: &mut dyn SSHSink) -> WireResult<()> {
+        match self {
+            Self::Own(t) => t.enc(s),
+            Self::Borrow(t) => t.enc(s),
+        }
+    }
+}
+
+impl<'de, T: SSHDecode<'de>> SSHDecode<'de> for OwnOrBorrow<'_, T> {
+    fn dec<S>(s: &mut S) -> WireResult<Self> where S: SSHSource<'de> {
+        Ok(Self::Own(T::dec(s)?))
+    }
+}
+
+impl<'a, T> core::borrow::Borrow<T> for OwnOrBorrow<'a, T> {
+    fn borrow(&self) -> &T {
+        match self {
+            Self::Own(t) => &t,
+            Self::Borrow(t) => t,
+        }
+    }
+}
+
 
 #[cfg(test)]
 pub(crate) mod tests {
@@ -709,7 +751,7 @@ pub(crate) mod tests {
         let p = Userauth60::PkOk(UserauthPkOk {
             algo: "ed25519",
             key: Blob(PubKey::Ed25519(Ed25519PubKey {
-                key: BinString(&[0x11, 0x22, 0x33]),
+                key: Blob([0x11; 32]),
             })),
         }).into();
         ctx.cli_auth_type = Some(auth::AuthType::PubKey);

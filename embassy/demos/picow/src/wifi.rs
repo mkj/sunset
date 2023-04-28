@@ -15,7 +15,7 @@ use static_cell::StaticCell;
 use rand::rngs::OsRng;
 use rand::RngCore;
 
-use crate::singleton;
+use crate::demo_common::singleton;
 
 #[embassy_executor::task]
 async fn wifi_task(
@@ -32,6 +32,7 @@ async fn wifi_task(
 pub(crate) async fn wifi_stack(spawner: &Spawner,
     p23: PIN_23, p24: PIN_24, p25: PIN_25, p29: PIN_29, dma: DMA_CH0,
     sm: PioStateMachineInstance<Pio0, Sm0>,
+    wifi_net: &str, wpa_password: Option<&str>,
     ) -> embassy_net::Stack<cyw43::NetDriver<'static>>
     {
 
@@ -46,14 +47,13 @@ pub(crate) async fn wifi_stack(spawner: &Spawner,
     spawner.spawn(wifi_task(runner)).unwrap();
 
     control.init(clm).await;
-    // control.set_power_management(cyw43::PowerManagementMode::PowerSave).await;
+    // the default is PowerSave
+    control.set_power_management(cyw43::PowerManagementMode::Performance).await;
 
-    let net = option_env!("WIFI_NETWORK").unwrap_or("guest");
-    let pw = option_env!("WIFI_PASSWORD");
-    if let Some(pw) = pw {
-        control.join_wpa2(net, pw).await;
+    if let Some(pw) = wpa_password {
+        control.join_wpa2(wifi_net, pw).await;
     } else {
-        control.join_open(net).await;
+        control.join_open(wifi_net).await;
     }
 
     let config = embassy_net::Config::Dhcp(Default::default());

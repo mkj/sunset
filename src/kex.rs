@@ -785,12 +785,12 @@ mod tests {
         sshwire::packet_from_bytes(&out_buf[..l], &ctx).unwrap()
     }
 
-    struct TestServBehaviour {
-        keys: Vec<SignKey>,
+    struct TestServBehaviour<'a> {
+        keys: Vec<&'a SignKey>,
     }
 
-    impl ServBehaviour for TestServBehaviour {
-        fn hostkeys(&mut self) -> BhResult<&[SignKey]> {
+    impl<'a> ServBehaviour for TestServBehaviour<'a> {
+        fn hostkeys(&mut self) -> BhResult<&[&'a SignKey]> {
             Ok(self.keys.as_slice())
         }
 
@@ -908,6 +908,7 @@ mod tests {
 
         let mut keys = vec![];
         keys.push(crate::SignKey::generate(crate::KeyType::Ed25519, None).unwrap());
+        let keys: Vec<&SignKey> = keys.iter().collect();
         let mut sb = TestServBehaviour {
             keys,
         };

@@ -298,7 +298,7 @@ pub struct UserauthBanner<'a> {
 #[sshwire(variant_prefix)]
 pub enum PubKey<'a> {
     #[sshwire(variant = SSH_NAME_ED25519)]
-    Ed25519(Ed25519PubKey<'a>),
+    Ed25519(Ed25519PubKey),
 
     #[cfg(feature = "rsa")]
     #[sshwire(variant = SSH_NAME_RSA)]
@@ -344,8 +344,7 @@ impl TryFrom<&PubKey<'_>> for ssh_key::PublicKey {
     fn try_from(k: &PubKey) -> Result<Self> {
         match k {
             PubKey::Ed25519(e) => {
-                let eb: &[u8; 32] = e.key.0.try_into().map_err(|_| Error::BadKey)?;
-                Ok(ssh_key::public::Ed25519PublicKey(*eb).into())
+                Ok(ssh_key::public::Ed25519PublicKey(e.key.0).into())
             }
 
             #[cfg(feature = "rsa")]
@@ -363,15 +362,14 @@ impl TryFrom<&PubKey<'_>> for ssh_key::PublicKey {
 }
 
 #[derive(Debug, Clone, PartialEq, SSHEncode, SSHDecode)]
-pub struct Ed25519PubKey<'a> {
-    pub key: BinString<'a>,
+pub struct Ed25519PubKey {
+    pub key: Blob<[u8; 32]>,
 }
 
-impl TryFrom<&Ed25519PubKey<'_>> for salty::PublicKey {
+impl TryFrom<&Ed25519PubKey> for salty::PublicKey {
     type Error = Error;
     fn try_from(k: &Ed25519PubKey) -> Result<Self> {
-        let b: [u8; 32] = k.key.0.try_into().map_err(|_| Error::BadKey)?;
-        (&b).try_into().map_err(|_| Error::BadKey)
+        Ok((&k.key.0).try_into().map_err(|_| Error::BadKey)?)
     }
 }
 
@@ -1102,7 +1100,7 @@ mod tests {
             method: AuthMethod::PubKey(MethodPubKey {
                 sig_algo: "something",
                 pubkey: Blob(PubKey::Ed25519(
-                    Ed25519PubKey { key: BinString(b"zzzz") }
+                    Ed25519PubKey { key: Blob([3u8; 32]) }
                 )),
                 sig: Some(Blob(Signature::Ed25519(Ed25519Sig {
                     sig: BinString(b"sighere")

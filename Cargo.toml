@@ -82,5 +82,3 @@ simplelog = { version = "0.12", features = ["test"] }
 
 
 [patch.crates-io]
-# needed for Default WakerRegistration, https://github.com/embassy-rs/embassy/commit/14a2d1524080593f7795fe14950a3f0ee6e2b409
-embassy-sync = { git = "https://github.com/embassy-rs/embassy", rev = "e1eac15c429f88b1176109d6ce42185e2774ac86" }

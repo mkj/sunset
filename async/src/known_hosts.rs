@@ -100,7 +100,7 @@ pub fn check_known_hosts_file(
         let known_key = match OpenSSHKey::from_openssh(&lk) {
             Ok(k) => k,
             Err(e) => {
-                warn!("Unparsed key for {} on line {}:{}", host, p.display(), line);
+                warn!("Unparsed key for \"{}\" on line {}:{}", host, p.display(), line);
                 trace!("{e:?}");
                 continue;
             }

@@ -25,10 +25,10 @@ use sunset::*;
 use sunset_embassy::SSHServer;
 
 mod tuntap;
-#[path = "../../common/server.rs"]
-mod demo_common;
+pub(crate) use sunset_demo_embassy_common as demo_common;
+use crate::demo_common::singleton;
 
-use demo_common::{SSHConfig, demo_menu, Shell, BufOutput};
+use demo_common::{SSHConfig, demo_menu, Shell};
 
 const NUM_LISTENERS: usize = 2;
 // +1 for dhcp
@@ -62,7 +62,7 @@ async fn main_task(spawner: Spawner) {
     spawner.spawn(net_task(stack)).unwrap();
 
     let ssh_config = &*singleton!(
-        demo_common::SSHConfig::new().unwrap()
+        SSHConfig::new().unwrap()
     );
 
     for _ in 0..NUM_LISTENERS {
@@ -90,7 +90,7 @@ impl Shell for DemoShell {
             let mut stdio = serv.stdio(chan_handle).await?;
 
             let mut menu_buf = [0u8; 64];
-            let menu_out = BufOutput::default();
+            let menu_out = demo_menu::BufOutput::default();
 
             let mut menu = MenuRunner::new(&demo_menu::ROOT_MENU, &mut menu_buf, menu_out);
 

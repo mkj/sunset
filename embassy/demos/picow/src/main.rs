@@ -2,8 +2,7 @@
 #![no_main]
 #![feature(type_alias_impl_trait)]
 #![feature(async_fn_in_trait)]
-#![allow(incomplete_features)]
-//#![feature(impl_trait_in_assoc_type)]
+// #![allow(incomplete_features)]
 
 use defmt::*;
 use embassy_executor::Spawner;
@@ -21,10 +20,11 @@ use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use sunset::*;
 use sunset_embassy::SSHServer;
 
+pub(crate) use sunset_demo_embassy_common as demo_common;
+use crate::demo_common::singleton;
+
+mod flash_config;
 mod wifi;
-#[path = "../../common/server.rs"]
-#[macro_use]
-mod demo_common;
 
 use demo_common::{SSHConfig, demo_menu, Shell};
 
@@ -46,15 +46,23 @@ async fn main(spawner: Spawner) {
     caprand::setup(&mut p.PIN_10).unwrap();
     getrandom::register_custom_getrandom!(caprand::getrandom);
 
-    let (_, sm, _, _, _) = p.PIO0.split();
-    // spawn the wifi stack
-    let stack = wifi::wifi_stack(&spawner, p.PIN_23, p.PIN_24, p.PIN_25, p.PIN_29, p.DMA_CH0, sm).await;
-    let stack = &*singleton!(stack);
-    unwrap!(spawner.spawn(net_task(&stack)));
+    let mut flash = embassy_rp::flash::Flash::new(p.FLASH);
+
+    let config = flash_config::load_or_create(&mut flash).unwrap();
 
     let ssh_config = &*singleton!(
-        demo_common::SSHConfig::new().unwrap()
+        config
     );
+
+    let (_, sm, _, _, _) = p.PIO0.split();
+    let wifi_net = ssh_config.wifi_net.as_str();
+    let wifi_pw = ssh_config.wifi_pw.as_ref().map(|p| p.as_str());
+
+    // spawn the wifi stack
+    let stack = wifi::wifi_stack(&spawner, p.PIN_23, p.PIN_24, p.PIN_25, p.PIN_29, p.DMA_CH0, sm,
+        wifi_net, wifi_pw).await;
+    let stack = &*singleton!(stack);
+    unwrap!(spawner.spawn(net_task(&stack)));
 
     for _ in 0..NUM_LISTENERS {
         spawner.spawn(listener(&stack, &ssh_config)).unwrap();

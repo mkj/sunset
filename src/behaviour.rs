@@ -203,7 +203,8 @@ pub trait ServBehaviour {
     // then later request a single key.
     // Also could make it take a closure to call with the key, lets it just
     // be loaded on the stack rather than kept in memory for the whole lifetime.
-    fn hostkeys(&mut self) -> BhResult<&[sign::SignKey]>;
+    // TODO: a slice of references is a bit awkward?
+    fn hostkeys(&mut self) -> BhResult<&[&sign::SignKey]>;
 
     #[allow(unused)]
     // TODO: or return a slice of enums
@@ -313,7 +314,7 @@ impl CliBehaviour for UnusedCli {
 #[derive(Debug)]
 pub struct UnusedServ;
 impl ServBehaviour for UnusedServ {
-    fn hostkeys(&mut self) -> BhResult<&[sign::SignKey]> {
+    fn hostkeys(&mut self) -> BhResult<&[&sign::SignKey]> {
         unreachable!()
     }
     fn open_session(&mut self, chan: ChanHandle) -> channel::ChanOpened {
