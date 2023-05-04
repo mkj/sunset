@@ -6,7 +6,6 @@ use {
 
 use core::task::{Poll, Waker};
 use heapless::{String, Vec};
-use no_panic::no_panic;
 use pretty_hex::PrettyHex;
 
 

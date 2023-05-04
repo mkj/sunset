@@ -31,7 +31,6 @@ snafu = { version = "0.7", default-features = false, features = ["rust_1_61"] }
 # TODO: check that log macro calls disappear in no_std builds
 log = { version = "0.4" }
 heapless = "0.7.10"
-no-panic = "0.1"
 
 # allows avoiding utf8 for SSH identifier names
 ascii = { version = "1.0", default-features = false }
