@@ -516,7 +516,7 @@ impl sunset::CliBehaviour for CmdlineHooks<'_> {
     fn valid_hostkey(&mut self, key: &sunset::PubKey) -> BhResult<bool> {
         trace!("checking hostkey for {key:?}");
 
-        match known_hosts::check_known_hosts(self.host, self.port, key) {
+        match knownhosts::check_known_hosts(self.host, self.port, key) {
             Ok(()) => Ok(true),
             Err(e) => {
                 debug!("Error for hostkey: {e:?}");

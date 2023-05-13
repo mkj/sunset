@@ -23,7 +23,7 @@ use sunset_embassy::SSHServer;
 pub(crate) use sunset_demo_embassy_common as demo_common;
 use crate::demo_common::singleton;
 
-mod flash_config;
+mod flashconfig;
 mod wifi;
 
 use demo_common::{SSHConfig, demo_menu, Shell};
@@ -48,7 +48,7 @@ async fn main(spawner: Spawner) {
 
     let mut flash = embassy_rp::flash::Flash::new(p.FLASH);
 
-    let config = flash_config::load_or_create(&mut flash).unwrap();
+    let config = flashconfig::load_or_create(&mut flash).unwrap();
 
     let ssh_config = &*singleton!(
         config
