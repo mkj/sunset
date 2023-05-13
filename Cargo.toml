@@ -65,7 +65,7 @@ pretty-hex = { version = "0.3", default-features = false }
 futures = { version = "0.3", default-features = false }
 
 [features]
-std = ["snafu/std", "snafu/backtraces", "rsa"]
+std = ["snafu/std", "snafu/backtraces"]
 rsa = ["dep:rsa", "ssh-key/rsa"]
 # allows conversion to/from OpenSSH key formats
 openssh-key = ["ssh-key"]
