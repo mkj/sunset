@@ -46,6 +46,7 @@ mod noasync;
 pub mod packets;
 pub mod sshwire;
 pub mod config;
+pub mod prelude;
 
 // Application API
 pub use behaviour::{Behaviour, ServBehaviour, CliBehaviour,
