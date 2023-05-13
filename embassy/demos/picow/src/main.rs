@@ -4,7 +4,6 @@
 #![feature(async_fn_in_trait)]
 // #![allow(incomplete_features)]
 
-use defmt::*;
 use embassy_executor::Spawner;
 use embassy_net::Stack;
 use embassy_rp::pio::PioPeripheral;
@@ -18,6 +17,7 @@ use embassy_sync::signal::Signal;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 
 use sunset::*;
+use sunset::prelude::*;
 use sunset_embassy::SSHServer;
 
 pub(crate) use sunset_demo_embassy_common as demo_common;
@@ -25,17 +25,14 @@ use crate::demo_common::singleton;
 
 mod flashconfig;
 mod wifi;
+mod usbserial;
+mod switchpipe;
 
 use demo_common::{SSHConfig, demo_menu, Shell};
 
 const NUM_LISTENERS: usize = 4;
 // +1 for dhcp. referenced directly by wifi_stack() function
 pub(crate) const NUM_SOCKETS: usize = NUM_LISTENERS+1;
-
-#[embassy_executor::task]
-async fn net_task(stack: &'static Stack<cyw43::NetDriver<'static>>) -> ! {
-    stack.run().await
-}
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
@@ -62,7 +59,11 @@ async fn main(spawner: Spawner) {
     let stack = wifi::wifi_stack(&spawner, p.PIN_23, p.PIN_24, p.PIN_25, p.PIN_29, p.DMA_CH0, sm,
         wifi_net, wifi_pw).await;
     let stack = &*singleton!(stack);
-    unwrap!(spawner.spawn(net_task(&stack)));
+    spawner.spawn(net_task(&stack)).unwrap();
+
+    let usb_pipe = switchpipe::SwitchPipe::new();
+    let usb_pipe = usb_pipe.base();
+    let r = usb_pipe.switch_read();
 
     for _ in 0..NUM_LISTENERS {
         spawner.spawn(listener(&stack, &ssh_config)).unwrap();
@@ -123,3 +124,20 @@ impl Shell for DemoShell {
         session.await
     }
 }
+
+#[embassy_executor::task]
+async fn net_task(stack: &'static Stack<cyw43::NetDriver<'static>>) -> ! {
+    stack.run().await
+}
+
+#[embassy_executor::task]
+async fn usb_serial_task(usb: embassy_rp::peripherals::USB,
+    irq: embassy_rp::interrupt::USBCTRL_IRQ,
+    ) -> ! {
+
+    // let mut p = embassy_sync::pipe::Pipe(64);
+
+    // usbserial.usb_serial(usb, irq, tx, rx).await;
+    todo!("shoudln't exit");
+}
+
