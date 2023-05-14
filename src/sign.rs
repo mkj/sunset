@@ -308,14 +308,14 @@ impl SignKey {
 
         };
 
-        {
-            // Faults in signing can expose the private key. We verify the signature
-            // just created to avoid this problem.
-            // TODO: Maybe this needs to be configurable for slow platforms?
-            let vsig: Signature = (&sig).into();
-            let sig_type = vsig.sig_type().unwrap();
-            sig_type.verify(&self.pubkey(), msg, &vsig, parse_ctx)?;
-        }
+        // {
+        //     // Faults in signing can expose the private key. We verify the signature
+        //     // just created to avoid this problem.
+        //     // TODO: Maybe this needs to be configurable for slow platforms?
+        //     let vsig: Signature = (&sig).into();
+        //     let sig_type = vsig.sig_type().unwrap();
+        //     sig_type.verify(&self.pubkey(), msg, &vsig, parse_ctx)?;
+        // }
 
         Ok(sig)
     }
