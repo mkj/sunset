@@ -305,7 +305,7 @@ impl<C: CliBehaviour, S: ServBehaviour> Conn<C, S> {
                 if let ClientServer::Server(serv) = &mut self.cliserv {
                     disp.zeroize_payload = true;
                     let sess_id = self.sess_id.as_ref().trap()?;
-                    let success = serv.auth.request(p, sess_id, s, b.server()?)?;
+                    let success = serv.auth.request(p, sess_id, s, b.server()?).await?;
                     if success {
                         self.state = ConnState::Authed;
                     }

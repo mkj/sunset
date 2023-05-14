@@ -21,11 +21,11 @@ impl ServAuth {
     }
 
     /// Returns `true` if auth succeeds
-    pub fn request(
+    pub async fn request(
         &mut self,
-        mut p: packets::UserauthRequest,
+        mut p: packets::UserauthRequest<'_>,
         sess_id: &SessId,
-        s: &mut TrafSend,
+        s: &mut TrafSend<'_, '_>,
         b: &mut impl ServBehaviour,
     ) -> Result<bool> {
 
@@ -38,9 +38,9 @@ impl ServAuth {
 
         let username = p.username.clone();
 
-        let inner = || {
+        let inner = async {
             // even allows "none" auth
-            if b.auth_unchallenged(p.username) {
+            if b.auth_unchallenged(p.username).await {
                 return Ok(AuthResp::Success) as Result<_>
             }
 
@@ -80,7 +80,7 @@ impl ServAuth {
         };
 
         // failure sends a list of available methods
-        match inner()? {
+        match inner.await? {
             AuthResp::Success => {
                 self.authed = true;
                 s.send(packets::UserauthSuccess {})?;

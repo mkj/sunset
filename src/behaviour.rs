@@ -226,7 +226,7 @@ pub trait ServBehaviour {
     ///
     /// Implementations may need to take care to avoid leaking user existence
     /// based on timing.
-    fn auth_unchallenged(&mut self, username: TextString) -> bool {
+    async fn auth_unchallenged(&mut self, username: TextString<'_>) -> bool {
         false
     }
 
