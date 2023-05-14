@@ -51,6 +51,10 @@ pub fn load_or_create(flash: &mut Flash<'_, FLASH, FLASH_SIZE>) -> Result<SSHCon
         Err(c) => info!("Existing config bad, making new"),
     }
 
+    create(flash)
+}
+
+pub fn create(flash: &mut Flash<'_, FLASH, FLASH_SIZE>) -> Result<SSHConfig> {
     let c = SSHConfig::new()?;
     if let Err(e) = save(flash, &c) {
         warn!("Error writing config");

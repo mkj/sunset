@@ -2,6 +2,16 @@
 // Copyright (c) 2019-2022 Embassy project contributors
 // MIT or Apache-2.0 license
 
+#[allow(unused_imports)]
+#[cfg(not(feature = "defmt"))]
+pub use {
+    log::{debug, error, info, log, trace, warn},
+};
+
+#[allow(unused_imports)]
+#[cfg(feature = "defmt")]
+pub use defmt::{debug, info, warn, panic, error, trace};
+
 use embassy_rp::gpio::{Level, Output};
 use embassy_rp::pio::{PioStateMachineInstance, Sm0, Pio0};
 use embassy_rp::peripherals::*;
@@ -33,7 +43,7 @@ pub(crate) async fn wifi_stack(spawner: &Spawner,
     p23: PIN_23, p24: PIN_24, p25: PIN_25, p29: PIN_29, dma: DMA_CH0,
     sm: PioStateMachineInstance<Pio0, Sm0>,
     wifi_net: &str, wpa_password: Option<&str>,
-    ) -> embassy_net::Stack<cyw43::NetDriver<'static>>
+    ) -> (embassy_net::Stack<cyw43::NetDriver<'static>>, cyw43::Control<'static>)
     {
 
     let (fw, clm) = get_fw();
@@ -47,12 +57,15 @@ pub(crate) async fn wifi_stack(spawner: &Spawner,
     spawner.spawn(wifi_task(runner)).unwrap();
 
     control.init(clm).await;
-    // the default is PowerSave
-    control.set_power_management(cyw43::PowerManagementMode::Performance).await;
+    // the default is PowerSave. None is fastest.
+    // control.set_power_management(cyw43::PowerManagementMode::None).await;
+    // control.set_power_management(cyw43::PowerManagementMode::Performance).await;
 
     if let Some(pw) = wpa_password {
+        info!("wifi net {} pw {}", wifi_net, pw);
         control.join_wpa2(wifi_net, pw).await;
     } else {
+        info!("wifi net {} open", wifi_net);
         control.join_open(wifi_net).await;
     }
 
@@ -61,12 +74,13 @@ pub(crate) async fn wifi_stack(spawner: &Spawner,
     let seed = OsRng.next_u64();
 
     // Init network stack
-    Stack::new(
+    let stack = Stack::new(
         net_device,
         config,
         singleton!(StackResources::<{crate::NUM_SOCKETS}>::new()),
         seed
-    )
+    );
+    (stack, control)
 }
 
 fn get_fw() -> (&'static [u8], &'static [u8]) {

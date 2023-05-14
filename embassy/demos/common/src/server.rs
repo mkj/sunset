@@ -18,6 +18,8 @@ use embassy_futures::join::join;
 
 use embedded_io::asynch;
 
+use heapless::String;
+
 use sunset::*;
 use sunset_embassy::SSHServer;
 
@@ -43,7 +45,9 @@ macro_rules! singleton {
 
 
 // common entry point
-pub async fn listener<D: Driver, S: Shell>(stack: &'static Stack<D>, config: &SSHConfig) -> ! {
+pub async fn listener<D: Driver, S: Shell>(stack: &'static Stack<D>,
+    config: &SSHConfig,
+    init: S::Init) -> ! {
     // TODO: buffer size?
     // Does it help to be larger than ethernet MTU?
     // Should TX and RX be symmetrical? Or larger TX might fill ethernet
@@ -62,7 +66,7 @@ pub async fn listener<D: Driver, S: Shell>(stack: &'static Stack<D>, config: &SS
             continue;
         }
 
-        let r = session::<S>(&mut socket, &config).await;
+        let r = session::<S>(&mut socket, &config, &init).await;
         if let Err(_e) = r {
             // warn!("Ended with error: {:?}", e);
             warn!("Ended with error");
@@ -71,12 +75,13 @@ pub async fn listener<D: Driver, S: Shell>(stack: &'static Stack<D>, config: &SS
 }
 
 /// Run a SSH session when a socket accepts a connection
-async fn session<S: Shell>(socket: &mut TcpSocket<'_>, config: &SSHConfig) -> sunset::Result<()> {
+async fn session<S: Shell>(socket: &mut TcpSocket<'_>, config: &SSHConfig,
+    init: &S::Init) -> sunset::Result<()> {
     // OK unwrap: has been accepted
     let src = socket.remote_endpoint().unwrap();
     info!("Connection from {}:{}", src.addr, src.port);
 
-    let shell = S::default();
+    let shell = S::new(init);
 
     let app = DemoServer::new(&shell, config)?;
     let app = Mutex::<NoopRawMutex, _>::new(app);
@@ -129,8 +134,9 @@ impl<'a, S: Shell> ServBehaviour for DemoServer<'a, S> {
         Ok(&self.hostkeys)
     }
 
-    fn auth_unchallenged(&mut self, username: TextString) -> bool {
+    async fn auth_unchallenged(&mut self, username: TextString<'_>) -> bool {
         info!("Allowing auth for user {}", username.as_str().unwrap_or("bad"));
+        self.shell.authed(username.as_str().unwrap_or("")).await;
         true
     }
 
@@ -167,10 +173,14 @@ impl<'a, S: Shell> ServBehaviour for DemoServer<'a, S> {
     }
 }
 
-pub trait Shell : Default {
+pub trait Shell {
+    type Init;
+
+    fn new(init: &Self::Init) -> Self;
+
     #[allow(unused_variables)]
     // TODO: eventually the compiler should add must_use automatically?
-    fn authed(&self, handle: ChanHandle) {
+    async fn authed(&self, username: &str) {
         info!("Authenticated")
     }
 

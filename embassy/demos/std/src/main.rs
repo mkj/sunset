@@ -76,6 +76,12 @@ struct DemoShell {
 }
 
 impl Shell for DemoShell {
+    type Init = ();
+
+    fn new(init: &Self::Init) -> Self {
+        Default::default()
+    }
+
     fn open_shell(&self, handle: ChanHandle) {
         self.notify.signal(handle);
     }
@@ -123,7 +129,7 @@ impl Shell for DemoShell {
 #[embassy_executor::task(pool_size = 4)]
 async fn listener(stack: &'static Stack<TunTapDevice>, config: &'static SSHConfig) -> ! {
 
-    demo_common::listener::<_, DemoShell>(stack, config).await
+    demo_common::listener::<_, DemoShell>(stack, config, ()).await
 }
 
 

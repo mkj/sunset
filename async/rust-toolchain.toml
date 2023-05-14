@@ -1,9 +1,5 @@
-# Before upgrading check that everything is available on all tier1 targets here:
-# https://rust-lang.github.io/rustup-components-history
-
-# 2023-04-15 has ICE building picow demo
 [toolchain]
-channel = "nightly-2023-04-08"
+channel = "nightly-2023-05-14"
 components = [ "rust-src", "rustfmt" ]
 targets = [
     "thumbv6m-none-eabi",

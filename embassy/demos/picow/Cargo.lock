@@ -315,7 +315,7 @@ dependencies = [
 [[package]]
 name = "cyw43"
 version = "0.1.0"
-source = "git+https://github.com/embassy-rs/cyw43/?rev=c19de2984751ba6fa2972ee66cfa2a6310d5f0c1#c19de2984751ba6fa2972ee66cfa2a6310d5f0c1"
+source = "git+https://github.com/embassy-rs/cyw43/?rev=6b5d9642d583bc034ee35b88c903545e7f423b4e#6b5d9642d583bc034ee35b88c903545e7f423b4e"
 dependencies = [
  "atomic-polyfill 0.1.11",
  "cortex-m",
@@ -333,10 +333,9 @@ dependencies = [
 [[package]]
 name = "cyw43-pio"
 version = "0.1.0"
-source = "git+https://github.com/embassy-rs/cyw43/?rev=c19de2984751ba6fa2972ee66cfa2a6310d5f0c1#c19de2984751ba6fa2972ee66cfa2a6310d5f0c1"
+source = "git+https://github.com/embassy-rs/cyw43/?rev=6b5d9642d583bc034ee35b88c903545e7f423b4e#6b5d9642d583bc034ee35b88c903545e7f423b4e"
 dependencies = [
  "cyw43",
- "defmt",
  "embassy-rp",
  "pio",
  "pio-proc",
@@ -692,6 +691,7 @@ name = "embassy-usb"
 version = "0.1.0"
 source = "git+https://github.com/embassy-rs/embassy?rev=3e730aa8b06401003202bf9e21a9c83ec6b21b0e#3e730aa8b06401003202bf9e21a9c83ec6b21b0e"
 dependencies = [
+ "defmt",
  "embassy-futures",
  "embassy-net-driver-channel",
  "embassy-sync 0.2.0 (git+https://github.com/embassy-rs/embassy?rev=3e730aa8b06401003202bf9e21a9c83ec6b21b0e)",

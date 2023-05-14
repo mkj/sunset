@@ -767,17 +767,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "546c37ac5d9e56f55e73b677106873d9d9f5190605e41a856503623648488cae"
 
 [[package]]
-name = "no-panic"
-version = "0.1.19"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9f3ff7cb37ce690ee3b1bab16e77f6eae6320d91a9770ec1497f58a88c1f35c9"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
 name = "no-std-net"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1066,7 +1055,6 @@ dependencies = [
  "heapless",
  "hmac",
  "log",
- "no-panic",
  "poly1305",
  "pretty-hex",
  "rand_core",
