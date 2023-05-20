@@ -403,6 +403,9 @@ where
                         }
                     }
                 } else if cmd == "exit" && self.depth != 0 {
+                    if let Some(cb_fn) = self.menus[self.depth].unwrap().exit {
+                        cb_fn(&mut self.context);
+                    }
                     self.menus[self.depth] = None;
                     self.depth -= 1;
                 } else {
@@ -423,6 +426,9 @@ where
                                 ItemType::Menu(m) => {
                                     self.depth += 1;
                                     self.menus[self.depth] = Some(m);
+                                    if let Some(cb_fn) = m.entry {
+                                        cb_fn(&mut self.context);
+                                    }
                                 }
                                 ItemType::_Dummy => {
                                     unreachable!();
