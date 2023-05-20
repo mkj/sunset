@@ -22,8 +22,8 @@ menu = "0.3"
 embedded-io = { version = "0.4", features = ["async"] }
 
 defmt = { version = "0.3", optional = true }
-log = { version = "0.4", optional = true }
+log = "0.4"
 
 [features]
 defmt = ["dep:defmt", "embassy-net/defmt", "embedded-io/defmt"]
-log = ["dep:log", "embassy-net/log"]
+log = ["embassy-net/log"]

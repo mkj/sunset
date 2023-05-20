@@ -10,7 +10,7 @@ edition = "2021"
 sunset-embassy = { path = "../../" }
 sunset = { path = "../../.." }
 sunset-sshwire-derive = { version = "0.1", path = "../../../sshwire-derive" }
-sunset-demo-embassy-common= { path = "../common", features = ["defmt"] }
+sunset-demo-embassy-common= { path = "../common" }
 
 cyw43 = { git = "https://github.com/embassy-rs/cyw43/", rev = "6b5d9642d583bc034ee35b88c903545e7f423b4e", features = ["defmt"]}
 cyw43-pio = { git = "https://github.com/embassy-rs/cyw43/", rev = "6b5d9642d583bc034ee35b88c903545e7f423b4e" }
@@ -29,9 +29,10 @@ embassy-usb = { version = "0.1.0" }
 atomic-polyfill = "0.1.5"
 static_cell = "1.0"
 
-defmt = "0.3"
+defmt = { version  = "0.3", optional = true }
 defmt-rtt = "0.3"
 panic-probe = { version = "0.3", features = ["print-defmt"] }
+log = { version = "0.4" }
 
 cortex-m = { version = "0.7.6", features = ["critical-section-single-core"]}
 cortex-m-rt = "0.7.0"
@@ -54,7 +55,7 @@ sha2 = { version = "0.10", default-features = false }
 
 [features]
 default = ["defmt", "sunset-demo-embassy-common/defmt", "embassy-usb/defmt"]
-defmt = []
+defmt = ["dep:defmt"]
 
 # Use cyw43 firmware already on flash. This saves time when developing.
 # probe-rs-cli download firmware/43439A0.bin --format bin --chip RP2040 --base-address 0x10100000
