@@ -1161,12 +1161,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2dffe52ecf27772e601905b7522cb4ef790d2cc203488bbd0e2fe85fcb74566d"
 
 [[package]]
-name = "menu"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b03d7f798bfe97329ad6df937951142eec93886b37d87010502dd25e8cc75fd5"
-
-[[package]]
 name = "nb"
 version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1750,7 +1744,7 @@ dependencies = [
  "embassy-sync 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "embedded-io 0.4.0",
  "heapless",
- "menu",
+ "log",
  "sunset",
  "sunset-embassy",
  "sunset-sshwire-derive",
@@ -1782,7 +1776,7 @@ dependencies = [
  "embedded-io 0.4.0",
  "getrandom",
  "heapless",
- "menu",
+ "log",
  "panic-probe",
  "pin-utils",
  "rand",

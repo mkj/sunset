@@ -45,7 +45,8 @@ heapless = "0.7.15"
 getrandom = { version = "0.2", default-features = false, features = ["custom"]}
 pin-utils = "0.1"
 
-menu = "0.3"
+# using local fork
+# menu = "0.3"
 
 caprand = { git = "https://github.com/mkj/caprand" }
 

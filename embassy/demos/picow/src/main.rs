@@ -27,7 +27,7 @@ use heapless::{String, Vec};
 
 use static_cell::StaticCell;
 
-use menu::Runner as MenuRunner;
+use demo_common::menu::Runner as MenuRunner;
 use embedded_io::asynch::Read;
 use embassy_sync::signal::Signal;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;

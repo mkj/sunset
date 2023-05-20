@@ -287,14 +287,6 @@ where
             return;
         }
         let outcome = if input == 0x0D {
-            #[cfg(not(feature = "echo"))]
-            {
-                // Echo the command
-                write!(self.context, "\r").unwrap();
-                if let Ok(s) = core::str::from_utf8(&self.buffer[0..self.used]) {
-                    write!(self.context, "{}", s).unwrap();
-                }
-            }
             // Handle the command
             self.process_command();
             Outcome::CommandProcessed
@@ -309,7 +301,7 @@ where
             self.buffer[self.used] = input;
             self.used += 1;
 
-            #[cfg(feature = "echo")]
+            // #[cfg(feature = "echo")]
             {
                 // We have to do this song and dance because `self.prompt()` needs
                 // a mutable reference to self, and we can't have that while

@@ -14,7 +14,7 @@ use static_cell::StaticCell;
 use rand::rngs::OsRng;
 use rand::RngCore;
 
-use menu::Runner as MenuRunner;
+use demo_common::menu::Runner as MenuRunner;
 use embedded_io::asynch::Read;
 use embassy_sync::signal::Signal;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;

@@ -1,4 +1,4 @@
-use menu::*;
+use crate::menu::{self, *};
 pub use crate::server::BufOutput;
 use core::fmt::Write;
 
@@ -93,31 +93,31 @@ fn select_foo<'a>(_menu: &Menu<BufOutput>, item: &Item<BufOutput>, args: &[&str]
     writeln!(
         context,
         "a = {:?}",
-        ::menu::argument_finder(item, args, "a")
+        menu::argument_finder(item, args, "a")
     )
     .unwrap();
     writeln!(
         context,
         "b = {:?}",
-        ::menu::argument_finder(item, args, "b")
+        menu::argument_finder(item, args, "b")
     )
     .unwrap();
     writeln!(
         context,
         "verbose = {:?}",
-        ::menu::argument_finder(item, args, "verbose")
+        menu::argument_finder(item, args, "verbose")
     )
     .unwrap();
     writeln!(
         context,
         "level = {:?}",
-        ::menu::argument_finder(item, args, "level")
+        menu::argument_finder(item, args, "level")
     )
     .unwrap();
     writeln!(
         context,
         "no_such_arg = {:?}",
-        ::menu::argument_finder(item, args, "no_such_arg")
+        menu::argument_finder(item, args, "no_such_arg")
     )
     .unwrap();
 }

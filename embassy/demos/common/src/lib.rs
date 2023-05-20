@@ -7,6 +7,7 @@
 mod config;
 mod server;
 
+pub mod menu;
 pub mod demo_menu;
 
 pub use server::{Shell, listener};
