@@ -88,7 +88,8 @@ pub async fn usb_serial(usb: embassy_rp::peripherals::USB,
             };
 
             let io_rx = async {
-                let mut b = [0u8; 64];
+                // limit to 63 so we can ignore dealing with ZLPs for now
+                let mut b = [0u8; 63];
                 loop {
                     let n = rx.read(&mut b).await.map_err(|_| IoDone)?;
                     if n == 0 {
