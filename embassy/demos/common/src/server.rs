@@ -54,7 +54,7 @@ pub async fn listener<D: Driver, S: Shell>(stack: &'static Stack<D>,
     // frames more efficiently, RX doesn't matter so much?
     // How does this interact with the channel copy buffer sizes?
     let mut rx_buffer = [0; 1550];
-    let mut tx_buffer = [0; 1550];
+    let mut tx_buffer = [0; 4500];
 
     loop {
         let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);

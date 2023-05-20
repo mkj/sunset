@@ -148,18 +148,16 @@ impl DemoShell {
         Ok(())
     }
 
-    async fn serial<R, W>(&self, mut sr: R, mut sw: W) -> Result<()>
+    async fn serial<R, W>(&self, mut sshr: R, mut sshw: W) -> Result<()>
         where R: asynch::Read+Io<Error=sunset::Error>,
             W: asynch::Write+Io<Error=sunset::Error> {
 
-        info!("serial top");
-
-        info!("take await");
         let (mut rx, mut tx) = self.ctx.usb_pipe.take().await;
-        info!("take done");
         let r = async {
-            let mut b = [0u8; 64];
-            let mut btrans = Vec::<u8, 128>::new();
+            // TODO: could have a single buffer to translate in-place.
+            const DOUBLE: usize = 2*takepipe::READ_SIZE;
+            let mut b = [0u8; takepipe::READ_SIZE];
+            let mut btrans = Vec::<u8, DOUBLE>::new();
             loop {
                 let n = rx.read(&mut b).await?;
                 let b = &mut b[..n];
@@ -171,7 +169,7 @@ impl DemoShell {
                     }
                     btrans.push(*c).unwrap();
                 }
-                sw.write_all(&btrans).await?;
+                sshw.write_all(&btrans).await?;
             }
             #[allow(unreachable_code)]
             Ok::<(), sunset::Error>(())
@@ -179,7 +177,7 @@ impl DemoShell {
         let w = async {
             let mut b = [0u8; 64];
             loop {
-                let n = sr.read(&mut b).await?;
+                let n = sshr.read(&mut b).await?;
                 if n == 0 {
                     return Err(sunset::Error::ChannelEOF);
                 }

@@ -6,7 +6,8 @@ use embassy_futures::select::{select, Either};
 
 use sunset_embassy::{SunsetMutex, SunsetRawMutex};
 
-const SIZE: usize = 64;
+pub const READ_SIZE: usize = 4000;
+pub const WRITE_SIZE: usize = 64;
 
 /// Allows a bidirectional pipe to be shared by many endpoints
 ///
@@ -19,8 +20,8 @@ const SIZE: usize = 64;
 ///
 /// It works a bit like `screen -r -d`.
 pub(crate) struct TakePipe {
-	fanout: Pipe<SunsetRawMutex, SIZE>,
-    fanin: Pipe<SunsetRawMutex, SIZE>,
+	fanout: Pipe<SunsetRawMutex, READ_SIZE>,
+    fanin: Pipe<SunsetRawMutex, WRITE_SIZE>,
     wake: Signal<SunsetRawMutex, ()>,
 }
 
@@ -49,8 +50,8 @@ impl Default for TakePipe {
 }
 
 pub(crate) struct TakeBase<'a> {
-    shared_read: Mutex<SunsetRawMutex, pipe::Reader<'a, SunsetRawMutex, SIZE>>,
-    shared_write: Mutex<SunsetRawMutex, pipe::Writer<'a, SunsetRawMutex, SIZE>>,
+    shared_read: Mutex<SunsetRawMutex, pipe::Reader<'a, SunsetRawMutex, READ_SIZE>>,
+    shared_write: Mutex<SunsetRawMutex, pipe::Writer<'a, SunsetRawMutex, WRITE_SIZE>>,
     pipe: &'a TakePipe,
 }
 
@@ -117,7 +118,7 @@ impl Io for TakeBaseWrite<'_> {
 
 pub(crate) struct TakeRead<'a> {
     pipe: &'a TakePipe,
-    shared: Option<MutexGuard<'a, SunsetRawMutex, pipe::Reader<'a, SunsetRawMutex, SIZE>>>,
+    shared: Option<MutexGuard<'a, SunsetRawMutex, pipe::Reader<'a, SunsetRawMutex, READ_SIZE>>>,
 }
 
 impl asynch::Read for TakeRead<'_> {
@@ -148,7 +149,7 @@ impl Io for TakeRead<'_> {
 
 pub(crate) struct TakeWrite<'a> {
     pipe: &'a TakePipe,
-    shared: Option<MutexGuard<'a, SunsetRawMutex, pipe::Writer<'a, SunsetRawMutex, SIZE>>>,
+    shared: Option<MutexGuard<'a, SunsetRawMutex, pipe::Writer<'a, SunsetRawMutex, WRITE_SIZE>>>,
 }
 
 impl asynch::Write for TakeWrite<'_> {
