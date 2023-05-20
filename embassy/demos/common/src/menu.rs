@@ -277,11 +277,28 @@ where
         write!(self.context, "> ").unwrap();
     }
 
+    fn backspace(&mut self) {
+        if self.used > 0 {
+            let _ = write!(self.context, "\u{0008} \u{0008}");
+            self.used -= 1;
+        }
+    }
+
+    fn previous(&mut self) -> Option<u8> {
+        if self.used == 0 {
+            None
+        } else {
+            Some(self.buffer[self.used-1])
+        }
+    }
+
+
     /// Add a byte to the menu runner's buffer. If this byte is a
     /// carriage-return, the buffer is scanned and the appropriate action
     /// performed.
     /// By default, an echo feature is enabled to display commands on the terminal.
     pub fn input_byte(&mut self, input: u8) {
+
         // Strip carriage returns
         if input == 0x0A {
             return;
@@ -290,11 +307,26 @@ where
             // Handle the command
             self.process_command();
             Outcome::CommandProcessed
+        } else if input == 0x03 {
+            // Handling ctrl-c, clear current command
+            Outcome::CommandProcessed
         } else if (input == 0x08) || (input == 0x7F) {
             // Handling backspace or delete
-            if self.used > 0 {
-                write!(self.context, "\u{0008} \u{0008}").unwrap();
-                self.used -= 1;
+            self.backspace();
+            Outcome::NeedMore
+        } else if input == 0x15 {
+            // Handling ctrl-u, delete to start of line
+            while self.used > 0 {
+                self.backspace();
+            }
+            Outcome::NeedMore
+        } else if input == 0x17 {
+            // Handling ctrl-w, delete previous word
+            while self.previous() == Some(b' ') {
+                self.backspace();
+            }
+            while self.used > 0 && self.buffer[self.used-1] != b' ' {
+                self.backspace();
             }
             Outcome::NeedMore
         } else if self.used < self.buffer.len() {
