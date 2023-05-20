@@ -80,15 +80,15 @@ It contains multiple paragraphs and should be preceeded by the parameter list.
     exit: Some(exit_root),
 };
 
-fn enter_root(_menu: &Menu<BufOutput>, context: &mut BufOutput) {
+fn enter_root(context: &mut BufOutput) {
     writeln!(context, "In enter_root").unwrap();
 }
 
-fn exit_root(_menu: &Menu<BufOutput>, context: &mut BufOutput) {
+fn exit_root(context: &mut BufOutput) {
     writeln!(context, "In exit_root").unwrap();
 }
 
-fn select_foo<'a>(_menu: &Menu<BufOutput>, item: &Item<BufOutput>, args: &[&str], context: &mut BufOutput) {
+fn select_foo<'a>(item: &Item<BufOutput>, args: &[&str], context: &mut BufOutput) {
     writeln!(context, "In select_foo. Args = {:?}", args).unwrap();
     writeln!(
         context,
@@ -122,24 +122,23 @@ fn select_foo<'a>(_menu: &Menu<BufOutput>, item: &Item<BufOutput>, args: &[&str]
     .unwrap();
 }
 
-fn select_bar<'a>(_menu: &Menu<BufOutput>, _item: &Item<BufOutput>, args: &[&str], context: &mut BufOutput) {
+fn select_bar<'a>(_item: &Item<BufOutput>, args: &[&str], context: &mut BufOutput) {
     writeln!(context, "In select_bar. Args = {:?}", args).unwrap();
 }
 
-fn enter_sub(_menu: &Menu<BufOutput>, context: &mut BufOutput) {
+fn enter_sub(context: &mut BufOutput) {
     writeln!(context, "In enter_sub").unwrap();
 }
 
-fn exit_sub(_menu: &Menu<BufOutput>, context: &mut BufOutput) {
+fn exit_sub(context: &mut BufOutput) {
     writeln!(context, "In exit_sub").unwrap();
 }
 
-fn select_baz<'a>(_menu: &Menu<BufOutput>, _item: &Item<BufOutput>, args: &[&str], context: &mut BufOutput) {
+fn select_baz<'a>(_item: &Item<BufOutput>, args: &[&str], context: &mut BufOutput) {
     writeln!(context, "In select_baz: Args = {:?}", args).unwrap();
 }
 
 fn select_quux<'a>(
-    _menu: &Menu<BufOutput>,
     _item: &Item<BufOutput>,
     args: &[&str],
     context: &mut BufOutput,

@@ -10,10 +10,10 @@
 #![deny(missing_docs)]
 
 /// The type of function we call when we enter/exit a menu.
-pub type MenuCallbackFn<T> = fn(menu: &Menu<T>, context: &mut T);
+pub type MenuCallbackFn<T> = fn(context: &mut T);
 
 /// The type of function we call when we a valid command has been entered.
-pub type ItemCallbackFn<T> = fn(menu: &Menu<T>, item: &Item<T>, args: &[&str], context: &mut T);
+pub type ItemCallbackFn<T> = fn(item: &Item<T>, args: &[&str], context: &mut T);
 
 #[derive(Debug)]
 /// Describes a parameter to the command
@@ -245,7 +245,7 @@ where
     /// `write!` to the context, which it will do for all text output.
     pub fn new(menu: &'a Menu<'a, T>, buffer: &'a mut [u8], mut context: T) -> Runner<'a, T> {
         if let Some(cb_fn) = menu.entry {
-            cb_fn(menu, &mut context);
+            cb_fn(&mut context);
         }
         let mut r = Runner {
             menus: [Some(menu), None, None, None],
@@ -385,7 +385,6 @@ where
                                     &mut self.context,
                                     function,
                                     parameters,
-                                    menu,
                                     item,
                                     command_line,
                                 ),
@@ -552,7 +551,6 @@ where
         context: &mut T,
         callback_function: ItemCallbackFn<T>,
         parameters: &[Parameter],
-        parent_menu: &Menu<T>,
         item: &Item<T>,
         command: &str,
     ) {
@@ -622,7 +620,6 @@ where
                 writeln!(context, "Error: Too many arguments given").unwrap();
             } else {
                 callback_function(
-                    parent_menu,
                     item,
                     &argument_buffer[0..argument_count],
                     context,
@@ -631,7 +628,7 @@ where
         } else {
             // Definitely no arguments
             if mandatory_parameter_count == 0 {
-                callback_function(parent_menu, item, &[], context);
+                callback_function(item, &[], context);
             } else {
                 writeln!(context, "Error: Insufficient arguments given").unwrap();
             }
@@ -643,7 +640,7 @@ where
 mod tests {
     use super::*;
 
-    fn dummy(_menu: &Menu<u32>, _item: &Item<u32>, _args: &[&str], _context: &mut u32) {}
+    fn dummy(_item: &Item<u32>, _args: &[&str], _context: &mut u32) {}
 
     #[test]
     fn find_arg_mandatory() {
