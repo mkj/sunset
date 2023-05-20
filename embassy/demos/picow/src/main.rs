@@ -148,13 +148,11 @@ impl DemoShell {
         Ok(())
     }
 
-    async fn serial<C>(&self, mut stdio: C) -> Result<()>
-        where C: asynch::Read+asynch::Write+Clone+Io<Error=sunset::Error> {
+    async fn serial<R, W>(&self, mut sr: R, mut sw: W) -> Result<()>
+        where R: asynch::Read+Io<Error=sunset::Error>,
+            W: asynch::Write+Io<Error=sunset::Error> {
 
         info!("serial top");
-
-
-        let mut s2 = stdio.clone();
 
         info!("take await");
         let (mut rx, mut tx) = self.ctx.usb_pipe.take().await;
@@ -173,7 +171,7 @@ impl DemoShell {
                     }
                     btrans.push(*c).unwrap();
                 }
-                s2.write_all(&btrans).await?;
+                sw.write_all(&btrans).await?;
             }
             #[allow(unreachable_code)]
             Ok::<(), sunset::Error>(())
@@ -181,7 +179,7 @@ impl DemoShell {
         let w = async {
             let mut b = [0u8; 64];
             loop {
-                let n = stdio.read(&mut b).await?;
+                let n = sr.read(&mut b).await?;
                 if n == 0 {
                     return Err(sunset::Error::ChannelEOF);
                 }
@@ -232,7 +230,7 @@ impl Shell for DemoShell {
             let stdio = serv.stdio(chan_handle).await?;
 
             if *self.username.lock().await == "serial" {
-                self.serial(stdio).await
+                self.serial(stdio.clone(), stdio).await
             } else {
                 self.menu(stdio).await
             }
