@@ -51,7 +51,8 @@ struct Inner<'a, C: CliBehaviour, S: ServBehaviour> {
 
     wakers: Wakers,
 
-    // May only be safely modified when `chan_refcounts` is zero.
+    // May only be safely modified when the corresponding
+    // `chan_refcounts` is zero.
     chan_handles: [Option<ChanHandle>; MAX_CHANNELS],
 }
 
@@ -268,9 +269,10 @@ impl<'a, C: CliBehaviour, S: ServBehaviour> EmbassySunset<'a, C, S> {
 
     /// Check for channels that have reached zero refcount
     ///
-    /// This runs periodically from an async context to clean up channels
-    /// that were refcounted down to 0 called from an async context (when
-    /// a ChanIO is dropped)
+    /// When a ChanIO is dropped the refcount may reach 0, but
+    /// without "async Drop" it isn't possible to take the `inner` lock during
+    /// `drop()`.
+    /// Instead this runs periodically from an async context to release channels.
     fn clear_refcounts(&self, inner: &mut Inner<C, S>) -> Result<()> {
         for (ch, count) in inner.chan_handles.iter_mut().zip(self.chan_refcounts.iter()) {
             let count = count.load(Relaxed);
@@ -503,6 +505,7 @@ impl<'a, C: CliBehaviour, S: ServBehaviour> EmbassySunset<'a, C, S> {
     }
 
     pub(crate) fn dec_chan(&self, num: ChanNum) {
+        // refcounts that hit zero will be cleaned up later in clear_refcounts()
         let c = self.chan_refcounts[num.0 as usize].fetch_sub(1, SeqCst);
         debug_assert_ne!(c, 0);
         // perhaps not necessary? is cheap?

@@ -22,6 +22,11 @@ use runner::ChanHandle;
 
 use snafu::ErrorCompat;
 
+pub(crate) struct Channels<C: CliBehaviour, S: ServBehaviour> {
+    ch: [Option<Channel>; config::MAX_CHANNELS],
+    _ph: (PhantomData<C>, PhantomData<S>),
+}
+
 impl<C: CliBehaviour, S: ServBehaviour> Channels<C, S> {
     pub fn new() -> Self {
         Channels {
@@ -478,8 +483,6 @@ impl TryFrom<&packets::PtyReq<'_>> for Pty {
         })
     }
 }
-pub(crate) type ExecString = heapless::String<MAX_EXEC>;
-
 /// Like a `packets::ChannelReqType` but with storage.
 /// Lifetime-free variants have the packet part directly.
 #[derive(Debug)]
@@ -551,20 +554,6 @@ impl<'a, S: AsRef<str> + 'a> Into<Req<'a>> for &'a SessionCommand<S> {
     }
 }
 
-
-// // Variants match packets::ChannelReqType, without data
-// enum ReqKind {
-//     Shell,
-//     Exec,
-//     Pty,
-//     Subsystem,
-//     WinChange,
-//     Signal,
-//     ExitStatus,
-//     ExitSignal,
-//     Break,
-// }
-
 /// Per-direction channel variables
 #[derive(Debug)]
 struct ChanDir {
@@ -626,6 +615,7 @@ impl Channel {
             // last_req: Deque::new(),
             recv: ChanDir {
                 num: num.0,
+                // TODO these should depend on SSH rx buffer size minus overhead
                 max_packet: config::DEFAULT_MAX_PACKET,
                 window: config::DEFAULT_WINDOW,
             },
@@ -848,12 +838,6 @@ pub enum ChanOpened {
     Defer,
     /// A SSH failure code, as well as returning the passed channel handle
     Failure((ChanFail, ChanHandle))
-}
-
-pub(crate) struct Channels<C: CliBehaviour, S: ServBehaviour> {
-    ch: [Option<Channel>; config::MAX_CHANNELS],
-
-    _ph: (PhantomData<C>, PhantomData<S>),
 }
 
 /// A SSH protocol local channel number

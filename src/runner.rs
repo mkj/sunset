@@ -212,22 +212,6 @@ impl<'a, C: CliBehaviour, S: ServBehaviour> Runner<'a, C, S> {
     // TODO: move somewhere client specific?
     pub fn open_client_session(&mut self) -> Result<ChanHandle> {
         trace!("open_client_session");
-        // let mut init_req = channel::InitReqs::new();
-        // if let Some(pty) = pty {
-        //     init_req.push(channel::ReqDetails::Pty(pty)).trap()?;
-        // }
-
-        // match cmd {
-        //     SessionCommand::Shell => {
-        //         init_req.push(channel::ReqDetails::Shell).trap()?;
-        //     }
-        // }
-        // if let Some(cmd) = exec {
-        //     let mut s = channel::ExecString::new();
-        //     s.push_str(cmd).trap()?;
-        //     init_req.push(channel::ReqDetails::Exec(s)).trap()?;
-        // } else {
-        // }
 
         let (chan, p) = self.conn.channels.open(packets::ChannelOpenType::Session)?;
         self.traf_out.send_packet(p, &mut self.keys)?;
@@ -423,6 +407,9 @@ impl<'a, C: CliBehaviour, S: ServBehaviour> Runner<'a, C, S> {
 /// Represents an open channel, owned by the application.
 ///
 /// Must be released by calling [`Runner::channel_done()`]
+
+// Inner contents are crate-private to ensure that arbitrary
+// channel numbers cannot be used after closing/reuse.
 pub struct ChanHandle(pub(crate) ChanNum);
 
 impl ChanHandle {
@@ -431,6 +418,7 @@ impl ChanHandle {
     /// This can be used by applications as an index.
     /// Channel numbers satisfy
     /// `0 <= num < sunset::config::MAX_CHANNELS`.
+    ///
     /// An index may be reused after a call to [`Runner::channel_done()`],
     /// applications must take care not to keep using this `num()` index after
     /// that.
