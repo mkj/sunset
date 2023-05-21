@@ -33,6 +33,7 @@ defmt = { version  = "0.3", optional = true }
 defmt-rtt = "0.3"
 panic-probe = { version = "0.3", features = ["print-defmt"] }
 log = { version = "0.4" }
+futures = { version = "0.3", default-features = false }
 
 cortex-m = { version = "0.7.6", features = ["critical-section-single-core"]}
 cortex-m-rt = "0.7.0"

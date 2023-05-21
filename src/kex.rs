@@ -554,7 +554,8 @@ impl SharedSecret {
     ) -> Result<KexOutput> {
         // hostkeys list must contain the signature type
         trace!("hostkeys {:?}", b.hostkeys());
-        let hostkey = b.hostkeys()?.iter().find(|k| k.can_sign(algos.hostsig)).trap()?;
+        let hk = b.hostkeys()?;
+        let hostkey = hk.as_slice().iter().find(|k| k.can_sign(algos.hostsig)).trap()?;
 
         kex_hash.prefinish(&hostkey.pubkey(), p.q_c.0, algos.kex.pubkey())?;
         let (kex_out, kex_pub) = match algos.kex {

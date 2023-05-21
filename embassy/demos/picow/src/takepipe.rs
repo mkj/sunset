@@ -1,3 +1,13 @@
+#[allow(unused_imports)]
+#[cfg(not(feature = "defmt"))]
+pub use {
+    log::{debug, error, info, log, trace, warn},
+};
+
+#[allow(unused_imports)]
+#[cfg(feature = "defmt")]
+pub use defmt::{debug, info, warn, panic, error, trace};
+
 use core::ops::DerefMut;
 
 use embedded_io::{asynch, Io};

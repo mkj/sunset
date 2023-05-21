@@ -27,11 +27,11 @@ use sunset::sshwire::OwnOrBorrow;
 use crate::demo_common::SSHConfig;
 
 // bump this when the format changes
-const CURRENT_VERSION: u8 = 1;
+const CURRENT_VERSION: u8 = 2;
 
 // TODO: unify offsets with wifi's romfw feature
 const CONFIG_OFFSET: u32 = 0x150000;
-const FLASH_SIZE: usize = 2*1024*1024;
+pub const FLASH_SIZE: usize = 2*1024*1024;
 
 #[derive(SSHEncode, SSHDecode)]
 struct FlashConfig<'a> {

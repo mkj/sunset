@@ -21,6 +21,7 @@ use embassy_net::{Stack, StackResources};
 use cyw43_pio::PioSpi;
 
 use static_cell::StaticCell;
+use heapless::String;
 
 use rand::rngs::OsRng;
 use rand::RngCore;
@@ -42,7 +43,8 @@ async fn wifi_task(
 pub(crate) async fn wifi_stack(spawner: &Spawner,
     p23: PIN_23, p24: PIN_24, p25: PIN_25, p29: PIN_29, dma: DMA_CH0,
     sm: PioStateMachineInstance<Pio0, Sm0>,
-    wifi_net: &str, wpa_password: Option<&str>,
+    wifi_net: String<32>, wpa_password: Option<String<63>>,
+
     ) -> (embassy_net::Stack<cyw43::NetDriver<'static>>, cyw43::Control<'static>)
     {
 
@@ -61,13 +63,18 @@ pub(crate) async fn wifi_stack(spawner: &Spawner,
     // control.set_power_management(cyw43::PowerManagementMode::None).await;
     // control.set_power_management(cyw43::PowerManagementMode::Performance).await;
 
-    if let Some(pw) = wpa_password {
-        info!("wifi net {} pw {}", wifi_net, pw);
-        control.join_wpa2(wifi_net, pw).await;
+    let st = if let Some(pw) = wpa_password {
+        info!("wifi net {} wpa2", wifi_net);
+        control.join_wpa2(&wifi_net, &pw).await
     } else {
         info!("wifi net {} open", wifi_net);
-        control.join_open(wifi_net).await;
+        control.join_open(&wifi_net).await
+    };
+    if let Err(e) = st {
+        info!("wifi join failed, code {}", e.status);
+        let () = futures::future::pending().await;
     }
+
 
     let config = embassy_net::Config::Dhcp(Default::default());
 

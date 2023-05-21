@@ -1054,6 +1054,7 @@ dependencies = [
  "embassy-net",
  "embassy-net-driver",
  "embassy-sync 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "embassy-time 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "embedded-io",
  "heapless",
  "log",

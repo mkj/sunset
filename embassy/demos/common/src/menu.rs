@@ -6,7 +6,6 @@
 //!
 //! A basic command-line interface for `#![no_std]` Rust programs. Peforms
 //! zero heap allocation.
-#![no_std]
 #![deny(missing_docs)]
 
 /// The type of function we call when we enter/exit a menu.

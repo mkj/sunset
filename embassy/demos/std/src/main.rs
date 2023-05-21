@@ -22,9 +22,10 @@ use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use crate::tuntap::TunTapDevice;
 
 use sunset::*;
-use sunset_embassy::SSHServer;
+use sunset_embassy::{SSHServer, SunsetMutex};
 
 mod tuntap;
+mod setupmenu;
 pub(crate) use sunset_demo_embassy_common as demo_common;
 use crate::demo_common::singleton;
 
@@ -43,7 +44,7 @@ async fn net_task(stack: &'static Stack<TunTapDevice>) -> ! {
 async fn main_task(spawner: Spawner) {
     // TODO config
     let opt_tap0 = "tap0";
-    let config = Config::Dhcp(Default::default());
+    let net_config = Config::Dhcp(Default::default());
 
     // Init network device
     let device = TunTapDevice::new(opt_tap0).unwrap();
@@ -53,7 +54,7 @@ async fn main_task(spawner: Spawner) {
     // Init network stack
     let stack = &*singleton!(Stack::new(
         device,
-        config,
+        net_config,
         singleton!(StackResources::<NUM_SOCKETS>::new()),
         seed
     ));
@@ -61,12 +62,12 @@ async fn main_task(spawner: Spawner) {
     // Launch network task
     spawner.spawn(net_task(stack)).unwrap();
 
-    let ssh_config = &*singleton!(
-        SSHConfig::new().unwrap()
+    let config = &*singleton!(
+        SunsetMutex::new(SSHConfig::new().unwrap())
     );
 
     for _ in 0..NUM_LISTENERS {
-        spawner.spawn(listener(stack, &ssh_config)).unwrap();
+        spawner.spawn(listener(stack, config)).unwrap();
     }
 }
 
@@ -95,10 +96,11 @@ impl Shell for DemoShell {
 
             let mut stdio = serv.stdio(chan_handle).await?;
 
-            let mut menu_buf = [0u8; 64];
+            // input buffer, large enough for a ssh-ed25519 key
+            let mut menu_buf = [0u8; 150];
             let menu_out = demo_menu::BufOutput::default();
 
-            let mut menu = MenuRunner::new(&demo_menu::ROOT_MENU, &mut menu_buf, menu_out);
+            let mut menu = MenuRunner::new(&setupmenu::SETUP_MENU, &mut menu_buf, menu_out);
 
             // bodge
             for c in "help\r\n".bytes() {
@@ -127,7 +129,8 @@ impl Shell for DemoShell {
 
 // TODO: pool_size should be NUM_LISTENERS but needs a literal
 #[embassy_executor::task(pool_size = 4)]
-async fn listener(stack: &'static Stack<TunTapDevice>, config: &'static SSHConfig) -> ! {
+async fn listener(stack: &'static Stack<TunTapDevice>,
+    config: &'static SunsetMutex<SSHConfig>) -> ! {
 
     demo_common::listener::<_, DemoShell>(stack, config, ()).await
 }

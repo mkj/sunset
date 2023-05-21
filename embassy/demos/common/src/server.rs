@@ -15,13 +15,15 @@ use embassy_net::tcp::TcpSocket;
 use embassy_net::Stack;
 use embassy_net_driver::Driver;
 use embassy_futures::join::join;
+use embassy_futures::select::{select, Either};
+use embassy_time::{Duration, Timer};
 
 use embedded_io::asynch;
 
 use heapless::String;
 
 use sunset::*;
-use sunset_embassy::SSHServer;
+use sunset_embassy::{SSHServer, SunsetMutex};
 
 use crate::SSHConfig;
 
@@ -46,7 +48,7 @@ macro_rules! singleton {
 
 // common entry point
 pub async fn listener<D: Driver, S: Shell>(stack: &'static Stack<D>,
-    config: &SSHConfig,
+    config: &SunsetMutex<SSHConfig>,
     init: S::Init) -> ! {
     // TODO: buffer size?
     // Does it help to be larger than ethernet MTU?
@@ -58,7 +60,7 @@ pub async fn listener<D: Driver, S: Shell>(stack: &'static Stack<D>,
 
     loop {
         let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
-        // TODO: disable nagle. smoltcp supports it, requires embassy-net addition
+        // socket.set_nagle_enabled(false);
 
         info!("Listening on TCP:22...");
         if let Err(_) = socket.accept(22).await {
@@ -71,11 +73,18 @@ pub async fn listener<D: Driver, S: Shell>(stack: &'static Stack<D>,
             // warn!("Ended with error: {:?}", e);
             warn!("Ended with error");
         }
+
+        // Make sure a TCP socket reset is sent to the remote host
+        socket.abort();
+
+        // TODO: Replace this with something proper like
+        // https://github.com/embassy-rs/embassy/pull/1471
+        Timer::after(Duration::from_millis(200)).await;
     }
 }
 
 /// Run a SSH session when a socket accepts a connection
-async fn session<S: Shell>(socket: &mut TcpSocket<'_>, config: &SSHConfig,
+async fn session<S: Shell>(socket: &mut TcpSocket<'_>, config: &SunsetMutex<SSHConfig>,
     init: &S::Init) -> sunset::Result<()> {
     // OK unwrap: has been accepted
     let src = socket.remote_endpoint().unwrap();
@@ -83,7 +92,8 @@ async fn session<S: Shell>(socket: &mut TcpSocket<'_>, config: &SSHConfig,
 
     let shell = S::new(init);
 
-    let app = DemoServer::new(&shell, config)?;
+    let conf = config.lock().await.clone();
+    let app = DemoServer::new(&shell, conf)?;
     let app = Mutex::<NoopRawMutex, _>::new(app);
 
     let mut ssh_rxbuf = [0; 2000];
@@ -97,18 +107,17 @@ async fn session<S: Shell>(socket: &mut TcpSocket<'_>, config: &SSHConfig,
 
     let run = serv.run(&mut rsock, &mut wsock, &app);
 
-    let (r1, r2) = join(run, session).await;
-    r1?;
-    r2?;
+    let f = select(run, session).await;
+    match f {
+        Either::First(r) => r?,
+        Either::Second(r) => r?,
+    }
 
     Ok(())
 }
 
 struct DemoServer<'a, S: Shell> {
-    config: &'a SSHConfig,
-
-    // references config
-    hostkeys: [&'a SignKey; 1],
+    config: SSHConfig,
 
     handle: Option<ChanHandle>,
     sess: Option<ChanNum>,
@@ -117,21 +126,21 @@ struct DemoServer<'a, S: Shell> {
 }
 
 impl<'a, S: Shell> DemoServer<'a, S> {
-    fn new(shell: &'a S, config: &'a SSHConfig) -> Result<Self> {
+    fn new(shell: &'a S, config: SSHConfig) -> Result<Self> {
 
         Ok(Self {
             handle: None,
             sess: None,
             config,
             shell,
-            hostkeys: [&config.hostkey],
         })
     }
 }
 
 impl<'a, S: Shell> ServBehaviour for DemoServer<'a, S> {
-    fn hostkeys(&mut self) -> BhResult<&[&SignKey]> {
-        Ok(&self.hostkeys)
+    fn hostkeys(&mut self) -> BhResult<heapless::Vec<&SignKey, 2>> {
+        // OK unwrap: only one element
+        Ok(heapless::Vec::from_slice(&[&self.config.hostkey]).unwrap())
     }
 
     async fn auth_unchallenged(&mut self, username: TextString<'_>) -> bool {
@@ -174,7 +183,7 @@ impl<'a, S: Shell> ServBehaviour for DemoServer<'a, S> {
 }
 
 pub trait Shell {
-    type Init;
+    type Init: Copy;
 
     fn new(init: &Self::Init) -> Self;
 

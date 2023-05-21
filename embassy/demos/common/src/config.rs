@@ -13,21 +13,26 @@ use {
 #[cfg(feature = "defmt")]
 use defmt::{debug, info, warn, panic, error, trace};
 
-use heapless::String;
+use heapless::{String, Vec};
 
 use sunset_sshwire_derive::*;
 use sunset::sshwire;
 use sunset::sshwire::{BinString, SSHEncode, SSHDecode, WireResult, SSHSource, SSHSink, WireError};
 
 use sunset::{SignKey, KeyType};
+use sunset::packets::Ed25519PubKey;
 
 // Be sure to bump picow flash_config::CURRENT_VERSION
 // if this struct changes (or encode/decode impls).
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SSHConfig {
     pub hostkey: SignKey,
+
     /// login password
     pub pw_hash: Option<[u8; 32]>,
+    // 3 slots
+    pub auth_keys: [Option<Ed25519PubKey>; 3],
+
     /// SSID
     pub wifi_net: String<32>,
     /// WPA2 passphrase. None is Open network.
@@ -41,11 +46,12 @@ impl SSHConfig {
     pub fn new() -> Result<Self> {
         let hostkey = SignKey::generate(KeyType::Ed25519, None)?;
 
-        let wifi_net = option_env!("WIFI_NETWORK").unwrap_or("guest").into();
-        let wifi_pw = option_env!("WIFI_PASSWORD").map(|p| p.into());
+        let wifi_net = option_env!("WIFI_NET").unwrap_or("guest").into();
+        let wifi_pw = option_env!("WIFI_PW").map(|p| p.into());
         Ok(SSHConfig {
             hostkey,
             pw_hash: None,
+            auth_keys: Default::default(),
             wifi_net,
             wifi_pw,
         })
@@ -68,8 +74,14 @@ fn dec_signkey<'de, S>(s: &mut S) -> WireResult<SignKey> where S: SSHSource<'de>
 impl SSHEncode for SSHConfig {
     fn enc(&self, s: &mut dyn SSHSink) -> WireResult<()> {
         enc_signkey(&self.hostkey, s)?;
+
         self.pw_hash.is_some().enc(s)?;
         self.pw_hash.enc(s)?;
+
+        for k in self.auth_keys.iter() {
+            k.is_some().enc(s)?;
+            k.enc(s)?;
+        }
 
         self.wifi_net.as_str().enc(s)?;
 
@@ -88,6 +100,13 @@ impl<'de> SSHDecode<'de> for SSHConfig {
         let have_pw_hash = bool::dec(s)?;
         let pw_hash = have_pw_hash.then(|| SSHDecode::dec(s)).transpose()?;
 
+        let mut auth_keys = [None, None, None];
+        for k in auth_keys.iter_mut() {
+            if bool::dec(s)? {
+                *k = Some(SSHDecode::dec(s)).transpose()?;
+            }
+        }
+
         let wifi_net = <&str>::dec(s)?.into();
         let have_wifi_pw = bool::dec(s)?;
 
@@ -99,6 +118,7 @@ impl<'de> SSHDecode<'de> for SSHConfig {
         Ok(Self {
             hostkey,
             pw_hash,
+            auth_keys,
             wifi_net,
             wifi_pw,
         })
