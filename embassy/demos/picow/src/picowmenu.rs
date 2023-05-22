@@ -143,19 +143,10 @@ const WIFI_ITEM: Item<MenuCtx> = Item {
         label: "wifi",
         items: &[
             &Item {
-                command: "net",
-                item_type: ItemType::Callback {
-                    parameters: &[
-                        Parameter::Mandatory { parameter_name: "ssid", help: None },
-                    ],
-                    function: do_wifi_net,
-                },
-                help: None,
-            },
-            &Item {
                 command: "wpa2",
                 item_type: ItemType::Callback {
                     parameters: &[
+                        Parameter::Mandatory { parameter_name: "net", help: Some("ssid") },
                         Parameter::Mandatory { parameter_name: "password", help: None },
                     ],
                     function: do_wifi_wpa2,
@@ -165,7 +156,9 @@ const WIFI_ITEM: Item<MenuCtx> = Item {
             &Item {
                 command: "open",
                 item_type: ItemType::Callback {
-                    parameters: &[],
+                    parameters: &[
+                        Parameter::Mandatory { parameter_name: "net", help: Some("ssid") },
+                    ],
                     function: do_wifi_open,
                 },
                 help: None,
@@ -283,26 +276,19 @@ fn wifi_entry(context: &mut MenuCtx) {
     });
 }
 
-fn do_wifi_net(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx) {
+fn do_wifi_wpa2(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx) {
     context.with_config(|c, out| {
         let net = args[0];
-        if c.wifi_net.capacity() > net.len() {
-            writeln!(out, "Too long");
+        let pw = args[1];
+        if c.wifi_net.capacity() < net.len() {
+            writeln!(out, "Too long net");
+            return;
+        }
+        if pw.len() > 63 {
+            writeln!(out, "Too long pw");
             return;
         }
         c.wifi_net = net.into();
-    });
-    context.need_save = true;
-    wifi_entry(context);
-}
-
-fn do_wifi_wpa2(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx) {
-    context.with_config(|c, out| {
-        let pw = args[0];
-        if pw.len() > 63 {
-            writeln!(out, "Too long");
-            return;
-        }
         c.wifi_pw = Some(pw.into())
     });
     context.need_save = true;
@@ -311,6 +297,11 @@ fn do_wifi_wpa2(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx) {
 
 fn do_wifi_open(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx) {
     context.with_config(|c, out| {
+        let net = args[0];
+        if c.wifi_net.capacity() < net.len() {
+            writeln!(out, "Too long net");
+            return;
+        }
         c.wifi_pw = None;
     });
     context.need_save = true;

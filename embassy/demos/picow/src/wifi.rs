@@ -63,18 +63,26 @@ pub(crate) async fn wifi_stack(spawner: &Spawner,
     // control.set_power_management(cyw43::PowerManagementMode::None).await;
     // control.set_power_management(cyw43::PowerManagementMode::Performance).await;
 
-    let st = if let Some(pw) = wpa_password {
-        info!("wifi net {} wpa2", wifi_net);
-        control.join_wpa2(&wifi_net, &pw).await
-    } else {
-        info!("wifi net {} open", wifi_net);
-        control.join_open(&wifi_net).await
-    };
-    if let Err(e) = st {
-        info!("wifi join failed, code {}", e.status);
-        let () = futures::future::pending().await;
+    let mut status = Ok(());
+    for i in 0..5 {
+        status = if let Some(ref pw) = wpa_password {
+            info!("wifi net {} wpa2 {}", wifi_net, &pw);
+            control.join_wpa2(&wifi_net, &pw).await
+        } else {
+            info!("wifi net {} open", wifi_net);
+            control.join_open(&wifi_net).await
+        };
+        if let Err(ref e) = status {
+            info!("wifi join failed, code {}", e.status);
+        } else {
+            break;
+        }
     }
 
+    if let Err(e) = status {
+        // wait forever
+        let () = futures::future::pending().await;
+    }
 
     let config = embassy_net::Config::Dhcp(Default::default());
 

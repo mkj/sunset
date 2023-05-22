@@ -65,7 +65,7 @@ async fn main(spawner: Spawner) {
 
     let mut flash = embassy_rp::flash::Flash::new(p.FLASH);
 
-    let config = if option_env!("RESET_FLASH").is_some() {
+    let config = if option_env!("RESET_CONFIG").is_some() {
         flashconfig::create(&mut flash).unwrap()
     } else {
         flashconfig::load_or_create(&mut flash).unwrap()
