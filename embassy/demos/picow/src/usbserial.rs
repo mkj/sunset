@@ -1,29 +1,32 @@
-
 #[allow(unused_imports)]
 #[cfg(not(feature = "defmt"))]
-pub use {
-    log::{debug, error, info, log, trace, warn},
-};
+pub use log::{debug, error, info, log, trace, warn};
 
 #[allow(unused_imports)]
 #[cfg(feature = "defmt")]
-pub use defmt::{debug, info, warn, panic, error, trace};
+pub use defmt::{debug, error, info, panic, trace, warn};
 
-use embassy_usb::{Builder};
-use embassy_rp::usb::Instance;
-use embassy_usb::class::cdc_acm::{CdcAcmClass, State};
 use embassy_futures::join::join;
+use embassy_rp::usb::Instance;
+use embassy_usb::class::cdc_acm::{self, CdcAcmClass, State};
+use embassy_usb::Builder;
+use embassy_usb_driver::Driver;
 
-use embedded_io::asynch;
+use embedded_io::{asynch, Io};
+use heapless::Vec;
 
 use sunset::*;
+use sunset_embassy::io_copy;
 
-pub async fn usb_serial(usb: embassy_rp::peripherals::USB,
+pub async fn usb_serial<R, W>(
+    usb: embassy_rp::peripherals::USB,
     irq: embassy_rp::interrupt::USBCTRL_IRQ,
-    tx: &mut impl asynch::Write,
-    rx: &mut impl asynch::Read,
-    ) {
-
+    tx: &mut W,
+    rx: &mut R,
+)
+    where R: asynch::Read+Io<Error=sunset::Error>,
+        W: asynch::Write+Io<Error=sunset::Error>
+{
     info!("usb_serial top");
 
     let driver = embassy_rp::usb::Driver::new(usb, irq);
@@ -62,45 +65,24 @@ pub async fn usb_serial(usb: embassy_rp::peripherals::USB,
 
     let cdc = CdcAcmClass::new(&mut builder, &mut state, 64);
     let (mut cdc_tx, mut cdc_rx) = cdc.split();
+    // let cdc_tx = &mut cdc_tx;
+    // let cdc_rx = &mut cdc_rx;
 
     let mut usb = builder.build();
 
     // Run the USB device.
     let usb_fut = usb.run();
 
-    struct IoDone;
-
     let io = async {
         loop {
             info!("usb waiting");
             cdc_rx.wait_connection().await;
             info!("Connected");
+            let mut cdc_tx = CDCWrite::new(&mut cdc_tx);
+            let mut cdc_rx = CDCRead::new(&mut cdc_rx);
 
-            let io_tx = async {
-                let mut b = [0u8; 64];
-                loop {
-                    let n = cdc_rx.read_packet(&mut b).await .map_err(|_| IoDone)?;
-                    let b = &b[..n];
-                    tx.write_all(b).await.map_err(|_| IoDone)?;
-                }
-                #[allow(unreachable_code)]
-                Ok::<_, IoDone>(())
-            };
-
-            let io_rx = async {
-                // limit to 63 so we can ignore dealing with ZLPs for now
-                let mut b = [0u8; 63];
-                loop {
-                    let n = rx.read(&mut b).await.map_err(|_| IoDone)?;
-                    if n == 0 {
-                        return Err(IoDone);
-                    }
-                    let b = &b[..n];
-                    cdc_tx.write_packet(b).await.map_err(|_| IoDone)?;
-                }
-                #[allow(unreachable_code)]
-                Ok::<_, IoDone>(())
-            };
+            let io_tx = io_copy::<64, _, _>(&mut cdc_rx, tx);
+            let io_rx = io_copy::<64, _, _>(rx, &mut cdc_tx);
 
             join(io_rx, io_tx).await;
             info!("Disconnected");
@@ -109,5 +91,88 @@ pub async fn usb_serial(usb: embassy_rp::peripherals::USB,
 
     info!("usb join");
     join(usb_fut, io).await;
+}
 
+pub struct CDCRead<'a, 'p, D: Driver<'a>> {
+    cdc: &'p mut cdc_acm::Receiver<'a, D>,
+    // sufficient for max packet
+    buf: [u8; 64],
+    // when start reaches end, we set both to 0.
+    start: usize,
+    end: usize,
+}
+
+impl<'a, 'p, D: Driver<'a>> CDCRead<'a, 'p, D> {
+    pub fn new(cdc: &'p mut cdc_acm::Receiver<'a, D>) -> Self {
+        Self { cdc, buf: [0u8; 64], start: 0, end: 0 }
+    }
+}
+
+impl<'a, D: Driver<'a>> asynch::Read for CDCRead<'a, '_, D> {
+    async fn read(&mut self, ret: &mut [u8]) -> sunset::Result<usize> {
+        debug_assert!(self.start < self.end || self.end == 0);
+
+        // return existing content first
+        if self.end > 0 {
+            let l = ret.len().min(self.end - self.start);
+            ret.copy_from_slice(&self.buf[self.start..self.start + l]);
+            self.start += l;
+            if self.start == self.end {
+                self.start = 0;
+                self.end = 0;
+            }
+            return Ok(l);
+        }
+
+        debug_assert!(self.start == 0);
+        debug_assert!(self.end == 0);
+
+        let (r, buffered) = if ret.len() >= self.buf.len() {
+            // read in-place
+            (self.cdc.read_packet(ret).await, false)
+        } else {
+            // ret is too small, use buffer
+            (self.cdc.read_packet(self.buf.as_mut()).await, true)
+        };
+
+
+        let n = r.map_err(|_| sunset::Error::ChannelEOF)?;
+
+        if n == 0 {
+            return Err(sunset::Error::ChannelEOF);
+        }
+
+        if buffered {
+            ret.copy_from_slice(&self.buf[..n]);
+        }
+        Ok(n)
+    }
+}
+
+impl<'a, D: Driver<'a>> Io for CDCRead<'a, '_, D> {
+    type Error = sunset::Error;
+}
+
+pub struct CDCWrite<'a, 'p, D: Driver<'a>>(&'p mut cdc_acm::Sender<'a, D>);
+
+impl<'a, 'p, D: Driver<'a>> CDCWrite<'a, 'p, D> {
+    pub fn new(cdc: &'p mut cdc_acm::Sender<'a, D>) -> Self {
+        Self(cdc)
+    }
+}
+
+impl<'a, D: Driver<'a>> asynch::Write for CDCWrite<'a, '_, D> {
+    async fn write(&mut self, buf: &[u8]) -> sunset::Result<usize> {
+        // limit to 63 so we can ignore dealing with ZLPs for now
+        let b = &buf[..buf.len().min(63)];
+        self.0
+            .write_packet(b)
+            .await
+            .map_err(|_| sunset::Error::ChannelEOF)?;
+        Ok(b.len())
+    }
+}
+
+impl<'a, D: Driver<'a>> Io for CDCWrite<'a, '_, D> {
+    type Error = sunset::Error;
 }

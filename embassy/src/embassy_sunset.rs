@@ -15,7 +15,7 @@ use embassy_sync::mutex::Mutex;
 use embassy_sync::signal::Signal;
 use embassy_futures::select::select;
 use embassy_futures::join;
-use embedded_io::asynch;
+use embedded_io::{asynch, asynch::Write, Io};
 
 // thumbv6m has no atomic usize add/sub
 use atomic_polyfill::AtomicUsize;
@@ -513,3 +513,20 @@ impl<'a, C: CliBehaviour, S: ServBehaviour> EmbassySunset<'a, C, S> {
     }
 }
 
+
+pub async fn io_copy<const B: usize, R, W>(r: &mut R, w: &mut W) -> Result<()>
+    where R: asynch::Read+Io<Error=sunset::Error>,
+        W: asynch::Write+Io<Error=sunset::Error>
+{
+    let mut b = [0u8; B];
+    loop {
+        let n = r.read(&mut b).await?;
+        if n == 0 {
+            return sunset::error::ChannelEOF.fail();
+        }
+        let b = &b[..n];
+        w.write_all(b).await?;
+    }
+    #[allow(unreachable_code)]
+    Ok::<_, Error>(())
+}

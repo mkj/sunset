@@ -1772,6 +1772,7 @@ dependencies = [
  "embassy-sync 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "embassy-time 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "embassy-usb",
+ "embassy-usb-driver",
  "embedded-hal 1.0.0-alpha.10",
  "embedded-hal-async",
  "embedded-io 0.4.0",
