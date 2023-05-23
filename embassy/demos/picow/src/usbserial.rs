@@ -12,7 +12,8 @@ use embassy_usb::class::cdc_acm::{self, CdcAcmClass, State};
 use embassy_usb::Builder;
 use embassy_usb_driver::Driver;
 
-use embedded_io::{asynch, Io};
+use embedded_io::{asynch, Io, asynch::BufRead};
+
 use heapless::Vec;
 
 use sunset::*;
@@ -112,40 +113,58 @@ impl<'a, D: Driver<'a>> asynch::Read for CDCRead<'a, '_, D> {
     async fn read(&mut self, ret: &mut [u8]) -> sunset::Result<usize> {
         debug_assert!(self.start < self.end || self.end == 0);
 
-        // return existing content first
-        if self.end > 0 {
-            let l = ret.len().min(self.end - self.start);
-            ret.copy_from_slice(&self.buf[self.start..self.start + l]);
-            self.start += l;
-            if self.start == self.end {
-                self.start = 0;
-                self.end = 0;
-            }
-            return Ok(l);
+        if self.end == 0 && ret.len() > self.buf.len() {
+            // perform an unbuffered read if possible, saves a copy
+            let n = self
+                .cdc
+                .read_packet(ret)
+                .await
+                .map_err(|_| sunset::Error::ChannelEOF)?;
+            info!("direct read_packet {:?}", &ret[..n]);
+            return Ok(n)
         }
 
-        debug_assert!(self.start == 0);
-        debug_assert!(self.end == 0);
+        let b = self.fill_buf().await?;
+        let n = ret.len().min(b.len());
+        info!("buf read {:?}, rl {} bl {}", &b[..n], ret.len(), b.len());
+        (&mut ret[..n]).copy_from_slice(&b[..n]);
+        self.consume(n);
+        return Ok(n)
+    }
+}
 
-        let (r, buffered) = if ret.len() >= self.buf.len() {
-            // read in-place
-            (self.cdc.read_packet(ret).await, false)
-        } else {
-            // ret is too small, use buffer
-            (self.cdc.read_packet(self.buf.as_mut()).await, true)
-        };
+impl<'a, D: Driver<'a>> asynch::BufRead for CDCRead<'a, '_, D> {
+    async fn fill_buf(&mut self) -> sunset::Result<&[u8]> {
+        debug_assert!(self.start < self.end || self.end == 0);
 
+        if self.end == 0 {
+            debug_assert!(self.start == 0);
+            let n = self
+                .cdc
+                .read_packet(self.buf.as_mut())
+                .await
+                .map_err(|_| sunset::Error::ChannelEOF)?;
+            info!("buf read_packet {:?}", &self.buf[..n]);
 
-        let n = r.map_err(|_| sunset::Error::ChannelEOF)?;
-
-        if n == 0 {
-            return Err(sunset::Error::ChannelEOF);
+            self.end = n;
         }
+        debug_assert!(self.end > 0);
+        info!("fill {}..{}", self.start, self.end);
 
-        if buffered {
-            ret.copy_from_slice(&self.buf[..n]);
+        return Ok(&self.buf[self.start..self.end]);
+    }
+
+    fn consume(&mut self, amt: usize) {
+        debug_assert!(self.start < self.end || self.end == 0);
+
+        debug_assert!(amt <= (self.end - self.start));
+
+        self.start += amt;
+        if self.start >= self.end {
+            self.start = 0;
+            self.end = 0;
         }
-        Ok(n)
+        info!("consumed {},  {}..{}", amt, self.start, self.end);
     }
 }
 
