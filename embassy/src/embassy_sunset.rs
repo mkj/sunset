@@ -530,3 +530,20 @@ pub async fn io_copy<const B: usize, R, W>(r: &mut R, w: &mut W) -> Result<()>
     #[allow(unreachable_code)]
     Ok::<_, Error>(())
 }
+
+pub async fn io_buf_copy<R, W>(r: &mut R, w: &mut W) -> Result<()>
+    where R: asynch::BufRead+Io<Error=sunset::Error>,
+        W: asynch::Write+Io<Error=sunset::Error>
+{
+    loop {
+        let b = r.fill_buf().await?;
+        if b.len() == 0 {
+            return sunset::error::ChannelEOF.fail();
+        }
+        let n = b.len();
+        w.write_all(b).await?;
+        r.consume(n)
+    }
+    #[allow(unreachable_code)]
+    Ok::<_, Error>(())
+}

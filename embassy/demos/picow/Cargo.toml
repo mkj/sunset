@@ -76,6 +76,8 @@ embassy-usb-driver = { git = "https://github.com/embassy-rs/embassy", rev = "3e7
 embassy-net-driver-channel = { git = "https://github.com/embassy-rs/embassy", rev = "3e730aa8b06401003202bf9e21a9c83ec6b21b0e" }
 embassy-net-driver = { git = "https://github.com/embassy-rs/embassy", rev = "3e730aa8b06401003202bf9e21a9c83ec6b21b0e" }
 
+# embedded-io = { path = "/home/matt/3rd/rs/embedded-io" }
+
 [profile.dev]
 debug = 2
 debug-assertions = true

@@ -16,6 +16,9 @@ pub use defmt::{debug, info, warn, panic, error, trace};
 
 use {defmt_rtt as _, panic_probe as _};
 
+use core::fmt::Write as _;
+
+
 use embassy_executor::Spawner;
 use embassy_net::Stack;
 use embassy_futures::join::join;
@@ -23,7 +26,7 @@ use embassy_futures::select::select;
 use embassy_rp::{pio::PioPeripheral, interrupt};
 use embassy_rp::peripherals::FLASH;
 use embedded_io::{asynch, Io};
-use embedded_io::asynch::Write;
+use embedded_io::asynch::Write as _;
 
 use heapless::{String, Vec};
 
@@ -79,10 +82,6 @@ async fn main(spawner: Spawner) {
         SunsetMutex::new(config)
     );
 
-    let usb_pipe = singleton!(takepipe::TakePipe::new());
-    let usb_pipe = singleton!(usb_pipe.base());
-    let usb_irq = interrupt::take!(USBCTRL_IRQ);
-    spawner.spawn(usb_serial_task(p.USB, usb_irq, usb_pipe)).unwrap();
 
     let (wifi_net, wifi_pw) = {
         let c = config.lock().await;
@@ -96,6 +95,9 @@ async fn main(spawner: Spawner) {
     let wifi_control = singleton!(SunsetMutex::new(wifi_control));
     spawner.spawn(net_task(&stack)).unwrap();
 
+    let usb_pipe = singleton!(takepipe::TakePipe::new());
+    let usb_pipe = singleton!(usb_pipe.base());
+
     let state = GlobalState {
         usb_pipe,
         wifi_control,
@@ -103,6 +105,9 @@ async fn main(spawner: Spawner) {
         flash,
     };
     let state = singleton!(state);
+
+    let usb_irq = interrupt::take!(USBCTRL_IRQ);
+    spawner.spawn(usb_serial_task(p.USB, usb_irq, state)).unwrap();
 
     for _ in 0..NUM_LISTENERS {
         spawner.spawn(listener(&stack, config, state)).unwrap();
@@ -135,7 +140,9 @@ struct DemoShell {
     username: SunsetMutex<String<20>>,
 }
 
+// `local` is set for usb serial menus which require different auth
 async fn menu<R, W>(mut chanr: R, mut chanw: W,
+    local: bool,
     state: &'static GlobalState) -> Result<()>
     where R: asynch::Read+Io<Error=sunset::Error>,
         W: asynch::Write+Io<Error=sunset::Error> {
@@ -163,9 +170,14 @@ async fn menu<R, W>(mut chanr: R, mut chanw: W,
 
             // TODO: move this to a function or something
             if menu.context.switch_usb1 {
-                serial(chanr, chanw, state).await?;
-                // TODO we could return to the menu on serial error?
-                break 'io;
+                menu.context.switch_usb1 = false;
+                if local {
+                    writeln!(menu.context.out, "serial can't loop");
+                } else {
+                    serial(chanr, chanw, state).await?;
+                    // TODO we could return to the menu on serial error?
+                    break 'io;
+                }
             }
 
             if menu.context.need_save {
@@ -178,6 +190,8 @@ async fn menu<R, W>(mut chanr: R, mut chanw: W,
                     warn!("Error writing flash");
                 }
             }
+
+            menu.context.out.flush(&mut chanw).await?;
         }
     }
     Ok(())
@@ -264,7 +278,7 @@ impl Shell for DemoShell {
             if *self.username.lock().await == "serial" {
                 serial(stdio.clone(), stdio, self.ctx).await
             } else {
-                menu(stdio.clone(), stdio, self.ctx).await
+                menu(stdio.clone(), stdio, false, self.ctx).await
             }
         };
 
@@ -280,13 +294,10 @@ async fn net_task(stack: &'static Stack<cyw43::NetDriver<'static>>) -> ! {
 #[embassy_executor::task]
 async fn usb_serial_task(usb: embassy_rp::peripherals::USB,
     irq: embassy_rp::interrupt::USBCTRL_IRQ,
-    pipe: &'static TakeBase<'static>,
+    global: &'static GlobalState,
     ) -> ! {
 
-    info!("usb serial");
-    let (mut rx, mut tx) = pipe.split();
-
-    usbserial::usb_serial(usb, irq, &mut tx, &mut rx).await;
+    usbserial::usb_serial(usb, irq, global).await;
     todo!("shoudln't exit");
 }
 
