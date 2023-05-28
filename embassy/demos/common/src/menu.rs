@@ -113,6 +113,7 @@ where
     /// Maximum four levels deep
     menus: [Option<&'a Menu<'a, T>>; 4],
     depth: usize,
+    echo: bool,
     /// The context object the `Runner` carries around.
     pub context: T,
 }
@@ -242,7 +243,7 @@ where
     /// buffer that the `Runner` can use. Feel free to pass anything as the
     /// `context` type - the only requirement is that the `Runner` can
     /// `write!` to the context, which it will do for all text output.
-    pub fn new(menu: &'a Menu<'a, T>, buffer: &'a mut [u8], mut context: T) -> Runner<'a, T> {
+    pub fn new(menu: &'a Menu<'a, T>, buffer: &'a mut [u8], echo: bool, mut context: T) -> Runner<'a, T> {
         if let Some(cb_fn) = menu.entry {
             cb_fn(&mut context);
         }
@@ -251,6 +252,7 @@ where
             depth: 0,
             buffer,
             used: 0,
+            echo,
             context,
         };
         r.prompt(true);
@@ -303,6 +305,13 @@ where
             return;
         }
         let outcome = if input == 0x0D {
+            if !self.echo {
+                // Echo the command
+                write!(self.context, "\r").unwrap();
+                if let Ok(s) = core::str::from_utf8(&self.buffer[0..self.used]) {
+                    write!(self.context, "{}", s).unwrap();
+                }
+            }
             // Handle the command
             self.process_command();
             Outcome::CommandProcessed
@@ -332,8 +341,7 @@ where
             self.buffer[self.used] = input;
             self.used += 1;
 
-            // #[cfg(feature = "echo")]
-            {
+            if self.echo {
                 // We have to do this song and dance because `self.prompt()` needs
                 // a mutable reference to self, and we can't have that while
                 // holding a reference to the buffer at the same time.
@@ -442,7 +450,7 @@ where
                     }
                 }
             } else {
-                writeln!(self.context, "Input was empty?").unwrap();
+                // writeln!(self.context, "Input was empty?").unwrap();
             }
         } else {
             // Hmm ..  we did not have a valid string

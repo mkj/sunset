@@ -20,6 +20,7 @@ use sunset::*;
 use sunset_embassy::*;
 
 use crate::*;
+use picowmenu::request_pw;
 
 pub(crate) async fn usb_serial(
     usb: embassy_rp::peripherals::USB,
@@ -27,8 +28,6 @@ pub(crate) async fn usb_serial(
     global: &'static GlobalState,
 )
 {
-    info!("usb_serial top");
-
     let driver = embassy_rp::usb::Driver::new(usb, irq);
 
     let mut config = embassy_usb::Config::new(0xf055, 0x6053);
@@ -78,14 +77,15 @@ pub(crate) async fn usb_serial(
     // Run the USB device.
     let usb_fut = usb.run();
 
+    // console via SSH on if00
     let io0 = async {
         let (mut chan_rx, mut chan_tx) = global.usb_pipe.split();
         let chan_rx = &mut chan_rx;
         let chan_tx = &mut chan_tx;
         loop {
-            info!("usb waiting");
+            info!("USB waiting");
             cdc0_rx.wait_connection().await;
-            info!("Connected");
+            info!("USB connected");
             let mut cdc0_tx = CDCWrite::new(&mut cdc0_tx);
             let mut cdc0_rx = CDCRead::new(&mut cdc0_rx);
 
@@ -93,25 +93,44 @@ pub(crate) async fn usb_serial(
             let io_rx = io_copy::<64, _, _>(chan_rx, &mut cdc0_tx);
 
             let _ = join(io_rx, io_tx).await;
-            info!("Disconnected");
+            info!("USB disconnected");
         }
     };
 
+    // Admin menu on if02
     let setup = async {
-        loop {
-            info!("usb waiting");
+        'usb: loop {
             cdc2_rx.wait_connection().await;
-            info!("Connected");
-            let cdc2_tx = CDCWrite::new(&mut cdc2_tx);
-            let cdc2_rx = CDCRead::new(&mut cdc2_rx);
+            let mut cdc2_tx = CDCWrite::new(&mut cdc2_tx);
+            let mut cdc2_rx = CDCRead::new(&mut cdc2_rx);
+
+            // wait for a keystroke before writing anything.
+            let mut c = [0u8];
+            let _ = cdc2_rx.read_exact(&mut c).await;
+            
+            let p = {
+                let c = global.config.lock().await;
+                c.admin_pw.clone()
+            };
+
+            if let Some(p) = p {
+                'pw: loop {
+                    match request_pw(&mut cdc2_tx, &mut cdc2_rx).await {
+                        Ok(pw) => {
+                            if p.check(&pw) {
+                                let _ = cdc2_tx.write_all(b"Good\r\n").await;
+                                break 'pw
+                            }
+                        }
+                        Err(_) => continue 'usb
+                    }
+                }
+            }
 
             let _ = menu(cdc2_rx, cdc2_tx, true, global).await;
-
-            info!("Disconnected");
         }
     };
 
-    info!("usb join");
     join3(usb_fut, io0, setup).await;
 }
 
@@ -141,13 +160,11 @@ impl<'a, D: Driver<'a>> asynch::Read for CDCRead<'a, '_, D> {
                 .read_packet(ret)
                 .await
                 .map_err(|_| sunset::Error::ChannelEOF)?;
-            info!("direct read_packet {:?}", &ret[..n]);
             return Ok(n)
         }
 
         let b = self.fill_buf().await?;
         let n = ret.len().min(b.len());
-        info!("buf read {:?}, rl {} bl {}", &b[..n], ret.len(), b.len());
         (&mut ret[..n]).copy_from_slice(&b[..n]);
         self.consume(n);
         return Ok(n)
@@ -165,12 +182,10 @@ impl<'a, D: Driver<'a>> asynch::BufRead for CDCRead<'a, '_, D> {
                 .read_packet(self.buf.as_mut())
                 .await
                 .map_err(|_| sunset::Error::ChannelEOF)?;
-            info!("buf read_packet {:?}", &self.buf[..n]);
 
             self.end = n;
         }
         debug_assert!(self.end > 0);
-        info!("fill {}..{}", self.start, self.end);
 
         return Ok(&self.buf[self.start..self.end]);
     }
@@ -185,7 +200,6 @@ impl<'a, D: Driver<'a>> asynch::BufRead for CDCRead<'a, '_, D> {
             self.start = 0;
             self.end = 0;
         }
-        info!("consumed {},  {}..{}", amt, self.start, self.end);
     }
 }
 

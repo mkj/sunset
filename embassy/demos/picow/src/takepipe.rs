@@ -101,6 +101,10 @@ impl<'a> TakeBase<'a> {
         (r, w)
     }
 
+    pub fn is_in_use(&self) -> bool {
+        self.shared_read.try_lock().is_err()
+    }
+
     pub fn split(&'a self) -> (TakeBaseRead<'a>, TakeBaseWrite<'a>) {
         let r = TakeBaseRead {
             pipe: self.pipe,

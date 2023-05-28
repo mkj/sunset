@@ -24,21 +24,24 @@ use sunset::sshwire;
 use sunset::sshwire::{BinString, SSHEncode, SSHDecode, WireResult, SSHSource, SSHSink, WireError};
 use sunset::sshwire::OwnOrBorrow;
 
-use crate::demo_common::SSHConfig;
-
-// bump this when the format changes
-const CURRENT_VERSION: u8 = 2;
+use crate::demo_common;
+use demo_common::SSHConfig;
 
 // TODO: unify offsets with wifi's romfw feature
 const CONFIG_OFFSET: u32 = 0x150000;
 pub const FLASH_SIZE: usize = 2*1024*1024;
 
+// SSHConfig::CURRENT_VERSION must be bumped if any of this struct changes
 #[derive(SSHEncode, SSHDecode)]
 struct FlashConfig<'a> {
     version: u8,
     config: OwnOrBorrow<'a, SSHConfig>,
     /// sha256 hash of config
     hash: [u8; 32],
+}
+
+impl FlashConfig<'_> {
+    const BUF_SIZE: usize = 1 + SSHConfig::BUF_SIZE + 32;
 }
 
 fn config_hash(config: &SSHConfig) -> Result<[u8; 32]> {
@@ -49,13 +52,15 @@ fn config_hash(config: &SSHConfig) -> Result<[u8; 32]> {
 
 /// Loads a SSHConfig at startup. Good for persisting hostkeys.
 pub fn load_or_create(flash: &mut Flash<'_, FLASH, FLASH_SIZE>) -> Result<SSHConfig> {
+    use snafu::Error;
     let c = load(flash);
     match load(flash) {
         Ok(c) => {
             info!("Good existing config");
             return Ok(c)
         }
-        Err(c) => info!("Existing config bad, making new"),
+        // Err(sunset::Error::Custom(msg: msg)) => info!("Existing config bad, making new. {}", msg),
+        Err(e) => info!("Existing config bad, making new. {}", e.description()),
     }
 
     create(flash)
@@ -70,11 +75,19 @@ pub fn create(flash: &mut Flash<'_, FLASH, FLASH_SIZE>) -> Result<SSHConfig> {
 }
 
 pub fn load(flash: &mut Flash<'_, FLASH, FLASH_SIZE>) -> Result<SSHConfig> {
-    let mut buf = [0u8; ERASE_SIZE];
+    // let mut buf = [0u8; ERASE_SIZE];
+    let mut buf = [0u8; FlashConfig::BUF_SIZE];
     flash.read(CONFIG_OFFSET, &mut buf).map_err(|_| Error::msg("flash error"))?;
+
+    use pretty_hex::PrettyHex;
+    use core::fmt::Write;
+    let mut b = demo_common::BufOutput::default();
+    writeln!(b, "load {:?}", buf.hex_dump());
+    info!("{}", &b.s);
+
     let s: FlashConfig = sshwire::read_ssh(&buf, None)?;
 
-    if s.version != CURRENT_VERSION {
+    if s.version != SSHConfig::CURRENT_VERSION {
         return Err(Error::msg("wrong config version"))
     }
 
@@ -94,11 +107,19 @@ pub fn load(flash: &mut Flash<'_, FLASH, FLASH_SIZE>) -> Result<SSHConfig> {
 pub fn save(flash: &mut Flash<'_, FLASH, FLASH_SIZE>, config: &SSHConfig) -> Result<()> {
     let mut buf = [0u8; ERASE_SIZE];
     let sc = FlashConfig {
-        version: CURRENT_VERSION,
+        version: SSHConfig::CURRENT_VERSION,
         config: OwnOrBorrow::Borrow(&config),
         hash: config_hash(&config)?,
     };
-    sshwire::write_ssh(&mut buf, &sc)?;
+    let l = sshwire::write_ssh(&mut buf, &sc)?;
+    let buf = &buf[..l];
+
+    use pretty_hex::PrettyHex;
+    use core::fmt::Write;
+    let mut b = demo_common::BufOutput::default();
+    writeln!(b, "save {:?}", buf.hex_dump());
+    info!("{}", &b.s);
+
     trace!("flash erase");
     flash.erase(CONFIG_OFFSET, CONFIG_OFFSET + ERASE_SIZE as u32)
     .map_err(|_| Error::msg("flash erase error"))?;
@@ -107,7 +128,7 @@ pub fn save(flash: &mut Flash<'_, FLASH, FLASH_SIZE>, config: &SSHConfig) -> Res
     flash.write(CONFIG_OFFSET, &buf)
     .map_err(|_| Error::msg("flash write error"))?;
 
-    trace!("save done");
+    info!("flash save done");
     Ok(())
 }
 

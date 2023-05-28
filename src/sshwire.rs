@@ -11,7 +11,7 @@ use {
     log::{debug, error, info, log, trace, warn},
 };
 
-use core::str;
+use core::str::FromStr;
 use core::convert::AsRef;
 use core::fmt::{self,Debug,Display};
 use digest::Output;
@@ -302,7 +302,12 @@ impl<'de> SSHDecode<'de> for BinString<'de> {
         let len = u32::dec(s)? as usize;
         Ok(BinString(s.take(len)?))
     }
+}
 
+impl<const N: usize> SSHEncode for heapless::String<N> {
+    fn enc(&self, s: &mut dyn SSHSink) -> WireResult<()> {
+        self.as_str().enc(s)
+    }
 }
 
 /// A text string that may be presented to a user or used
@@ -575,6 +580,14 @@ impl<'de, const N: usize> SSHDecode<'de> for [u8; N] {
     where S: SSHSource<'de> {
         // OK unwrap: take() fails if the length is short
         Ok(s.take(N)?.try_into().unwrap())
+    }
+}
+
+impl<'de, const N: usize> SSHDecode<'de> for heapless::String<N> {
+    fn dec<S>(s: &mut S) -> WireResult<Self>
+    where S: SSHSource<'de> {
+        heapless::String::from_str(SSHDecode::dec(s)?)
+        .map_err(|_| WireError::NoRoom)
     }
 }
 

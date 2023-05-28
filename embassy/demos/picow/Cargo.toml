@@ -33,8 +33,11 @@ static_cell = "1.0"
 defmt = { version  = "0.3", optional = true }
 defmt-rtt = "0.3"
 panic-probe = { version = "0.3", features = ["print-defmt"] }
+pretty-hex = { version = "0.3", default-features = false }
 log = { version = "0.4" }
 futures = { version = "0.3", default-features = false }
+
+snafu = { version = "0.7", default-features = false, features = ["rust_1_61"] }
 
 cortex-m = { version = "0.7.6", features = ["critical-section-single-core"]}
 cortex-m-rt = "0.7.0"
@@ -56,9 +59,12 @@ critical-section = "1.1"
 rand = { version = "0.8", default-features = false, features = ["getrandom"] }
 sha2 = { version = "0.10", default-features = false }
 
+# for defmt feature
+smoltcp = { default-features = false }
+
 [features]
 default = ["defmt", "sunset-demo-embassy-common/defmt", "embassy-usb/defmt"]
-defmt = ["dep:defmt"]
+defmt = ["dep:defmt", "sunset/defmt", "smoltcp/defmt"]
 
 # Use cyw43 firmware already on flash. This saves time when developing.
 # probe-rs-cli download firmware/43439A0.bin --format bin --chip RP2040 --base-address 0x10100000
@@ -69,14 +75,20 @@ romfw = []
 embassy-executor = { git = "https://github.com/embassy-rs/embassy", rev = "3e730aa8b06401003202bf9e21a9c83ec6b21b0e" }
 embassy-futures = { git = "https://github.com/embassy-rs/embassy", rev = "3e730aa8b06401003202bf9e21a9c83ec6b21b0e" }
 embassy-rp = { git = "https://github.com/embassy-rs/embassy", rev = "3e730aa8b06401003202bf9e21a9c83ec6b21b0e" }
-embassy-net = { git = "https://github.com/embassy-rs/embassy", rev = "3e730aa8b06401003202bf9e21a9c83ec6b21b0e" }
+# embassy-net = { git = "https://github.com/embassy-rs/embassy", rev = "3e730aa8b06401003202bf9e21a9c83ec6b21b0e" }
 embassy-usb = { git = "https://github.com/embassy-rs/embassy", rev = "3e730aa8b06401003202bf9e21a9c83ec6b21b0e" }
+embassy-time = { git = "https://github.com/embassy-rs/embassy", rev = "3e730aa8b06401003202bf9e21a9c83ec6b21b0e" }
 embassy-usb-driver = { git = "https://github.com/embassy-rs/embassy", rev = "3e730aa8b06401003202bf9e21a9c83ec6b21b0e" }
 # for cyw43
-embassy-net-driver-channel = { git = "https://github.com/embassy-rs/embassy", rev = "3e730aa8b06401003202bf9e21a9c83ec6b21b0e" }
-embassy-net-driver = { git = "https://github.com/embassy-rs/embassy", rev = "3e730aa8b06401003202bf9e21a9c83ec6b21b0e" }
+# embassy-net-driver-channel = { git = "https://github.com/embassy-rs/embassy", rev = "3e730aa8b06401003202bf9e21a9c83ec6b21b0e" }
+# embassy-net-driver = { git = "https://github.com/embassy-rs/embassy", rev = "3e730aa8b06401003202bf9e21a9c83ec6b21b0e" }
 
-# embedded-io = { path = "/home/matt/3rd/rs/embedded-io" }
+embassy-net = { path = "/home/matt/3rd/rs/embassy/embassy-net" }
+embassy-net-driver = { path = "/home/matt/3rd/rs/embassy/embassy-net-driver" }
+embassy-net-driver-channel = { path = "/home/matt/3rd/rs/embassy/embassy-net-driver-channel" }
+smoltcp = { path = "/home/matt/3rd/rs/smoltcp" }
+
+bcrypt = { path = "/home/matt/3rd/rs/bcrypt" }
 
 [profile.dev]
 debug = 2

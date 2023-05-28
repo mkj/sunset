@@ -791,8 +791,8 @@ mod tests {
     }
 
     impl<'a> ServBehaviour for TestServBehaviour<'a> {
-        fn hostkeys(&mut self) -> BhResult<&[&'a SignKey]> {
-            Ok(self.keys.as_slice())
+        fn hostkeys(&mut self) -> BhResult<heapless::Vec<&SignKey, 2>> {
+            Ok(heapless::Vec::from_slice(self.keys.as_slice()).unwrap())
         }
 
         fn have_auth_pubkey(&self, _username: TextString) -> bool {

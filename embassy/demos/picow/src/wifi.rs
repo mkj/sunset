@@ -63,8 +63,10 @@ pub(crate) async fn wifi_stack(spawner: &Spawner,
     // control.set_power_management(cyw43::PowerManagementMode::None).await;
     // control.set_power_management(cyw43::PowerManagementMode::Performance).await;
 
+    // TODO: this should move out of the critical path, run in the bg.
+    // just return control before joining.
     let mut status = Ok(());
-    for i in 0..5 {
+    for i in 0..2 {
         status = if let Some(ref pw) = wpa_password {
             info!("wifi net {} wpa2 {}", wifi_net, &pw);
             control.join_wpa2(&wifi_net, &pw).await
@@ -79,10 +81,10 @@ pub(crate) async fn wifi_stack(spawner: &Spawner,
         }
     }
 
-    if let Err(e) = status {
-        // wait forever
-        let () = futures::future::pending().await;
-    }
+    // if let Err(e) = status {
+    //     // wait forever
+    //     let () = futures::future::pending().await;
+    // }
 
     let config = embassy_net::Config::Dhcp(Default::default());
 

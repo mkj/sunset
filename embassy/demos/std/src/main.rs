@@ -100,7 +100,7 @@ impl Shell for DemoShell {
             let mut menu_buf = [0u8; 150];
             let menu_out = demo_menu::BufOutput::default();
 
-            let mut menu = MenuRunner::new(&setupmenu::SETUP_MENU, &mut menu_buf, menu_out);
+            let mut menu = MenuRunner::new(&setupmenu::SETUP_MENU, &mut menu_buf, true, menu_out);
 
             // bodge
             for c in "help\r\n".bytes() {

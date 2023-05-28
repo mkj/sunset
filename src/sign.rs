@@ -168,7 +168,7 @@ pub enum KeyType {
 ///
 /// This may hold the private key part locally
 /// or potentially send the signing requests to an SSH agent or other entity.
-#[derive(ZeroizeOnDrop, Clone)]
+#[derive(ZeroizeOnDrop, Clone, PartialEq)]
 pub enum SignKey {
     // 32 byte seed value is the private key
     Ed25519([u8; 32]),

@@ -238,7 +238,7 @@ pub trait ServBehaviour {
     ///
     /// Implementations may need to take care to avoid leaking user existence
     /// based on timing.
-    fn auth_password(&mut self, username: TextString, password: TextString) -> bool {
+    async fn auth_password(&mut self, username: TextString<'_>, password: TextString<'_>) -> bool {
         false
     }
 
@@ -249,7 +249,7 @@ pub trait ServBehaviour {
     /// Implementations may need to take care to avoid leaking user existence
     /// based on timing.
     #[allow(unused)]
-    fn auth_pubkey(&mut self, username: TextString, pubkey: &PubKey) -> bool {
+    async fn auth_pubkey(&mut self, username: TextString<'_>, pubkey: &PubKey<'_>) -> bool {
         false
     }
 

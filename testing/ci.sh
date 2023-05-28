@@ -53,6 +53,11 @@ cargo build
 )
 
 (
+cd embassy/demos/common
+cargo test
+)
+
+(
 cd embassy/demos/picow
 cargo build --release
 cargo bloat --release -n 100 | tee "$OUT/picow-bloat.txt"

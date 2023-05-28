@@ -9,6 +9,9 @@ use {
 #[cfg(feature = "defmt")]
 use defmt::{debug, info, warn, panic, error, trace};
 
+use core::fmt::Write as _;
+use pretty_hex::PrettyHex;
+
 use embassy_sync::mutex::Mutex;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_net::tcp::TcpSocket;
@@ -126,6 +129,8 @@ struct DemoServer<'a, S: Shell> {
 }
 
 impl<'a, S: Shell> DemoServer<'a, S> {
+    const ADMIN_USER: &'static str = "config";
+
     fn new(shell: &'a S, config: SSHConfig) -> Result<Self> {
 
         Ok(Self {
@@ -135,18 +140,61 @@ impl<'a, S: Shell> DemoServer<'a, S> {
             shell,
         })
     }
+
+    fn is_admin(&self, username: TextString) -> bool {
+        username.as_str().unwrap_or_default() == Self::ADMIN_USER
+    }
 }
 
 impl<'a, S: Shell> ServBehaviour for DemoServer<'a, S> {
+
     fn hostkeys(&mut self) -> BhResult<heapless::Vec<&SignKey, 2>> {
         // OK unwrap: only one element
         Ok(heapless::Vec::from_slice(&[&self.config.hostkey]).unwrap())
     }
 
     async fn auth_unchallenged(&mut self, username: TextString<'_>) -> bool {
-        info!("Allowing auth for user {}", username.as_str().unwrap_or("bad"));
-        self.shell.authed(username.as_str().unwrap_or("")).await;
-        true
+        if !self.is_admin(username) && self.config.console_noauth {
+            info!("Allowing auth for user {}", username.as_str().unwrap_or("bad"));
+            self.shell.authed(username.as_str().unwrap_or("")).await;
+            true
+        } else {
+            false
+        }
+    }
+
+    async fn auth_password(&mut self, username: TextString<'_>, password: TextString<'_>) -> bool {
+        let p = if self.is_admin(username) {
+            &self.config.admin_pw
+        } else {
+            &self.config.console_pw
+        };
+
+        if let Some(ref p) = p {
+            if let (Ok(user), Ok(pw)) = (username.as_str(), password.as_str()) {
+                if p.check(pw) {
+                    self.shell.authed(user).await;
+                    return true
+                }
+            }
+        }
+        false
+    }
+
+    fn have_auth_password(&self, username: TextString) -> bool {
+        if self.is_admin(username) {
+            self.config.admin_pw.is_some()
+        } else {
+            self.config.console_pw.is_some()
+        }
+    }
+
+    fn have_auth_pubkey(&self, username: TextString) -> bool {
+        if self.is_admin(username) {
+            self.config.admin_keys.iter().any(|k| k.is_some())
+        } else {
+            self.config.console_keys.iter().any(|k| k.is_some())
+        }
     }
 
     fn open_session(&mut self, chan: ChanHandle) -> ChanOpened {
@@ -205,14 +253,15 @@ pub trait Shell {
 #[derive(Default)]
 pub struct BufOutput {
     /// Sufficient to hold output produced from a single keystroke input. Further output will be discarded
-    s: heapless::String<300>,
+    // pub s: String<300>,
+    // todo
+    pub s: String<3000>,
 }
 
 impl BufOutput {
     pub async fn flush<W>(&mut self, w: &mut W) -> Result<()>
     where W: asynch::Write + embedded_io::Io<Error = sunset::Error>
     {
-
         let mut b = self.s.as_str().as_bytes();
         while b.len() > 0 {
             let l = w.write(b).await?;

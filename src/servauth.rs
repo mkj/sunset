@@ -36,6 +36,9 @@ impl ServAuth {
             FailNoReply,
         }
 
+        // TODO: what to do they've already authed? we have to be careful in case
+        // behaviours don't handle it well.
+
         let username = p.username.clone();
 
         let inner = async {
@@ -45,18 +48,28 @@ impl ServAuth {
             }
 
             let success = match p.method {
-                AuthMethod::Password(m) => b.auth_password(p.username, m.password),
+                AuthMethod::Password(m) => {
+                    if b.have_auth_password(p.username) {
+                        b.auth_password(p.username, m.password).await
+                    } else {
+                        false
+                    }
+                }
                 AuthMethod::PubKey(ref m) => {
-                    let allowed_key = b.auth_pubkey(p.username, &m.pubkey.0);
-                    if allowed_key {
-                        if m.sig.is_some() {
-                            self.verify_sig(&mut p, sess_id)
+                    if b.have_auth_pubkey(p.username) {
+                        let allowed_key = b.auth_pubkey(p.username, &m.pubkey.0).await;
+                        if allowed_key {
+                            if m.sig.is_some() {
+                                self.verify_sig(&mut p, sess_id)
+                            } else {
+                                s.send(Userauth60::PkOk(UserauthPkOk {
+                                    algo: m.sig_algo,
+                                    key: m.pubkey.clone(),
+                                }))?;
+                                return Ok(AuthResp::FailNoReply);
+                            }
                         } else {
-                            s.send(Userauth60::PkOk(UserauthPkOk {
-                                algo: m.sig_algo,
-                                key: m.pubkey.clone(),
-                            }))?;
-                            return Ok(AuthResp::FailNoReply);
+                            false
                         }
                     } else {
                         false
