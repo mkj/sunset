@@ -88,7 +88,8 @@ embassy-net-driver = { path = "/home/matt/3rd/rs/embassy/embassy-net-driver" }
 embassy-net-driver-channel = { path = "/home/matt/3rd/rs/embassy/embassy-net-driver-channel" }
 smoltcp = { path = "/home/matt/3rd/rs/smoltcp" }
 
-bcrypt = { path = "/home/matt/3rd/rs/bcrypt" }
+bcrypt = { version = "0.14", git = "https://github.com/mkj/rust-bcrypt", branch = "noalloc" }
+#bcrypt = { path = "/home/matt/3rd/rs/bcrypt" }
 
 [profile.dev]
 debug = 2
