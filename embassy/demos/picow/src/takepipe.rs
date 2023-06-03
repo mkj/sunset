@@ -26,27 +26,28 @@ pub const WRITE_SIZE: usize = 64;
 /// Allows a bidirectional pipe to be shared by many endpoints
 ///
 /// One end of the pipe is fixed (attached to eg a physical/virtual
-/// uart), used with `.split()`.
+/// uart), used with `.split()`. `TakePipeStorage` is the backing store,
+/// the `TakePipe` struct returned by `.pipe()` has the functionality.
 ///
 /// The other end can be used by many clients, one at a time.
 /// When a subsequent client takes the pipe (with `.take()`), the existing
 /// client loses the pipe and gets EOF.
 ///
 /// It works a bit like `screen -r -d`.
-pub(crate) struct TakePipe {
+pub(crate) struct TakePipeStorage {
 	fanout: Pipe<SunsetRawMutex, READ_SIZE>,
     fanin: Pipe<SunsetRawMutex, WRITE_SIZE>,
     wake: Signal<SunsetRawMutex, ()>,
     counter: u64,
 }
 
-impl TakePipe {
+impl TakePipeStorage {
     pub fn new() -> Self {
         Default::default()
     }
 
-    pub fn base(&self) -> TakeBase {
-        TakeBase {
+    pub fn pipe(&self) -> TakePipe {
+        TakePipe {
             shared_read: Mutex::new((0, self.fanout.reader())),
             shared_write: Mutex::new((0, self.fanin.writer())),
             pipe: self,
@@ -54,7 +55,7 @@ impl TakePipe {
     }
 }
 
-impl Default for TakePipe {
+impl Default for TakePipeStorage {
     fn default() -> Self {
         Self {
             fanout: Pipe::new(),
@@ -65,13 +66,13 @@ impl Default for TakePipe {
     }
 }
 
-pub(crate) struct TakeBase<'a> {
+pub(crate) struct TakePipe<'a> {
     shared_read: Mutex<SunsetRawMutex, (u64, pipe::Reader<'a, SunsetRawMutex, READ_SIZE>)>,
     shared_write: Mutex<SunsetRawMutex, (u64, pipe::Writer<'a, SunsetRawMutex, WRITE_SIZE>)>,
-    pipe: &'a TakePipe,
+    pipe: &'a TakePipeStorage,
 }
 
-impl<'a> TakeBase<'a> {
+impl<'a> TakePipe<'a> {
     pub async fn take(&'a self) -> (TakeRead<'a>, TakeWrite<'a>) {
 
         self.pipe.wake.signal(());
@@ -105,47 +106,49 @@ impl<'a> TakeBase<'a> {
         self.shared_read.try_lock().is_err()
     }
 
-    pub fn split(&'a self) -> (TakeBaseRead<'a>, TakeBaseWrite<'a>) {
-        let r = TakeBaseRead {
+    pub fn split(&'a self) -> (TakePipeRead<'a>, TakePipeWrite<'a>) {
+        let r = TakePipeRead {
             pipe: self.pipe,
         };
-        let w = TakeBaseWrite {
+        let w = TakePipeWrite {
             pipe: self.pipe,
         };
         (r, w)
     }
 }
 
-pub(crate) struct TakeBaseRead<'a> {
-    pipe: &'a TakePipe,
+pub(crate) struct TakePipeRead<'a> {
+    pipe: &'a TakePipeStorage,
 }
 
-pub(crate) struct TakeBaseWrite<'a> {
-    pipe: &'a TakePipe,
+pub(crate) struct TakePipeWrite<'a> {
+    pipe: &'a TakePipeStorage,
 }
 
-impl<'a> asynch::Read for TakeBaseRead<'a> {
+impl<'a> asynch::Read for TakePipeRead<'a> {
     async fn read(&mut self, buf: &mut [u8]) -> sunset::Result<usize> {
-        Ok(self.pipe.fanin.read(buf).await)
+        let r = self.pipe.fanin.read(buf).await;
+        Ok(r)
     }
 }
 
-impl<'a> asynch::Write for TakeBaseWrite<'a> {
+impl<'a> asynch::Write for TakePipeWrite<'a> {
     async fn write(&mut self, buf: &[u8]) -> sunset::Result<usize> {
-        Ok(self.pipe.fanout.write(buf).await)
+        let r = self.pipe.fanout.write(buf).await;
+        Ok(r)
     }
 }
 
-impl Io for TakeBaseRead<'_> {
+impl Io for TakePipeRead<'_> {
     type Error = sunset::Error;
 }
 
-impl Io for TakeBaseWrite<'_> {
+impl Io for TakePipeWrite<'_> {
     type Error = sunset::Error;
 }
 
 pub(crate) struct TakeRead<'a> {
-    pipe: &'a TakePipe,
+    pipe: &'a TakePipeStorage,
     shared: Option<&'a SunsetMutex<(u64, pipe::Reader<'a, SunsetRawMutex, READ_SIZE>)>>,
     counter: u64,
 }
@@ -186,7 +189,7 @@ impl Io for TakeRead<'_> {
 }
 
 pub(crate) struct TakeWrite<'a> {
-    pipe: &'a TakePipe,
+    pipe: &'a TakePipeStorage,
     shared: Option<&'a SunsetMutex<(u64, pipe::Writer<'a, SunsetRawMutex, WRITE_SIZE>)>>,
     counter: u64,
 }

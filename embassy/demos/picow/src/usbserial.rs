@@ -7,7 +7,9 @@ pub use log::{debug, error, info, log, trace, warn};
 pub use defmt::{debug, error, info, panic, trace, warn};
 
 use embassy_futures::join::{join, join3};
-use embassy_rp::usb::Instance;
+use embassy_rp::usb::{Instance, InterruptHandler};
+use embassy_rp::bind_interrupts;
+use embassy_rp::peripherals::USB;
 use embassy_usb::class::cdc_acm::{self, CdcAcmClass, State};
 use embassy_usb::Builder;
 use embassy_usb_driver::Driver;
@@ -22,13 +24,17 @@ use sunset_embassy::*;
 use crate::*;
 use picowmenu::request_pw;
 
-pub(crate) async fn usb_serial(
+bind_interrupts!(struct Irqs {
+    USBCTRL_IRQ => InterruptHandler<USB>;
+});
+
+#[embassy_executor::task]
+pub(crate) async fn task(
     usb: embassy_rp::peripherals::USB,
-    irq: embassy_rp::interrupt::USBCTRL_IRQ,
     global: &'static GlobalState,
-)
+) -> !
 {
-    let driver = embassy_rp::usb::Driver::new(usb, irq);
+    let driver = embassy_rp::usb::Driver::new(usb, Irqs);
 
     let mut config = embassy_usb::Config::new(0xf055, 0x6053);
     config.manufacturer = Some("Sunset SSH");
@@ -127,11 +133,12 @@ pub(crate) async fn usb_serial(
                 }
             }
 
-            let _ = menu(cdc2_rx, cdc2_tx, true, global).await;
+            let _ = menu(&mut cdc2_rx, &mut cdc2_tx, true, global).await;
         }
     };
 
     join3(usb_fut, io0, setup).await;
+    unreachable!()
 }
 
 pub struct CDCRead<'a, 'p, D: Driver<'a>> {

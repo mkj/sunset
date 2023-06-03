@@ -20,3 +20,4 @@ pub use client::SSHClient;
 pub use embassy_channel::{ChanInOut, ChanIn, ChanOut};
 
 pub use embassy_sunset::{SunsetMutex, SunsetRawMutex, io_copy, io_buf_copy};
+pub use embassy_sunset::{io_copy_nowriteerror, io_buf_copy_noreaderror};

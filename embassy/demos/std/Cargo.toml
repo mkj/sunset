@@ -39,10 +39,10 @@ rand = { version = "0.8", default-features = false, features = ["getrandom"] }
 sha2 = { version = "0.10", default-features = false }
 
 [patch.crates-io]
-embassy-futures = { git = "https://github.com/embassy-rs/embassy", rev = "3e730aa8b06401003202bf9e21a9c83ec6b21b0e" }
-embassy-net = { git = "https://github.com/embassy-rs/embassy", rev = "3e730aa8b06401003202bf9e21a9c83ec6b21b0e" }
+embassy-futures = { git = "https://github.com/embassy-rs/embassy", rev = "1d34078fa11839f88dd2e47a9355c6b35755128f" }
+embassy-net = { git = "https://github.com/embassy-rs/embassy", rev = "1d34078fa11839f88dd2e47a9355c6b35755128f" }
 # for tuntap
-embassy-net-driver = { git = "https://github.com/embassy-rs/embassy", rev = "3e730aa8b06401003202bf9e21a9c83ec6b21b0e" }
+embassy-net-driver = { git = "https://github.com/embassy-rs/embassy", rev = "1d34078fa11839f88dd2e47a9355c6b35755128f" }
 
 [profile.dev]
 debug = 2

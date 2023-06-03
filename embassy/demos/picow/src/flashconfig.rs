@@ -79,11 +79,11 @@ pub fn load(flash: &mut Flash<'_, FLASH, FLASH_SIZE>) -> Result<SSHConfig> {
     let mut buf = [0u8; FlashConfig::BUF_SIZE];
     flash.read(CONFIG_OFFSET, &mut buf).map_err(|_| Error::msg("flash error"))?;
 
-    use pretty_hex::PrettyHex;
-    use core::fmt::Write;
-    let mut b = demo_common::BufOutput::default();
-    writeln!(b, "load {:?}", buf.hex_dump());
-    info!("{}", &b.s);
+    // use pretty_hex::PrettyHex;
+    // use core::fmt::Write;
+    // let mut b = demo_common::BufOutput::default();
+    // writeln!(b, "load {:?}", buf.hex_dump());
+    // info!("{}", &b.s);
 
     let s: FlashConfig = sshwire::read_ssh(&buf, None)?;
 
@@ -114,11 +114,11 @@ pub fn save(flash: &mut Flash<'_, FLASH, FLASH_SIZE>, config: &SSHConfig) -> Res
     let l = sshwire::write_ssh(&mut buf, &sc)?;
     let buf = &buf[..l];
 
-    use pretty_hex::PrettyHex;
-    use core::fmt::Write;
-    let mut b = demo_common::BufOutput::default();
-    writeln!(b, "save {:?}", buf.hex_dump());
-    info!("{}", &b.s);
+    // use pretty_hex::PrettyHex;
+    // use core::fmt::Write;
+    // let mut b = demo_common::BufOutput::default();
+    // writeln!(b, "save {:?}", buf.hex_dump());
+    // info!("{}", &b.s);
 
     trace!("flash erase");
     flash.erase(CONFIG_OFFSET, CONFIG_OFFSET + ERASE_SIZE as u32)

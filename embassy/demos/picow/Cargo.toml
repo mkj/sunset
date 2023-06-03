@@ -12,8 +12,8 @@ sunset = { path = "../../.." }
 sunset-sshwire-derive = { version = "0.1", path = "../../../sshwire-derive" }
 sunset-demo-embassy-common= { path = "../common" }
 
-cyw43 = { git = "https://github.com/embassy-rs/cyw43/", rev = "6b5d9642d583bc034ee35b88c903545e7f423b4e", features = ["defmt"]}
-cyw43-pio = { git = "https://github.com/embassy-rs/cyw43/", rev = "6b5d9642d583bc034ee35b88c903545e7f423b4e" }
+cyw43 = { git = "https://github.com/embassy-rs/cyw43/", rev = "3cc0ec654a1e46fe7b8fa168942452303343cd84", features = ["defmt"]}
+cyw43-pio = { git = "https://github.com/embassy-rs/cyw43/", rev = "3cc0ec654a1e46fe7b8fa168942452303343cd84" }
 # cyw43 = { path = "/home/matt/3rd/rs/cyw43", features = ["defmt"] }
 # cyw43-pio = { path = "/home/matt/3rd/rs/cyw43/cyw43-pio" }
 
@@ -64,24 +64,27 @@ smoltcp = { default-features = false }
 
 [features]
 default = ["defmt", "sunset-demo-embassy-common/defmt", "embassy-usb/defmt"]
-defmt = ["dep:defmt", "sunset/defmt", "smoltcp/defmt"]
+defmt = ["dep:defmt", "sunset/defmt", "sunset-embassy/defmt", "smoltcp/defmt"]
 
 # Use cyw43 firmware already on flash. This saves time when developing.
 # probe-rs-cli download firmware/43439A0.bin --format bin --chip RP2040 --base-address 0x10100000
 # probe-rs-cli download firmware/43439A0_clm.bin --format bin --chip RP2040 --base-address 0x10140000
 romfw = []
 
+# Add a UART on tx pin1, rx pin2
+serial1 = []
+
 [patch.crates-io]
-embassy-executor = { git = "https://github.com/embassy-rs/embassy", rev = "3e730aa8b06401003202bf9e21a9c83ec6b21b0e" }
-embassy-futures = { git = "https://github.com/embassy-rs/embassy", rev = "3e730aa8b06401003202bf9e21a9c83ec6b21b0e" }
-embassy-rp = { git = "https://github.com/embassy-rs/embassy", rev = "3e730aa8b06401003202bf9e21a9c83ec6b21b0e" }
-embassy-usb = { git = "https://github.com/embassy-rs/embassy", rev = "3e730aa8b06401003202bf9e21a9c83ec6b21b0e" }
-embassy-time = { git = "https://github.com/embassy-rs/embassy", rev = "3e730aa8b06401003202bf9e21a9c83ec6b21b0e" }
-embassy-usb-driver = { git = "https://github.com/embassy-rs/embassy", rev = "3e730aa8b06401003202bf9e21a9c83ec6b21b0e" }
+embassy-executor = { git = "https://github.com/embassy-rs/embassy", rev = "1d34078fa11839f88dd2e47a9355c6b35755128f" }
+embassy-futures = { git = "https://github.com/embassy-rs/embassy", rev = "1d34078fa11839f88dd2e47a9355c6b35755128f" }
+embassy-rp = { git = "https://github.com/embassy-rs/embassy", rev = "1d34078fa11839f88dd2e47a9355c6b35755128f" }
+embassy-usb = { git = "https://github.com/embassy-rs/embassy", rev = "1d34078fa11839f88dd2e47a9355c6b35755128f" }
+embassy-time = { git = "https://github.com/embassy-rs/embassy", rev = "1d34078fa11839f88dd2e47a9355c6b35755128f" }
+embassy-usb-driver = { git = "https://github.com/embassy-rs/embassy", rev = "1d34078fa11839f88dd2e47a9355c6b35755128f" }
 # for cyw43
-embassy-net = { git = "https://github.com/embassy-rs/embassy", rev = "3e730aa8b06401003202bf9e21a9c83ec6b21b0e" }
-embassy-net-driver-channel = { git = "https://github.com/embassy-rs/embassy", rev = "3e730aa8b06401003202bf9e21a9c83ec6b21b0e" }
-embassy-net-driver = { git = "https://github.com/embassy-rs/embassy", rev = "3e730aa8b06401003202bf9e21a9c83ec6b21b0e" }
+embassy-net = { git = "https://github.com/embassy-rs/embassy", rev = "1d34078fa11839f88dd2e47a9355c6b35755128f" }
+embassy-net-driver-channel = { git = "https://github.com/embassy-rs/embassy", rev = "1d34078fa11839f88dd2e47a9355c6b35755128f" }
+embassy-net-driver = { git = "https://github.com/embassy-rs/embassy", rev = "1d34078fa11839f88dd2e47a9355c6b35755128f" }
 
 # embassy-net = { path = "/home/matt/3rd/rs/embassy/embassy-net" }
 # embassy-net-driver = { path = "/home/matt/3rd/rs/embassy/embassy-net-driver" }

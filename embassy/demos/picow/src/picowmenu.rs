@@ -1,21 +1,32 @@
+#[allow(unused_imports)]
+#[cfg(not(feature = "defmt"))]
+pub use log::{debug, error, info, log, trace, warn};
+
+#[allow(unused_imports)]
+#[cfg(feature = "defmt")]
+pub use defmt::{debug, error, info, panic, trace, warn};
+
 use core::fmt::Write;
 use core::future::{poll_fn, Future};
 use core::ops::DerefMut;
 use core::sync::atomic::Ordering::{Relaxed, SeqCst};
 
-use embedded_io::asynch;
+use embedded_io::{asynch, Io};
 use embedded_io::asynch::Write as _;
 
 use embassy_sync::waitqueue::MultiWakerRegistration;
+use embassy_time::Duration;
 
 use heapless::{String, Vec};
 
+use crate::flashconfig;
 use crate::demo_common;
 use crate::GlobalState;
 use demo_common::{BufOutput, SSHConfig};
 
 use demo_common::menu::*;
 
+use sunset::*;
 use sunset::packets::Ed25519PubKey;
 
 // arbitrary in bytes, for sizing buffers
@@ -23,25 +34,31 @@ const MAX_PW_LEN: usize = 50;
 
 pub(crate) struct MenuCtx {
     pub out: BufOutput,
-    pub state: &'static GlobalState,
+    state: &'static GlobalState,
+    local: bool,
 
     // flags to be handled by the calling async loop
-    pub switch_usb1: bool,
-    pub need_save: bool,
+    switch_usb1: bool,
+    switch_serial1: bool,
+    need_save: bool,
 
-    pub logout: bool,
-    pub reset: bool,
+    logout: bool,
+    reset: bool,
+    bootsel: bool,
 }
 
 impl MenuCtx {
-    pub fn new(state: &'static GlobalState) -> Self {
+    pub fn new(state: &'static GlobalState, local: bool) -> Self {
         Self {
             state,
+            local,
             out: Default::default(),
             switch_usb1: false,
+            switch_serial1: false,
             need_save: false,
             logout: false,
             reset: false,
+            bootsel: false,
         }
     }
 
@@ -58,6 +75,83 @@ impl MenuCtx {
         };
         f(c.deref_mut(), &mut self.out);
         true
+    }
+
+    // Returns `Ok(true)` to exit the menu
+    pub(crate) async fn progress<R, W>(
+        &mut self,
+        mut chanr: &mut R,
+        mut chanw: &mut W,
+    ) -> Result<bool>
+    where
+        R: asynch::Read + Io<Error = sunset::Error>,
+        W: asynch::Write + Io<Error = sunset::Error>,
+    {
+        if self.switch_usb1 {
+            self.switch_usb1 = false;
+            if self.local {
+                writeln!(self.out, "serial can't loop");
+            } else {
+                if self.state.usb_pipe.is_in_use() {
+                    writeln!(self.out, "Opening usb1, stealing existing session");
+                } else {
+                    writeln!(self.out, "Opening usb1");
+                }
+                crate::serial(chanr, chanw, self.state.usb_pipe).await?;
+                // TODO we could return to the menu on serial error?
+                return Ok(true);
+            }
+        }
+
+        #[cfg(feature = "serial1")]
+        if self.switch_serial1 {
+            self.switch_serial1 = false;
+            if self.local {
+                writeln!(self.out, "serial can't loop");
+            } else {
+                if self.state.serial1_pipe.is_in_use() {
+                    writeln!(self.out, "Opening serial1, stealing existing session");
+                } else {
+                    writeln!(self.out, "Opening serial1");
+                }
+                crate::serial(chanr, chanw, self.state.serial1_pipe).await?;
+                // TODO we could return to the menu on serial error?
+                return Ok(true);
+            }
+        }
+
+        if self.need_save {
+            info!("needs save");
+            // clear regardless of success, don't want a tight loop.
+            self.need_save = false;
+
+            let conf = self.state.config.lock().await;
+            let mut fl = self.state.flash.lock().await;
+            if let Err(_e) = flashconfig::save(&mut fl, &conf) {
+                warn!("Error writing flash");
+            }
+        }
+
+        if self.logout {
+            return Ok(true);
+        }
+
+        if self.reset {
+            let _ = chanw.write_all(b"Resetting\r\n").await;
+            let mut wd = self.state.watchdog.lock().await;
+            wd.start(Duration::from_millis(200));
+            loop {
+                embassy_time::Timer::after(Duration::from_secs(1)).await;
+            }
+        }
+
+        if self.bootsel {
+            embassy_rp::rom_data::reset_to_usb_boot::ptr()(0, 0);
+        }
+
+        // write messages from handling
+        self.out.flush(&mut chanw).await?;
+        Ok(false)
     }
 }
 
@@ -83,6 +177,11 @@ pub(crate) const SETUP_MENU: Menu<MenuCtx> = Menu {
             command: "reset",
             help: Some("Reset picow. Will log out."),
             item_type: ItemType::Callback { function: do_reset, parameters: &[] },
+        },
+        &Item {
+            command: "bootsel",
+            help: Some("Resets in rp2040 bootsel mode, use with picotool"),
+            item_type: ItemType::Callback { function: do_bootsel, parameters: &[] },
         },
         &Item {
             command: "erase_config",
@@ -123,7 +222,9 @@ const AUTH_ITEM: Item<MenuCtx> = Item {
                 item_type: ItemType::Callback {
                     parameters: &[Parameter::Mandatory {
                         parameter_name: "yesno",
-                        help: Some("Set yes for SSH to serial with no auth. Take care!"),
+                        help: Some(
+                            "Set yes for SSH to serial with no auth. Take care!",
+                        ),
                     }],
                     function: do_console_noauth,
                 },
@@ -326,11 +427,22 @@ const SERIAL_ITEM: Item<MenuCtx> = Item {
     command: "serial",
     item_type: ItemType::Menu(&Menu {
         label: "serial",
-        items: &[&Item {
-            command: "usb0",
-            item_type: ItemType::Callback { parameters: &[], function: do_usb1 },
-            help: Some("Connect to if00 serial port. Disconnect to exit."),
-        }],
+        items: &[
+            &Item {
+                command: "usb0",
+                item_type: ItemType::Callback { parameters: &[], function: do_usb1 },
+                help: Some("Connect to if00 serial port. Disconnect to exit."),
+            },
+            #[cfg(feature = "serial1")]
+            &Item {
+                command: "serial1",
+                item_type: ItemType::Callback {
+                    parameters: &[],
+                    function: do_serial1,
+                },
+                help: Some("Connect to uart0 serial port. Disconnect to exit."),
+            },
+        ],
         entry: None,
         exit: None,
     }),
@@ -417,11 +529,11 @@ fn do_console_pw(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx) {
 fn do_console_noauth(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx) {
     context.with_config(|c, out| {
         c.console_noauth = args[0] == "yes";
-        let _ = writeln!(out, "Set console noauth {}", if c.console_noauth {
-            "yes"
-        } else {
-            "no"
-        });
+        let _ = writeln!(
+            out,
+            "Set console noauth {}",
+            if c.console_noauth { "yes" } else { "no" }
+        );
     });
     context.need_save = true;
 }
@@ -483,6 +595,10 @@ fn do_reset(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx) {
     context.reset = true;
 }
 
+fn do_bootsel(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx) {
+    context.bootsel = true;
+}
+
 fn do_about(_item: &Item<MenuCtx>, _args: &[&str], context: &mut MenuCtx) {
     let _ = writeln!(
         context,
@@ -493,6 +609,11 @@ fn do_about(_item: &Item<MenuCtx>, _args: &[&str], context: &mut MenuCtx) {
 fn do_usb1(_item: &Item<MenuCtx>, _args: &[&str], context: &mut MenuCtx) {
     writeln!(context, "USB serial");
     context.switch_usb1 = true;
+}
+
+fn do_serial1(_item: &Item<MenuCtx>, _args: &[&str], context: &mut MenuCtx) {
+    writeln!(context, "serial1");
+    context.switch_serial1 = true;
 }
 
 fn wifi_entry(context: &mut MenuCtx) {

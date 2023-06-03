@@ -13,7 +13,7 @@ pub use {
 pub use defmt::{debug, info, warn, panic, error, trace};
 
 use embassy_rp::gpio::{Level, Output};
-use embassy_rp::pio::{PioStateMachineInstance, Sm0, Pio0};
+use embassy_rp::pio::Pio;
 use embassy_rp::peripherals::*;
 use embassy_executor::Spawner;
 use embassy_net::{Stack, StackResources};
@@ -33,7 +33,7 @@ async fn wifi_task(
     runner: cyw43::Runner<
         'static,
         Output<'static, PIN_23>,
-        PioSpi<PIN_25, PioStateMachineInstance<Pio0, Sm0>, DMA_CH0>,
+        PioSpi<'static, PIN_25, PIO0, 0, DMA_CH0>,
     >,
 ) -> ! {
     runner.run().await
@@ -42,7 +42,7 @@ async fn wifi_task(
 // It would be nice to make Pio0, Sm0, DMA_CH0 generic, but wifi_task can't have generics.
 pub(crate) async fn wifi_stack(spawner: &Spawner,
     p23: PIN_23, p24: PIN_24, p25: PIN_25, p29: PIN_29, dma: DMA_CH0,
-    sm: PioStateMachineInstance<Pio0, Sm0>,
+    pio0: PIO0,
     wifi_net: String<32>, wpa_password: Option<String<63>>,
 
     ) -> (embassy_net::Stack<cyw43::NetDriver<'static>>, cyw43::Control<'static>)
@@ -52,7 +52,8 @@ pub(crate) async fn wifi_stack(spawner: &Spawner,
 
     let pwr = Output::new(p23, Level::Low);
     let cs = Output::new(p25, Level::High);
-    let spi = PioSpi::new(sm, cs, p24, p29, dma);
+    let mut pio = Pio::new(pio0);
+    let spi = PioSpi::new(&mut pio.common, pio.sm0, pio.irq0, cs, p24, p29, dma);
 
     let state = singleton!(cyw43::State::new());
     let (net_device, mut control, runner) = cyw43::new(state, pwr, spi, fw).await;
@@ -68,7 +69,7 @@ pub(crate) async fn wifi_stack(spawner: &Spawner,
     let mut status = Ok(());
     for i in 0..2 {
         status = if let Some(ref pw) = wpa_password {
-            info!("wifi net {} wpa2 {}", wifi_net, &pw);
+            info!("wifi net {} wpa2", wifi_net);
             control.join_wpa2(&wifi_net, &pw).await
         } else {
             info!("wifi net {} open", wifi_net);
