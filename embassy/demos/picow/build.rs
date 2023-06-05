@@ -12,8 +12,14 @@ use std::env;
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
+use std::process::Command;
 
 fn main() {
+    link();
+    git();
+}
+
+fn link() {
     // Put `memory.x` in our output directory and ensure it's
     // on the linker search path.
     let out = &PathBuf::from(env::var_os("OUT_DIR").unwrap());
@@ -33,4 +39,15 @@ fn main() {
     println!("cargo:rustc-link-arg-bins=-Tlink.x");
     println!("cargo:rustc-link-arg-bins=-Tlink-rp.x");
     println!("cargo:rustc-link-arg-bins=-Tdefmt.x");
+}
+
+fn git() {
+    let git_rev = Command::new("git")
+        .args(&["describe", "--always", "--tags", "--dirty=+"])
+        .output()
+        .map(|o| String::from_utf8(o.stdout).unwrap().to_string())
+        .unwrap_or("(unknown)".to_string());
+
+    println!("cargo:rustc-env=GIT_REV={git_rev}");
+    println!("cargo:rerun-if-changed=.git/HEAD");
 }

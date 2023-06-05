@@ -602,7 +602,7 @@ fn do_bootsel(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx) {
 fn do_about(_item: &Item<MenuCtx>, _args: &[&str], context: &mut MenuCtx) {
     let _ = writeln!(
         context,
-        "Sunset SSH, USB serial\nMatt Johnston <matt@ucc.asn.au>\n"
+        "Sunset SSH, USB serial\nMatt Johnston <matt@ucc.asn.au>\n{}", env!("GIT_REV"),
     );
 }
 
