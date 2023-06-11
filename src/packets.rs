@@ -57,7 +57,9 @@ pub struct KexInit<'a> {
 pub struct NewKeys {}
 
 #[derive(Debug, SSHEncode, SSHDecode)]
-pub struct Ignore {}
+pub struct Ignore<'a> {
+    pub data: BinString<'a>,
+}
 
 /// Named to avoid clashing with [`fmt::Debug`]
 #[derive(Debug, SSHEncode, SSHDecode)]
@@ -950,7 +952,7 @@ pub enum Category {
 
 messagetypes![
 (1, Disconnect, Disconnect<'a>, SSH_MSG_DISCONNECT, All),
-(2, Ignore, Ignore, SSH_MSG_IGNORE, All),
+(2, Ignore, Ignore<'a>, SSH_MSG_IGNORE, All),
 (3, Unimplemented, Unimplemented, SSH_MSG_UNIMPLEMENTED, All),
 (4, DebugPacket, DebugPacket<'a>, SSH_MSG_DEBUG, All),
 (5, ServiceRequest, ServiceRequest<'a>, SSH_MSG_SERVICE_REQUEST, Auth),

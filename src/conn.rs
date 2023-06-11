@@ -176,6 +176,7 @@ impl<C: CliBehaviour, S: ServBehaviour> Conn<C, S> {
         b: &mut Behaviour<'_, C, S>,
     ) -> Result<Dispatched, Error> {
         // Parse the packet
+        trace!("Received\n{:#?}", payload.hex_dump());
         let r = sshwire::packet_from_bytes(payload, &self.parse_ctx);
 
         match r {
@@ -186,7 +187,7 @@ impl<C: CliBehaviour, S: ServBehaviour> Conn<C, S> {
                 Ok(Dispatched::default())
             }
             Err(e) => {
-                trace!("Error decoding packet: {e} {:#?}", payload.hex_dump());
+                error!("Error decoding packet: {e}");
                 return Err(e)
             }
         }

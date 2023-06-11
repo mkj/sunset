@@ -62,9 +62,11 @@ async fn main_task(spawner: Spawner) {
     // Launch network task
     spawner.spawn(net_task(stack)).unwrap();
 
-    let config = &*singleton!(
-        SunsetMutex::new(SSHConfig::new().unwrap())
-    );
+    let config = &*singleton!(  {
+        let mut config = SSHConfig::new().unwrap();
+        // config.set_console_pw(Some("pw")).unwrap();
+        SunsetMutex::new(config)
+    } );
 
     for _ in 0..NUM_LISTENERS {
         spawner.spawn(listener(stack, config)).unwrap();
