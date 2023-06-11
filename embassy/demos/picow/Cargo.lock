@@ -1551,8 +1551,8 @@ checksum = "4f3208ce4d8448b3f3e7d168a73f5e0c43a61e32930de3bceeccedb388b6bf06"
 [[package]]
 name = "salty"
 version = "0.2.0"
-source = "git+https://github.com/mkj/salty?branch=sunset#24b9b1e3bb9cca873ed63ef379c552dbe55633e3"
 dependencies = [
+ "defmt",
  "ed25519",
  "subtle",
  "zeroize",

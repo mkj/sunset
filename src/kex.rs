@@ -11,6 +11,7 @@ use core::fmt;
 use sha2::Sha256;
 use digest::Digest;
 use zeroize::{Zeroize, ZeroizeOnDrop};
+use rand_core::{RngCore, CryptoRng, OsRng};
 
 use crate::*;
 use encrypt::{Cipher, Integ, Keys};
@@ -673,8 +674,8 @@ impl KexOutput {
 #[derive(ZeroizeOnDrop)]
 pub(crate) struct KexCurve25519 {
     // Initialised in `new()`, cleared after deriving the secret
-    ours: Option<salty::agreement::SecretKey>,
-    // TODO: it would be nice to avoid having to store this separately, but seems difficult
+    ours: Option<x25519_dalek::EphemeralSecret>,
+    // pubkey is relatively expensive to compute from the secret key
     pubkey: [u8; 32],
 }
 
@@ -692,8 +693,8 @@ impl KexCurve25519 {
         let mut s = [0u8; 32];
         random::fill_random(s.as_mut_slice())?;
         // TODO: check that pure random bytes are OK
-        let ours = salty::agreement::SecretKey::from_seed(&mut s);
-        let pubkey: salty::agreement::PublicKey = (&ours).into();
+        let ours = x25519_dalek::EphemeralSecret::new(OsRng);
+        let pubkey = x25519_dalek::PublicKey::from(ours);
         let pubkey = pubkey.to_bytes();
         Ok(KexCurve25519 { ours: Some(ours), pubkey })
     }
@@ -709,12 +710,10 @@ impl KexCurve25519 {
         } else {
             return Err(Error::bug());
         };
-        let ours = kex.ours.as_mut().trap()?;
         let theirs: [u8; 32] = theirs.try_into().map_err(|_| Error::BadKex)?;
-        let theirs = theirs.try_into().map_err(|_| Error::BadKex)?;
-        let shsec = ours.agree(&theirs);
-        kex.ours = None;
-        Ok(KexOutput::new(&shsec.to_bytes(), algos, kex_hash))
+        let theirs = theirs.into();
+        let shsec = kex.ours.take().trap()?.diffie_hellman(&theirs);
+        Ok(KexOutput::new(shsec.as_bytes(), algos, kex_hash))
     }
 }
 
