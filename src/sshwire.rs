@@ -153,7 +153,7 @@ where
 }
 
 /// Hashes the SSH wire format representation of `value`, with a `u32` length prefix.
-pub fn hash_ser_length(hash_ctx: &mut impl DigestUpdate,
+pub fn hash_ser_length(hash_ctx: &mut impl SSHWireDigestUpdate,
     value: &dyn SSHEncode) -> Result<()>
 {
     let len: u32 = length_enc(value)?;
@@ -164,7 +164,7 @@ pub fn hash_ser_length(hash_ctx: &mut impl DigestUpdate,
 /// Hashes the SSH wire format representation of `value`
 ///
 /// Will only fail if `value.enc()` can return an error.
-pub fn hash_ser(hash_ctx: &mut impl DigestUpdate,
+pub fn hash_ser(hash_ctx: &mut impl SSHWireDigestUpdate,
     value: &dyn SSHEncode,
     parse_ctx: Option<&ParseContext>,
     ) -> Result<()>
@@ -216,7 +216,7 @@ impl SSHSink for EncodeLen {
 }
 
 struct EncodeHash<'a> {
-    hash_ctx: &'a mut dyn DigestUpdate,
+    hash_ctx: &'a mut dyn SSHWireDigestUpdate,
     parse_ctx: Option<ParseContext>,
 }
 
@@ -259,7 +259,7 @@ impl<'de> SSHSource<'de> for DecodeBytes<'de> {
 
 // Hashes a slice to be treated as a mpint. Has u32 length prefix
 // and an extra 0x00 byte if the MSB is set.
-pub fn hash_mpint(hash_ctx: &mut dyn DigestUpdate, m: &[u8]) {
+pub fn hash_mpint(hash_ctx: &mut dyn SSHWireDigestUpdate, m: &[u8]) {
     let pad = m.len() > 0 && (m[0] & 0x80) != 0;
     let l = m.len() as u32 + pad as u32;
     hash_ctx.digest_update(&l.to_be_bytes());
@@ -594,17 +594,23 @@ impl<'de, const N: usize> SSHDecode<'de> for heapless::String<N> {
 /// Like `digest::DynDigest` but simpler.
 ///
 /// Doesn't have any optional methods that depend on `alloc`.
-pub trait DigestUpdate {
+pub trait SSHWireDigestUpdate {
     fn digest_update(&mut self, data: &[u8]);
 }
 
-impl DigestUpdate for salty::Sha512 {
+impl SSHWireDigestUpdate for salty::Sha512 {
     fn digest_update(&mut self, data: &[u8]) {
         self.update(data)
     }
 }
 
-impl DigestUpdate for sha2::Sha256 {
+impl SSHWireDigestUpdate for sha2::Sha256 {
+    fn digest_update(&mut self, data: &[u8]) {
+        self.update(data)
+    }
+}
+
+impl SSHWireDigestUpdate for sha2::Sha512 {
     fn digest_update(&mut self, data: &[u8]) {
         self.update(data)
     }
