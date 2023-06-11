@@ -24,8 +24,8 @@ heapless = "0.7.15"
 embedded-io = { version = "0.4", features = ["async"] }
 sha2 = { version = "0.10", default-features = false }
 hmac = { version = "0.12", default-features = false }
-# TODO: has zeroize
 bcrypt = { version = "0.14", default-features = false }
+ed25519-dalek = { version = "2.0.0-rc.2", default-features = false }
 
 defmt = { version = "0.3", optional = true }
 log = "0.4"
@@ -39,3 +39,4 @@ log = ["embassy-net/log"]
 embassy-futures = { git = "https://github.com/embassy-rs/embassy", rev = "1d34078fa11839f88dd2e47a9355c6b35755128f" }
 embassy-net = { git = "https://github.com/embassy-rs/embassy", rev = "1d34078fa11839f88dd2e47a9355c6b35755128f" }
 embassy-net-driver = { git = "https://github.com/embassy-rs/embassy", rev = "1d34078fa11839f88dd2e47a9355c6b35755128f" }
+ed25519-dalek = { path = "/home/matt/3rd/rs/crypto/ed25519-dalek" }

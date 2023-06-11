@@ -349,6 +349,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "curve25519-dalek"
+version = "4.0.0-rc.2"
+dependencies = [
+ "cfg-if",
+ "digest",
+ "fiat-crypto",
+ "platforms",
+ "rustc_version 0.4.0",
+ "subtle",
+ "zeroize",
+]
+
+[[package]]
 name = "cyw43"
 version = "0.1.0"
 source = "git+https://github.com/embassy-rs/cyw43/?rev=3cc0ec654a1e46fe7b8fa168942452303343cd84#3cc0ec654a1e46fe7b8fa168942452303343cd84"
@@ -509,6 +522,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "91cff35c70bba8a626e3185d8cd48cc11b5437e1a5bcd15b9b5fa3c64b6dfee7"
 dependencies = [
  "signature 1.6.4",
+]
+
+[[package]]
+name = "ed25519"
+version = "2.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5fb04eee5d9d907f29e80ee6b0e78f7e2c82342c63e3580d8c4f69d9d5aad963"
+dependencies = [
+ "signature 2.0.0",
+]
+
+[[package]]
+name = "ed25519-dalek"
+version = "2.0.0-rc.2"
+dependencies = [
+ "curve25519-dalek",
+ "ed25519 2.2.1",
+ "rand_core",
+ "sha2",
+ "zeroize",
 ]
 
 [[package]]
@@ -839,6 +872,12 @@ dependencies = [
  "cc",
  "libc",
 ]
+
+[[package]]
+name = "fiat-crypto"
+version = "0.1.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e825f6987101665dea6ec934c09ec6d721de7bc1bf92248e1d5810c8cd636b77"
 
 [[package]]
 name = "fixed"
@@ -1356,6 +1395,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "platforms"
+version = "3.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e3d7ddaed09e0eb771a79ab0fd64609ba0afb0a8366421957936ad14cbd13630"
+
+[[package]]
 name = "poly1305"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1553,7 +1598,7 @@ name = "salty"
 version = "0.2.0"
 dependencies = [
  "defmt",
- "ed25519",
+ "ed25519 1.5.3",
  "subtle",
  "zeroize",
 ]
@@ -1730,8 +1775,10 @@ dependencies = [
  "chacha20",
  "cipher",
  "ctr",
+ "curve25519-dalek",
  "defmt",
  "digest",
+ "ed25519-dalek",
  "embedded-io",
  "futures",
  "getrandom",
@@ -1747,6 +1794,7 @@ dependencies = [
  "snafu",
  "subtle",
  "sunset-sshwire-derive",
+ "x25519-dalek",
  "zeroize",
 ]
 
@@ -1756,6 +1804,7 @@ version = "0.1.0"
 dependencies = [
  "bcrypt",
  "defmt",
+ "ed25519-dalek",
  "embassy-futures",
  "embassy-net",
  "embassy-net-driver",
@@ -2184,6 +2233,15 @@ name = "windows_x86_64_msvc"
 version = "0.48.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1a515f5799fe4961cb532f983ce2b23082366b898e52ffbce459c86f67c8378a"
+
+[[package]]
+name = "x25519-dalek"
+version = "2.0.0-rc.2"
+dependencies = [
+ "curve25519-dalek",
+ "rand_core",
+ "zeroize",
+]
 
 [[package]]
 name = "zeroize"

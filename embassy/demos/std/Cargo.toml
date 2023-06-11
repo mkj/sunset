@@ -44,6 +44,10 @@ embassy-net = { git = "https://github.com/embassy-rs/embassy", rev = "1d34078fa1
 # for tuntap
 embassy-net-driver = { git = "https://github.com/embassy-rs/embassy", rev = "1d34078fa11839f88dd2e47a9355c6b35755128f" }
 
+curve25519-dalek = { path = "/home/matt/3rd/rs/crypto/curve25519-dalek" }
+x25519-dalek = { path = "/home/matt/3rd/rs/crypto/x25519-dalek" }
+ed25519-dalek = { path = "/home/matt/3rd/rs/crypto/ed25519-dalek" }
+
 [profile.dev]
 debug = 2
 debug-assertions = true

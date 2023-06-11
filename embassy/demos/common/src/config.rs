@@ -29,7 +29,7 @@ pub const KEY_SLOTS: usize = 3;
 // Be sure to bump CURRENT_VERSION
 // if this struct changes (or encode/decode impls).
 // BUF_SIZE will probably also need updating.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct SSHConfig {
     pub hostkey: SignKey,
 
@@ -112,7 +112,7 @@ impl SSHConfig {
 fn enc_signkey(k: &SignKey, s: &mut dyn SSHSink) -> WireResult<()> {
     // need to add a variant field if we support more key types.
     match k {
-        SignKey::Ed25519(seed) => seed.enc(s),
+        SignKey::Ed25519(k) => k.to_bytes().enc(s),
         _ => Err(WireError::UnknownVariant),
     }
 }
@@ -121,7 +121,9 @@ fn dec_signkey<'de, S>(s: &mut S) -> WireResult<SignKey>
 where
     S: SSHSource<'de>,
 {
-    Ok(SignKey::Ed25519(SSHDecode::dec(s)?))
+    let k: ed25519_dalek::SecretKey = SSHDecode::dec(s)?;
+    let k = ed25519_dalek::SigningKey::from_bytes(&k);
+    Ok(SignKey::Ed25519(k))
 }
 
 // encode Option<T> as a bool then maybe a value

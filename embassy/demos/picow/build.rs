@@ -49,5 +49,5 @@ fn git() {
         .unwrap_or("(unknown)".to_string());
 
     println!("cargo:rustc-env=GIT_REV={git_rev}");
-    println!("cargo:rerun-if-changed=.git/HEAD");
+    println!("cargo:rerun-if-changed=../../../.git/HEAD");
 }

@@ -694,7 +694,7 @@ impl KexCurve25519 {
         random::fill_random(s.as_mut_slice())?;
         // TODO: check that pure random bytes are OK
         let ours = x25519_dalek::EphemeralSecret::new(OsRng);
-        let pubkey = x25519_dalek::PublicKey::from(ours);
+        let pubkey = x25519_dalek::PublicKey::from(&ours);
         let pubkey = pubkey.to_bytes();
         Ok(KexCurve25519 { ours: Some(ours), pubkey })
     }

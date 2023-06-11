@@ -1,4 +1,3 @@
-
 #[allow(unused_imports)]
 use {
     crate::error::*,
@@ -7,14 +6,15 @@ use {
 
 use core::ops::Deref;
 
-use signature::Verifier;
+use ed25519_dalek as dalek;
+use ed25519_dalek::{Signer, Verifier};
 use zeroize::ZeroizeOnDrop;
 
 use crate::*;
 use packets::ParseContext;
+use packets::{Ed25519PubKey, PubKey, Signature};
 use sshnames::*;
-use packets::{PubKey, Signature, Ed25519PubKey};
-use sshwire::{BinString, SSHEncode, Blob};
+use sshwire::{BinString, Blob, SSHEncode};
 
 use pretty_hex::PrettyHex;
 
@@ -23,9 +23,9 @@ use core::mem::discriminant;
 use digest::Digest;
 
 #[cfg(feature = "rsa")]
-use rsa::signature::{DigestVerifier, DigestSigner};
-#[cfg(feature = "rsa")]
 use packets::RSAPubKey;
+#[cfg(feature = "rsa")]
+use rsa::signature::{DigestSigner, DigestVerifier};
 
 // #[cfg(feature = "rsa")]
 // use rsa::{PublicKey, RsaPrivateKey, RsaPublicKey, PaddingScheme};
@@ -62,8 +62,12 @@ impl SigType {
 
     /// Returns `Ok(())` on success
     pub fn verify(
-        &self, pubkey: &PubKey, msg: &dyn SSHEncode, sig: &Signature, parse_ctx: Option<&ParseContext>) -> Result<()> {
-
+        &self,
+        pubkey: &PubKey,
+        msg: &dyn SSHEncode,
+        sig: &Signature,
+        parse_ctx: Option<&ParseContext>,
+    ) -> Result<()> {
         // Check that the signature type is known
         let sig_type = sig.sig_type().map_err(|_| Error::BadSig)?;
 
@@ -71,44 +75,50 @@ impl SigType {
         // This would also get caught by SignatureMismatch below
         // but that error message is intended for mismatch key vs sig.
         if discriminant(&sig_type) != discriminant(self) {
-            warn!("Received {:?} signature, expecting {}",
-                sig.algorithm_name(), self.algorithm_name());
-            return Err(Error::BadSig)
+            warn!(
+                "Received {:?} signature, expecting {}",
+                sig.algorithm_name(),
+                self.algorithm_name()
+            );
+            return Err(Error::BadSig);
         }
 
         match (self, pubkey, sig) {
-
             (SigType::Ed25519, PubKey::Ed25519(k), Signature::Ed25519(s)) => {
                 let k: &[u8; 32] = &k.key.0;
                 let k: salty::PublicKey = k.try_into().map_err(|_| Error::BadKey)?;
                 let s: &[u8; 64] = s.sig.0.try_into().map_err(|_| Error::BadSig)?;
                 let s: salty::Signature = s.into();
                 k.verify_parts(&s, |h| {
-                    sshwire::hash_ser(h, msg, parse_ctx).map_err(|_| salty::Error::ContextTooLong)
+                    sshwire::hash_ser(h, msg, parse_ctx)
+                        .map_err(|_| salty::Error::ContextTooLong)
                 })
                 .map_err(|_| Error::BadSig)
             }
 
             #[cfg(feature = "rsa")]
             (SigType::RSA, PubKey::RSA(k), Signature::RSA(s)) => {
-                let verifying_key = rsa::pkcs1v15::VerifyingKey::<sha2::Sha256>::new_with_prefix(k.key.clone());
+                let verifying_key =
+                    rsa::pkcs1v15::VerifyingKey::<sha2::Sha256>::new_with_prefix(
+                        k.key.clone(),
+                    );
                 let s: Box<[u8]> = s.sig.0.into();
                 let signature = s.into();
 
                 let mut h = sha2::Sha256::new();
                 sshwire::hash_ser(&mut h, msg, parse_ctx)?;
-                verifying_key.verify_digest(h, &signature)
-                .map_err(|e| {
+                verifying_key.verify_digest(h, &signature).map_err(|e| {
                     trace!("RSA signature failed: {e}");
                     Error::BadSig
                 })
             }
 
             _ => {
-                warn!("Signature \"{:?}\" doesn't match key type \"{:?}\"",
+                warn!(
+                    "Signature \"{:?}\" doesn't match key type \"{:?}\"",
                     sig.algorithm_name(),
                     pubkey.algorithm_name(),
-                    );
+                );
                 Err(Error::BadSig)
             }
         }
@@ -116,8 +126,7 @@ impl SigType {
 }
 
 pub enum OwnedSig {
-    // salty::Signature doesn't let us borrow the inner bytes,
-    // so we just store raw bytes here.
+    // just store raw bytes here.
     Ed25519([u8; 64]),
     #[cfg(feature = "rsa")]
     RSA(rsa::pkcs1v15::Signature),
@@ -151,7 +160,7 @@ impl TryFrom<Signature<'_>> for OwnedSig {
             }
             Signature::Unknown(u) => {
                 debug!("Unknown {u} signature");
-                Err(Error::UnknownMethod {kind: "signature" })
+                Err(Error::UnknownMethod { kind: "signature" })
             }
         }
     }
@@ -168,13 +177,16 @@ pub enum KeyType {
 ///
 /// This may hold the private key part locally
 /// or potentially send the signing requests to an SSH agent or other entity.
-#[derive(ZeroizeOnDrop, Clone, PartialEq)]
+// #[derive(ZeroizeOnDrop, Clone, PartialEq)]
+#[derive(ZeroizeOnDrop, Clone)]
 pub enum SignKey {
-    // 32 byte seed value is the private key
-    Ed25519([u8; 32]),
+    // TODO: we could just have the 32 byte seed here to save memory, but
+    // computing the public part may be slow.
+    #[zeroize(skip)]
+    Ed25519(dalek::SigningKey),
 
     #[zeroize(skip)]
-    AgentEd25519(salty::PublicKey),
+    AgentEd25519(dalek::VerifyingKey),
 
     #[cfg(feature = "rsa")]
     // TODO zeroize doesn't seem supported? though BigUint has Zeroize
@@ -193,42 +205,41 @@ impl SignKey {
                 if bits.unwrap_or(256) != 256 {
                     return Err(Error::msg("Bad key size"));
                 }
-                let mut seed = [0u8; 32];
-                random::fill_random(&mut seed)?;
-                Ok(Self::Ed25519(seed))
-            },
+                let k = dalek::SigningKey::generate(&mut rand_core::OsRng);
+                Ok(Self::Ed25519(k))
+            }
 
             #[cfg(feature = "rsa")]
             KeyType::RSA => {
                 let bits = bits.unwrap_or(config::RSA_DEFAULT_KEYSIZE);
                 if bits < config::RSA_MIN_KEYSIZE
                     || bits > rsa::RsaPublicKey::MAX_SIZE
-                    || (bits % 8 != 0) {
+                    || (bits % 8 != 0)
+                {
                     return Err(Error::msg("Bad key size"));
                 }
 
                 let k = rsa::RsaPrivateKey::new(&mut rand_core::OsRng, bits)
-                .map_err(|e| {
-                    debug!("RSA key generation error {e}");
-                    // RNG shouldn't fail, keysize has been checked
-                    Error::bug()
-                })?;
+                    .map_err(|e| {
+                        debug!("RSA key generation error {e}");
+                        // RNG shouldn't fail, keysize has been checked
+                        Error::bug()
+                    })?;
                 Ok(Self::RSA(k))
-            },
+            }
         }
     }
 
     pub fn pubkey(&self) -> PubKey {
         match self {
-            SignKey::Ed25519(seed) => {
-                let k = salty::Keypair::from(seed);
-                PubKey::Ed25519(Ed25519PubKey
-                { key: Blob(k.public.as_bytes().clone()) } )
-            },
+            SignKey::Ed25519(k) => {
+                let pubk = k.verifying_key().to_bytes();
+                PubKey::Ed25519(Ed25519PubKey { key: Blob(pubk) })
+            }
 
-            SignKey::AgentEd25519(pk) => PubKey::Ed25519(Ed25519PubKey
-                { key: Blob(pk.as_bytes().clone()) } ),
-
+            SignKey::AgentEd25519(pk) => {
+                PubKey::Ed25519(Ed25519PubKey { key: Blob(pk.to_bytes()) })
+            }
 
             #[cfg(feature = "rsa")]
             SignKey::RSA(k) => PubKey::RSA(RSAPubKey { key: k.deref().clone() }),
@@ -241,9 +252,7 @@ impl SignKey {
     #[cfg(feature = "openssh-key")]
     pub fn from_openssh(k: impl AsRef<[u8]>) -> Result<Self> {
         let k = ssh_key::PrivateKey::from_openssh(k)
-            .map_err(|_| {
-                Error::msg("Unsupported OpenSSH key")
-            })?;
+            .map_err(|_| Error::msg("Unsupported OpenSSH key"))?;
 
         k.try_into()
     }
@@ -251,47 +260,60 @@ impl SignKey {
     pub fn from_agent_pubkey(pk: &PubKey) -> Result<Self> {
         match pk {
             PubKey::Ed25519(k) => {
-                let k: salty::PublicKey = k.try_into().map_err(|_| Error::BadKey)?;
+                let k: dalek::VerifyingKey =
+                    k.key.0.as_slice().try_into().map_err(|_| Error::BadKey)?;
                 Ok(Self::AgentEd25519(k))
-            },
+            }
 
-            #[cfg (feature = "rsa")]
+            #[cfg(feature = "rsa")]
             PubKey::RSA(k) => Ok(Self::AgentRSA(k.key.clone())),
 
-            PubKey::Unknown(_) => {
-                Err(Error::msg("Unsupported agent key"))
-            }
+            PubKey::Unknown(_) => Err(Error::msg("Unsupported agent key")),
         }
     }
 
     /// Returns whether this `SignKey` can create a given signature type
     pub(crate) fn can_sign(&self, sig_type: SigType) -> bool {
         match self {
-            | SignKey::Ed25519(_)
-            | SignKey::AgentEd25519(_)
-            => matches!(sig_type, SigType::Ed25519),
+            SignKey::Ed25519(_) | SignKey::AgentEd25519(_) => {
+                matches!(sig_type, SigType::Ed25519)
+            }
 
             #[cfg(feature = "rsa")]
-            | SignKey::RSA(_)
-            | SignKey::AgentRSA(_)
-            => matches!(sig_type, SigType::RSA),
+            SignKey::RSA(_) | SignKey::AgentRSA(_) => {
+                matches!(sig_type, SigType::RSA)
+            }
         }
     }
 
-    pub(crate) fn sign(&self, msg: &impl SSHEncode, parse_ctx: Option<&ParseContext>) -> Result<OwnedSig> {
+    pub(crate) fn sign(
+        &self,
+        msg: &impl SSHEncode,
+        parse_ctx: Option<&ParseContext>,
+    ) -> Result<OwnedSig> {
         let sig: OwnedSig = match self {
-            SignKey::Ed25519(seed) => {
-                let k = salty::Keypair::from(seed);
-                let sig = k.sign_parts(|h| {
-                    sshwire::hash_ser(h, msg, parse_ctx).map_err(|_| salty::Error::ContextTooLong)
-                })
+            SignKey::Ed25519(k) => {
+                let exk = dalek::hazmat::ExpandedSecretKey::from_bytes(
+                    &k.to_keypair_bytes(),
+                );
+                let sig = dalek::hazmat::raw_sign_byupdate::<sha2::Sha512, _>(
+                    &exk,
+                    |h| {
+                        sshwire::hash_ser(h, msg, parse_ctx)
+                            .map_err(|_| dalek::SignatureError::new())
+                    },
+                    &k.verifying_key(),
+                )
                 .trap()?;
-                sig.into()
+                OwnedSig::Ed25519(sig.to_bytes())
             }
 
             #[cfg(feature = "rsa")]
             SignKey::RSA(k) => {
-                let signing_key = rsa::pkcs1v15::SigningKey::<sha2::Sha256>::new_with_prefix(k.clone());
+                let signing_key =
+                    rsa::pkcs1v15::SigningKey::<sha2::Sha256>::new_with_prefix(
+                        k.clone(),
+                    );
                 let mut h = sha2::Sha256::new();
                 sshwire::hash_ser(&mut h, msg, parse_ctx)?;
                 let sig = signing_key.try_sign_digest(h).map_err(|e| {
@@ -302,10 +324,9 @@ impl SignKey {
             }
 
             // callers should check for agent keys first
-            | SignKey::AgentEd25519(_) => return Error::bug_msg("agent sign"),
+            SignKey::AgentEd25519(_) => return Error::bug_msg("agent sign"),
             #[cfg(feature = "rsa")]
-            | SignKey::AgentRSA(_) => return Error::bug_msg("agent sign"),
-
+            SignKey::AgentRSA(_) => return Error::bug_msg("agent sign"),
         };
 
         // {
@@ -367,10 +388,11 @@ impl TryFrom<ssh_key::PrivateKey> for SignKey {
                     (&k.public.e).try_into().map_err(|_| Error::BadKey)?,
                     (&k.private.d).try_into().map_err(|_| Error::BadKey)?,
                     primes,
-                ).map_err(|_| Error::BadKey)?;
+                )
+                .map_err(|_| Error::BadKey)?;
                 Ok(SignKey::RSA(key))
             }
-            _ => Err(Error::NotAvailable { what: k.algorithm().as_str() })
+            _ => Err(Error::NotAvailable { what: k.algorithm().as_str() }),
         }
     }
 }
@@ -379,9 +401,9 @@ impl TryFrom<ssh_key::PrivateKey> for SignKey {
 pub(crate) mod tests {
 
     use crate::*;
-    use sshnames::SSH_NAME_ED25519;
     use packets;
     use sign::*;
+    use sshnames::SSH_NAME_ED25519;
     use sunsetlog::init_test_log;
 
     // TODO: tests for sign()/verify() and invalid signatures
