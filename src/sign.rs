@@ -293,9 +293,7 @@ impl SignKey {
     ) -> Result<OwnedSig> {
         let sig: OwnedSig = match self {
             SignKey::Ed25519(k) => {
-                let exk = dalek::hazmat::ExpandedSecretKey::from_bytes(
-                    &k.to_keypair_bytes(),
-                );
+                let exk: dalek::hazmat::ExpandedSecretKey = (&k.to_bytes()).into();
                 let sig = dalek::hazmat::raw_sign_byupdate::<sha2::Sha512, _>(
                     &exk,
                     |h| {
