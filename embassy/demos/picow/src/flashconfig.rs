@@ -12,7 +12,7 @@ pub use {
 #[cfg(feature = "defmt")]
 pub use defmt::{debug, info, warn, panic, error, trace};
 
-use embassy_rp::flash::{Flash, ERASE_SIZE, FLASH_BASE};
+use embassy_rp::flash::{Flash, ERASE_SIZE};
 use embassy_rp::peripherals::FLASH;
 
 use sha2::Digest;
@@ -21,7 +21,6 @@ use core::borrow::Borrow;
 
 use sunset_sshwire_derive::*;
 use sunset::sshwire;
-use sunset::sshwire::{BinString, SSHEncode, SSHDecode, WireResult, SSHSource, SSHSink, WireError};
 use sunset::sshwire::OwnOrBorrow;
 
 use crate::demo_common;
@@ -53,7 +52,6 @@ fn config_hash(config: &SSHConfig) -> Result<[u8; 32]> {
 /// Loads a SSHConfig at startup. Good for persisting hostkeys.
 pub fn load_or_create(flash: &mut Flash<'_, FLASH, FLASH_SIZE>) -> Result<SSHConfig> {
     use snafu::Error;
-    let c = load(flash);
     match load(flash) {
         Ok(c) => {
             info!("Good existing config");
@@ -68,7 +66,7 @@ pub fn load_or_create(flash: &mut Flash<'_, FLASH, FLASH_SIZE>) -> Result<SSHCon
 
 pub fn create(flash: &mut Flash<'_, FLASH, FLASH_SIZE>) -> Result<SSHConfig> {
     let c = SSHConfig::new()?;
-    if let Err(e) = save(flash, &c) {
+    if let Err(_) = save(flash, &c) {
         warn!("Error writing config");
     }
     Ok(c)

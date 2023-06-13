@@ -9,15 +9,11 @@ use {
 #[cfg(feature = "defmt")]
 use defmt::{debug, info, warn, panic, error, trace};
 
-use core::fmt::Write as _;
-use pretty_hex::PrettyHex;
-
 use embassy_sync::mutex::Mutex;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_net::tcp::TcpSocket;
 use embassy_net::Stack;
 use embassy_net_driver::Driver;
-use embassy_futures::join::join;
 use embassy_futures::select::{select, Either};
 use embassy_time::{Duration, Timer};
 

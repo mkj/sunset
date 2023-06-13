@@ -144,7 +144,7 @@ impl CliAuth {
         b: &mut impl CliBehaviour,
     ) -> Option<Req> {
         loop {
-            let k = b.next_authkey().unwrap_or_else(|e| {
+            let k = b.next_authkey().unwrap_or_else(|_| {
                 warn!("Error getting pubkey for auth");
                 None
             });
@@ -220,7 +220,7 @@ impl CliAuth {
 
         match auth60 {
             Userauth60::PkOk(pkok) => self.auth_pkok(pkok, sess_id, parse_ctx, s, b).await,
-            Userauth60::PwChangeReq(_req) => todo!("pwchange"),
+            Userauth60::PwChangeReq(_req) => self.change_password(),
         }
     }
 
@@ -253,6 +253,11 @@ impl CliAuth {
         }
         trace!("Unexpected userauth60");
         Err(Error::SSHProtoError)
+    }
+
+    fn change_password(&self) -> Result<()> {
+        // Doesn't seem to be widely implemented, we'll just fail.
+        Err(Error::msg("Password has expired"))
     }
 
     pub async fn failure(

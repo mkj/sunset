@@ -12,7 +12,7 @@ use core::ops::DerefMut;
 
 use embedded_io::{asynch, Io};
 
-use embassy_sync::{pipe, mutex::{MutexGuard, Mutex}, signal::Signal};
+use embassy_sync::{pipe, mutex::Mutex, signal::Signal};
 use embassy_sync::pipe::Pipe;
 use embassy_futures::select::{select, Either};
 
@@ -38,7 +38,6 @@ pub(crate) struct TakePipeStorage {
 	fanout: Pipe<SunsetRawMutex, READ_SIZE>,
     fanin: Pipe<SunsetRawMutex, WRITE_SIZE>,
     wake: Signal<SunsetRawMutex, ()>,
-    counter: u64,
 }
 
 impl TakePipeStorage {
@@ -61,7 +60,6 @@ impl Default for TakePipeStorage {
             fanout: Pipe::new(),
             fanin: Pipe::new(),
             wake: Signal::new(),
-            counter: 0,
         }
     }
 }
@@ -216,7 +214,7 @@ impl asynch::Write for TakeWrite<'_> {
             // write completed
             Either::First(l) => l,
             // lost the pipe
-            Either::Second(l) => {
+            Either::Second(_) => {
                 self.shared = None;
                 Err(sunset::Error::ChannelEOF)
             }

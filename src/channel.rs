@@ -329,7 +329,7 @@ impl<C: CliBehaviour, S: ServBehaviour> Channels<C, S> {
                             // let the CliBehaviour open a shell etc
                             let mut opener = SessionOpener::new(&ch, s);
                             let r = b.client()?.session_opened(ch.num(), &mut opener).await;
-                            if let Err(e) = r {
+                            if let Err(_) = r {
                                 trace!("Error from session_opened");
                             }
                         }

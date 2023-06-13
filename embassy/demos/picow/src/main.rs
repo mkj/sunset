@@ -14,15 +14,10 @@ pub use defmt::{debug, error, info, panic, trace, warn};
 
 use {defmt_rtt as _, panic_probe as _};
 
-use core::fmt::Write as _;
-use pretty_hex::PrettyHex;
-
 use embassy_executor::Spawner;
-use embassy_futures::join::join;
 use embassy_futures::select::select;
 use embassy_net::Stack;
 use embassy_rp::peripherals::FLASH;
-use embassy_time::Duration;
 use embedded_io::asynch::Write as _;
 use embedded_io::{asynch, Io};
 
@@ -43,13 +38,12 @@ pub(crate) use sunset_demo_embassy_common as demo_common;
 
 mod flashconfig;
 mod picowmenu;
-#[cfg(feature = "serial1")]
 mod serial;
 mod takepipe;
 mod usbserial;
 mod wifi;
 
-use demo_common::{demo_menu, SSHConfig, Shell};
+use demo_common::{SSHConfig, Shell};
 
 use takepipe::TakePipe;
 
@@ -97,12 +91,10 @@ async fn main(spawner: Spawner) {
         singleton!(p.pipe())
     };
 
-    #[cfg(feature = "serial1")]
     let serial1_pipe = {
         let s = singleton!(takepipe::TakePipeStorage::new());
         singleton!(s.pipe())
     };
-    #[cfg(feature = "serial1")]
     spawner
         .spawn(serial::task(
             p.UART0,
@@ -120,10 +112,9 @@ async fn main(spawner: Spawner) {
 
     let state = GlobalState {
         usb_pipe,
-        #[cfg(feature = "serial1")]
         serial1_pipe,
 
-        wifi_control,
+        _wifi_control: wifi_control,
         config,
         flash,
         watchdog,
@@ -150,10 +141,9 @@ async fn listener(
 pub(crate) struct GlobalState {
     // If taking multiple mutexes, lock in the order below avoid inversion.
     pub usb_pipe: &'static TakePipe<'static>,
-    #[cfg(feature = "serial1")]
     pub serial1_pipe: &'static TakePipe<'static>,
 
-    pub wifi_control: &'static SunsetMutex<cyw43::Control<'static>>,
+    pub _wifi_control: &'static SunsetMutex<cyw43::Control<'static>>,
     pub config: &'static SunsetMutex<SSHConfig>,
     pub flash: &'static SunsetMutex<
         embassy_rp::flash::Flash<'static, FLASH, { flashconfig::FLASH_SIZE }>,

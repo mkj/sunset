@@ -60,7 +60,7 @@ rand = { version = "0.8", default-features = false, features = ["getrandom"] }
 sha2 = { version = "0.10", default-features = false }
 
 # for defmt feature
-smoltcp = { default-features = false }
+smoltcp = { version = "0.9", default-features = false }
 
 [features]
 default = ["defmt", "sunset-demo-embassy-common/defmt", "embassy-usb/defmt"]
@@ -71,7 +71,7 @@ defmt = ["dep:defmt", "sunset/defmt", "sunset-embassy/defmt", "smoltcp/defmt"]
 # probe-rs-cli download firmware/43439A0_clm.bin --format bin --chip RP2040 --base-address 0x10140000
 romfw = []
 
-# Add a UART on tx pin1, rx pin2
+# Default console is serial
 serial1 = []
 
 [patch.crates-io]

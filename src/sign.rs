@@ -372,7 +372,7 @@ impl TryFrom<ssh_key::PrivateKey> for SignKey {
     fn try_from(k: ssh_key::PrivateKey) -> Result<Self> {
         match k.key_data() {
             ssh_key::private::KeypairData::Ed25519(k) => {
-                Ok(SignKey::Ed25519(k.private.to_bytes()))
+                Ok(SignKey::Ed25519(k.private.to_bytes().into()))
             }
 
             #[cfg(feature = "rsa")]

@@ -301,7 +301,7 @@ impl CliBehaviour for UnusedCli {
     fn username(&mut self) -> BhResult<ResponseString> {
         unreachable!()
     }
-    fn valid_hostkey(&mut self, key: &PubKey) -> BhResult<bool> {
+    fn valid_hostkey(&mut self, _key: &PubKey) -> BhResult<bool> {
         unreachable!()
     }
     fn authenticated(&mut self) {
@@ -317,7 +317,7 @@ impl ServBehaviour for UnusedServ {
     fn hostkeys(&mut self) -> BhResult<heapless::Vec<&SignKey, 2>> {
         unreachable!()
     }
-    fn open_session(&mut self, chan: ChanHandle) -> channel::ChanOpened {
+    fn open_session(&mut self, _chan: ChanHandle) -> channel::ChanOpened {
         unreachable!()
     }
 }

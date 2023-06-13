@@ -66,9 +66,8 @@ pub(crate) async fn wifi_stack(spawner: &Spawner,
 
     // TODO: this should move out of the critical path, run in the bg.
     // just return control before joining.
-    let mut status = Ok(());
-    for i in 0..2 {
-        status = if let Some(ref pw) = wpa_password {
+    for _ in 0..2 {
+        let status = if let Some(ref pw) = wpa_password {
             info!("wifi net {} wpa2", wifi_net);
             control.join_wpa2(&wifi_net, &pw).await
         } else {

@@ -1,3 +1,6 @@
+// callbacks have lots of unused arguments. Ignore them, this might get replaced.
+#![allow(unused)]
+
 #[allow(unused_imports)]
 #[cfg(not(feature = "defmt"))]
 pub use log::{debug, error, info, log, trace, warn};
@@ -12,7 +15,6 @@ use core::ops::DerefMut;
 use core::sync::atomic::Ordering::{Relaxed, SeqCst};
 
 use embedded_io::{asynch, Io};
-use embedded_io::asynch::Write as _;
 
 use embassy_sync::waitqueue::MultiWakerRegistration;
 use embassy_time::Duration;
@@ -69,7 +71,7 @@ impl MenuCtx {
         let mut c = match self.state.config.try_lock() {
             Ok(c) => c,
             Err(e) => {
-                writeln!(self, "Lock problem, try again.");
+                let _ = writeln!(self, "Lock problem, try again.");
                 return false;
             }
         };
@@ -90,12 +92,12 @@ impl MenuCtx {
         if self.switch_usb1 {
             self.switch_usb1 = false;
             if self.local {
-                writeln!(self.out, "serial can't loop");
+                let _ = writeln!(self.out, "serial can't loop");
             } else {
                 if self.state.usb_pipe.is_in_use() {
-                    writeln!(self.out, "Opening usb1, stealing existing session");
+                    let _ = writeln!(self.out, "Opening usb1, stealing existing session");
                 } else {
-                    writeln!(self.out, "Opening usb1");
+                    let _ = writeln!(self.out, "Opening usb1");
                 }
                 crate::serial(chanr, chanw, self.state.usb_pipe).await?;
                 // TODO we could return to the menu on serial error?
@@ -103,16 +105,15 @@ impl MenuCtx {
             }
         }
 
-        #[cfg(feature = "serial1")]
         if self.switch_serial1 {
             self.switch_serial1 = false;
             if self.local {
-                writeln!(self.out, "serial can't loop");
+                let _ = writeln!(self.out, "serial can't loop");
             } else {
                 if self.state.serial1_pipe.is_in_use() {
-                    writeln!(self.out, "Opening serial1, stealing existing session");
+                    let _ = writeln!(self.out, "Opening serial1, stealing existing session");
                 } else {
-                    writeln!(self.out, "Opening serial1");
+                    let _ = writeln!(self.out, "Opening serial1");
                 }
                 crate::serial(chanr, chanw, self.state.serial1_pipe).await?;
                 // TODO we could return to the menu on serial error?
@@ -170,7 +171,7 @@ pub(crate) const SETUP_MENU: Menu<MenuCtx> = Menu {
             item_type: ItemType::Callback { function: do_logout, parameters: &[] },
         },
         &AUTH_ITEM,
-        &GPIO_ITEM,
+        // &GPIO_ITEM,
         &SERIAL_ITEM,
         &WIFI_ITEM,
         &Item {
@@ -389,39 +390,39 @@ const WIFI_ITEM: Item<MenuCtx> = Item {
     help: None,
 };
 
-const GPIO_ITEM: Item<MenuCtx> = Item {
-    command: "gpio",
-    item_type: ItemType::Menu(&Menu {
-        label: "gpio",
-        items: &[
-            &Item {
-                command: "show",
-                item_type: ItemType::Callback {
-                    parameters: &[],
-                    function: do_gpio_show,
-                },
-                help: None,
-            },
-            &Item {
-                command: "set",
-                item_type: ItemType::Callback {
-                    parameters: &[
-                        Parameter::Mandatory { parameter_name: "pin", help: None },
-                        Parameter::Mandatory {
-                            parameter_name: "state",
-                            help: Some("0/1/Z"),
-                        },
-                    ],
-                    function: do_gpio_set,
-                },
-                help: None,
-            },
-        ],
-        entry: None,
-        exit: None,
-    }),
-    help: Some("GPIO, todo"),
-};
+// const _GPIO_ITEM: Item<MenuCtx> = Item {
+//     command: "gpio",
+//     item_type: ItemType::Menu(&Menu {
+//         label: "gpio",
+//         items: &[
+//             &Item {
+//                 command: "show",
+//                 item_type: ItemType::Callback {
+//                     parameters: &[],
+//                     function: do_gpio_show,
+//                 },
+//                 help: None,
+//             },
+//             &Item {
+//                 command: "set",
+//                 item_type: ItemType::Callback {
+//                     parameters: &[
+//                         Parameter::Mandatory { parameter_name: "pin", help: None },
+//                         Parameter::Mandatory {
+//                             parameter_name: "state",
+//                             help: Some("0/1/Z"),
+//                         },
+//                     ],
+//                     function: do_gpio_set,
+//                 },
+//                 help: None,
+//             },
+//         ],
+//         entry: None,
+//         exit: None,
+//     }),
+//     help: Some("GPIO, todo"),
+// };
 
 const SERIAL_ITEM: Item<MenuCtx> = Item {
     command: "serial",
@@ -433,7 +434,6 @@ const SERIAL_ITEM: Item<MenuCtx> = Item {
                 item_type: ItemType::Callback { parameters: &[], function: do_usb1 },
                 help: Some("Connect to if00 serial port. Disconnect to exit."),
             },
-            #[cfg(feature = "serial1")]
             &Item {
                 command: "serial1",
                 item_type: ItemType::Callback {
@@ -450,7 +450,7 @@ const SERIAL_ITEM: Item<MenuCtx> = Item {
 };
 
 fn enter_auth(context: &mut MenuCtx) {
-    writeln!(context, "In auth menu").unwrap();
+    let _ = writeln!(context, "In auth menu").unwrap();
 }
 
 fn endis(v: bool) -> &'static str {
@@ -463,25 +463,25 @@ fn endis(v: bool) -> &'static str {
 
 fn prkey(context: &mut dyn Write, name: &str, k: &Option<Ed25519PubKey>) {
     if let Some(k) = k {
-        writeln!(context, "{} ed25519 todo", name);
+        let _ = writeln!(context, "{} ed25519 todo", name);
     } else {
-        writeln!(context, "{} disabled", name);
+        let _ = writeln!(context, "{} disabled", name);
     }
 }
 
 fn do_auth_show(_item: &Item<MenuCtx>, _args: &[&str], context: &mut MenuCtx) {
     context.with_config(|c, out| {
-        write!(out, "Console password ");
+        let _ = write!(out, "Console password ");
         if c.console_noauth {
-            writeln!(out, "not required");
+            let _ = writeln!(out, "not required");
         } else {
-            writeln!(out, "{}", endis(c.console_pw.is_some()));
+            let _ = writeln!(out, "{}", endis(c.console_pw.is_some()));
         }
-        writeln!(out, "Console password {}", endis(c.console_pw.is_some()));
+        let _ = writeln!(out, "Console password {}", endis(c.console_pw.is_some()));
         prkey(out, "Console key1", &c.console_keys[0]);
         prkey(out, "Console key2", &c.console_keys[1]);
         prkey(out, "Console key3", &c.console_keys[2]);
-        writeln!(out, "Admin password {}", endis(c.admin_pw.is_some()));
+        let _ = writeln!(out, "Admin password {}", endis(c.admin_pw.is_some()));
         prkey(out, "Admin key1", &c.admin_keys[0]);
         prkey(out, "Admin key2", &c.admin_keys[1]);
         prkey(out, "Admin key3", &c.admin_keys[2]);
@@ -491,33 +491,33 @@ fn do_auth_show(_item: &Item<MenuCtx>, _args: &[&str], context: &mut MenuCtx) {
 fn do_key(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx) {
     let slot: usize = match args[0].parse() {
         Err(e) => {
-            writeln!(context, "Bad slot");
+            let _ = writeln!(context, "Bad slot");
             return;
         }
         Ok(s) => s,
     };
     if slot == 0 || slot > demo_common::config::KEY_SLOTS {
-        writeln!(context, "Bad slot");
+        let _ = writeln!(context, "Bad slot");
         return;
     }
     context.need_save = true;
 
-    writeln!(context, "todo openssh key parsing");
+    let _ = writeln!(context, "todo openssh key parsing");
 }
 
 fn do_clear_key(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx) {
-    writeln!(context, "todo");
+    let _ = writeln!(context, "todo");
     context.need_save = true;
 }
 
 fn do_console_pw(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx) {
     let pw = args[0];
     if pw.as_bytes().len() > MAX_PW_LEN {
-        writeln!(context, "Too long");
+        let _ = writeln!(context, "Too long");
         return;
     }
     context.with_config(|c, out| {
-        match c.set_console_pw(Some(pw)) {
+        let _ = match c.set_console_pw(Some(pw)) {
             Ok(()) => writeln!(out, "Set console password"),
             Err(e) => writeln!(out, "Failed setting, {}", e),
         };
@@ -539,19 +539,19 @@ fn do_console_noauth(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx
 }
 
 fn do_admin_key(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx) {
-    writeln!(context, "todo");
+    let _ = writeln!(context, "todo");
     context.need_save = true;
 }
 
 fn do_admin_clear_key(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx) {
-    writeln!(context, "todo");
+    let _ = writeln!(context, "todo");
     context.need_save = true;
 }
 
 fn do_console_clear_pw(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx) {
     context.with_config(|c, out| {
         let _ = c.set_console_pw(None);
-        writeln!(out, "Disabled console password");
+        let _ = writeln!(out, "Disabled console password");
     });
     context.need_save = true;
 }
@@ -559,11 +559,11 @@ fn do_console_clear_pw(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuC
 fn do_admin_pw(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx) {
     let pw = args[0];
     if pw.as_bytes().len() > MAX_PW_LEN {
-        writeln!(context, "Too long");
+        let _ = writeln!(context, "Too long");
         return;
     }
     context.with_config(|c, out| {
-        match c.set_admin_pw(Some(pw)) {
+        let _ = match c.set_admin_pw(Some(pw)) {
             Ok(()) => writeln!(out, "Set admin password"),
             Err(e) => writeln!(out, "Failed setting, {}", e),
         };
@@ -574,28 +574,38 @@ fn do_admin_pw(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx) {
 fn do_admin_clear_pw(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx) {
     context.with_config(|c, out| {
         let _ = c.set_admin_pw(None);
-        writeln!(out, "Disabled admin password");
+        let _ = writeln!(out, "Disabled admin password");
     });
     context.need_save = true;
 }
 
-fn do_gpio_show(_item: &Item<MenuCtx>, _args: &[&str], context: &mut MenuCtx) {
-    writeln!(context, "gpio show here");
+// fn do_gpio_show(_item: &Item<MenuCtx>, _args: &[&str], context: &mut MenuCtx) {
+//     let _ = writeln!(context, "gpio show here");
+// }
+
+// fn do_gpio_set(_item: &Item<MenuCtx>, _args: &[&str], _context: &mut MenuCtx) {}
+
+fn do_erase_config(_item: &Item<MenuCtx>, _args: &[&str], context: &mut MenuCtx) {
+    context.with_config(|c, out| {
+        match SSHConfig::new() {
+            Ok(n) => *c = n,
+            Err(e) => {
+                let _ = writeln!(out, "failed: {e}");
+            }
+        }
+    });
+    context.need_save = true;
 }
 
-fn do_gpio_set(_item: &Item<MenuCtx>, _args: &[&str], context: &mut MenuCtx) {}
-
-fn do_erase_config(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx) {}
-
-fn do_logout(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx) {
+fn do_logout(_item: &Item<MenuCtx>, _args: &[&str], context: &mut MenuCtx) {
     context.logout = true;
 }
 
-fn do_reset(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx) {
+fn do_reset(_item: &Item<MenuCtx>, _args: &[&str], context: &mut MenuCtx) {
     context.reset = true;
 }
 
-fn do_bootsel(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx) {
+fn do_bootsel(_item: &Item<MenuCtx>, _args: &[&str], context: &mut MenuCtx) {
     context.bootsel = true;
 }
 
@@ -607,22 +617,22 @@ fn do_about(_item: &Item<MenuCtx>, _args: &[&str], context: &mut MenuCtx) {
 }
 
 fn do_usb1(_item: &Item<MenuCtx>, _args: &[&str], context: &mut MenuCtx) {
-    writeln!(context, "USB serial");
+    let _ = writeln!(context, "USB serial");
     context.switch_usb1 = true;
 }
 
 fn do_serial1(_item: &Item<MenuCtx>, _args: &[&str], context: &mut MenuCtx) {
-    writeln!(context, "serial1");
+    let _ = writeln!(context, "serial1");
     context.switch_serial1 = true;
 }
 
 fn wifi_entry(context: &mut MenuCtx) {
     context.with_config(|c, out| {
-        write!(out, "Wifi net {} ", c.wifi_net);
+        let _ = write!(out, "Wifi net {} ", c.wifi_net);
         if c.wifi_pw.is_some() {
-            writeln!(out, "wpa2");
+            let _ = writeln!(out, "wpa2");
         } else {
-            writeln!(out, "open");
+            let _ = writeln!(out, "open");
         }
     });
 }
@@ -632,11 +642,11 @@ fn do_wifi_wpa2(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx) {
         let net = args[0];
         let pw = args[1];
         if c.wifi_net.capacity() < net.len() {
-            writeln!(out, "Too long net");
+            let _ = writeln!(out, "Too long net");
             return;
         }
         if pw.len() > 63 {
-            writeln!(out, "Too long pw");
+            let _ = writeln!(out, "Too long pw");
             return;
         }
         c.wifi_net = net.into();
@@ -650,7 +660,7 @@ fn do_wifi_open(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx) {
     context.with_config(|c, out| {
         let net = args[0];
         if c.wifi_net.capacity() < net.len() {
-            writeln!(out, "Too long net");
+            let _ = writeln!(out, "Too long net");
             return;
         }
         c.wifi_pw = None;

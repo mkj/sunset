@@ -12,13 +12,12 @@ use defmt::{debug, error, info, panic, trace, warn};
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
 
-use heapless::{String, Vec};
+use heapless::String;
 
 use sunset_sshwire_derive::*;
 
-use sunset::sshwire;
 use sunset::sshwire::{
-    BinString, SSHDecode, SSHEncode, SSHSink, SSHSource, WireError, WireResult,
+    SSHDecode, SSHEncode, SSHSink, SSHSource, WireError, WireResult,
 };
 
 use sunset::packets::Ed25519PubKey;

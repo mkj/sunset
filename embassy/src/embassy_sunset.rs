@@ -18,7 +18,7 @@ use embassy_sync::mutex::Mutex;
 use embassy_sync::signal::Signal;
 use embassy_futures::select::select;
 use embassy_futures::join;
-use embedded_io::{asynch, asynch::Write, Io};
+use embedded_io::{asynch, Io};
 
 // thumbv6m has no atomic usize add/sub
 use atomic_polyfill::AtomicUsize;
@@ -140,7 +140,7 @@ impl<'a, C: CliBehaviour, S: ServBehaviour> EmbassySunset<'a, C, S> {
                 let mut buf = [0; 1024];
                 let l = self.output(&mut buf).await?;
                 wsock.write_all(&buf[..l]).await
-                .map_err(|e| {
+                .map_err(|_| {
                     info!("socket write error");
                     Error::ChannelEOF
                 })?;
@@ -155,7 +155,7 @@ impl<'a, C: CliBehaviour, S: ServBehaviour> EmbassySunset<'a, C, S> {
                 // TODO: make sunset read directly from socket, no intermediate buffer.
                 let mut buf = [0; 1024];
                 let l = rsock.read(&mut buf).await
-                .map_err(|e| {
+                .map_err(|_| {
                     info!("socket read error");
                     Error::ChannelEOF
                 })?;
@@ -545,7 +545,7 @@ pub async fn io_copy_nowriteerror<const B: usize, R, W>(r: &mut R, w: &mut W) ->
             return sunset::error::ChannelEOF.fail();
         }
         let b = &b[..n];
-        if let Err(e) = w.write_all(b).await {
+        if let Err(_) = w.write_all(b).await {
             info!("write error");
         }
     }
@@ -577,7 +577,7 @@ pub async fn io_buf_copy_noreaderror<R, W>(r: &mut R, w: &mut W) -> Result<()>
     loop {
         let b = match r.fill_buf().await {
             Ok(b) => b,
-            Err(e) => {
+            Err(_) => {
                 info!("read error");
                 embassy_futures::yield_now().await;
                 continue;

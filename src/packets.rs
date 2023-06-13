@@ -841,7 +841,7 @@ impl TryFrom<u8> for MessageNumber {
     fn try_from(v: u8) -> Result<Self> {
         match v {
             // eg
-            // 20 = Ok(MessageNumber::SSH_MSG_KEXINIT)
+            // 20 => Ok(MessageNumber::SSH_MSG_KEXINIT)
             $(
             $message_num => Ok(MessageNumber::$SSH_MESSAGE_NAME),
             )*

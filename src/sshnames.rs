@@ -87,4 +87,5 @@ pub enum AgentMessageNum {
 
 }
 
+/// [draft-miller-ssh-agent-04](https://datatracker.ietf.org/doc/html/draft-miller-ssh-agent-04)
 pub const SSH_AGENT_FLAG_RSA_SHA2_256: u32 = 0x02;

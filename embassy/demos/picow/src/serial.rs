@@ -9,16 +9,11 @@ pub use log::{debug, error, info, log, trace, warn};
 pub use defmt::{debug, error, info, panic, trace, warn};
 
 use embassy_rp::peripherals::*;
-use embassy_rp::interrupt::UART0_IRQ;
-use embassy_rp::{bind_interrupts, Peripheral};
+use embassy_rp::bind_interrupts;
 use embassy_rp::uart::{
-    self as rp_uart, BufferedInterruptHandler, BufferedUart, BufferedUartRx, CtsPin,
-    RtsPin, RxPin, TxPin,
+    self as rp_uart, BufferedInterruptHandler, BufferedUart, 
 };
 
-use embassy_rp::interrupt::{Interrupt, InterruptExt};
-
-use sunset::*;
 use sunset_embassy::*;
 
 use crate::*;

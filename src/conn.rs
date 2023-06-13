@@ -260,7 +260,7 @@ impl<C: CliBehaviour, S: ServBehaviour> Conn<C, S> {
                     return Err(Error::SSHProtoError);
                 }
 
-                self.kex.handle_kexdhreply(&p, s, b.client()?).await?;
+                self.kex.handle_kexdhreply(&p, s, b.client()?, self.sess_id.is_none()).await?;
             }
             Packet::NewKeys(_) => {
                 self.kex.handle_newkeys(&mut self.sess_id, s)?;
@@ -327,7 +327,7 @@ impl<C: CliBehaviour, S: ServBehaviour> Conn<C, S> {
                 if let ClientServer::Client(cli) = &mut self.cliserv {
                     if matches!(self.state, ConnState::PreAuth) {
                         self.state = ConnState::Authed;
-                        cli.auth_success(&mut self.parse_ctx, s, b.client()?)?;
+                        cli.auth_success(&mut self.parse_ctx, b.client()?)?;
                     } else {
                         debug!("Received UserauthSuccess unrequested")
                     }
@@ -375,7 +375,7 @@ impl<C: CliBehaviour, S: ServBehaviour> Conn<C, S> {
                     s.send(packets::RequestFailure {})?;
                 }
             }
-            Packet::RequestSuccess(p) => {
+            Packet::RequestSuccess(_p) => {
                 trace!("Got global request success")
             }
             Packet::RequestFailure(_) => {

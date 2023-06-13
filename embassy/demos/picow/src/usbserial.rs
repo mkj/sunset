@@ -7,7 +7,7 @@ pub use log::{debug, error, info, log, trace, warn};
 pub use defmt::{debug, error, info, panic, trace, warn};
 
 use embassy_futures::join::{join, join3};
-use embassy_rp::usb::{Instance, InterruptHandler};
+use embassy_rp::usb::{InterruptHandler};
 use embassy_rp::bind_interrupts;
 use embassy_rp::peripherals::USB;
 use embassy_usb::class::cdc_acm::{self, CdcAcmClass, State};
@@ -16,9 +16,6 @@ use embassy_usb_driver::Driver;
 
 use embedded_io::{asynch, Io, asynch::BufRead};
 
-use heapless::Vec;
-
-use sunset::*;
 use sunset_embassy::*;
 
 use crate::*;

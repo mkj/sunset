@@ -27,13 +27,9 @@ impl Client {
     pub(crate) fn auth_success(
         &mut self,
         parse_ctx: &mut ParseContext,
-        s: &mut TrafSend,
         b: &mut impl CliBehaviour,
     ) -> Result<()> {
         parse_ctx.cli_auth_type = None;
-
-        // github.com doesn't like this, openssh doesn't send it
-        // s.send(packets::ServiceRequest { name: SSH_SERVICE_CONNECTION })?;
 
         self.auth.success(b)
     }

@@ -338,6 +338,7 @@ impl Kex {
         &mut self, p: &packets::KexDHReply<'f>,
         s: &mut TrafSend<'_, '_>,
         b: &mut impl CliBehaviour,
+        first_kex: bool,
     ) -> Result<()> {
         if let Kex::KexDH { algos, ..} = self {
             if !algos.is_client {
@@ -353,12 +354,29 @@ impl Kex {
 
         if let Kex::KexDH { mut algos, kex_hash } = self.take() {
             let output = SharedSecret::handle_kexdhreply(&mut algos, kex_hash, p, b).await?;
-            *self = Kex::NewKeys { output, algos };
             s.send(packets::NewKeys {})?;
+
+            if first_kex && algos.send_ext_info {
+                self.send_ext_info(s)?;
+            }
+
+            *self = Kex::NewKeys { output, algos };
             Ok(())
         } else {
             error::PacketWrong.fail()
         }
+    }
+
+    pub fn send_ext_info(&self, s: &mut TrafSend) -> Result<()> {
+        if cfg!(feature = "rsa") {
+            // OK unwrap: namelist has capacity
+            let algs = ([SSH_NAME_RSA_SHA256, SSH_NAME_ED25519].as_slice()).try_into().unwrap();
+            let ext = packets::ExtInfo {
+                server_sig_algs: Some(NameList::Local(&algs)),
+            };
+            s.send(ext)?;
+        }
+        Ok(())
     }
 
     pub fn handle_newkeys(&mut self, sess_id: &mut Option<SessId>, s: &mut TrafSend<'_, '_>) -> Result<()> {
@@ -376,6 +394,7 @@ impl Kex {
             error::PacketWrong.fail()
         }
     }
+
 
     /// Perform SSH algorithm negotiation
     fn algo_negotiation(
@@ -405,10 +424,11 @@ impl Kex {
 
         // we only send MSG_EXT_INFO to a client, don't look
         // for SSH_NAME_EXT_INFO_S
-        let send_ext_info = match is_client {
-            true => false,
+        let send_ext_info = if is_client {
+            false
+        } else {
             // OK unwrap: p.kex is a remote list
-            false => p.kex.has_algo(SSH_NAME_EXT_INFO_C).unwrap(),
+            p.kex.has_algo(SSH_NAME_EXT_INFO_C).unwrap()
         };
 
         debug!("hostsig {:?}    vs   {:?}", p.hostsig, conf.hostsig);
@@ -693,7 +713,7 @@ impl KexCurve25519 {
         let mut s = [0u8; 32];
         random::fill_random(s.as_mut_slice())?;
         // TODO: check that pure random bytes are OK
-        let ours = x25519_dalek::EphemeralSecret::new(OsRng);
+        let ours = x25519_dalek::EphemeralSecret::random_from_rng(OsRng);
         let pubkey = x25519_dalek::PublicKey::from(&ours);
         let pubkey = pubkey.to_bytes();
         Ok(KexCurve25519 { ours: Some(ours), pubkey })
