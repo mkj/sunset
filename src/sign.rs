@@ -102,21 +102,32 @@ impl SigType {
         }
     }
 
-        
-    fn verify_ed25519(k: &Ed25519PubKey, msg: &dyn SSHEncode, s: &Ed25519Sig) -> Result<()> {
+    fn verify_ed25519(
+        k: &Ed25519PubKey,
+        msg: &dyn SSHEncode,
+        s: &Ed25519Sig,
+    ) -> Result<()> {
         let k: &[u8; 32] = &k.key.0;
-        let k: salty::PublicKey = k.try_into().map_err(|_| Error::BadKey)?;
+        let k = dalek::VerifyingKey::from_bytes(k).map_err(|_| Error::BadKey)?;
+
         let s: &[u8; 64] = s.sig.0.try_into().map_err(|_| Error::BadSig)?;
-        let s: salty::Signature = s.into();
-        k.verify_parts(&s, |h| {
-            sshwire::hash_ser(h, msg)
-                .map_err(|_| salty::Error::ContextTooLong)
-        })
+        let s: dalek::Signature = s.into();
+        dalek::hazmat::raw_verify_byupdate(
+            &k,
+            |h: &mut sha2::Sha512| {
+                sshwire::hash_ser(h, msg).map_err(|_| dalek::SignatureError::new())
+            },
+            &s,
+        )
         .map_err(|_| Error::BadSig)
     }
 
     #[cfg(feature = "rsa")]
-    fn verify_rsa(k: &packets::RSAPubKey, msg: &dyn SSHEncode, s: &packets::RSASig) -> Result<()> {
+    fn verify_rsa(
+        k: &packets::RSAPubKey,
+        msg: &dyn SSHEncode,
+        s: &packets::RSASig,
+    ) -> Result<()> {
         let verifying_key =
             rsa::pkcs1v15::VerifyingKey::<sha2::Sha256>::new_with_prefix(
                 k.key.clone(),
@@ -138,12 +149,6 @@ pub enum OwnedSig {
     Ed25519([u8; 64]),
     #[cfg(feature = "rsa")]
     RSA(rsa::pkcs1v15::Signature),
-}
-
-impl From<salty::Signature> for OwnedSig {
-    fn from(s: salty::Signature) -> Self {
-        OwnedSig::Ed25519(s.to_bytes())
-    }
 }
 
 #[cfg(feature = "rsa")]
@@ -294,16 +299,13 @@ impl SignKey {
         }
     }
 
-    pub(crate) fn sign(
-        &self,
-        msg: &impl SSHEncode,
-    ) -> Result<OwnedSig> {
+    pub(crate) fn sign(&self, msg: &impl SSHEncode) -> Result<OwnedSig> {
         let sig: OwnedSig = match self {
             SignKey::Ed25519(k) => {
                 let exk: dalek::hazmat::ExpandedSecretKey = (&k.to_bytes()).into();
-                let sig = dalek::hazmat::raw_sign_byupdate::<sha2::Sha512, _>(
+                let sig = dalek::hazmat::raw_sign_byupdate(
                     &exk,
-                    |h| {
+                    |h: &mut sha2::Sha512| {
                         sshwire::hash_ser(h, msg)
                             .map_err(|_| dalek::SignatureError::new())
                     },

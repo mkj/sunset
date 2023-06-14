@@ -45,7 +45,7 @@ impl FlashConfig<'_> {
 
 fn config_hash(config: &SSHConfig) -> Result<[u8; 32]> {
     let mut h = sha2::Sha256::new();
-    sshwire::hash_ser(&mut h, config, None)?;
+    sshwire::hash_ser(&mut h, config)?;
     Ok(h.finalize().into())
 }
 

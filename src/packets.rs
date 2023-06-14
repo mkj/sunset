@@ -374,13 +374,6 @@ pub struct Ed25519PubKey {
     pub key: Blob<[u8; 32]>,
 }
 
-impl TryFrom<&Ed25519PubKey> for salty::PublicKey {
-    type Error = Error;
-    fn try_from(k: &Ed25519PubKey) -> Result<Self> {
-        Ok((&k.key.0).try_into().map_err(|_| Error::BadKey)?)
-    }
-}
-
 #[cfg(feature = "rsa")]
 #[derive(Clone, PartialEq)]
 pub struct RSAPubKey {

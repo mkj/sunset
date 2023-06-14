@@ -575,12 +575,6 @@ pub trait SSHWireDigestUpdate {
     fn digest_update(&mut self, data: &[u8]);
 }
 
-impl SSHWireDigestUpdate for salty::Sha512 {
-    fn digest_update(&mut self, data: &[u8]) {
-        self.update(data)
-    }
-}
-
 impl SSHWireDigestUpdate for sha2::Sha256 {
     fn digest_update(&mut self, data: &[u8]) {
         self.update(data)

@@ -799,7 +799,7 @@ mod tests {
     }
 
     /// Round trip a `Packet`
-    fn reencode<'a>(out_buf: &'a mut [u8], p: Packet) -> Packet<'a> {
+    fn _reencode<'a>(out_buf: &'a mut [u8], p: Packet) -> Packet<'a> {
         let ctx = Default::default();
         let l = sshwire::write_ssh(out_buf, &p).unwrap();
         sshwire::packet_from_bytes(&out_buf[..l], &ctx).unwrap()
@@ -836,7 +836,7 @@ mod tests {
             Ok("matt".try_into().unwrap())
         }
 
-        fn valid_hostkey(&mut self, key: &PubKey) -> BhResult<bool> {
+        fn valid_hostkey(&mut self, _key: &PubKey) -> BhResult<bool> {
             Ok(self.allow_key)
         }
 
@@ -906,7 +906,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expectd = "Host key rejected")]
+    #[should_panic(expected = "Host key rejected")]
     fn test_agree_kex_disallow_key() {
         test_agree_kex(false)
     }

@@ -271,7 +271,6 @@ impl From<BhError> for Error {
     }
 }
 
-
 #[cfg(feature = "std")]
 impl From<std::io::Error> for Error {
     fn from(value: std::io::Error) -> Self {

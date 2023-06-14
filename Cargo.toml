@@ -51,8 +51,6 @@ cipher = { version = "0.4", features = ["zeroize"] }
 subtle = { version = "2.4", default-features = false }
 # ed25519/x25519
 # fork allows hashing by parts (sign/verify from sshwire), and zeroize
-# salty = { version = "0.2", git = "https://github.com/mkj/salty", branch = "sunset" }
-salty = { version = "0.2", path = "/home/matt/3rd/rs/salty" }
 ed25519-dalek = { version = "2.0.0-rc.2", default-features = false, features = ["zeroize", "rand_core", "hazmat"] }
 x25519-dalek = { version = "2.0.0-rc.2", default-features = false, features = ["zeroize"] }
 curve25519-dalek = { version = "4.0.0-rc.2", default-features = false, features = ["zeroize"] }
@@ -89,6 +87,6 @@ simplelog = { version = "0.12", features = ["test"] }
 
 
 [patch.crates-io]
-curve25519-dalek = { path = "/home/matt/3rd/rs/crypto/curve25519-dalek" }
-x25519-dalek = { path = "/home/matt/3rd/rs/crypto/x25519-dalek" }
-ed25519-dalek = { path = "/home/matt/3rd/rs/crypto/ed25519-dalek" }
+curve25519-dalek = { git = "https://github.com/dalek-cryptography/curve25519-dalek" }
+x25519-dalek = { git = "https://github.com/dalek-cryptography/x25519-dalek" }
+ed25519-dalek = { git = "https://github.com/mkj/ed25519-dalek", branch = "parts2" }
