@@ -11,8 +11,7 @@ use ed25519_dalek::{Signer, Verifier};
 use zeroize::ZeroizeOnDrop;
 
 use crate::*;
-use packets::ParseContext;
-use packets::{Ed25519PubKey, PubKey, Signature};
+use packets::{Ed25519PubKey, Ed25519Sig, PubKey, Signature};
 use sshnames::*;
 use sshwire::{BinString, Blob, SSHEncode};
 
@@ -66,7 +65,6 @@ impl SigType {
         pubkey: &PubKey,
         msg: &dyn SSHEncode,
         sig: &Signature,
-        parse_ctx: Option<&ParseContext>,
     ) -> Result<()> {
         // Check that the signature type is known
         let sig_type = sig.sig_type().map_err(|_| Error::BadSig)?;
@@ -85,32 +83,12 @@ impl SigType {
 
         match (self, pubkey, sig) {
             (SigType::Ed25519, PubKey::Ed25519(k), Signature::Ed25519(s)) => {
-                let k: &[u8; 32] = &k.key.0;
-                let k: salty::PublicKey = k.try_into().map_err(|_| Error::BadKey)?;
-                let s: &[u8; 64] = s.sig.0.try_into().map_err(|_| Error::BadSig)?;
-                let s: salty::Signature = s.into();
-                k.verify_parts(&s, |h| {
-                    sshwire::hash_ser(h, msg, parse_ctx)
-                        .map_err(|_| salty::Error::ContextTooLong)
-                })
-                .map_err(|_| Error::BadSig)
+                Self::verify_ed25519(k, msg, s)
             }
 
             #[cfg(feature = "rsa")]
             (SigType::RSA, PubKey::RSA(k), Signature::RSA(s)) => {
-                let verifying_key =
-                    rsa::pkcs1v15::VerifyingKey::<sha2::Sha256>::new_with_prefix(
-                        k.key.clone(),
-                    );
-                let s: Box<[u8]> = s.sig.0.into();
-                let signature = s.into();
-
-                let mut h = sha2::Sha256::new();
-                sshwire::hash_ser(&mut h, msg, parse_ctx)?;
-                verifying_key.verify_digest(h, &signature).map_err(|e| {
-                    trace!("RSA signature failed: {e}");
-                    Error::BadSig
-                })
+                Self::verify_rsa(k, msg, s)
             }
 
             _ => {
@@ -122,6 +100,36 @@ impl SigType {
                 Err(Error::BadSig)
             }
         }
+    }
+
+        
+    fn verify_ed25519(k: &Ed25519PubKey, msg: &dyn SSHEncode, s: &Ed25519Sig) -> Result<()> {
+        let k: &[u8; 32] = &k.key.0;
+        let k: salty::PublicKey = k.try_into().map_err(|_| Error::BadKey)?;
+        let s: &[u8; 64] = s.sig.0.try_into().map_err(|_| Error::BadSig)?;
+        let s: salty::Signature = s.into();
+        k.verify_parts(&s, |h| {
+            sshwire::hash_ser(h, msg)
+                .map_err(|_| salty::Error::ContextTooLong)
+        })
+        .map_err(|_| Error::BadSig)
+    }
+
+    #[cfg(feature = "rsa")]
+    fn verify_rsa(k: &packets::RSAPubKey, msg: &dyn SSHEncode, s: &packets::RSASig) -> Result<()> {
+        let verifying_key =
+            rsa::pkcs1v15::VerifyingKey::<sha2::Sha256>::new_with_prefix(
+                k.key.clone(),
+            );
+        let s: Box<[u8]> = s.sig.0.into();
+        let signature = s.into();
+
+        let mut h = sha2::Sha256::new();
+        sshwire::hash_ser(&mut h, msg)?;
+        verifying_key.verify_digest(h, &signature).map_err(|e| {
+            trace!("RSA signature failed: {e}");
+            Error::BadSig
+        })
     }
 }
 
@@ -289,7 +297,6 @@ impl SignKey {
     pub(crate) fn sign(
         &self,
         msg: &impl SSHEncode,
-        parse_ctx: Option<&ParseContext>,
     ) -> Result<OwnedSig> {
         let sig: OwnedSig = match self {
             SignKey::Ed25519(k) => {
@@ -297,7 +304,7 @@ impl SignKey {
                 let sig = dalek::hazmat::raw_sign_byupdate::<sha2::Sha512, _>(
                     &exk,
                     |h| {
-                        sshwire::hash_ser(h, msg, parse_ctx)
+                        sshwire::hash_ser(h, msg)
                             .map_err(|_| dalek::SignatureError::new())
                     },
                     &k.verifying_key(),
@@ -313,7 +320,7 @@ impl SignKey {
                         k.clone(),
                     );
                 let mut h = sha2::Sha256::new();
-                sshwire::hash_ser(&mut h, msg, parse_ctx)?;
+                sshwire::hash_ser(&mut h, msg)?;
                 let sig = signing_key.try_sign_digest(h).map_err(|e| {
                     trace!("RSA signing failed: {e:?}");
                     Error::bug()

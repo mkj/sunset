@@ -120,10 +120,7 @@ impl AgentClient {
     }
 
     async fn request(&mut self, r: AgentRequest<'_>) -> Result<AgentResponse> {
-        let mut ctx = sunset::packets::ParseContext::new();
-        ctx.method_pubkey_force_sig_bool = true;
-
-        let l = sshwire::write_ssh_ctx(&mut self.buf, &Blob(r), ctx)?;
+        let l = sshwire::write_ssh(&mut self.buf, &Blob(r))?;
         let b = &self.buf[..l];
 
         trace!("agent request {:?}", b.hex_dump());

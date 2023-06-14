@@ -558,7 +558,7 @@ impl SharedSecret {
         // TODO: error message on signature failure.
         let h: &[u8] = kex_out.h.as_ref();
         trace!("verify  h {}", h.hex_dump());
-        algos.hostsig.verify(&p.k_s.0, &h, &p.sig.0, None)?;
+        algos.hostsig.verify(&p.k_s.0, &h, &p.sig.0)?;
         debug!("Hostkey signature is valid");
         if matches!(b.valid_hostkey(&p.k_s.0), Ok(true)) {
             Ok(kex_out)
@@ -596,7 +596,7 @@ impl SharedSecret {
 
         let k_s = Blob(hostkey.pubkey());
         trace!("sign kexreply h {}", ko.h.as_slice().hex_dump());
-        let sig = hostkey.sign(&ko.h.as_slice(), None)?;
+        let sig = hostkey.sign(&ko.h.as_slice())?;
         let sig: Signature = (&sig).into();
         let sig = Blob(sig);
         s.send(packets::KexDHReply { k_s, q_s, sig })
@@ -971,10 +971,11 @@ mod tests {
         assert!(matches!(ts.next().unwrap(), Packet::NewKeys(_)));
 
         let s = &mut tc.sender();
-        let f = cli.handle_kexdhreply(&serv_dhrep, s, cb);
+        let f = cli.handle_kexdhreply(&serv_dhrep, s, cb, true);
         let f = crate::non_async(f).unwrap();
         f.unwrap();
         assert!(matches!(tc.next().unwrap(), Packet::NewKeys(_)));
+        assert!(matches!(tc.next(), None));
 
         let (cout, calgos) = if let Kex::NewKeys { output, algos } = cli {
             (output, algos)

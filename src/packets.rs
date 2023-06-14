@@ -228,6 +228,9 @@ pub struct MethodPubKey<'a> {
     pub sig_algo: &'a str,
     pub pubkey: Blob<PubKey<'a>>,
     pub sig: Option<Blob<Signature<'a>>>,
+    // Set when serializing to create a signature. Will set the "signature present"
+    // boolean to TRUE even without a signature (signature is appended later).
+    pub force_sig: bool,
 }
 
 impl<'a> MethodPubKey<'a> {
@@ -239,6 +242,7 @@ impl<'a> MethodPubKey<'a> {
             sig_algo,
             pubkey: Blob(pubkey),
             sig,
+            force_sig: false,
         })
 
     }
@@ -256,8 +260,7 @@ impl SSHEncode for MethodPubKey<'_> {
         // string    signature
 
         // Signature bool will be set when signing
-        let force_sig_bool = s.ctx().map_or(false, |c| c.method_pubkey_force_sig_bool);
-        let sig = self.sig.is_some() || force_sig_bool;
+        let sig = self.sig.is_some() || self.force_sig;
         sig.enc(s)?;
         self.sig_algo.enc(s)?;
         self.pubkey.enc(s)?;
@@ -277,7 +280,7 @@ impl<'de: 'a, 'a> SSHDecode<'de> for MethodPubKey<'a> {
         } else {
             None
         };
-        Ok(Self { sig_algo, pubkey, sig })
+        Ok(Self { sig_algo, pubkey, sig, force_sig: false })
     }
 }
 
@@ -792,13 +795,7 @@ impl Debug for Unknown<'_> {
 /// Use this so the parser can select the correct enum variant to decode.
 #[derive(Default, Clone, Debug)]
 pub struct ParseContext {
-    // Beware that currently .ctx() is not used by `length_enc()` or `Blob`,
-    // so if ParseContext needs to modify output length it may not work correctly.
-
     pub cli_auth_type: Option<auth::AuthType>,
-
-    // Used by auth_sig_msg()
-    pub method_pubkey_force_sig_bool: bool,
 
     // Set to true if an unknown variant is encountered.
     // Packet length checks should be omitted in that case.
@@ -809,7 +806,6 @@ impl ParseContext {
     pub fn new() -> Self {
         ParseContext {
             cli_auth_type: None,
-            method_pubkey_force_sig_bool: false,
             seen_unknown: false,
         }
     }
@@ -1031,7 +1027,7 @@ mod tests {
         test_roundtrip(&p);
 
         // again with a sig
-        let owned_sig = k.sign(&"hello", None).unwrap();
+        let owned_sig = k.sign(&"hello").unwrap();
         let sig: Signature = (&owned_sig).into();
         let sig_algo = sig.algorithm_name().unwrap();
         let sig = Some(Blob(sig));
@@ -1039,6 +1035,7 @@ mod tests {
             sig_algo,
             pubkey: Blob(k.pubkey()),
             sig,
+            force_sig: false,
         });
         let p = UserauthRequest {
             username: "matt".into(),
@@ -1109,7 +1106,8 @@ mod tests {
                 )),
                 sig: Some(Blob(Signature::Ed25519(Ed25519Sig {
                     sig: BinString(b"sighere")
-                })))
+                }))),
+                force_sig: false,
             })}.into();
 
         let mut buf1 = vec![88; 1000];

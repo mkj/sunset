@@ -192,16 +192,15 @@ impl CliAuth {
                     sig_algo,
                     pubkey: pubkey.clone(),
                     sig: None,
+                    force_sig: true,
                 }),
             };
 
             let msg = auth::AuthSigMsg::new(&sig_packet, sess_id);
-            let mut ctx = ParseContext::default();
-            ctx.method_pubkey_force_sig_bool = true;
             if key.is_agent() {
                 Ok(b.agent_sign(key, &msg).await?)
             } else {
-                key.sign(&&msg, Some(&ctx))
+                key.sign(&&msg)
             }
         } else {
             Err(Error::bug())

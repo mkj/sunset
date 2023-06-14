@@ -28,9 +28,6 @@ use packets::{Packet, ParseContext};
 /// A generic destination for serializing, used similarly to `serde::Serializer`
 pub trait SSHSink {
     fn push(&mut self, v: &[u8]) -> WireResult<()>;
-    fn ctx(&self) -> Option<&ParseContext> {
-        None
-    }
 }
 
 /// A generic source for a packet, used similarly to `serde::Deserializer`
@@ -138,17 +135,8 @@ pub fn read_ssh<'a, T: SSHDecode<'a>>(b: &'a [u8], ctx: Option<ParseContext>) ->
 
 pub fn write_ssh(target: &mut [u8], value: &dyn SSHEncode) -> Result<usize>
 {
-    let mut s = EncodeBytes { target, pos: 0, parse_ctx: None };
+    let mut s = EncodeBytes { target, pos: 0 };
     value.enc(&mut s)?;
-    Ok(s.pos)
-}
-
-pub fn write_ssh_ctx<T>(target: &mut [u8], value: &T, ctx: ParseContext) -> Result<usize>
-where
-    T: SSHEncode
-{
-    let mut s = EncodeBytes { target, pos: 0, parse_ctx: Some(ctx) };
-        value.enc(&mut s)?;
     Ok(s.pos)
 }
 
@@ -158,7 +146,7 @@ pub fn hash_ser_length(hash_ctx: &mut impl SSHWireDigestUpdate,
 {
     let len: u32 = length_enc(value)?;
     hash_ctx.digest_update(&len.to_be_bytes());
-    hash_ser(hash_ctx, value, None)
+    hash_ser(hash_ctx, value)
 }
 
 /// Hashes the SSH wire format representation of `value`
@@ -166,10 +154,9 @@ pub fn hash_ser_length(hash_ctx: &mut impl SSHWireDigestUpdate,
 /// Will only fail if `value.enc()` can return an error.
 pub fn hash_ser(hash_ctx: &mut impl SSHWireDigestUpdate,
     value: &dyn SSHEncode,
-    parse_ctx: Option<&ParseContext>,
     ) -> Result<()>
 {
-    let mut s = EncodeHash { hash_ctx, parse_ctx: parse_ctx.cloned() };
+    let mut s = EncodeHash { hash_ctx };
     value.enc(&mut s)?;
     Ok(())
 }
@@ -185,7 +172,6 @@ fn length_enc(value: &dyn SSHEncode) -> WireResult<u32>
 struct EncodeBytes<'a> {
     target: &'a mut [u8],
     pos: usize,
-    parse_ctx: Option<ParseContext>,
 }
 
 impl SSHSink for EncodeBytes<'_> {
@@ -197,10 +183,6 @@ impl SSHSink for EncodeBytes<'_> {
         self.target[self.pos..end].copy_from_slice(v);
         self.pos = end;
         Ok(())
-    }
-
-    fn ctx(&self) -> Option<&ParseContext> {
-        self.parse_ctx.as_ref()
     }
 }
 
@@ -217,17 +199,12 @@ impl SSHSink for EncodeLen {
 
 struct EncodeHash<'a> {
     hash_ctx: &'a mut dyn SSHWireDigestUpdate,
-    parse_ctx: Option<ParseContext>,
 }
 
 impl SSHSink for EncodeHash<'_> {
     fn push(&mut self, v: &[u8]) -> WireResult<()> {
         self.hash_ctx.digest_update(v);
         Ok(())
-    }
-
-    fn ctx(&self) -> Option<&ParseContext> {
-        self.parse_ctx.as_ref()
     }
 }
 
@@ -729,7 +706,7 @@ pub(crate) mod tests {
         // hash_ser
         let mut hash_ctx = Sha256::new();
         hash_ctx.update(&(w1 as u32).to_be_bytes());
-        hash_ser(&mut hash_ctx, &input, None).unwrap();
+        hash_ser(&mut hash_ctx, &input).unwrap();
         let digest3 = hash_ctx.finalize();
         assert_eq!(digest3, digest2);
     }
