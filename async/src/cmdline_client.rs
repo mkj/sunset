@@ -40,7 +40,6 @@ enum CmdlineState<'a> {
     },
     Ready {
         io: ChanInOut<'a, CmdlineHooks<'a>, UnusedServ>,
-        extin: Option<ChanIn<'a, CmdlineHooks<'a>, UnusedServ>>,
     },
 }
 
@@ -179,7 +178,7 @@ impl<'a> CmdlineRunner<'a> {
 
     async fn chan_run(io: ChanInOut<'a, CmdlineHooks<'a>, UnusedServ>,
         io_err: Option<ChanIn<'a, CmdlineHooks<'a>, UnusedServ>>,
-        mut pty_guard: Option<RawPtyGuard>) -> Result<()> {
+        pty_guard: Option<RawPtyGuard>) -> Result<()> {
         // out
         let fo = async {
             let mut io = io.clone();
@@ -203,7 +202,7 @@ impl<'a> CmdlineRunner<'a> {
         let fe = async {
             // if io_err is None we complete immediately
             if let Some(mut errin) = io_err {
-                let mut eo = crate::stderr_out().map_err(|e| {
+                let mut eo = crate::stderr_out().map_err(|_e| {
                     Error::msg("opening stderr failed")
                 })?;
                 loop {
@@ -347,7 +346,7 @@ impl<'a> CmdlineRunner<'a> {
                                 let r = Self::chan_run(io.clone(), extin.clone(), self.pty_guard.take())
                                     .fuse();
                                 chanio.set(r);
-                                self.state = CmdlineState::Ready { io, extin };
+                                self.state = CmdlineState::Ready { io };
                             } else {
                                 warn!("Unexpected Msg::Opened")
                             }
@@ -548,7 +547,7 @@ impl sunset::CliBehaviour for CmdlineHooks<'_> {
 
     async fn agent_sign(&mut self, key: &SignKey, msg: &AuthSigMsg<'_>) -> BhResult<OwnedSig> {
         if let Some(ref mut agent) = self.agent {
-            agent.sign_auth(key, msg).await.map_err(|e| {
+            agent.sign_auth(key, msg).await.map_err(|_e| {
                 error!("agent signing failed");
                 BhError::Fail
             })
@@ -566,7 +565,7 @@ impl sunset::CliBehaviour for CmdlineHooks<'_> {
         }
     }
 
-    async fn session_opened(&mut self, chan: sunset::ChanNum, opener: &mut sunset::SessionOpener<'_, '_, '_>) -> BhResult<()> {
+    async fn session_opened(&mut self, _chan: sunset::ChanNum, opener: &mut sunset::SessionOpener<'_, '_, '_>) -> BhResult<()> {
         if let Some(p) = self.pty.take() {
             opener.pty(p)
         }

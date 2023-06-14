@@ -31,7 +31,7 @@ async-io = "1.6.0"
 # menu = "0.3"
 
 sunset-embassy = { path = "../../" }
-sunset = { path = "../../.." }
+sunset = { path = "../../..", features = ["rsa", "std"] }
 sunset-demo-embassy-common= { path = "../common", features = ["log"] }
 
 critical-section = "1.1"

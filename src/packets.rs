@@ -358,7 +358,10 @@ impl TryFrom<&PubKey<'_>> for ssh_key::PublicKey {
                 Ok(k.into())
             }
 
-            u => Err(Error::msg("Unsupported {u} OpenSSH key"))
+            PubKey::Unknown(u) => {
+                trace!("unsupported {u}");
+                Err(Error::msg("Unsupported OpenSSH key"))
+            }
         }
     }
 }
