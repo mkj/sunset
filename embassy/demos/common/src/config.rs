@@ -28,7 +28,7 @@ pub const KEY_SLOTS: usize = 3;
 // Be sure to bump CURRENT_VERSION
 // if this struct changes (or encode/decode impls).
 // BUF_SIZE will probably also need updating.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SSHConfig {
     pub hostkey: SignKey,
 

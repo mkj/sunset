@@ -3,9 +3,6 @@ name = "sunset-demo-embassy-std"
 version = "0.1.0"
 edition = "2021"
 
-[workspace]
-# blank
-
 [dependencies]
 embassy-executor = { version = "0.1.0",  default-features=false, features = ["log", "std", "nightly", "integrated-timers"] }
 embassy-time = { version = "0.1",  default-features=false, features = ["log", "std"] }
@@ -37,43 +34,3 @@ sunset-demo-embassy-common= { path = "../common", features = ["log"] }
 critical-section = "1.1"
 rand = { version = "0.8", default-features = false, features = ["getrandom"] }
 sha2 = { version = "0.10", default-features = false }
-
-[patch.crates-io]
-embassy-futures = { git = "https://github.com/embassy-rs/embassy", rev = "1d34078fa11839f88dd2e47a9355c6b35755128f" }
-embassy-net = { git = "https://github.com/embassy-rs/embassy", rev = "1d34078fa11839f88dd2e47a9355c6b35755128f" }
-# for tuntap
-embassy-net-driver = { git = "https://github.com/embassy-rs/embassy", rev = "1d34078fa11839f88dd2e47a9355c6b35755128f" }
-
-curve25519-dalek = { path = "/home/matt/3rd/rs/crypto/curve25519-dalek" }
-x25519-dalek = { path = "/home/matt/3rd/rs/crypto/x25519-dalek" }
-ed25519-dalek = { path = "/home/matt/3rd/rs/crypto/ed25519-dalek" }
-
-[profile.dev]
-debug = 2
-debug-assertions = true
-opt-level = 1
-overflow-checks = true
-
-[profile.release]
-codegen-units = 1
-debug = 2
-debug-assertions = false
-incremental = false
-lto = 'fat'
-opt-level = 'z'
-overflow-checks = false
-
-# do not optimize proc-macro crates = faster builds from scratch
-[profile.dev.build-override]
-codegen-units = 8
-debug = false
-debug-assertions = false
-opt-level = 0
-overflow-checks = false
-
-[profile.release.build-override]
-codegen-units = 8
-debug = false
-debug-assertions = false
-opt-level = 0
-overflow-checks = false

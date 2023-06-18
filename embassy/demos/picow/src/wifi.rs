@@ -86,7 +86,7 @@ pub(crate) async fn wifi_stack(spawner: &Spawner,
     //     let () = futures::future::pending().await;
     // }
 
-    let config = embassy_net::Config::Dhcp(Default::default());
+    let config = embassy_net::Config::dhcpv4(Default::default());
 
     let seed = OsRng.next_u64();
 

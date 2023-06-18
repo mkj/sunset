@@ -44,7 +44,7 @@ async fn net_task(stack: &'static Stack<TunTapDevice>) -> ! {
 async fn main_task(spawner: Spawner) {
     // TODO config
     let opt_tap0 = "tap0";
-    let net_config = Config::Dhcp(Default::default());
+    let net_config = Config::dhcpv4(Default::default());
 
     // Init network device
     let device = TunTapDevice::new(opt_tap0).unwrap();
