@@ -9,8 +9,8 @@ sunset = { path = "../../.." }
 sunset-sshwire-derive = { version = "0.1", path = "../../../sshwire-derive" }
 sunset-demo-embassy-common= { path = "../common" }
 
-cyw43 = { git = "https://github.com/embassy-rs/embassy/", rev = "64e3310e64ea31923980418e654f07c9a862e54c", features = ["defmt"]}
-cyw43-pio = { git = "https://github.com/embassy-rs/embassy/", rev = "64e3310e64ea31923980418e654f07c9a862e54c" }
+cyw43 = { version = "0.1.0", features = ["defmt"]}
+cyw43-pio = "0.1.0"
 # cyw43 = { path = "/home/matt/3rd/rs/cyw43", features = ["defmt"] }
 # cyw43-pio = { path = "/home/matt/3rd/rs/cyw43/cyw43-pio" }
 

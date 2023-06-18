@@ -86,16 +86,19 @@ x25519-dalek = { git = "https://github.com/dalek-cryptography/x25519-dalek" }
 ed25519-dalek = { git = "https://github.com/mkj/ed25519-dalek", branch = "sunset" }
 # ed25519-dalek = { path = "/home/matt/3rd/rs/crypto/ed25519-dalek" }
 
-embassy-executor = { git = "https://github.com/embassy-rs/embassy", rev = "64e3310e64ea31923980418e654f07c9a862e54c" }
-embassy-futures = { git = "https://github.com/embassy-rs/embassy", rev = "64e3310e64ea31923980418e654f07c9a862e54c" }
-embassy-rp = { git = "https://github.com/embassy-rs/embassy", rev = "64e3310e64ea31923980418e654f07c9a862e54c" }
-embassy-usb = { git = "https://github.com/embassy-rs/embassy", rev = "64e3310e64ea31923980418e654f07c9a862e54c" }
-embassy-time = { git = "https://github.com/embassy-rs/embassy", rev = "64e3310e64ea31923980418e654f07c9a862e54c" }
-embassy-usb-driver = { git = "https://github.com/embassy-rs/embassy", rev = "64e3310e64ea31923980418e654f07c9a862e54c" }
+embassy-executor = { git = "https://github.com/embassy-rs/embassy", rev = "ae83e6f5367197feb8361b9a28adbdedbe37e0c5" }
+embassy-futures = { git = "https://github.com/embassy-rs/embassy", rev = "ae83e6f5367197feb8361b9a28adbdedbe37e0c5" }
+embassy-rp = { git = "https://github.com/embassy-rs/embassy", rev = "ae83e6f5367197feb8361b9a28adbdedbe37e0c5" }
+embassy-usb = { git = "https://github.com/embassy-rs/embassy", rev = "ae83e6f5367197feb8361b9a28adbdedbe37e0c5" }
+embassy-time = { git = "https://github.com/embassy-rs/embassy", rev = "ae83e6f5367197feb8361b9a28adbdedbe37e0c5" }
+embassy-usb-driver = { git = "https://github.com/embassy-rs/embassy", rev = "ae83e6f5367197feb8361b9a28adbdedbe37e0c5" }
 # for cyw43
-embassy-net = { git = "https://github.com/embassy-rs/embassy", rev = "64e3310e64ea31923980418e654f07c9a862e54c" }
-embassy-net-driver-channel = { git = "https://github.com/embassy-rs/embassy", rev = "64e3310e64ea31923980418e654f07c9a862e54c" }
-embassy-net-driver = { git = "https://github.com/embassy-rs/embassy", rev = "64e3310e64ea31923980418e654f07c9a862e54c" }
+embassy-net = { git = "https://github.com/embassy-rs/embassy", rev = "ae83e6f5367197feb8361b9a28adbdedbe37e0c5" }
+embassy-net-driver-channel = { git = "https://github.com/embassy-rs/embassy", rev = "ae83e6f5367197feb8361b9a28adbdedbe37e0c5" }
+embassy-net-driver = { git = "https://github.com/embassy-rs/embassy", rev = "ae83e6f5367197feb8361b9a28adbdedbe37e0c5" }
+
+cyw43 = { git = "https://github.com/embassy-rs/embassy/", rev = "ae83e6f5367197feb8361b9a28adbdedbe37e0c5" }
+cyw43-pio = { git = "https://github.com/embassy-rs/embassy/", rev = "ae83e6f5367197feb8361b9a28adbdedbe37e0c5" }
 
 bcrypt = { version = "0.14", git = "https://github.com/mkj/rust-bcrypt", branch = "noalloc" }
 
