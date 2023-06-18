@@ -372,14 +372,16 @@ impl<'a> TrafOut<'a> {
     /// Returns payload space available to send a packet. Returns 0 if not ready or full
     pub fn send_allowed(&self, keys: &KeyState) -> usize {
         // TODO: test for full output buffer
-        match self.state {
+        let r = match self.state {
             TxState::Write { len, .. } => {
                 keys.max_enc_payload(self.buf.len() - len)
             }
             TxState::Idle => {
                 keys.max_enc_payload(self.buf.len())
             }
-        }
+        };
+        trace!("traf send_allowed -> {}", r);
+        r
     }
 
     pub fn send_version(&mut self) -> Result<(), Error> {

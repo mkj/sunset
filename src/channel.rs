@@ -168,9 +168,12 @@ impl<C: CliBehaviour, S: ServBehaviour> Channels<C, S> {
         let ch = self.get_mut(num)?;
         let send = ch.send.as_mut().trap()?;
         if data.len() > send.max_packet || data.len() > send.window {
+            trace!("data len {}, max {}, window {}",
+                data.len(), send.max_packet, send.window);
             return Err(Error::bug());
         }
         send.window -= data.len();
+        trace!("send_data: new window {}", send.window);
 
         let data = BinString(data);
         let p = match dt {
@@ -357,6 +360,7 @@ impl<C: CliBehaviour, S: ServBehaviour> Channels<C, S> {
             Packet::ChannelWindowAdjust(p) => {
                 let send = self.get_mut(ChanNum(p.num))?.send.as_mut().trap()?;
                 send.window = send.window.saturating_add(p.adjust as usize);
+                trace!("new window {}", send.window);
             }
             Packet::ChannelData(p) => {
                 self.get(ChanNum(p.num))?;
@@ -801,7 +805,9 @@ impl Channel {
 
     // None on close
     fn send_allowed(&self) -> Option<usize> {
-        self.send.as_ref().map(|s| usize::max(s.window, s.max_packet))
+        let r = self.send.as_ref().map(|s| usize::min(s.window, s.max_packet));
+        trace!("send_allowed {r:?}");
+        r
     }
 
     pub(crate) fn valid_send(&self, _dt: ChanData) -> bool {

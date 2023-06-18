@@ -355,7 +355,9 @@ impl<'a, C: CliBehaviour, S: ServBehaviour> Runner<'a, C, S> {
         let payload_space = self.traf_out.send_allowed(&self.keys);
         // subtract space for packet headers prior to data
         let payload_space = payload_space.saturating_sub(dt.packet_offset());
-        Ok(self.conn.channels.send_allowed(chan.0).map(|s| s.min(payload_space)))
+        let r = Ok(self.conn.channels.send_allowed(chan.0).map(|s| s.min(payload_space)));
+        trace!("ready_channel_send {chan:?} -> {r:?}");
+        r
     }
 
     /// Returns `true` if the channel and `dt` are currently valid for writing.

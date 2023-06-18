@@ -51,8 +51,8 @@ fn main() {
 
 async fn run(args: Args) -> Result<()> {
 
-    trace!("tracing main");
-    debug!("verbose main");
+    trace!("tracing sunsetc. args {:?}", args);
+    debug!("verbose sunsetc");
 
     if !args.cmd.is_empty() && args.subsystem.is_some() {
         bail!("can't have '-s subsystem' with a command")
@@ -144,7 +144,7 @@ async fn run(args: Args) -> Result<()> {
     }
 }
 
-#[derive(argh::FromArgs)]
+#[derive(argh::FromArgs, Debug)]
 /** Sunset SSH Client
  */
 struct Args {
