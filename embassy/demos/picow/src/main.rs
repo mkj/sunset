@@ -41,7 +41,13 @@ mod picowmenu;
 mod serial;
 mod takepipe;
 mod usbserial;
+#[cfg(feature = "w5500")]
+mod w5500;
+#[cfg(feature = "cyw43")]
 mod wifi;
+
+#[cfg(not(any(feature = "cyw43", feature = "w5500")))]
+compile_error!("No network device selected. Use cyw43 or w5500 feature");
 
 use demo_common::{SSHConfig, Shell};
 
@@ -53,7 +59,7 @@ pub(crate) const NUM_SOCKETS: usize = NUM_LISTENERS + 1;
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
-    info!("Hello World!");
+    info!("Welcome to Sunset SSH");
 
     let mut p = embassy_rp::init(Default::default());
 
@@ -71,20 +77,6 @@ async fn main(spawner: Spawner) {
     let flash = &*singleton!(SunsetMutex::new(flash));
 
     let config = &*singleton!(SunsetMutex::new(config));
-
-    let (wifi_net, wifi_pw) = {
-        let c = config.lock().await;
-        (c.wifi_net.clone(), c.wifi_pw.clone())
-    };
-    // spawn the wifi stack
-    let (stack, wifi_control) = wifi::wifi_stack(
-        &spawner, p.PIN_23, p.PIN_24, p.PIN_25, p.PIN_29, p.DMA_CH0, p.PIO0,
-        wifi_net, wifi_pw,
-    )
-    .await;
-    let stack = &*singleton!(stack);
-    let wifi_control = singleton!(SunsetMutex::new(wifi_control));
-    spawner.spawn(net_task(&stack)).unwrap();
 
     let usb_pipe = {
         let p = singleton!(takepipe::TakePipeStorage::new());
@@ -110,28 +102,55 @@ async fn main(spawner: Spawner) {
         embassy_rp::watchdog::Watchdog::new(p.WATCHDOG)
     ));
 
-    let state = GlobalState {
-        usb_pipe,
-        serial1_pipe,
-
-        _wifi_control: wifi_control,
-        config,
-        flash,
-        watchdog,
-    };
+    let state = GlobalState { usb_pipe, serial1_pipe, config, flash, watchdog };
     let state = singleton!(state);
 
     spawner.spawn(usbserial::task(p.USB, state)).unwrap();
 
-    for _ in 0..NUM_LISTENERS {
-        spawner.spawn(listener(&stack, config, state)).unwrap();
+    // spawn the wifi stack
+    #[cfg(feature = "cyw43")]
+    {
+        let stack = wifi::wifi_stack(
+            &spawner, p.PIN_23, p.PIN_24, p.PIN_25, p.PIN_29, p.DMA_CH0, p.PIO0,
+            config,
+        )
+        .await;
+
+        for _ in 0..NUM_LISTENERS {
+            spawner.spawn(cyw43_listener(&stack, config, state)).unwrap();
+        }
+    }
+
+    // spawn the ethernet stack
+    #[cfg(feature = "w5500")]
+    {
+        let stack = w5500::w5500_stack(
+            &spawner, p.PIN_16, p.PIN_17, p.PIN_18, p.PIN_19, p.PIN_20, p.PIN_21,
+            p.DMA_CH0, p.DMA_CH1, p.SPI0, config,
+        )
+        .await;
+
+        for _ in 0..NUM_LISTENERS {
+            spawner.spawn(w5500_listener(&stack, config, state)).unwrap();
+        }
     }
 }
 
 // TODO: pool_size should be NUM_LISTENERS but needs a literal
+#[cfg(feature = "cyw43")]
 #[embassy_executor::task(pool_size = 4)]
-async fn listener(
+async fn cyw43_listener(
     stack: &'static Stack<cyw43::NetDriver<'static>>,
+    config: &'static SunsetMutex<SSHConfig>,
+    global: &'static GlobalState,
+) -> ! {
+    demo_common::listener::<_, DemoShell>(stack, config, global).await
+}
+
+#[cfg(feature = "w5500")]
+#[embassy_executor::task(pool_size = 4)]
+async fn w5500_listener(
+    stack: &'static Stack<embassy_net_w5500::Device<'static>>,
     config: &'static SunsetMutex<SSHConfig>,
     global: &'static GlobalState,
 ) -> ! {
@@ -143,7 +162,6 @@ pub(crate) struct GlobalState {
     pub usb_pipe: &'static TakePipe<'static>,
     pub serial1_pipe: &'static TakePipe<'static>,
 
-    pub _wifi_control: &'static SunsetMutex<cyw43::Control<'static>>,
     pub config: &'static SunsetMutex<SSHConfig>,
     pub flash: &'static SunsetMutex<
         embassy_rp::flash::Flash<'static, FLASH, { flashconfig::FLASH_SIZE }>,
@@ -311,9 +329,4 @@ impl Shell for DemoShell {
 
         session.await
     }
-}
-
-#[embassy_executor::task]
-async fn net_task(stack: &'static Stack<cyw43::NetDriver<'static>>) -> ! {
-    stack.run().await
 }

@@ -174,6 +174,7 @@ pub(crate) const SETUP_MENU: Menu<MenuCtx> = Menu {
         // &GPIO_ITEM,
         &SERIAL_ITEM,
         &WIFI_ITEM,
+        &NET_ITEM,
         &Item {
             command: "reset",
             help: Some("Reset picow. Will log out."),
@@ -385,6 +386,26 @@ const WIFI_ITEM: Item<MenuCtx> = Item {
             },
         ],
         entry: Some(wifi_entry),
+        exit: None,
+    }),
+    help: None,
+};
+
+const NET_ITEM: Item<MenuCtx> = Item {
+    command: "net",
+    item_type: ItemType::Menu(&Menu {
+        label: "net",
+        items: &[
+            &Item {
+                command: "info",
+                item_type: ItemType::Callback {
+                    parameters: &[],
+                    function: do_net_info,
+                },
+                help: None,
+            },
+        ],
+        entry: None,
         exit: None,
     }),
     help: None,
@@ -668,6 +689,13 @@ fn do_wifi_open(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx) {
     context.need_save = true;
     wifi_entry(context);
 }
+
+fn do_net_info(_item: &Item<MenuCtx>, _args: &[&str], context: &mut MenuCtx) {
+    context.with_config(|c, out| {
+        let _ = write!(out, "wired mac {:x?} ", c.mac);
+    });
+}
+
 
 // Returns an error on EOF etc.
 pub(crate) async fn request_pw<E>(

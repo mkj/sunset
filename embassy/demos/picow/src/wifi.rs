@@ -1,4 +1,5 @@
-// Modified from https://github.com/embassy-rs/cyw43/
+// Modified from embassy 
+// examples/rp/src/bin/wifi_tcp_server.rs
 // Copyright (c) 2019-2022 Embassy project contributors
 // MIT or Apache-2.0 license
 
@@ -21,12 +22,11 @@ use embassy_net::{Stack, StackResources};
 use cyw43_pio::PioSpi;
 
 use static_cell::StaticCell;
-use heapless::String;
-
 use rand::rngs::OsRng;
 use rand::RngCore;
 
 use crate::demo_common::singleton;
+use crate::{SunsetMutex, SSHConfig};
 
 #[embassy_executor::task]
 async fn wifi_task(
@@ -43,10 +43,10 @@ async fn wifi_task(
 pub(crate) async fn wifi_stack(spawner: &Spawner,
     p23: PIN_23, p24: PIN_24, p25: PIN_25, p29: PIN_29, dma: DMA_CH0,
     pio0: PIO0,
-    wifi_net: String<32>, wpa_password: Option<String<63>>,
-
-    ) -> (embassy_net::Stack<cyw43::NetDriver<'static>>, cyw43::Control<'static>)
+    config: &'static SunsetMutex<SSHConfig>,
+    ) -> &'static embassy_net::Stack<cyw43::NetDriver<'static>>
     {
+    // TODO: return `control` once it can do something useful
 
     let (fw, clm) = get_fw();
 
@@ -64,10 +64,15 @@ pub(crate) async fn wifi_stack(spawner: &Spawner,
     // control.set_power_management(cyw43::PowerManagementMode::None).await;
     // control.set_power_management(cyw43::PowerManagementMode::Performance).await;
 
+    let (wifi_net, wifi_pw) = {
+        let c = config.lock().await;
+        (c.wifi_net.clone(), c.wifi_pw.clone())
+    };
+
     // TODO: this should move out of the critical path, run in the bg.
     // just return control before joining.
     for _ in 0..2 {
-        let status = if let Some(ref pw) = wpa_password {
+        let status = if let Some(ref pw) = wifi_pw {
             info!("wifi net {} wpa2", wifi_net);
             control.join_wpa2(&wifi_net, &pw).await
         } else {
@@ -81,11 +86,6 @@ pub(crate) async fn wifi_stack(spawner: &Spawner,
         }
     }
 
-    // if let Err(e) = status {
-    //     // wait forever
-    //     let () = futures::future::pending().await;
-    // }
-
     let config = embassy_net::Config::dhcpv4(Default::default());
 
     let seed = OsRng.next_u64();
@@ -97,11 +97,20 @@ pub(crate) async fn wifi_stack(spawner: &Spawner,
         singleton!(StackResources::<{crate::NUM_SOCKETS}>::new()),
         seed
     );
-    (stack, control)
+
+    let stack = &*singleton!(stack);
+    spawner.spawn(net_task(&stack)).unwrap();
+
+    stack
 }
 
+#[embassy_executor::task]
+async fn net_task(stack: &'static Stack<cyw43::NetDriver<'static>>) -> ! {
+    stack.run().await
+}
+
+// Get the WiFi firmware and Country Locale Matrix (CLM) blobs.
 fn get_fw() -> (&'static [u8], &'static [u8]) {
-    // Include the WiFi firmware and Country Locale Matrix (CLM) blobs.
     #[cfg(not(feature = "romfw"))]
     let (fw, clm) = (
         include_bytes!("../firmware/43439A0.bin"),

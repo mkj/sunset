@@ -50,15 +50,27 @@ pub struct SSHConfig {
     pub wifi_net: String<32>,
     /// WPA2 passphrase. None is Open network.
     pub wifi_pw: Option<String<63>>,
+
+    pub mac: [u8; 6],
 }
+
+fn random_mac() -> Result<[u8; 6]> {
+    let mut mac = [0u8; 6];
+    sunset::random::fill_random(&mut mac)?;
+    // unicast, locally administered
+    mac[0] = (mac[0] & 0xfc) | 0x02;
+    Ok(mac)
+}
+
 
 impl SSHConfig {
     /// Bump this when the format changes
-    pub const CURRENT_VERSION: u8 = 4;
+    pub const CURRENT_VERSION: u8 = 5;
     /// A buffer this large will fit any SSHConfig.
     // It can be updated by looking at
-    // `cargo test -- roundtrip_config --show-output`
-    pub const BUF_SIZE: usize = 443;
+    // `cargo test -- roundtrip_config`
+    // in the demos/common directory
+    pub const BUF_SIZE: usize = 449;
 
     /// Creates a new config with default parameters.
     ///
@@ -68,6 +80,7 @@ impl SSHConfig {
 
         let wifi_net = option_env!("WIFI_NET").unwrap_or("guest").into();
         let wifi_pw = option_env!("WIFI_PW").map(|p| p.into());
+        let mac = random_mac()?;
         Ok(SSHConfig {
             hostkey,
             console_pw: None,
@@ -77,6 +90,7 @@ impl SSHConfig {
             admin_keys: Default::default(),
             wifi_net,
             wifi_pw,
+            mac,
         })
     }
 
@@ -143,28 +157,25 @@ impl SSHEncode for SSHConfig {
         info!("enc si");
         enc_signkey(&self.hostkey, s)?;
 
-        info!("enc pw");
         enc_option(&self.console_pw, s)?;
 
         for k in self.console_keys.iter() {
-            info!("enc k");
             enc_option(k, s)?;
         }
 
         self.console_noauth.enc(s)?;
 
-        info!("enc ad");
         enc_option(&self.admin_pw, s)?;
 
         for k in self.admin_keys.iter() {
-            info!("enc ke");
             enc_option(k, s)?;
         }
 
-        info!("enc net");
         self.wifi_net.as_str().enc(s)?;
-        info!("enc netpw");
         enc_option(&self.wifi_pw, s)?;
+
+        self.mac.enc(s)?;
+
         Ok(())
     }
 }
@@ -174,33 +185,28 @@ impl<'de> SSHDecode<'de> for SSHConfig {
     where
         S: SSHSource<'de>,
     {
-        info!("dec si");
         let hostkey = dec_signkey(s)?;
 
-        info!("dec pw");
         let console_pw = dec_option(s)?;
 
         let mut console_keys = [None, None, None];
         for k in console_keys.iter_mut() {
-            info!("dec k");
             *k = dec_option(s)?;
         }
 
         let console_noauth = SSHDecode::dec(s)?;
 
-        info!("dec ad");
         let admin_pw = dec_option(s)?;
 
         let mut admin_keys = [None, None, None];
         for k in admin_keys.iter_mut() {
-            info!("dec adk");
             *k = dec_option(s)?;
         }
 
-        info!("dec wn");
         let wifi_net = SSHDecode::dec(s)?;
-        info!("dec wp");
         let wifi_pw = dec_option(s)?;
+
+        let mac = SSHDecode::dec(s)?;
 
         Ok(Self {
             hostkey,
@@ -211,6 +217,7 @@ impl<'de> SSHDecode<'de> for SSHConfig {
             admin_keys,
             wifi_net,
             wifi_pw,
+            mac,
         })
     }
 }
@@ -289,12 +296,12 @@ mod tests {
         let mut buf = [0u8; 1000];
         let l = sshwire::write_ssh(&mut buf, &c1).unwrap();
         let v = &buf[..l];
-        let c2: SSHConfig = sshwire::read_ssh(&buf, None).unwrap();
+        let c2: SSHConfig = sshwire::read_ssh(v, None).unwrap();
         assert_eq!(c1, c2);
 
         // All the fruit, to check BUF_SIZE.
         // Variable length fields are all max size.
-        let mut c1 = SSHConfig {
+        let c1 = SSHConfig {
             hostkey: c1.hostkey,
             console_pw: Some(PwHash::new("zong").unwrap()),
             console_keys: [
@@ -313,13 +320,21 @@ mod tests {
             wifi_pw: Some(
                 core::str::from_utf8([b'f'; 63].as_slice()).unwrap().into(),
             ),
+            mac: [6,2,3,4,5,6],
         };
 
-        let mut buf = [0u8; SSHConfig::BUF_SIZE];
+        // test once to determine size to print
+        let mut buf = [0u8; 3000];
         let l = sshwire::write_ssh(&mut buf, &c1).unwrap();
+        let size_msg = format!("BUF_SIZE must be at least {}", l);
+        println!("{size_msg}");
+
+        // now test for real
+        let mut buf = [0u8; SSHConfig::BUF_SIZE];
+        let l = sshwire::write_ssh(&mut buf, &c1).expect(&size_msg);
         println!("BUF_SIZE must be at least {}", l);
         let v = &buf[..l];
-        let c2: SSHConfig = sshwire::read_ssh(&buf, None).unwrap();
+        let c2: SSHConfig = sshwire::read_ssh(v, None).unwrap();
         assert_eq!(c1, c2);
     }
 }

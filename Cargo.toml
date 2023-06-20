@@ -4,7 +4,7 @@ version = "0.2.0-alpha"
 edition = "2021"
 description = "A SSH library suitable for embedded and larger programs"
 repository = "https://github.com/mkj/sunset"
-categories = ["network-programming", "no-std"]
+categories = ["network-programming", "embedded", "no-std"]
 license = "MPL-2.0"
 keywords = ["ssh"]
 
@@ -99,6 +99,7 @@ embassy-net-driver = { git = "https://github.com/embassy-rs/embassy", rev = "ae8
 
 cyw43 = { git = "https://github.com/embassy-rs/embassy/", rev = "ae83e6f5367197feb8361b9a28adbdedbe37e0c5" }
 cyw43-pio = { git = "https://github.com/embassy-rs/embassy/", rev = "ae83e6f5367197feb8361b9a28adbdedbe37e0c5" }
+embassy-net-w5500 = { git = "https://github.com/embassy-rs/embassy/", rev = "ae83e6f5367197feb8361b9a28adbdedbe37e0c5" }
 
 bcrypt = { version = "0.14", git = "https://github.com/mkj/rust-bcrypt", branch = "noalloc" }
 
