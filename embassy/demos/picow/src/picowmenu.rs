@@ -13,23 +13,25 @@ use core::fmt::Write;
 use core::future::{poll_fn, Future};
 use core::ops::DerefMut;
 use core::sync::atomic::Ordering::{Relaxed, SeqCst};
+use core::str::FromStr;
 
 use embedded_io::{asynch, Io};
 
 use embassy_sync::waitqueue::MultiWakerRegistration;
 use embassy_time::Duration;
+use embassy_net::{Ipv4Cidr, Ipv4Address};
 
 use heapless::{String, Vec};
 
-use crate::flashconfig;
 use crate::demo_common;
+use crate::flashconfig;
 use crate::GlobalState;
 use demo_common::{BufOutput, SSHConfig};
 
 use demo_common::menu::*;
 
-use sunset::*;
 use sunset::packets::Ed25519PubKey;
+use sunset::*;
 
 // arbitrary in bytes, for sizing buffers
 const MAX_PW_LEN: usize = 50;
@@ -95,7 +97,10 @@ impl MenuCtx {
                 let _ = writeln!(self.out, "serial can't loop");
             } else {
                 if self.state.usb_pipe.is_in_use() {
-                    let _ = writeln!(self.out, "Opening usb1, stealing existing session");
+                    let _ = writeln!(
+                        self.out,
+                        "Opening usb1, stealing existing session"
+                    );
                 } else {
                     let _ = writeln!(self.out, "Opening usb1");
                 }
@@ -111,7 +116,10 @@ impl MenuCtx {
                 let _ = writeln!(self.out, "serial can't loop");
             } else {
                 if self.state.serial1_pipe.is_in_use() {
-                    let _ = writeln!(self.out, "Opening serial1, stealing existing session");
+                    let _ = writeln!(
+                        self.out,
+                        "Opening serial1, stealing existing session"
+                    );
                 } else {
                     let _ = writeln!(self.out, "Opening serial1");
                 }
@@ -404,6 +412,32 @@ const NET_ITEM: Item<MenuCtx> = Item {
                 },
                 help: None,
             },
+            &Item {
+                command: "dhcp",
+                item_type: ItemType::Callback {
+                    parameters: &[],
+                    function: do_net_dhcp,
+                },
+                help: None,
+            },
+            &Item {
+                command: "static",
+                item_type: ItemType::Callback {
+                    parameters: &[
+                        Parameter::Mandatory {
+                            parameter_name: "address/netmask",
+                            help: None,
+                        },
+                        Parameter::Optional {
+                            parameter_name: "gateway",
+                            help: None,
+                        },
+                    ],
+
+                    function: do_net_static,
+                },
+                help: None,
+            },
         ],
         entry: None,
         exit: None,
@@ -607,12 +641,10 @@ fn do_admin_clear_pw(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx
 // fn do_gpio_set(_item: &Item<MenuCtx>, _args: &[&str], _context: &mut MenuCtx) {}
 
 fn do_erase_config(_item: &Item<MenuCtx>, _args: &[&str], context: &mut MenuCtx) {
-    context.with_config(|c, out| {
-        match SSHConfig::new() {
-            Ok(n) => *c = n,
-            Err(e) => {
-                let _ = writeln!(out, "failed: {e}");
-            }
+    context.with_config(|c, out| match SSHConfig::new() {
+        Ok(n) => *c = n,
+        Err(e) => {
+            let _ = writeln!(out, "failed: {e}");
         }
     });
     context.need_save = true;
@@ -633,7 +665,8 @@ fn do_bootsel(_item: &Item<MenuCtx>, _args: &[&str], context: &mut MenuCtx) {
 fn do_about(_item: &Item<MenuCtx>, _args: &[&str], context: &mut MenuCtx) {
     let _ = writeln!(
         context,
-        "Sunset SSH, USB serial\nMatt Johnston <matt@ucc.asn.au>\n{}", env!("GIT_REV"),
+        "Sunset SSH, USB serial\nMatt Johnston <matt@ucc.asn.au>\n{}",
+        env!("GIT_REV"),
     );
 }
 
@@ -696,6 +729,34 @@ fn do_net_info(_item: &Item<MenuCtx>, _args: &[&str], context: &mut MenuCtx) {
     });
 }
 
+fn do_net_dhcp(_item: &Item<MenuCtx>, _args: &[&str], context: &mut MenuCtx) {
+    context.with_config(|c, out| {
+        c.ip4_static = None;
+    });
+}
+
+fn do_net_static(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx) {
+    context.with_config(|c, out| {
+        let ip = Ipv4Cidr::from_str(args[0]);
+        let gw = if args[1].is_empty() {
+            Ok(None)
+        } else {
+            Some(Ipv4Address::from_str(args[1])).transpose()
+        };
+        match (ip, gw) {
+            (Ok(address), Ok(gateway)) => {
+                c.ip4_static = Some(embassy_net::StaticConfigV4 {
+                    address,
+                    gateway,
+                    dns_servers: Vec::new(),
+                })
+            }
+            _ => {
+                let _ = write!(out, "Bad args");
+            }
+        }
+    });
+}
 
 // Returns an error on EOF etc.
 pub(crate) async fn request_pw<E>(

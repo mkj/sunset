@@ -86,7 +86,11 @@ pub(crate) async fn wifi_stack(spawner: &Spawner,
         }
     }
 
-    let config = embassy_net::Config::dhcpv4(Default::default());
+    let config = if let Some(ref s) = config.lock().await.ip4_static {
+        embassy_net::Config::ipv4_static(s.clone())
+    } else {
+        embassy_net::Config::dhcpv4(Default::default())
+    };
 
     let seed = OsRng.next_u64();
 

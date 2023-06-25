@@ -12,7 +12,9 @@ use defmt::{debug, error, info, panic, trace, warn};
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
 
-use heapless::String;
+use heapless::{String, Vec};
+
+use embassy_net::{StaticConfigV4, Ipv4Cidr, Ipv4Address};
 
 use sunset_sshwire_derive::*;
 
@@ -51,7 +53,11 @@ pub struct SSHConfig {
     /// WPA2 passphrase. None is Open network.
     pub wifi_pw: Option<String<63>>,
 
+    /// For wl5500. cyw43 uses its own internal
     pub mac: [u8; 6],
+
+    /// `None` for DHCP
+    pub ip4_static: Option<StaticConfigV4>,
 }
 
 fn random_mac() -> Result<[u8; 6]> {
@@ -62,15 +68,14 @@ fn random_mac() -> Result<[u8; 6]> {
     Ok(mac)
 }
 
-
 impl SSHConfig {
     /// Bump this when the format changes
-    pub const CURRENT_VERSION: u8 = 5;
+    pub const CURRENT_VERSION: u8 = 6;
     /// A buffer this large will fit any SSHConfig.
     // It can be updated by looking at
     // `cargo test -- roundtrip_config`
     // in the demos/common directory
-    pub const BUF_SIZE: usize = 449;
+    pub const BUF_SIZE: usize = 460;
 
     /// Creates a new config with default parameters.
     ///
@@ -91,6 +96,7 @@ impl SSHConfig {
             wifi_net,
             wifi_pw,
             mac,
+            ip4_static: None,
         })
     }
 
@@ -152,6 +158,38 @@ where
     bool::dec(s)?.then(|| SSHDecode::dec(s)).transpose()
 }
 
+fn enc_ip4config(v: &Option<StaticConfigV4>, s: &mut dyn SSHSink) -> WireResult<()> {
+    v.is_some().enc(s)?;
+    if let Some(v) = v {
+        v.address.address().0.enc(s)?;
+        v.address.prefix_len().enc(s)?;
+        // to [u8; 4]
+        let gw = v.gateway.map(|a| a.0);
+        enc_option(&gw, s)?;
+    }
+    Ok(())
+}
+
+fn dec_ip4config<'de, S>(s: &mut S) -> WireResult<Option<StaticConfigV4>>
+where
+    S: SSHSource<'de>,
+{
+    let opt = bool::dec(s)?;
+    opt.then(|| {
+        let ad: [u8; 4] = SSHDecode::dec(s)?;
+        let ad = Ipv4Address::from_bytes(&ad);
+        let prefix = SSHDecode::dec(s)?;
+        let gw: Option<[u8; 4]> = dec_option(s)?;
+        let gateway = gw.map(|gw| Ipv4Address::from_bytes(&gw));
+        Ok(StaticConfigV4 {
+            address: Ipv4Cidr::new(ad, prefix),
+            gateway,
+            dns_servers: Vec::new(),
+        })
+    })
+    .transpose()
+}
+
 impl SSHEncode for SSHConfig {
     fn enc(&self, s: &mut dyn SSHSink) -> WireResult<()> {
         info!("enc si");
@@ -175,6 +213,8 @@ impl SSHEncode for SSHConfig {
         enc_option(&self.wifi_pw, s)?;
 
         self.mac.enc(s)?;
+
+        enc_ip4config(&self.ip4_static, s)?;
 
         Ok(())
     }
@@ -208,6 +248,8 @@ impl<'de> SSHDecode<'de> for SSHConfig {
 
         let mac = SSHDecode::dec(s)?;
 
+        let ip4_static = dec_ip4config(s)?;
+
         Ok(Self {
             hostkey,
             console_pw,
@@ -218,6 +260,7 @@ impl<'de> SSHDecode<'de> for SSHConfig {
             wifi_net,
             wifi_pw,
             mac,
+            ip4_static,
         })
     }
 }
@@ -320,7 +363,13 @@ mod tests {
             wifi_pw: Some(
                 core::str::from_utf8([b'f'; 63].as_slice()).unwrap().into(),
             ),
-            mac: [6,2,3,4,5,6],
+            mac: [6, 2, 3, 4, 5, 6],
+            ip4_static: Some(embassy_net::StaticConfigV4 {
+                address: embassy_net::Ipv4Cidr::new(embassy_net::Ipv4Address::UNSPECIFIED, 8),
+                gateway: Some(embassy_net::Ipv4Address::UNSPECIFIED),
+                // no dns servers. may need changing later?
+                dns_servers: heapless::Vec::new(),
+            }),
         };
 
         // test once to determine size to print

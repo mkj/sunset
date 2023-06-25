@@ -72,13 +72,19 @@ pub(crate) async fn w5500_stack(
     .await;
     spawner.spawn(ethernet_task(runner)).unwrap();
 
+    let config = if let Some(ref s) = config.lock().await.ip4_static {
+        embassy_net::Config::ipv4_static(s.clone())
+    } else {
+        embassy_net::Config::dhcpv4(Default::default())
+    };
+
     // Generate random seed
     let seed = OsRng.next_u64();
 
     // Init network stack
     let stack = &*make_static!(Stack::new(
         device,
-        embassy_net::Config::dhcpv4(Default::default()),
+        config,
         make_static!(StackResources::<{ crate::NUM_SOCKETS }>::new()),
         seed
     ));

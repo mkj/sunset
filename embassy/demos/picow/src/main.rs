@@ -49,6 +49,9 @@ mod wifi;
 #[cfg(not(any(feature = "cyw43", feature = "w5500")))]
 compile_error!("No network device selected. Use cyw43 or w5500 feature");
 
+#[cfg(all(feature = "cyw43", feature = "w5500"))]
+compile_error!("Select only one of cyw43 or w5500");
+
 use demo_common::{SSHConfig, Shell};
 
 use takepipe::TakePipe;
