@@ -59,7 +59,7 @@ rand = { version = "0.8", default-features = false, features = ["getrandom"] }
 sha2 = { version = "0.10", default-features = false }
 
 # for defmt feature
-smoltcp = { version = "0.9", default-features = false }
+smoltcp = { version = "0.10", default-features = false }
 
 [features]
 default = ["cyw43", "defmt", "sunset-demo-embassy-common/defmt" ]
