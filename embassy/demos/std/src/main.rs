@@ -44,7 +44,18 @@ async fn net_task(stack: &'static Stack<TunTapDevice>) -> ! {
 async fn main_task(spawner: Spawner) {
     // TODO config
     let opt_tap0 = "tap0";
-    let net_config = Config::dhcpv4(Default::default());
+
+    let config = &*singleton!(  {
+        let mut config = SSHConfig::new().unwrap();
+        // config.set_console_pw(Some("pw")).unwrap();
+        SunsetMutex::new(config)
+    } );
+
+    let net_config = if let Some(ref s) = config.lock().await.ip4_static {
+        embassy_net::Config::ipv4_static(s.clone())
+    } else {
+        embassy_net::Config::dhcpv4(Default::default())
+    };
 
     // Init network device
     let device = TunTapDevice::new(opt_tap0).unwrap();
@@ -61,12 +72,6 @@ async fn main_task(spawner: Spawner) {
 
     // Launch network task
     spawner.spawn(net_task(stack)).unwrap();
-
-    let config = &*singleton!(  {
-        let mut config = SSHConfig::new().unwrap();
-        // config.set_console_pw(Some("pw")).unwrap();
-        SunsetMutex::new(config)
-    } );
 
     for _ in 0..NUM_LISTENERS {
         spawner.spawn(listener(stack, config)).unwrap();

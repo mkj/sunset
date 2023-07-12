@@ -246,8 +246,9 @@ checksum = "8c3c1a368f70d6cf7302d78f8f7093da241fb8e8807c05cc9e51a125895a6d5b"
 
 [[package]]
 name = "bcrypt"
-version = "0.14.0"
-source = "git+https://github.com/mkj/rust-bcrypt?branch=noalloc#2ee6bc724ffd76bf9d221b0da5487d6cc304002f"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "28d1c9c15093eb224f0baa400f38fcd713fc1391a6f1c389d886beef146d60a3"
 dependencies = [
  "base64",
  "blowfish",

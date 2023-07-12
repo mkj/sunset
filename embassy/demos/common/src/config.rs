@@ -179,6 +179,11 @@ where
         let ad: [u8; 4] = SSHDecode::dec(s)?;
         let ad = Ipv4Address::from_bytes(&ad);
         let prefix = SSHDecode::dec(s)?;
+        if prefix > 32 {
+            // emabassy panics, so test it here
+            debug!("Prefix {} > 32", prefix);
+            return Err(WireError::PacketWrong)
+        }
         let gw: Option<[u8; 4]> = dec_option(s)?;
         let gateway = gw.map(|gw| Ipv4Address::from_bytes(&gw));
         Ok(StaticConfigV4 {
@@ -365,8 +370,8 @@ mod tests {
             ),
             mac: [6, 2, 3, 4, 5, 6],
             ip4_static: Some(embassy_net::StaticConfigV4 {
-                address: embassy_net::Ipv4Cidr::new(embassy_net::Ipv4Address::UNSPECIFIED, 8),
-                gateway: Some(embassy_net::Ipv4Address::UNSPECIFIED),
+                address: embassy_net::Ipv4Cidr::new(embassy_net::Ipv4Address([44,33,22,11]), 8),
+                gateway: Some(embassy_net::Ipv4Address([1,2,3,4])),
                 // no dns servers. may need changing later?
                 dns_servers: heapless::Vec::new(),
             }),

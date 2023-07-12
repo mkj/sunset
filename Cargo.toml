@@ -101,8 +101,6 @@ cyw43 = { git = "https://github.com/embassy-rs/embassy/", rev = "2eb7a67c7027c67
 cyw43-pio = { git = "https://github.com/embassy-rs/embassy/", rev = "2eb7a67c7027c6768fa95031caf60bcd0eade1ad" }
 embassy-net-w5500 = { git = "https://github.com/embassy-rs/embassy/", rev = "2eb7a67c7027c6768fa95031caf60bcd0eade1ad" }
 
-bcrypt = { version = "0.14", git = "https://github.com/mkj/rust-bcrypt", branch = "noalloc" }
-
 # these are mostly applicable to picow, but can't hurt generally
 [profile.dev]
 debug = 2
