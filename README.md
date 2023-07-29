@@ -37,7 +37,7 @@ Working:
 - curve25519 key exchange
 - chacha20-poly1305, aes256-ctr ciphers
 - hmac-sha256 integrity
-- rsa (will be `std`-only unless someone writes a `no_std` crate)
+- rsa (`std`-only unless someone writes a `no_std` crate)
 - `~.` client escape sequences
 
 Desirable:
@@ -47,10 +47,6 @@ Desirable:
 - Perhaps aes256-gcm
 - Perhaps ECDSA, hardware often supports it ahead of ed25519
 - SFTP
-
-## License
-
-Currently MPL2, though may possibly move to MIT-style in future (I'm undecided)
 
 ## Rust versions
 

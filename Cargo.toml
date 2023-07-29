@@ -5,7 +5,7 @@ edition = "2021"
 description = "A SSH library suitable for embedded and larger programs"
 repository = "https://github.com/mkj/sunset"
 categories = ["network-programming", "embedded", "no-std"]
-license = "MPL-2.0"
+license = "0BSD"
 keywords = ["ssh"]
 
 [workspace]
