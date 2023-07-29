@@ -105,12 +105,8 @@ async fn main(spawner: Spawner) {
         embassy_rp::watchdog::Watchdog::new(p.WATCHDOG)
     ));
 
-    let state = GlobalState { usb_pipe, serial1_pipe, config, flash, watchdog };
-    let state = singleton!(state);
+    let state;
 
-    spawner.spawn(usbserial::task(p.USB, state)).unwrap();
-
-    // spawn the wifi stack
     #[cfg(feature = "cyw43")]
     {
         let stack = wifi::wifi_stack(
@@ -119,12 +115,15 @@ async fn main(spawner: Spawner) {
         )
         .await;
 
+        let net_mac = stack.ethernet_address();
+        let g = GlobalState { usb_pipe, serial1_pipe, config, flash, watchdog, net_mac };
+        state = singleton!(g);
         for _ in 0..NUM_LISTENERS {
             spawner.spawn(cyw43_listener(&stack, config, state)).unwrap();
         }
     }
 
-    // spawn the ethernet stack
+
     #[cfg(feature = "w5500")]
     {
         let stack = w5500::w5500_stack(
@@ -133,10 +132,15 @@ async fn main(spawner: Spawner) {
         )
         .await;
 
+        let net_mac = stack.ethernet_address();
+        let g = GlobalState { usb_pipe, serial1_pipe, config, flash, watchdog, net_mac };
+        state = singleton!(g);
         for _ in 0..NUM_LISTENERS {
             spawner.spawn(w5500_listener(&stack, config, state)).unwrap();
         }
     }
+
+    spawner.spawn(usbserial::task(p.USB, state)).unwrap();
 }
 
 // TODO: pool_size should be NUM_LISTENERS but needs a literal
@@ -170,6 +174,8 @@ pub(crate) struct GlobalState {
         embassy_rp::flash::Flash<'static, FLASH, { flashconfig::FLASH_SIZE }>,
     >,
     pub watchdog: &'static SunsetMutex<embassy_rp::watchdog::Watchdog>,
+
+    pub net_mac: [u8; 6],
 }
 
 struct DemoShell {

@@ -9,7 +9,7 @@ pub use log::{debug, error, info, log, trace, warn};
 #[cfg(feature = "defmt")]
 pub use defmt::{debug, error, info, panic, trace, warn};
 
-use core::fmt::Write;
+use core::fmt::{Write, Debug, Display};
 use core::future::{poll_fn, Future};
 use core::ops::DerefMut;
 use core::sync::atomic::Ordering::{Relaxed, SeqCst};
@@ -22,6 +22,8 @@ use embassy_time::Duration;
 use embassy_net::{Ipv4Cidr, Ipv4Address};
 
 use heapless::{String, Vec};
+
+use pretty_hex::PrettyHex;
 
 use crate::demo_common;
 use crate::flashconfig;
@@ -723,9 +725,29 @@ fn do_wifi_open(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx) {
     wifi_entry(context);
 }
 
+struct Mac([u8; 6]);
+
+impl Display for Mac {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
+            self.0[0], self.0[1], self.0[2], self.0[3], self.0[4], self.0[5])
+    }
+}
+
 fn do_net_info(_item: &Item<MenuCtx>, _args: &[&str], context: &mut MenuCtx) {
+    #[cfg(feature = "w5500")]
+    let _ = writeln!(context.out, "w5500 wired ethernet");
+    #[cfg(feature = "cyw43")]
+    let _ = writeln!(context.out, "cyw43 wifi");
+    let _ = writeln!(context.out, "mac address {}", Mac(context.state.net_mac));
+
     context.with_config(|c, out| {
-        let _ = write!(out, "wired mac {:x?} ", c.mac);
+        if let Some(ref stat) = c.ip4_static {
+            let _ = writeln!(out, "static ip4 {stat:?}");
+        } else {
+            // TODO the actual address
+            let _ = writeln!(out, "Using dhcp");
+        }
     });
 }
 
@@ -733,6 +755,7 @@ fn do_net_dhcp(_item: &Item<MenuCtx>, _args: &[&str], context: &mut MenuCtx) {
     context.with_config(|c, out| {
         c.ip4_static = None;
     });
+    context.need_save = true;
 }
 
 fn do_net_static(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx) {
@@ -756,6 +779,7 @@ fn do_net_static(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx) {
             }
         }
     });
+    context.need_save = true;
 }
 
 // Returns an error on EOF etc.
