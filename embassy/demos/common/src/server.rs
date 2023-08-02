@@ -46,7 +46,7 @@ macro_rules! singleton {
 
 
 // common entry point
-pub async fn listener<D: Driver, S: Shell>(stack: &'static Stack<D>,
+pub async fn listener<D: Driver, S: DemoServer>(stack: &'static Stack<D>,
     config: &SunsetMutex<SSHConfig>,
     init: S::Init) -> ! {
     // TODO: buffer size?
@@ -83,16 +83,16 @@ pub async fn listener<D: Driver, S: Shell>(stack: &'static Stack<D>,
 }
 
 /// Run a SSH session when a socket accepts a connection
-async fn session<S: Shell>(socket: &mut TcpSocket<'_>, config: &SunsetMutex<SSHConfig>,
+async fn session<S: DemoServer>(socket: &mut TcpSocket<'_>, config: &SunsetMutex<SSHConfig>,
     init: &S::Init) -> sunset::Result<()> {
     // OK unwrap: has been accepted
     let src = socket.remote_endpoint().unwrap();
     info!("Connection from {}:{}", src.addr, src.port);
 
-    let shell = S::new(init);
+    let s = S::new(init);
 
     let conf = config.lock().await.clone();
-    let app = DemoServer::new(&shell, conf)?;
+    let app = ServerApp::new(&s, conf)?;
     let app = Mutex::<NoopRawMutex, _>::new(app);
 
     let mut ssh_rxbuf = [0; 2000];
@@ -100,7 +100,7 @@ async fn session<S: Shell>(socket: &mut TcpSocket<'_>, config: &SunsetMutex<SSHC
     let serv = SSHServer::new(&mut ssh_rxbuf, &mut ssh_txbuf)?;
     let serv = &serv;
 
-    let session = shell.run(serv);
+    let session = s.run(serv);
 
     let (mut rsock, mut wsock) = socket.split();
 
@@ -115,7 +115,10 @@ async fn session<S: Shell>(socket: &mut TcpSocket<'_>, config: &SunsetMutex<SSHC
     Ok(())
 }
 
-struct DemoServer<'a, S: Shell> {
+/// Provides `ServBehaviour` for the server
+///
+/// Further customisations are provided by `DemoServer` generic
+struct ServerApp<'a, S: DemoServer> {
     config: SSHConfig,
 
     handle: Option<ChanHandle>,
@@ -124,7 +127,7 @@ struct DemoServer<'a, S: Shell> {
     shell: &'a S,
 }
 
-impl<'a, S: Shell> DemoServer<'a, S> {
+impl<'a, S: DemoServer> ServerApp<'a, S> {
     const ADMIN_USER: &'static str = "config";
 
     fn new(shell: &'a S, config: SSHConfig) -> Result<Self> {
@@ -142,7 +145,7 @@ impl<'a, S: Shell> DemoServer<'a, S> {
     }
 }
 
-impl<'a, S: Shell> ServBehaviour for DemoServer<'a, S> {
+impl<'a, S: DemoServer> ServBehaviour for ServerApp<'a, S> {
 
     fn hostkeys(&mut self) -> BhResult<heapless::Vec<&SignKey, 2>> {
         // OK unwrap: only one element
@@ -226,19 +229,23 @@ impl<'a, S: Shell> ServBehaviour for DemoServer<'a, S> {
     }
 }
 
-pub trait Shell {
-    type Init: Copy;
+pub trait DemoServer {
+    /// State to be passed to each new connection by the server
+    type Init;
 
     fn new(init: &Self::Init) -> Self;
 
+    /// Called when auth succeeds
     #[allow(unused_variables)]
-    // TODO: eventually the compiler should add must_use automatically?
     async fn authed(&self, username: &str) {
         info!("Authenticated")
     }
 
+    /// Called when a shell is opened after auth succeeds
     fn open_shell(&self, handle: ChanHandle);
 
+    /// A task to run for each incoming connection.
+    // TODO: eventually the compiler should add must_use automatically?
     #[must_use]
     async fn run<'f, S: ServBehaviour>(&self, serv: &'f SSHServer<'f, S>) -> Result<()>;
 }
@@ -250,7 +257,7 @@ pub trait Shell {
 pub struct BufOutput {
     /// Sufficient to hold output produced from a single keystroke input. Further output will be discarded
     // pub s: String<300>,
-    // todo
+    // todo size
     pub s: String<3000>,
 }
 

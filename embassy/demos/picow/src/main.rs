@@ -52,7 +52,7 @@ compile_error!("No network device selected. Use cyw43 or w5500 feature");
 #[cfg(all(feature = "cyw43", feature = "w5500"))]
 compile_error!("Select only one of cyw43 or w5500");
 
-use demo_common::{SSHConfig, Shell};
+use demo_common::{SSHConfig, DemoServer};
 
 use takepipe::TakePipe;
 
@@ -66,9 +66,11 @@ async fn main(spawner: Spawner) {
 
     let mut p = embassy_rp::init(Default::default());
 
+    // RNG initialised early, all crypto relies on it
     caprand::setup(&mut p.PIN_10).unwrap();
     getrandom::register_custom_getrandom!(caprand::getrandom);
 
+    // Configuration loaded from flash
     let mut flash = embassy_rp::flash::Flash::new(p.FLASH);
 
     let config = if option_env!("RESET_CONFIG").is_some() {
@@ -76,16 +78,16 @@ async fn main(spawner: Spawner) {
     } else {
         flashconfig::load_or_create(&mut flash).unwrap()
     };
-
     let flash = &*singleton!(SunsetMutex::new(flash));
-
     let config = &*singleton!(SunsetMutex::new(config));
 
+    // A shared pipe to a local USB-serial (CDC)
     let usb_pipe = {
         let p = singleton!(takepipe::TakePipeStorage::new());
         singleton!(p.pipe())
     };
 
+    // A shared pipe to a local uart
     let serial1_pipe = {
         let s = singleton!(takepipe::TakePipeStorage::new());
         singleton!(s.pipe())
@@ -101,11 +103,14 @@ async fn main(spawner: Spawner) {
         ))
         .unwrap();
 
+    // Watchdog currently only used for triggering reset manually
     let watchdog = singleton!(SunsetMutex::new(
         embassy_rp::watchdog::Watchdog::new(p.WATCHDOG)
     ));
 
     let state;
+
+    // Spawn network tasks to handle incoming connections with demo_common::session()
 
     #[cfg(feature = "cyw43")]
     {
@@ -140,6 +145,7 @@ async fn main(spawner: Spawner) {
         }
     }
 
+    // USB task requires `state`
     spawner.spawn(usbserial::task(p.USB, state)).unwrap();
 }
 
@@ -151,7 +157,7 @@ async fn cyw43_listener(
     config: &'static SunsetMutex<SSHConfig>,
     global: &'static GlobalState,
 ) -> ! {
-    demo_common::listener::<_, DemoShell>(stack, config, global).await
+    demo_common::listener::<_, PicoServer>(stack, config, global).await
 }
 
 #[cfg(feature = "w5500")]
@@ -161,11 +167,11 @@ async fn w5500_listener(
     config: &'static SunsetMutex<SSHConfig>,
     global: &'static GlobalState,
 ) -> ! {
-    demo_common::listener::<_, DemoShell>(stack, config, global).await
+    demo_common::listener::<_, PicoServer>(stack, config, global).await
 }
 
 pub(crate) struct GlobalState {
-    // If taking multiple mutexes, lock in the order below avoid inversion.
+    // If locking multiple mutexes, always lock in the order below avoid inversion.
     pub usb_pipe: &'static TakePipe<'static>,
     pub serial1_pipe: &'static TakePipe<'static>,
 
@@ -178,7 +184,7 @@ pub(crate) struct GlobalState {
     pub net_mac: [u8; 6],
 }
 
-struct DemoShell {
+struct PicoServer {
     notify: Signal<NoopRawMutex, ChanHandle>,
     global: &'static GlobalState,
 
@@ -186,6 +192,8 @@ struct DemoShell {
     username: SunsetMutex<String<20>>,
 }
 
+// Presents a menu, either on serial or incoming SSH
+//
 // `local` is set for usb serial menus which require different auth
 async fn menu<R, W>(
     chanr: &mut R,
@@ -235,6 +243,7 @@ where
     Ok(())
 }
 
+/// Forwards an incoming SSH connection to a local serial port, either uart or USB
 pub(crate) async fn serial<R, W>(
     chanr: &mut R,
     chanw: &mut W,
@@ -292,7 +301,7 @@ where
     Ok(())
 }
 
-impl Shell for DemoShell {
+impl DemoServer for PicoServer {
     type Init = &'static GlobalState;
 
     fn new(global: &Self::Init) -> Self {

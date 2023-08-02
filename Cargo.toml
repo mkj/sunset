@@ -45,9 +45,9 @@ cipher = { version = "0.4", features = ["zeroize"] }
 subtle = { version = "2.4", default-features = false }
 # ed25519/x25519
 # fork allows hashing by parts (sign/verify from sshwire), and zeroize
-ed25519-dalek = { version = "2.0.0-rc.2", default-features = false, features = ["zeroize", "rand_core", "hazmat"] }
-x25519-dalek = { version = "2.0.0-rc.2", default-features = false, features = ["zeroize"] }
-curve25519-dalek = { version = "4.0.0-rc.2", default-features = false, features = ["zeroize"] }
+ed25519-dalek = { version = "2.0.0-rc.3", default-features = false, features = ["zeroize", "rand_core", "hazmat"] }
+x25519-dalek = { version = "2.0.0-rc.3", default-features = false, features = ["zeroize"] }
+curve25519-dalek = { version = "4.0.0", default-features = false, features = ["zeroize"] }
 
 rsa = { version = "0.8", default-features = false, optional = true, features = ["sha2"] }
 # TODO: getrandom feature is a workaround for missing ssh-key dependency with rsa. fixed in pending 0.6
@@ -81,10 +81,12 @@ simplelog = { version = "0.12", features = ["test"] }
 
 
 [patch.crates-io]
-curve25519-dalek = { git = "https://github.com/dalek-cryptography/curve25519-dalek" }
-x25519-dalek = { git = "https://github.com/dalek-cryptography/x25519-dalek" }
-ed25519-dalek = { git = "https://github.com/mkj/ed25519-dalek", branch = "sunset" }
-# ed25519-dalek = { path = "/home/matt/3rd/rs/crypto/ed25519-dalek" }
+curve25519-dalek = { git = "https://github.com/mkj/curve25519-dalek", branch = "sunset" }
+ed25519-dalek = { git = "https://github.com/mkj/curve25519-dalek", branch = "sunset" }
+x25519-dalek = { git = "https://github.com/mkj/curve25519-dalek", branch = "sunset" }
+# curve25519-dalek = { path = "/home/matt/3rd/rs/crypto/curve25519-dalek/curve25519-dalek" }
+# ed25519-dalek = { path = "/home/matt/3rd/rs/crypto/curve25519-dalek/ed25519-dalek" }
+# x25519-dalek = { path = "/home/matt/3rd/rs/crypto/curve25519-dalek/x25519-dalek" }
 
 embassy-executor = { git = "https://github.com/embassy-rs/embassy", rev = "2eb7a67c7027c6768fa95031caf60bcd0eade1ad" }
 embassy-futures = { git = "https://github.com/embassy-rs/embassy", rev = "2eb7a67c7027c6768fa95031caf60bcd0eade1ad" }

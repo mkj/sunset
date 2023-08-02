@@ -29,7 +29,7 @@ mod setupmenu;
 pub(crate) use sunset_demo_embassy_common as demo_common;
 use crate::demo_common::singleton;
 
-use demo_common::{SSHConfig, demo_menu, Shell};
+use demo_common::{SSHConfig, demo_menu, DemoServer};
 
 const NUM_LISTENERS: usize = 2;
 // +1 for dhcp
@@ -79,11 +79,11 @@ async fn main_task(spawner: Spawner) {
 }
 
 #[derive(Default)]
-struct DemoShell {
+struct StdDemo {
     notify: Signal<NoopRawMutex, ChanHandle>,
 }
 
-impl Shell for DemoShell {
+impl DemoServer for StdDemo {
     type Init = ();
 
     fn new(init: &Self::Init) -> Self {
@@ -139,7 +139,7 @@ impl Shell for DemoShell {
 async fn listener(stack: &'static Stack<TunTapDevice>,
     config: &'static SunsetMutex<SSHConfig>) -> ! {
 
-    demo_common::listener::<_, DemoShell>(stack, config, ()).await
+    demo_common::listener::<_, StdDemo>(stack, config, ()).await
 }
 
 

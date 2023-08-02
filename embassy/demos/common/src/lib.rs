@@ -10,7 +10,7 @@ pub mod config;
 pub mod menu;
 pub mod demo_menu;
 
-pub use server::{Shell, listener};
+pub use server::{DemoServer, listener};
 pub use config::SSHConfig;
 pub use demo_menu::BufOutput;
 

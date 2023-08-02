@@ -77,7 +77,7 @@ async fn run(args: Args) -> Result<()> {
     let ssh_task = spawn_local(async move {
         let mut rxbuf = Zeroizing::new(vec![0; 3000]);
         let mut txbuf = Zeroizing::new(vec![0; 3000]);
-        let cli = SSHClient::new(&mut rxbuf, &mut txbuf)?;
+        let ssh = SSHClient::new(&mut rxbuf, &mut txbuf)?;
 
         let mut app = CmdlineClient::new(
             args.username.as_ref().unwrap(),
@@ -110,27 +110,27 @@ async fn run(args: Args) -> Result<()> {
         let mut rsock = FromTokio::new(rsock);
         let mut wsock = FromTokio::new(wsock);
 
-        let (hooks, mut cmd) = app.split();
+        let (hooks, mut cmdrun) = app.split();
 
         let hooks = Mutex::<SunsetRawMutex, _>::new(hooks);
 
-        let ssh = async {
-            let r = cli.run(&mut rsock, &mut wsock, &hooks).await;
+        // SSH connection future
+        let ssh_fut = async {
+            let r = ssh.run(&mut rsock, &mut wsock, &hooks).await;
             trace!("ssh run finished {r:?}");
             hooks.lock().await.exited().await;
             r
         };
 
-        // Circular reference here, cli -> cmd and cmd->cli
-        let session = cmd.run(&cli);
+        // Client session future
         let session = async {
-            let r = session.await;
+            let r = cmdrun.run(&ssh).await;
             trace!("client session run finished");
-            cli.exit().await;
+            ssh.exit().await;
             r
         };
 
-        let (res_ssh, res_session) = futures::future::join(ssh, session).await;
+        let (res_ssh, res_session) = futures::future::join(ssh_fut, session).await;
         debug!("res_ssh {res_ssh:?}");
         debug!("res_session {res_session:?}");
         res_ssh?;

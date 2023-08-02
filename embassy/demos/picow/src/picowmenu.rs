@@ -41,13 +41,14 @@ const MAX_PW_LEN: usize = 50;
 pub(crate) struct MenuCtx {
     pub out: BufOutput,
     state: &'static GlobalState,
+
+    // true for local serial console menu, false for SSH menu
     local: bool,
 
-    // flags to be handled by the calling async loop
+    // flags to be handled by progress() called from the async loop
     switch_usb1: bool,
     switch_serial1: bool,
     need_save: bool,
-
     logout: bool,
     reset: bool,
     bootsel: bool,
@@ -68,6 +69,9 @@ impl MenuCtx {
         }
     }
 
+    /// Calls a closure with the config.
+    ///
+    /// Any modifications will be saved to flash (on a future `progress()` call).
     fn with_config<F>(&mut self, f: F) -> bool
     where
         F: FnOnce(&mut SSHConfig, &mut BufOutput),
@@ -79,7 +83,12 @@ impl MenuCtx {
                 return false;
             }
         };
+        let prev_config = c.clone();
         f(c.deref_mut(), &mut self.out);
+        // test whether config was modified
+        if *c != prev_config {
+            self.need_save = true
+        }
         true
     }
 
@@ -557,14 +566,12 @@ fn do_key(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx) {
         let _ = writeln!(context, "Bad slot");
         return;
     }
-    context.need_save = true;
 
     let _ = writeln!(context, "todo openssh key parsing");
 }
 
 fn do_clear_key(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx) {
     let _ = writeln!(context, "todo");
-    context.need_save = true;
 }
 
 fn do_console_pw(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx) {
@@ -579,7 +586,6 @@ fn do_console_pw(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx) {
             Err(e) => writeln!(out, "Failed setting, {}", e),
         };
     });
-    context.need_save = true;
 }
 
 // TODO: this is a bit hazardous with the takepipe kickoff mechanism
@@ -592,17 +598,14 @@ fn do_console_noauth(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx
             if c.console_noauth { "yes" } else { "no" }
         );
     });
-    context.need_save = true;
 }
 
 fn do_admin_key(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx) {
     let _ = writeln!(context, "todo");
-    context.need_save = true;
 }
 
 fn do_admin_clear_key(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx) {
     let _ = writeln!(context, "todo");
-    context.need_save = true;
 }
 
 fn do_console_clear_pw(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx) {
@@ -610,7 +613,6 @@ fn do_console_clear_pw(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuC
         let _ = c.set_console_pw(None);
         let _ = writeln!(out, "Disabled console password");
     });
-    context.need_save = true;
 }
 
 fn do_admin_pw(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx) {
@@ -625,7 +627,6 @@ fn do_admin_pw(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx) {
             Err(e) => writeln!(out, "Failed setting, {}", e),
         };
     });
-    context.need_save = true;
 }
 
 fn do_admin_clear_pw(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx) {
@@ -633,7 +634,6 @@ fn do_admin_clear_pw(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx
         let _ = c.set_admin_pw(None);
         let _ = writeln!(out, "Disabled admin password");
     });
-    context.need_save = true;
 }
 
 // fn do_gpio_show(_item: &Item<MenuCtx>, _args: &[&str], context: &mut MenuCtx) {
@@ -649,7 +649,6 @@ fn do_erase_config(_item: &Item<MenuCtx>, _args: &[&str], context: &mut MenuCtx)
             let _ = writeln!(out, "failed: {e}");
         }
     });
-    context.need_save = true;
 }
 
 fn do_logout(_item: &Item<MenuCtx>, _args: &[&str], context: &mut MenuCtx) {
@@ -708,7 +707,6 @@ fn do_wifi_wpa2(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx) {
         c.wifi_net = net.into();
         c.wifi_pw = Some(pw.into())
     });
-    context.need_save = true;
     wifi_entry(context);
 }
 
@@ -721,7 +719,6 @@ fn do_wifi_open(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx) {
         }
         c.wifi_pw = None;
     });
-    context.need_save = true;
     wifi_entry(context);
 }
 
@@ -755,7 +752,6 @@ fn do_net_dhcp(_item: &Item<MenuCtx>, _args: &[&str], context: &mut MenuCtx) {
     context.with_config(|c, out| {
         c.ip4_static = None;
     });
-    context.need_save = true;
 }
 
 fn do_net_static(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx) {
@@ -779,7 +775,6 @@ fn do_net_static(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx) {
             }
         }
     });
-    context.need_save = true;
 }
 
 // Returns an error on EOF etc.
