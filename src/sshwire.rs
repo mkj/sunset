@@ -140,6 +140,15 @@ pub fn write_ssh(target: &mut [u8], value: &dyn SSHEncode) -> Result<usize>
     Ok(s.pos)
 }
 
+#[cfg(feature = "std")]
+pub fn write_ssh_vec(value: &dyn SSHEncode) -> Result<Vec<u8>> {
+    let l = length_enc(value)? as usize;
+    let mut v = vec![0u8; l];
+    let l = write_ssh(&mut v, value)?;
+    debug_assert_eq!(l, v.len());
+    Ok(v)
+}
+
 /// Hashes the SSH wire format representation of `value`, with a `u32` length prefix.
 pub fn hash_ser_length(hash_ctx: &mut impl SSHWireDigestUpdate,
     value: &dyn SSHEncode) -> Result<()>

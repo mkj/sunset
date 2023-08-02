@@ -20,8 +20,8 @@ use sshwire::{SSHEncodeEnum, SSHDecodeEnum};
 use sunset::sign::{OwnedSig, SignKey};
 use sunset::sshnames::*;
 
-/* Must be sufficient for the list of all public keys */
-const BUF_SIZE: usize = 10240;
+// Must be sufficient for the list of all public keys
+const MAX_RESPONSE: usize = 200_000;
 
 #[derive(Debug, SSHEncode)]
 struct AgentSignRequest<'a> {
@@ -115,17 +115,16 @@ impl AgentClient {
         let conn = UnixStream::connect(path).await?;
         Ok(Self {
             conn,
-            buf: vec![0u8; BUF_SIZE],
+            buf: vec![],
         })
     }
 
     async fn request(&mut self, r: AgentRequest<'_>) -> Result<AgentResponse> {
-        let l = sshwire::write_ssh(&mut self.buf, &Blob(r))?;
-        let b = &self.buf[..l];
+        let b = sshwire::write_ssh_vec(&Blob(r))?;
 
         trace!("agent request {:?}", b.hex_dump());
 
-        self.conn.write_all(b).await?;
+        self.conn.write_all(&b).await?;
         self.response().await
     }
 
@@ -133,12 +132,13 @@ impl AgentClient {
         let mut l = [0u8; 4];
         self.conn.read_exact(&mut l).await?;
         let l = u32::from_be_bytes(l) as usize;
-        if l > BUF_SIZE {
-            return Err(Error::msg("Bad buffer size"));
+        if l > MAX_RESPONSE {
+            error!("Response is {l} bytes long");
+            return Err(Error::msg("Too large response"));
         }
-        let b = &mut self.buf[..l];
-        self.conn.read_exact(b).await?;
-        let r: AgentResponse = sshwire::read_ssh(b, None)?;
+        self.buf.resize(l, 0);
+        self.conn.read_exact(&mut self.buf).await?;
+        let r: AgentResponse = sshwire::read_ssh(&self.buf, None)?;
         Ok(r)
     }
 
