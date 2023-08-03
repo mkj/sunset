@@ -8,7 +8,6 @@ MIT or Apache-2.0 license.
 Copyright (c) 2019-2022 Embassy project contributors
 
 embassy/demos/picow/src/wifi.rs
-embassy/demos/std/src/tuntap.rs
 embassy/demos/picow/src/w5500.rs
 
 --

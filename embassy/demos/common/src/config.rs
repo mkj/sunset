@@ -181,7 +181,6 @@ where
         let prefix = SSHDecode::dec(s)?;
         if prefix > 32 {
             // emabassy panics, so test it here
-            debug!("Prefix {} > 32", prefix);
             return Err(WireError::PacketWrong)
         }
         let gw: Option<[u8; 4]> = dec_option(s)?;

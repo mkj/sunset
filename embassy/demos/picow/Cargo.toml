@@ -41,7 +41,7 @@ snafu = { version = "0.7", default-features = false, features = ["rust_1_61"] }
 cortex-m = { version = "0.7.6", features = ["critical-section-single-core"]}
 cortex-m-rt = "0.7.0"
 
-embedded-hal-1 = { package = "embedded-hal", version = "1.0.0-alpha.10" }
+embedded-hal-1 = { package = "embedded-hal", version = "1.0.0-alpha.11" }
 embedded-hal-async = { version = "0.2.0-alpha.1" }
 embedded-io = { version = "0.4", features = ["async", "defmt"] }
 heapless = "0.7.15"

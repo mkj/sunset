@@ -96,32 +96,28 @@ const AUTH_ITEM: Item<BufOutput> = Item {
 };
 
 fn enter_top(context: &mut BufOutput) {
-    writeln!(context, "In setup menu").unwrap();
+    let _ = writeln!(context, "In setup menu").unwrap();
 }
 
 fn enter_auth(context: &mut BufOutput) {
-    writeln!(context, "In auth menu").unwrap();
+    let _ = writeln!(context, "In auth menu").unwrap();
 }
 
 fn do_auth_show(_item: &Item<BufOutput>, _args: &[&str], context: &mut BufOutput) {
-    writeln!(context, "auth key");
+    let _ = writeln!(context, "auth key");
 }
 
 fn do_auth_key(_item: &Item<BufOutput>, _args: &[&str], context: &mut BufOutput) {
-    writeln!(context, "auth key");
+    let _ = writeln!(context, "auth key");
 }
 
 fn do_auth_pw(_item: &Item<BufOutput>, _args: &[&str], context: &mut BufOutput) {
-    writeln!(context, "this is auth pw");
+    let _ = writeln!(context, "this is auth pw");
 }
 
-fn do_gpio_show(_item: &Item<BufOutput>, _args: &[&str], context: &mut BufOutput) {
-    writeln!(context, "gpio show here");
-}
-
-fn do_erase_config(_item: &Item<BufOutput>, args: &[&str], context: &mut BufOutput) {
+fn do_erase_config(_item: &Item<BufOutput>, _args: &[&str], _context: &mut BufOutput) {
 }
 
 fn do_about(_item: &Item<BufOutput>, _args: &[&str], context: &mut BufOutput) {
-    writeln!(context, "Sunset SSH, USB serial\nMatt Johnston <matt@ucc.asn.au>\n");
+    let _ = writeln!(context, "Sunset SSH, USB serial\nMatt Johnston <matt@ucc.asn.au>\n");
 }

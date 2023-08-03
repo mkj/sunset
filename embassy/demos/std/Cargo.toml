@@ -8,7 +8,7 @@ embassy-executor = { version = "0.1.0",  default-features=false, features = ["lo
 embassy-time = { version = "0.1",  default-features=false, features = ["log", "std"] }
 # embassy-net/nightly is required for asynch::Read/Write on TcpReader/TcpWriter
 embassy-net = { version = "0.1.0", features = ["tcp", "dhcpv4", "medium-ethernet", "nightly"] }
-embassy-net-driver = { version = "0.1.0" }
+embassy-net-tuntap = { version = "0.1.0" }
 embassy-sync = { version = "0.2.0" }
 embassy-futures = { version = "0.1.0" }
 atomic-polyfill = "0.1.5"

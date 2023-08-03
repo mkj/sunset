@@ -8,7 +8,7 @@ use {
 };
 
 use embassy_executor::{Spawner, Executor};
-use embassy_net::{Stack, StackResources, Config};
+use embassy_net::{Stack, StackResources};
 use static_cell::StaticCell;
 
 use rand::rngs::OsRng;
@@ -18,13 +18,11 @@ use demo_common::menu::Runner as MenuRunner;
 use embedded_io::asynch::Read;
 use embassy_sync::signal::Signal;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
-
-use crate::tuntap::TunTapDevice;
+use embassy_net_tuntap::TunTapDevice;
 
 use sunset::*;
 use sunset_embassy::{SSHServer, SunsetMutex};
 
-mod tuntap;
 mod setupmenu;
 pub(crate) use sunset_demo_embassy_common as demo_common;
 use crate::demo_common::singleton;
@@ -47,7 +45,7 @@ async fn main_task(spawner: Spawner) {
 
     let config = &*singleton!(  {
         let mut config = SSHConfig::new().unwrap();
-        // config.set_console_pw(Some("pw")).unwrap();
+        config.set_console_pw(Some("pw")).unwrap();
         SunsetMutex::new(config)
     } );
 
@@ -86,7 +84,7 @@ struct StdDemo {
 impl DemoServer for StdDemo {
     type Init = ();
 
-    fn new(init: &Self::Init) -> Self {
+    fn new(_init: &Self::Init) -> Self {
         Default::default()
     }
 
