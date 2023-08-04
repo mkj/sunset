@@ -190,7 +190,7 @@ impl LocalNames {
     }
 
     pub fn first(&self) -> &str {
-        if self.0.len() == 0 {
+        if self.0.is_empty() {
             ""
         } else {
             self.0[0]

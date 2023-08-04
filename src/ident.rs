@@ -24,7 +24,7 @@ pub(crate) fn write_version(buf: &mut [u8]) -> Result<usize> {
     b[0] = CR;
     b[1] = LF;
 
-    return Ok(total_len)
+    Ok(total_len)
 }
 
 /// Parses and stores the remove SSH version string

@@ -16,8 +16,7 @@ use {defmt_rtt as _, panic_probe as _};
 
 use embassy_executor::Spawner;
 use embassy_futures::select::select;
-use embassy_net::Stack;
-use embassy_rp::peripherals::FLASH;
+use embassy_net::{Stack, HardwareAddress, EthernetAddress};
 use embedded_io::asynch::Write as _;
 use embedded_io::{asynch, Io};
 
@@ -71,7 +70,7 @@ async fn main(spawner: Spawner) {
     getrandom::register_custom_getrandom!(caprand::getrandom);
 
     // Configuration loaded from flash
-    let mut flash = embassy_rp::flash::Flash::new(p.FLASH);
+    let mut flash = flashconfig::Fl::new(p.FLASH, p.DMA_CH2);
 
     let config = if option_env!("RESET_CONFIG").is_some() {
         flashconfig::create(&mut flash).unwrap()
@@ -120,7 +119,9 @@ async fn main(spawner: Spawner) {
         )
         .await;
 
-        let net_mac = stack.ethernet_address();
+        let net_mac = match stack.hardware_address() {
+            HardwareAddress::Ethernet(EthernetAddress(eth)) => eth,
+        };
         let g = GlobalState { usb_pipe, serial1_pipe, config, flash, watchdog, net_mac };
         state = singleton!(g);
         for _ in 0..NUM_LISTENERS {
@@ -137,7 +138,9 @@ async fn main(spawner: Spawner) {
         )
         .await;
 
-        let net_mac = stack.ethernet_address();
+        let net_mac = match stack.hardware_address() {
+            HardwareAddress::Ethernet(EthernetAddress(eth)) => eth,
+        };
         let g = GlobalState { usb_pipe, serial1_pipe, config, flash, watchdog, net_mac };
         state = singleton!(g);
         for _ in 0..NUM_LISTENERS {
@@ -176,9 +179,7 @@ pub(crate) struct GlobalState {
     pub serial1_pipe: &'static TakePipe<'static>,
 
     pub config: &'static SunsetMutex<SSHConfig>,
-    pub flash: &'static SunsetMutex<
-        embassy_rp::flash::Flash<'static, FLASH, { flashconfig::FLASH_SIZE }>,
-    >,
+    pub flash: &'static SunsetMutex<flashconfig::Fl<'static>>,
     pub watchdog: &'static SunsetMutex<embassy_rp::watchdog::Watchdog>,
 
     pub net_mac: [u8; 6],

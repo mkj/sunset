@@ -12,7 +12,7 @@ pub use {
 #[cfg(feature = "defmt")]
 pub use defmt::{debug, info, warn, panic, error, trace};
 
-use embassy_rp::flash::{Flash, ERASE_SIZE};
+use embassy_rp::flash::{Flash, Async, ERASE_SIZE};
 use embassy_rp::peripherals::FLASH;
 
 use sha2::Digest;
@@ -29,6 +29,8 @@ use demo_common::SSHConfig;
 // TODO: unify offsets with wifi's romfw feature
 const CONFIG_OFFSET: u32 = 0x150000;
 pub const FLASH_SIZE: usize = 2*1024*1024;
+
+pub(crate) type Fl<'a> = Flash<'a, FLASH, Async, FLASH_SIZE>;
 
 // SSHConfig::CURRENT_VERSION must be bumped if any of this struct changes
 #[derive(SSHEncode, SSHDecode)]
@@ -50,7 +52,7 @@ fn config_hash(config: &SSHConfig) -> Result<[u8; 32]> {
 }
 
 /// Loads a SSHConfig at startup. Good for persisting hostkeys.
-pub fn load_or_create(flash: &mut Flash<'_, FLASH, FLASH_SIZE>) -> Result<SSHConfig> {
+pub fn load_or_create(flash: &mut Fl<'_>) -> Result<SSHConfig> {
     use snafu::Error;
     match load(flash) {
         Ok(c) => {
@@ -64,7 +66,7 @@ pub fn load_or_create(flash: &mut Flash<'_, FLASH, FLASH_SIZE>) -> Result<SSHCon
     create(flash)
 }
 
-pub fn create(flash: &mut Flash<'_, FLASH, FLASH_SIZE>) -> Result<SSHConfig> {
+pub fn create(flash: &mut Fl<'_>) -> Result<SSHConfig> {
     let c = SSHConfig::new()?;
     if let Err(_) = save(flash, &c) {
         warn!("Error writing config");
@@ -72,7 +74,7 @@ pub fn create(flash: &mut Flash<'_, FLASH, FLASH_SIZE>) -> Result<SSHConfig> {
     Ok(c)
 }
 
-pub fn load(flash: &mut Flash<'_, FLASH, FLASH_SIZE>) -> Result<SSHConfig> {
+pub fn load(flash: &mut Fl<'_>) -> Result<SSHConfig> {
     // let mut buf = [0u8; ERASE_SIZE];
     let mut buf = [0u8; FlashConfig::BUF_SIZE];
     flash.read(CONFIG_OFFSET, &mut buf).map_err(|_| Error::msg("flash error"))?;
@@ -102,7 +104,7 @@ pub fn load(flash: &mut Flash<'_, FLASH, FLASH_SIZE>) -> Result<SSHConfig> {
     }
 }
 
-pub fn save(flash: &mut Flash<'_, FLASH, FLASH_SIZE>, config: &SSHConfig) -> Result<()> {
+pub fn save(flash: &mut Fl<'_>, config: &SSHConfig) -> Result<()> {
     let mut buf = [0u8; ERASE_SIZE];
     let sc = FlashConfig {
         version: SSHConfig::CURRENT_VERSION,

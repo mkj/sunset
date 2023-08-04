@@ -64,7 +64,7 @@ impl SSHChaPoly {
         let mut c = Self::cha20(&self.k1, seq);
         c.apply_keystream(&mut b);
         trace!("packet_length {:?}", b.hex_dump());
-        Ok(u32::from_be_bytes(b.try_into().unwrap()))
+        Ok(u32::from_be_bytes(b))
     }
 
     /// Decrypts in-place and validates the MAC.
@@ -87,7 +87,7 @@ impl SSHChaPoly {
         let poly = Poly1305::new((&poly_key).into());
         // compute_unpadded() adds the necessary trailing 1 byte when padding output
         let tag = poly.compute_unpadded(msg);
-        let good: bool = tag.ct_eq(&msg_tag).into();
+        let good: bool = tag.ct_eq(msg_tag).into();
         if !good {
             return Err(Error::BadDecrypt);
         }

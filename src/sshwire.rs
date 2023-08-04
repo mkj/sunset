@@ -246,7 +246,7 @@ impl<'de> SSHSource<'de> for DecodeBytes<'de> {
 // Hashes a slice to be treated as a mpint. Has u32 length prefix
 // and an extra 0x00 byte if the MSB is set.
 pub fn hash_mpint(hash_ctx: &mut dyn SSHWireDigestUpdate, m: &[u8]) {
-    let pad = m.len() > 0 && (m[0] & 0x80) != 0;
+    let pad = !m.is_empty() && (m[0] & 0x80) != 0;
     let l = m.len() as u32 + pad as u32;
     hash_ctx.digest_update(&l.to_be_bytes());
     if pad {
@@ -657,7 +657,7 @@ impl<'de, T: SSHDecode<'de>> SSHDecode<'de> for OwnOrBorrow<'_, T> {
 impl<'a, T> core::borrow::Borrow<T> for OwnOrBorrow<'a, T> {
     fn borrow(&self) -> &T {
         match self {
-            Self::Own(t) => &t,
+            Self::Own(t) => t,
             Self::Borrow(t) => t,
         }
     }

@@ -16,6 +16,7 @@ pub use defmt::{debug, info, warn, panic, error, trace};
 use embassy_rp::gpio::{Level, Output};
 use embassy_rp::pio::Pio;
 use embassy_rp::peripherals::*;
+use embassy_rp::bind_interrupts;
 use embassy_executor::Spawner;
 use embassy_net::{Stack, StackResources};
 
@@ -27,6 +28,10 @@ use rand::RngCore;
 
 use crate::demo_common::singleton;
 use crate::{SunsetMutex, SSHConfig};
+
+bind_interrupts!(struct Irqs {
+    PIO0_IRQ_0 => embassy_rp::pio::InterruptHandler<PIO0>;
+});
 
 #[embassy_executor::task]
 async fn wifi_task(
@@ -52,7 +57,7 @@ pub(crate) async fn wifi_stack(spawner: &Spawner,
 
     let pwr = Output::new(p23, Level::Low);
     let cs = Output::new(p25, Level::High);
-    let mut pio = Pio::new(pio0);
+    let mut pio = Pio::new(pio0, Irqs);
     let spi = PioSpi::new(&mut pio.common, pio.sm0, pio.irq0, cs, p24, p29, dma);
 
     let state = singleton!(cyw43::State::new());
@@ -115,7 +120,6 @@ async fn net_task(stack: &'static Stack<cyw43::NetDriver<'static>>) -> ! {
 
 // Get the WiFi firmware and Country Locale Matrix (CLM) blobs.
 fn get_fw() -> (&'static [u8], &'static [u8]) {
-    #[cfg(not(feature = "romfw"))]
     let (fw, clm) = (
         include_bytes!("../firmware/43439A0.bin"),
         include_bytes!("../firmware/43439A0_clm.bin"),
@@ -127,8 +131,8 @@ fn get_fw() -> (&'static [u8], &'static [u8]) {
     //     probe-rs-cli download 43439A0_clm.bin --format bin --chip RP2040 --base-address 0x10140000
     #[cfg(feature = "romfw")]
     let (fw, clm) = (
-        unsafe { core::slice::from_raw_parts(0x10100000 as *const u8, 224190) },
-        unsafe { core::slice::from_raw_parts(0x10140000 as *const u8, 4752) },
+        unsafe { core::slice::from_raw_parts(0x10100000 as *const u8, fw.len()) },
+        unsafe { core::slice::from_raw_parts(0x10140000 as *const u8, clm.len()) },
         );
 
     (fw, clm)

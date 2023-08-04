@@ -12,12 +12,11 @@ use virtue::parse::{Attribute, AttributeLocation, EnumBody, StructBody};
 use virtue::utils::{parse_tagged_attribute, ParsedAttribute};
 use virtue::prelude::*;
 
-const ENV_SSHWIRE_DEBUG: &'static str = &"SSHWIRE_DEBUG";
+const ENV_SSHWIRE_DEBUG: &str = "SSHWIRE_DEBUG";
 
 #[proc_macro_derive(SSHEncode, attributes(sshwire))]
 pub fn derive_encode(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let r = encode_inner(input).unwrap_or_else(|e| e.into_token_stream());
-    r
+    encode_inner(input).unwrap_or_else(|e| e.into_token_stream())
 }
 
 #[proc_macro_derive(SSHDecode, attributes(sshwire))]
@@ -187,7 +186,7 @@ fn take_field_atts(atts: &[Attribute]) -> Result<Vec<FieldAtt>> {
                             }),
                         };
 
-                        if let Some(_) = g.next() {
+                        if g.next().is_some() {
                             Err(Error::Custom {
                                 error: "Extra unhandled parts".into(),
                                 span: Some(a.tokens.span()),

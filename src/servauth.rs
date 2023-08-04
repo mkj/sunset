@@ -39,7 +39,7 @@ impl ServAuth {
         // TODO: what to do they've already authed? we have to be careful in case
         // behaviours don't handle it well.
 
-        let username = p.username.clone();
+        let username = p.username;
 
         let inner = async {
             // even allows "none" auth
@@ -142,14 +142,14 @@ impl ServAuth {
             Err(_) => return false,
         };
 
-        let msg = auth::AuthSigMsg::new(&p, sess_id);
+        let msg = auth::AuthSigMsg::new(p, sess_id);
         match sig_type.verify(&m.pubkey.0, &&msg, sig) {
             Ok(()) => true,
             Err(e) => { trace!("sig failed  {e}"); false},
         }
     }
 
-    fn avail_methods<'f>(
+    fn avail_methods(
         &self,
         user: TextString,
         b: &mut impl ServBehaviour,

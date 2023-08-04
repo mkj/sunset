@@ -67,7 +67,7 @@ impl<'a, C: CliBehaviour, S: ServBehaviour> Inner<'a, C, S> {
         self.chan_handles[num.0 as usize].as_ref().map(|ch| {
             (&mut self.runner, ch, &mut self.wakers)
         })
-        .ok_or_else(|| Error::bug())
+        .ok_or_else(Error::bug)
     }
 }
 
@@ -166,8 +166,8 @@ impl<'a, C: CliBehaviour, S: ServBehaviour> EmbassySunset<'a, C, S> {
                     break
                 }
                 let mut buf = &buf[..l];
-                while buf.len() > 0 {
-                    let n = self.input(&buf).await?;
+                while !buf.is_empty() {
+                    let n = self.input(buf).await?;
                     buf = &buf[n..];
                 }
             }
@@ -352,7 +352,7 @@ impl<'a, C: CliBehaviour, S: ServBehaviour> EmbassySunset<'a, C, S> {
             // Attempt to lock .inner
             let i = self.inner.lock();
             pin_mut!(i);
-            let r = match i.poll(cx) {
+            match i.poll(cx) {
                 Poll::Ready(mut inner) => {
                     f(&mut inner, cx)
                 }
@@ -360,8 +360,7 @@ impl<'a, C: CliBehaviour, S: ServBehaviour> EmbassySunset<'a, C, S> {
                     // .inner lock is busy
                     Poll::Pending
                 }
-            };
-            r
+            }
         })
         .await
     }
@@ -559,7 +558,7 @@ pub async fn io_buf_copy<R, W>(r: &mut R, w: &mut W) -> Result<()>
 {
     loop {
         let b = r.fill_buf().await?;
-        if b.len() == 0 {
+        if b.is_empty() {
             return sunset::error::ChannelEOF.fail();
         }
         let n = b.len();
@@ -583,7 +582,7 @@ pub async fn io_buf_copy_noreaderror<R, W>(r: &mut R, w: &mut W) -> Result<()>
                 continue;
             }
         };
-        if b.len() == 0 {
+        if b.is_empty() {
             return sunset::error::ChannelEOF.fail();
         }
         let n = b.len();

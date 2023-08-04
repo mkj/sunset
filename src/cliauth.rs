@@ -143,6 +143,7 @@ impl CliAuth {
         &mut self,
         b: &mut impl CliBehaviour,
     ) -> Option<Req> {
+        #[allow(clippy::never_loop)]
         loop {
             let k = b.next_authkey().unwrap_or_else(|_| {
                 warn!("Error getting pubkey for auth");
@@ -241,7 +242,7 @@ impl CliAuth {
 
                     // Sign the packet without the signature
                     let p = last_req.req_packet(&self.username, parse_ctx, None)?;
-                    let new_sig = Self::auth_sig_msg(&key, sess_id, &p, b).await?;
+                    let new_sig = Self::auth_sig_msg(key, sess_id, &p, b).await?;
                     let p = last_req.req_packet(&self.username, parse_ctx, Some(&new_sig))?;
 
                     s.send(p)?;
@@ -306,7 +307,7 @@ impl CliAuth {
     pub fn success(&mut self, b: &mut impl CliBehaviour) -> Result<()> {
         // TODO: check current state? Probably just informational
         self.state = AuthState::Idle;
-        let _ = b.authenticated();
+        b.authenticated();
         // TODO errors
         Ok(())
     }

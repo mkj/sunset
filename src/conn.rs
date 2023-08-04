@@ -161,10 +161,7 @@ impl<C: CliBehaviour, S: ServBehaviour> Conn<C, S> {
     }
 
     pub(crate) fn initial_sent(&self) -> bool {
-        match self.state {
-            ConnState::SendIdent => false,
-            _ => true,
-        }
+        !matches!(self.state, ConnState::SendIdent)
     }
 
     /// Consumes an input payload which is a view into [`traffic::Traffic::rxbuf`].
@@ -188,7 +185,7 @@ impl<C: CliBehaviour, S: ServBehaviour> Conn<C, S> {
             }
             Err(e) => {
                 error!("Error decoding packet: {e}");
-                return Err(e)
+                Err(e)
             }
         }
     }

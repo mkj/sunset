@@ -337,7 +337,7 @@ checksum = "89b2fd2a0dcf38d7971e2194b6b6eebab45ae01067456a7fd93d5547a61b70be"
 [[package]]
 name = "caprand"
 version = "0.1.0"
-source = "git+https://github.com/mkj/caprand#1204da26c3d60f75ae8f522494415cc18c736888"
+source = "git+https://github.com/mkj/caprand#a292401a503b422993ee6052a0f6fd316d6bff5c"
 dependencies = [
  "cortex-m",
  "critical-section 1.1.1",
@@ -346,6 +346,7 @@ dependencies = [
  "log",
  "rand 0.8.5",
  "rand_chacha 0.3.1",
+ "rp-pac",
  "sha2 0.10.7",
 ]
 
@@ -1071,6 +1072,8 @@ dependencies = [
  "critical-section 1.1.1",
  "defmt",
  "embedded-hal 0.2.7",
+ "embedded-hal 1.0.0-alpha.11",
+ "embedded-hal-async",
  "futures-util",
  "heapless",
  "log",

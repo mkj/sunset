@@ -6,21 +6,24 @@ use {
     log::{debug, error, info, log, trace, warn},
 };
 
-use core::num::Wrapping;
 use core::fmt;
 use core::fmt::Debug;
+use core::num::Wrapping;
 
-use aes::{cipher::{BlockSizeUser, KeyIvInit, KeySizeUser, StreamCipher}, Aes256};
-use pretty_hex::PrettyHex;
-use zeroize::ZeroizeOnDrop;
+use aes::{
+    cipher::{BlockSizeUser, KeyIvInit, KeySizeUser, StreamCipher},
+    Aes256,
+};
 use hmac::{Hmac, Mac};
+use pretty_hex::PrettyHex;
 use sha2::Digest as Sha2DigestForTrait;
+use zeroize::ZeroizeOnDrop;
 
 use crate::*;
 use kex::{self, SessId};
+use ssh_chapoly::SSHChaPoly;
 use sshnames::*;
 use sshwire::hash_mpint;
-use ssh_chapoly::SSHChaPoly;
 
 // TODO: check that Ctr32 is sufficient. Should be OK with SSH rekeying.
 type Aes256Ctr32BE = ctr::Ctr32BE<aes::Aes256>;
@@ -79,7 +82,7 @@ impl KeyState {
 
     /// Decrypt bytes 4 onwards of the buffer and validate AEAD Tag or MAC.
     /// Ensures that the packet meets minimum length.
-    pub fn decrypt<'b>(&mut self, buf: &'b mut [u8]) -> Result<usize, Error> {
+    pub fn decrypt(&mut self, buf: &mut [u8]) -> Result<usize, Error> {
         let e = self.keys.decrypt(buf, self.seq_decrypt.0);
         self.seq_decrypt += 1;
         e
@@ -88,8 +91,10 @@ impl KeyState {
     /// [`buf`] is the entire output buffer to encrypt in place.
     /// payload_len is the length of the payload portion
     /// This is stateful, updating the sequence number.
-    pub fn encrypt<'b>(
-        &mut self, payload_len: usize, buf: &'b mut [u8],
+    pub fn encrypt(
+        &mut self,
+        payload_len: usize,
+        buf: &mut [u8],
     ) -> Result<usize, Error> {
         let e = self.keys.encrypt(payload_len, buf, self.seq_encrypt.0);
         self.seq_encrypt += 1;
@@ -149,8 +154,10 @@ impl Keys {
         }
     }
 
-    pub fn derive(kex_out: kex::KexOutput,
-        sess_id: &SessId, algos: &kex::Algos,
+    pub fn derive(
+        kex_out: kex::KexOutput,
+        sess_id: &SessId,
+        algos: &kex::Algos,
     ) -> Result<Self, Error> {
         let mut key = [0u8; MAX_KEY_LEN];
         let mut iv = [0u8; MAX_IV_LEN];
@@ -222,7 +229,9 @@ impl Keys {
     /// Whether bytes `buf[4..block_size]` are decrypted depends on the cipher, they may be
     /// handled later by [`decrypt`]. Bytes `buf[0..4]` may be left unmodified.
     fn decrypt_first_block(
-        &mut self, buf: &mut [u8], seq: u32,
+        &mut self,
+        buf: &mut [u8],
+        seq: u32,
     ) -> Result<usize, Error> {
         if buf.len() < self.dec.size_block() {
             return Err(Error::bug());
@@ -279,9 +288,7 @@ impl Keys {
 
         match &mut self.dec {
             DecKey::ChaPoly(k) => {
-                k.decrypt(seq, data, mac).map_err(|_| {
-                    Error::BadDecrypt
-                })?;
+                k.decrypt(seq, data, mac).map_err(|_| Error::BadDecrypt)?;
             }
             DecKey::Aes256Ctr(a) => {
                 // safe index, checked data.len()
@@ -297,9 +304,7 @@ impl Keys {
                 let mut h = HmacSha256::new_from_slice(&k).trap()?;
                 h.update(&seq.to_be_bytes());
                 h.update(data);
-                h.verify_slice(mac).map_err(|_| {
-                    Error::BadDecrypt
-                })?;
+                h.verify_slice(mac).map_err(|_| Error::BadDecrypt)?;
             }
         }
 
@@ -345,7 +350,10 @@ impl Keys {
     /// Returns the total length.
     /// Ensures that the packet meets minimum and other length requirements.
     fn encrypt(
-        &mut self, payload_len: usize, buf: &mut [u8], seq: u32,
+        &mut self,
+        payload_len: usize,
+        buf: &mut [u8],
+        seq: u32,
     ) -> Result<usize, Error> {
         let size_block = self.enc.size_block();
         let size_integ = self.integ_enc.size_out();
@@ -389,9 +397,7 @@ impl Keys {
         }
 
         match &mut self.enc {
-            EncKey::ChaPoly(k) => {
-                k.encrypt(seq, enc, mac).trap()?
-            }
+            EncKey::ChaPoly(k) => k.encrypt(seq, enc, mac).trap()?,
             EncKey::Aes256Ctr(a) => {
                 a.apply_keystream(enc);
             }
@@ -484,7 +490,9 @@ impl Debug for EncKey {
 impl EncKey {
     /// Construct a key
     pub fn from_cipher<'a>(
-        cipher: &Cipher, key: &'a [u8], iv: &'a [u8],
+        cipher: &Cipher,
+        key: &'a [u8],
+        iv: &'a [u8],
     ) -> Result<Self, Error> {
         match cipher {
             Cipher::ChaPoly => {
@@ -534,7 +542,9 @@ impl Debug for DecKey {
 impl DecKey {
     /// Construct a key
     pub fn from_cipher<'a>(
-        cipher: &Cipher, key: &'a [u8], iv: &'a [u8],
+        cipher: &Cipher,
+        key: &'a [u8],
+        iv: &'a [u8],
     ) -> Result<Self, Error> {
         match cipher {
             Cipher::ChaPoly => {
@@ -616,12 +626,10 @@ impl Debug for IntegKey {
 }
 
 impl IntegKey {
-    pub fn from_integ<'a>(integ: &Integ, key: &'a [u8]) -> Result<Self, Error> {
+    pub fn from_integ(integ: &Integ, key: &[u8]) -> Result<Self, Error> {
         match integ {
             Integ::ChaPoly => Ok(IntegKey::ChaPoly),
-            Integ::HmacSha256 => {
-                Ok(IntegKey::HmacSha256(key.try_into().trap()?))
-            }
+            Integ::HmacSha256 => Ok(IntegKey::HmacSha256(key.try_into().trap()?)),
         }
     }
     pub fn size_out(&self) -> usize {
@@ -635,17 +643,21 @@ impl IntegKey {
 
 #[cfg(test)]
 mod tests {
-    use crate::sunsetlog::*;
     use crate::encrypt::*;
-    use crate::kex::KexOutput;
     use crate::error::Error;
+    use crate::kex::KexOutput;
     use crate::sshnames::SSH_NAME_CURVE25519;
+    use crate::sunsetlog::*;
     #[allow(unused_imports)]
     use pretty_hex::PrettyHex;
     use sha2::Sha256;
 
     // setting `corrupt` tests that incorrect mac is detected
-    fn do_roundtrips(keys_enc: &mut KeyState, keys_dec: &mut KeyState, corrupt: bool) {
+    fn do_roundtrips(
+        keys_enc: &mut KeyState,
+        keys_dec: &mut KeyState,
+        corrupt: bool,
+    ) {
         for i in 0usize..80 {
             let mut v: std::vec::Vec<u8> = (0u8..i as u8 + 60).collect();
             let orig_payload = v[SSH_PAYLOAD_START..SSH_PAYLOAD_START + i].to_vec();
@@ -698,33 +710,33 @@ mod tests {
         // TODO make this combinatorial
         // order is enc, dec
         const COMBOS: [(Cipher, Integ, Cipher, Integ); 4] = [
-            (Cipher::Aes256Ctr, Integ::HmacSha256,
-                Cipher::Aes256Ctr, Integ::HmacSha256),
-
-            (Cipher::ChaPoly, Integ::ChaPoly,
-                Cipher::ChaPoly, Integ::ChaPoly),
-
-            (Cipher::Aes256Ctr, Integ::HmacSha256,
-                Cipher::ChaPoly, Integ::ChaPoly),
-
-            (Cipher::ChaPoly, Integ::ChaPoly,
-                Cipher::Aes256Ctr, Integ::HmacSha256),
+            (
+                Cipher::Aes256Ctr,
+                Integ::HmacSha256,
+                Cipher::Aes256Ctr,
+                Integ::HmacSha256,
+            ),
+            (Cipher::ChaPoly, Integ::ChaPoly, Cipher::ChaPoly, Integ::ChaPoly),
+            (Cipher::Aes256Ctr, Integ::HmacSha256, Cipher::ChaPoly, Integ::ChaPoly),
+            (Cipher::ChaPoly, Integ::ChaPoly, Cipher::Aes256Ctr, Integ::HmacSha256),
         ];
-        COMBOS.iter().map(|(ce, ie, cd, id)| {
-            Some(kex::Algos {
-                kex: kex::SharedSecret::from_name(SSH_NAME_CURVE25519).unwrap(),
-                hostsig: sign::SigType::Ed25519,
-                cipher_enc: ce.clone(),
-                cipher_dec: cd.clone(),
-                integ_enc: ie.clone(),
-                integ_dec: id.clone(),
-                discard_next: false,
-                is_client: false,
-                send_ext_info: true,
+        COMBOS
+            .iter()
+            .map(|(ce, ie, cd, id)| {
+                Some(kex::Algos {
+                    kex: kex::SharedSecret::from_name(SSH_NAME_CURVE25519).unwrap(),
+                    hostsig: sign::SigType::Ed25519,
+                    cipher_enc: ce.clone(),
+                    cipher_dec: cd.clone(),
+                    integ_enc: ie.clone(),
+                    integ_dec: id.clone(),
+                    discard_next: false,
+                    is_client: false,
+                    send_ext_info: true,
+                })
             })
-        })
-        // and plaintext
-        .chain(core::iter::once(None))
+            // and plaintext
+            .chain(core::iter::once(None))
     }
 
     #[test]
@@ -732,13 +744,17 @@ mod tests {
         init_test_log();
 
         for mut algos in algo_combos() {
-
             let mut keys_enc = KeyState::new_cleartext();
             let mut keys_dec = KeyState::new_cleartext();
             if let Some(ref mut algos) = algos {
                 // arbitrary keys
-                let h = SessId::from_slice(&Sha256::digest("some exchange hash".as_bytes())).unwrap();
-                let sess_id = SessId::from_slice(&Sha256::digest("some sessid".as_bytes())).unwrap();
+                let h = SessId::from_slice(&Sha256::digest(
+                    "some exchange hash".as_bytes(),
+                ))
+                .unwrap();
+                let sess_id =
+                    SessId::from_slice(&Sha256::digest("some sessid".as_bytes()))
+                        .unwrap();
                 let sharedkey = b"hello";
                 let ko = KexOutput::new_test(sharedkey, &algos, &h);
                 let ko_b = KexOutput::new_test(sharedkey, &algos, &h);
@@ -755,7 +771,6 @@ mod tests {
                 trace!("algos dec {algos:?}");
                 let newkeys_b = Keys::derive(ko_b, &sess_id, &algos).unwrap();
                 keys_dec.rekey(newkeys_b);
-
             } else {
                 trace!("Trying cleartext");
             }
@@ -772,12 +787,13 @@ mod tests {
     fn max_enc_payload() {
         init_test_log();
         for algos in algo_combos() {
-
             let mut keys = KeyState::new_cleartext();
             if let Some(algos) = algos {
                 // arbitrary keys
-                let h = SessId::from_slice(&Sha256::digest(b"some exchange hash")).unwrap();
-                let sess_id = SessId::from_slice(&Sha256::digest(b"some sessid")).unwrap();
+                let h = SessId::from_slice(&Sha256::digest(b"some exchange hash"))
+                    .unwrap();
+                let sess_id =
+                    SessId::from_slice(&Sha256::digest(b"some sessid")).unwrap();
                 let sharedkey = b"hello";
                 let ko = KexOutput::new_test(sharedkey, &algos, &h);
                 let newkeys = Keys::derive(ko, &sess_id, &algos).unwrap();
@@ -801,7 +817,7 @@ mod tests {
                     assert!(l >= i.saturating_sub(keys.keys.enc.size_block()));
 
                     // check a larger payload would bump the packet size
-                    let l = keys.encrypt(p+1, &mut buf).unwrap();
+                    let l = keys.encrypt(p + 1, &mut buf).unwrap();
                     assert!(l > i);
                 }
             }

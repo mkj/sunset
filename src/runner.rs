@@ -186,8 +186,9 @@ impl<'a, C: CliBehaviour, S: ServBehaviour> Runner<'a, C, S> {
                 return
             }
         }
-        self.input_waker.replace(waker.clone())
-        .map(|w| w.wake());
+        if let Some(w) = self.input_waker.replace(waker.clone()) {
+            w.wake()
+        }
     }
 
     /// Set a waker to be notified when SSH socket output is ready
@@ -197,8 +198,9 @@ impl<'a, C: CliBehaviour, S: ServBehaviour> Runner<'a, C, S> {
                 return
             }
         }
-        self.output_waker.replace(waker.clone())
-        .map(|w| w.wake());
+        if let Some(w) = self.input_waker.replace(waker.clone()) {
+            w.wake()
+        }
     }
 
     pub fn close(&mut self) {
@@ -232,7 +234,7 @@ impl<'a, C: CliBehaviour, S: ServBehaviour> Runner<'a, C, S> {
             return error::ChannelEOF.fail()
         }
 
-        if buf.len() == 0 {
+        if buf.is_empty() {
             return Ok(0)
         }
 

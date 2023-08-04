@@ -317,6 +317,7 @@ where
             Outcome::CommandProcessed
         } else if input == 0x03 {
             // Handling ctrl-c, clear current command
+            let _ = write!(self.context, "\r");
             Outcome::CommandProcessed
         } else if (input == 0x08) || (input == 0x7F) {
             // Handling backspace or delete
@@ -364,8 +365,8 @@ where
         };
         match outcome {
             Outcome::CommandProcessed => {
+                self.prompt(self.used > 0);
                 self.used = 0;
-                self.prompt(true);
             }
             Outcome::NeedMore => {}
         }

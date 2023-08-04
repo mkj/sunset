@@ -32,23 +32,23 @@ pub type SessId = heapless::Vec<u8, MAX_SESSID>;
 use pretty_hex::PrettyHex;
 
 // TODO this will be configurable.
-const fixed_options_kex: &[&'static str] =
+const fixed_options_kex: &[&str] =
     &[SSH_NAME_CURVE25519, SSH_NAME_CURVE25519_LIBSSH];
 
 /// Options that can't be negotiated
-const marker_only_kexs: &[&'static str] =
+const marker_only_kexs: &[&str] =
     &[SSH_NAME_EXT_INFO_C, SSH_NAME_EXT_INFO_S, SSH_NAME_KEXGUESS2];
 
-const fixed_options_hostsig: &[&'static str] = &[
+const fixed_options_hostsig: &[&str] = &[
     SSH_NAME_ED25519,
     #[cfg(feature = "rsa")]
     SSH_NAME_RSA_SHA256,
 ];
 
-const fixed_options_cipher: &[&'static str] =
+const fixed_options_cipher: &[&str] =
     &[SSH_NAME_CHAPOLY, SSH_NAME_AES256_CTR];
-const fixed_options_mac: &[&'static str] = &[SSH_NAME_HMAC_SHA256];
-const fixed_options_comp: &[&'static str] = &[SSH_NAME_NONE];
+const fixed_options_mac: &[&str] = &[SSH_NAME_HMAC_SHA256];
+const fixed_options_comp: &[&str] = &[SSH_NAME_NONE];
 
 pub(crate) struct AlgoConfig {
     kexs: LocalNames,
@@ -193,7 +193,7 @@ impl KexHash {
 
     // Hashes a slice, with added u32 length prefix.
     fn hash_slice(&mut self, v: &[u8]) {
-        self.hash_ctx.update(&(v.len() as u32).to_be_bytes());
+        self.hash_ctx.update((v.len() as u32).to_be_bytes());
         self.hash_ctx.update(v);
     }
 }
@@ -292,7 +292,7 @@ impl Kex {
 
     fn make_kexinit<'a>(cookie: &'a KexCookie, conf: &'a AlgoConfig) -> Packet<'a> {
         packets::KexInit {
-            cookie: cookie,
+            cookie,
             kex: (&conf.kexs).into(),
             hostsig: (&conf.hostsig).into(),
             cipher_c2s: (&conf.ciphers).into(),
@@ -568,7 +568,7 @@ impl SharedSecret {
     }
 
     // server only. consumes algos and kex_hash
-    fn handle_kexdhinit<'a>(
+    fn handle_kexdhinit(
         algos: &mut Algos, mut kex_hash: KexHash,
         p: &packets::KexDHInit,
         s: &mut TrafSend, b: &mut impl ServBehaviour,
@@ -666,18 +666,18 @@ impl KexOutput {
         let (k1, rest) = out.split_at_mut(l);
         let (k2, _) = rest.split_at_mut(len - l);
 
-        let sess_id: &[u8] = &sess_id;
+        let sess_id: &[u8] = sess_id;
 
         let mut hash_ctx = self.partial_hash.clone();
         // K || H is already included
-        hash_ctx.update(&[letter as u8]);
+        hash_ctx.update([letter as u8]);
         hash_ctx.update(sess_id);
         hash_ctx.finalize_into(w.into());
 
         // fill first part
         k1.copy_from_slice(&w[..k1.len()]);
 
-        if k2.len() > 0 {
+        if !k2.is_empty() {
             // generate next block K2 = HASH(K || H || K1)
             let mut hash_ctx = self.partial_hash.clone();
             // K || H is already included

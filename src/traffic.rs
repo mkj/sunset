@@ -164,7 +164,7 @@ impl<'a> TrafIn<'a> {
         // Fill the initial block from either Idle with input,
         // partial initial block
         if let Some(idx) = match self.state {
-            RxState::Idle if r.len() > 0 => Some(0),
+            RxState::Idle if !r.is_empty() => Some(0),
             RxState::ReadInitial { idx } => Some(idx),
             _ => None,
         } {
@@ -346,7 +346,7 @@ impl<'a> TrafOut<'a> {
         }
         let plen = sshwire::write_ssh(&mut wbuf[SSH_PAYLOAD_START..], &p)?;
         trace!("Sending {p:?}");
-        trace!("new {plen} {:?}", (&wbuf[SSH_PAYLOAD_START..SSH_PAYLOAD_START+plen]).hex_dump());
+        trace!("new {plen} {:?}", (wbuf[SSH_PAYLOAD_START..SSH_PAYLOAD_START+plen]).hex_dump());
 
         // Encrypt in place
         let elen = keys.encrypt(plen, wbuf)?;
@@ -356,10 +356,7 @@ impl<'a> TrafOut<'a> {
     }
 
     pub fn is_output_pending(&self) -> bool {
-        match self.state {
-            TxState::Write { .. } => true,
-            _ => false
-        }
+        matches!(self.state, TxState::Write { .. })
     }
 
     /// A simple test if a packet can be sent. `send_allowed` should be used
@@ -389,7 +386,7 @@ impl<'a> TrafOut<'a> {
             return Err(Error::bug());
         }
 
-        let len = ident::write_version(&mut self.buf)?;
+        let len = ident::write_version(self.buf)?;
         self.state = TxState::Write { idx: 0, len };
         Ok(())
     }
@@ -429,7 +426,7 @@ pub(crate) struct TrafSend<'s, 'a> {
 }
 
 impl<'s, 'a> TrafSend<'s, 'a> {
-    fn new<'f>(out: &'s mut TrafOut<'a>, keys: &'s mut KeyState) -> Self {
+    fn new(out: &'s mut TrafOut<'a>, keys: &'s mut KeyState) -> Self {
         Self {
             out,
             keys,

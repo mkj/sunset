@@ -17,8 +17,8 @@ cyw43-pio = { version = "0.1.0", optional = true }
 embassy-net-w5500 = { version = "0.1.0", optional = true }
 
 embassy-executor = { version = "0.2",  features = ["defmt", "integrated-timers", "executor-thread", "arch-cortex-m", "nightly"] }
-embassy-time = { version = "0.1",  features = ["defmt", "defmt-timestamp-uptime"] }
-embassy-rp = { version = "0.1.0",  features = ["defmt", "unstable-traits", "nightly", "unstable-pac"] }
+embassy-time = { version = "0.1",  features = ["defmt", "defmt-timestamp-uptime", "unstable-traits", "nightly"] }
+embassy-rp = { version = "0.1.0",  features = ["defmt", "unstable-traits", "nightly", "unstable-pac", "time-driver"] }
 # embassy-net/nightly is required for asynch::Read/Write on TcpReader/TcpWriter
 embassy-net = { version = "0.1.0", features = ["tcp", "dhcpv4", "medium-ethernet", "nightly"] }
 embassy-net-driver = { version = "0.1.0" }

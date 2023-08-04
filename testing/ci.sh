@@ -62,6 +62,7 @@ cd embassy/demos/picow
 cargo build --release
 cargo bloat --release -n 100 | tee "$OUT/picow-bloat.txt"
 cargo bloat --release --crates | tee "$OUT/picow-bloat-crates.txt"
+cargo build --release --no-default-features --features w5500,romfw
 )
 size target/thumbv6m-none-eabi/release/sunset-demo-embassy-picow | tee "$OUT/picow-size.txt"
 

@@ -163,7 +163,7 @@ impl<C: CliBehaviour, S: ServBehaviour> Channels<C, S> {
         dt: ChanData,
         data: &'b [u8],
     ) -> Result<Packet<'b>> {
-        debug_assert!(data.len() > 0);
+        debug_assert!(!data.is_empty());
 
         let ch = self.get_mut(num)?;
         let send = ch.send.as_mut().trap()?;
@@ -330,9 +330,9 @@ impl<C: CliBehaviour, S: ServBehaviour> Channels<C, S> {
 
                         if matches!(ch.ty, ChanType::Session) {
                             // let the CliBehaviour open a shell etc
-                            let mut opener = SessionOpener::new(&ch, s);
+                            let mut opener = SessionOpener::new(ch, s);
                             let r = b.client()?.session_opened(ch.num(), &mut opener).await;
-                            if let Err(_) = r {
+                            if r.is_err() {
                                 trace!("Error from session_opened");
                             }
                         }
@@ -793,10 +793,7 @@ impl Channel {
     }
 
     fn have_recv_eof(&self) -> bool {
-        match self.state {
-            ChanState::RecvEof | ChanState::RecvClose => true,
-            _ => false,
-        }
+        matches!(self.state, ChanState::RecvEof | ChanState::RecvClose)
     }
 
     fn is_closed(&self) -> bool {

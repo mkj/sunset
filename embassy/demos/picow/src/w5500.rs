@@ -1,4 +1,4 @@
-// Modified from https://github.com/embassy-rs/cyw43/
+// Modified from https://github.com/embassy-rs/embassy/
 // Copyright (c) 2019-2022 Embassy project contributors
 // MIT or Apache-2.0 license
 
@@ -15,6 +15,7 @@ use embassy_net::{Stack, StackResources};
 use embassy_rp::gpio::{Input, Level, Output, Pull};
 use embassy_rp::peripherals::*;
 use embassy_rp::spi::{Async, Config as SpiConfig, Spi};
+use embassy_time::Delay;
 use embedded_hal_async::spi::ExclusiveDevice;
 
 use embassy_net_w5500::*;
@@ -30,7 +31,7 @@ use crate::{SSHConfig, SunsetMutex};
 async fn ethernet_task(
     runner: Runner<
         'static,
-        ExclusiveDevice<Spi<'static, SPI0, Async>, Output<'static, PIN_17>>,
+        ExclusiveDevice<Spi<'static, SPI0, Async>, Output<'static, PIN_17>, Delay>,
         Input<'static, PIN_21>,
         Output<'static, PIN_20>,
     >,
@@ -65,7 +66,7 @@ pub(crate) async fn w5500_stack(
     let (device, runner) = embassy_net_w5500::new(
         mac_addr,
         state,
-        ExclusiveDevice::new(spi, cs),
+        ExclusiveDevice::new(spi, cs, Delay),
         w5500_int,
         w5500_reset,
     )
