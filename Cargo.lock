@@ -2854,6 +2854,7 @@ dependencies = [
  "sunset-demo-embassy-common",
  "sunset-embassy",
  "sunset-sshwire-derive",
+ "usbd-hid",
 ]
 
 [[package]]

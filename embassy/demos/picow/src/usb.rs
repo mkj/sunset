@@ -6,13 +6,15 @@ pub use log::{debug, error, info, log, trace, warn};
 #[cfg(feature = "defmt")]
 pub use defmt::{debug, error, info, panic, trace, warn};
 
-use embassy_futures::join::{join, join3};
-use embassy_rp::usb::{InterruptHandler};
+use embassy_futures::join::{join, join4};
 use embassy_rp::bind_interrupts;
 use embassy_rp::peripherals::USB;
-use embassy_usb::class::cdc_acm::{self, CdcAcmClass, State};
+use embassy_rp::usb::InterruptHandler;
+use embassy_usb::class::cdc_acm::{self, CdcAcmClass};
+use embassy_usb::class::hid::{self, HidReaderWriter};
 use embassy_usb::Builder;
 use embassy_usb_driver::Driver;
+use usbd_hid::descriptor::{KeyboardReport, SerializedDescriptor};
 
 use embedded_io_async::{Read, Write, BufRead, ErrorType};
 
@@ -29,8 +31,7 @@ bind_interrupts!(struct Irqs {
 pub(crate) async fn task(
     usb: embassy_rp::peripherals::USB,
     global: &'static GlobalState,
-) -> !
-{
+) -> ! {
     let driver = embassy_rp::usb::Driver::new(usb, Irqs);
 
     let mut config = embassy_usb::Config::new(0xf055, 0x6053);
@@ -55,8 +56,9 @@ pub(crate) async fn task(
     let mut control_buf = [0; 64];
 
     // lives longer than builder
-    let mut usb_state0 = State::new();
-    let mut usb_state2 = State::new();
+    let mut usb_state0 = cdc_acm::State::new();
+    let mut usb_state2 = cdc_acm::State::new();
+    let mut usb_state4 = hid::State::new();
 
     let mut builder = Builder::new(
         driver,
@@ -69,75 +71,97 @@ pub(crate) async fn task(
 
     // if00
     let cdc0 = CdcAcmClass::new(&mut builder, &mut usb_state0, 64);
-    let (mut cdc0_tx, mut cdc0_rx) = cdc0.split();
     // if02
     let cdc2 = CdcAcmClass::new(&mut builder, &mut usb_state2, 64);
-    let (mut cdc2_tx, mut cdc2_rx) = cdc2.split();
+
+    let hid_config = embassy_usb::class::hid::Config {
+        report_descriptor: KeyboardReport::desc(),
+        request_handler: None,
+        poll_ms: 20,
+        max_packet_size: 64,
+    };
+    let hid =
+        HidReaderWriter::<_, 1, 8>::new(&mut builder, &mut usb_state4, hid_config);
 
     let mut usb = builder.build();
-
 
     // Run the USB device.
     let usb_fut = usb.run();
 
     // console via SSH on if00
-    let io0 = async {
-        let (mut chan_rx, mut chan_tx) = global.usb_pipe.split();
-        let chan_rx = &mut chan_rx;
-        let chan_tx = &mut chan_tx;
-        loop {
-            info!("USB waiting");
-            cdc0_rx.wait_connection().await;
-            info!("USB connected");
-            let mut cdc0_tx = CDCWrite::new(&mut cdc0_tx);
-            let mut cdc0_rx = CDCRead::new(&mut cdc0_rx);
-
-            let io_tx = io_buf_copy(&mut cdc0_rx, chan_tx);
-            let io_rx = io_copy::<64, _, _>(chan_rx, &mut cdc0_tx);
-
-            let _ = join(io_rx, io_tx).await;
-            info!("USB disconnected");
-        }
-    };
+    let io0_run = console_if00_run(&global, cdc0);
 
     // Admin menu on if02
-    let setup = async {
-        'usb: loop {
-            cdc2_rx.wait_connection().await;
-            let mut cdc2_tx = CDCWrite::new(&mut cdc2_tx);
-            let mut cdc2_rx = CDCRead::new(&mut cdc2_rx);
+    let io2_run = menu_if02_run(&global, cdc2);
 
-            // wait for a keystroke before writing anything.
-            let mut c = [0u8];
-            let _ = cdc2_rx.read_exact(&mut c).await;
-            
-            let p = {
-                let c = global.config.lock().await;
-                c.admin_pw.clone()
-            };
+    // keyboard
+    let hid_run = keyboard::run(&global, hid);
 
-            if let Some(p) = p {
-                'pw: loop {
-                    match request_pw(&mut cdc2_tx, &mut cdc2_rx).await {
-                        Ok(pw) => {
-                            if p.check(&pw) {
-                                let _ = cdc2_tx.write_all(b"Good\r\n").await;
-                                break 'pw
-                            }
-                        }
-                        Err(_) => continue 'usb
-                    }
-                }
-            }
-
-            let _ = menu(&mut cdc2_rx, &mut cdc2_tx, true, global).await;
-        }
-    };
-
-    join3(usb_fut, io0, setup).await;
+    join4(usb_fut, io0_run, io2_run, hid_run).await;
     unreachable!()
 }
 
+async fn console_if00_run<'a, D: Driver<'a>>(
+    global: &'static GlobalState,
+    cdc: CdcAcmClass<'a, D>,
+) -> ! {
+    let (mut cdc_tx, mut cdc_rx) = cdc.split();
+    let (mut chan_rx, mut chan_tx) = global.usb_pipe.split();
+    let chan_rx = &mut chan_rx;
+    let chan_tx = &mut chan_tx;
+    loop {
+        info!("USB waiting");
+        cdc_rx.wait_connection().await;
+        info!("USB connected");
+        let mut cdc_tx = CDCWrite::new(&mut cdc_tx);
+        let mut cdc_rx = CDCRead::new(&mut cdc_rx);
+
+        let io_tx = io_buf_copy(&mut cdc_rx, chan_tx);
+        let io_rx = io_copy::<64, _, _>(chan_rx, &mut cdc_tx);
+
+        let _ = join(io_rx, io_tx).await;
+        info!("USB disconnected");
+    }
+}
+
+async fn menu_if02_run<'a, D: Driver<'a>>(
+    global: &'static GlobalState,
+    cdc: CdcAcmClass<'a, D>,
+) -> ! {
+    let (mut cdc_tx, mut cdc_rx) = cdc.split();
+    'usb: loop {
+        cdc_rx.wait_connection().await;
+        let mut cdc_tx = CDCWrite::new(&mut cdc_tx);
+        let mut cdc_rx = CDCRead::new(&mut cdc_rx);
+
+        // wait for a keystroke before writing anything.
+        let mut c = [0u8];
+        let _ = cdc_rx.read_exact(&mut c).await;
+
+        let p = {
+            let c = global.config.lock().await;
+            c.admin_pw.clone()
+        };
+
+        if let Some(p) = p {
+            'pw: loop {
+                match request_pw(&mut cdc_tx, &mut cdc_rx).await {
+                    Ok(pw) => {
+                        if p.check(&pw) {
+                            let _ = cdc_tx.write_all(b"Good\r\n").await;
+                            break 'pw;
+                        }
+                    }
+                    Err(_) => continue 'usb,
+                }
+            }
+        }
+
+        let _ = menu(&mut cdc_rx, &mut cdc_tx, true, global).await;
+    }
+}
+
+// TODO: this could be merged into embassy?
 pub struct CDCRead<'a, 'p, D: Driver<'a>> {
     cdc: &'p mut cdc_acm::Receiver<'a, D>,
     // sufficient for max packet
@@ -164,14 +188,14 @@ impl<'a, D: Driver<'a>> Read for CDCRead<'a, '_, D> {
                 .read_packet(ret)
                 .await
                 .map_err(|_| sunset::Error::ChannelEOF)?;
-            return Ok(n)
+            return Ok(n);
         }
 
         let b = self.fill_buf().await?;
         let n = ret.len().min(b.len());
         (&mut ret[..n]).copy_from_slice(&b[..n]);
         self.consume(n);
-        return Ok(n)
+        return Ok(n);
     }
 }
 

@@ -37,7 +37,8 @@ mod flashconfig;
 mod picowmenu;
 mod serial;
 mod takepipe;
-mod usbserial;
+mod usb;
+mod keyboard;
 #[cfg(feature = "w5500")]
 mod w5500;
 #[cfg(feature = "cyw43")]
@@ -147,7 +148,7 @@ async fn main(spawner: Spawner) {
     }
 
     // USB task requires `state`
-    spawner.spawn(usbserial::task(p.USB, state)).unwrap();
+    spawner.spawn(usb::task(p.USB, state)).unwrap();
 }
 
 // TODO: pool_size should be NUM_LISTENERS but needs a literal
