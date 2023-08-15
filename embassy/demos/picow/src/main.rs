@@ -17,8 +17,7 @@ use {defmt_rtt as _, panic_probe as _};
 use embassy_executor::Spawner;
 use embassy_futures::select::select;
 use embassy_net::{Stack, HardwareAddress, EthernetAddress};
-use embedded_io::asynch::Write as _;
-use embedded_io::{asynch, Io};
+use embedded_io_async::{Write, Read};
 
 use heapless::{String, Vec};
 
@@ -27,7 +26,6 @@ use static_cell::StaticCell;
 use demo_common::menu::Runner as MenuRunner;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::signal::Signal;
-use embedded_io::asynch::Read;
 
 use sunset::*;
 use sunset_embassy::{SSHServer, SunsetMutex};
@@ -203,8 +201,8 @@ async fn menu<R, W>(
     state: &'static GlobalState,
 ) -> Result<()>
 where
-    R: asynch::Read + Io<Error = sunset::Error>,
-    W: asynch::Write + Io<Error = sunset::Error>,
+    R: Read<Error = sunset::Error>,
+    W: Write<Error = sunset::Error>,
 {
     let mut menu_buf = [0u8; 64];
     let menu_ctx = picowmenu::MenuCtx::new(state, local);
@@ -251,8 +249,8 @@ pub(crate) async fn serial<R, W>(
     serial_pipe: &'static TakePipe<'static>,
 ) -> Result<()>
 where
-    R: asynch::Read + Io<Error = sunset::Error>,
-    W: asynch::Write + Io<Error = sunset::Error>,
+    R: Read<Error = sunset::Error>,
+    W: Write<Error = sunset::Error>,
 {
     info!("start serial");
     let (mut rx, mut tx) = serial_pipe.take().await;

@@ -17,7 +17,7 @@ use embassy_net_driver::Driver;
 use embassy_futures::select::{select, Either};
 use embassy_time::{Duration, Timer};
 
-use embedded_io::asynch;
+use embedded_io_async::Write;
 
 use heapless::String;
 
@@ -263,7 +263,7 @@ pub struct BufOutput {
 
 impl BufOutput {
     pub async fn flush<W>(&mut self, w: &mut W) -> Result<()>
-    where W: asynch::Write + embedded_io::Io<Error = sunset::Error>
+    where W: Write<Error = sunset::Error>
     {
         let mut b = self.s.as_str().as_bytes();
         while b.len() > 0 {

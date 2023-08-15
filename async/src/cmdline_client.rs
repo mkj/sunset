@@ -14,7 +14,7 @@ use sunset_embassy::*;
 use std::collections::VecDeque;
 use embassy_sync::channel::{Channel, Sender, Receiver};
 use embassy_sync::signal::Signal;
-use embedded_io::asynch::{Read as _, Write as _};
+use embedded_io_async::{Read as _, Write as _};
 
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;

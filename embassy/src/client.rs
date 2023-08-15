@@ -1,6 +1,6 @@
 use embassy_sync::mutex::Mutex;
 use embassy_sync::blocking_mutex::raw::RawMutex;
-use embedded_io::asynch;
+use embedded_io_async::{Read, Write};
 
 use sunset::*;
 use sunset::behaviour::UnusedServ;
@@ -25,8 +25,8 @@ impl<'a, C: CliBehaviour> SSHClient<'a, C> {
     }
 
     pub async fn run<B: ?Sized, M: RawMutex>(&self,
-        rsock: &mut impl asynch::Read,
-        wsock: &mut impl asynch::Write,
+        rsock: &mut impl Read,
+        wsock: &mut impl Write,
         b: &Mutex<M, B>) -> Result<()>
         where
             for<'f> Behaviour<'f, C, S>: From<&'f mut B>

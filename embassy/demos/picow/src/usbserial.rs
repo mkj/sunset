@@ -14,7 +14,7 @@ use embassy_usb::class::cdc_acm::{self, CdcAcmClass, State};
 use embassy_usb::Builder;
 use embassy_usb_driver::Driver;
 
-use embedded_io::{asynch, Io, asynch::BufRead};
+use embedded_io_async::{Read, Write, BufRead, ErrorType};
 
 use sunset_embassy::*;
 
@@ -153,7 +153,7 @@ impl<'a, 'p, D: Driver<'a>> CDCRead<'a, 'p, D> {
     }
 }
 
-impl<'a, D: Driver<'a>> asynch::Read for CDCRead<'a, '_, D> {
+impl<'a, D: Driver<'a>> Read for CDCRead<'a, '_, D> {
     async fn read(&mut self, ret: &mut [u8]) -> sunset::Result<usize> {
         debug_assert!(self.start < self.end || self.end == 0);
 
@@ -175,7 +175,7 @@ impl<'a, D: Driver<'a>> asynch::Read for CDCRead<'a, '_, D> {
     }
 }
 
-impl<'a, D: Driver<'a>> asynch::BufRead for CDCRead<'a, '_, D> {
+impl<'a, D: Driver<'a>> BufRead for CDCRead<'a, '_, D> {
     async fn fill_buf(&mut self) -> sunset::Result<&[u8]> {
         debug_assert!(self.start < self.end || self.end == 0);
 
@@ -207,7 +207,7 @@ impl<'a, D: Driver<'a>> asynch::BufRead for CDCRead<'a, '_, D> {
     }
 }
 
-impl<'a, D: Driver<'a>> Io for CDCRead<'a, '_, D> {
+impl<'a, D: Driver<'a>> ErrorType for CDCRead<'a, '_, D> {
     type Error = sunset::Error;
 }
 
@@ -219,7 +219,7 @@ impl<'a, 'p, D: Driver<'a>> CDCWrite<'a, 'p, D> {
     }
 }
 
-impl<'a, D: Driver<'a>> asynch::Write for CDCWrite<'a, '_, D> {
+impl<'a, D: Driver<'a>> Write for CDCWrite<'a, '_, D> {
     async fn write(&mut self, buf: &[u8]) -> sunset::Result<usize> {
         // limit to 63 so we can ignore dealing with ZLPs for now
         let b = &buf[..buf.len().min(63)];
@@ -228,6 +228,6 @@ impl<'a, D: Driver<'a>> asynch::Write for CDCWrite<'a, '_, D> {
     }
 }
 
-impl<'a, D: Driver<'a>> Io for CDCWrite<'a, '_, D> {
+impl<'a, D: Driver<'a>> ErrorType for CDCWrite<'a, '_, D> {
     type Error = sunset::Error;
 }

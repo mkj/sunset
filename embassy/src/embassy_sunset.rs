@@ -18,7 +18,7 @@ use embassy_sync::mutex::Mutex;
 use embassy_sync::signal::Signal;
 use embassy_futures::select::select;
 use embassy_futures::join;
-use embedded_io::{asynch, Io};
+use embedded_io_async::{Read, Write, BufRead};
 
 // thumbv6m has no atomic usize add/sub
 use atomic_polyfill::AtomicUsize;
@@ -121,8 +121,8 @@ impl<'a, C: CliBehaviour, S: ServBehaviour> EmbassySunset<'a, C, S> {
     }
 
     pub async fn run<B: ?Sized, M: RawMutex>(&self,
-        rsock: &mut impl asynch::Read,
-        wsock: &mut impl asynch::Write,
+        rsock: &mut impl Read,
+        wsock: &mut impl Write,
         b: &Mutex<M, B>) -> Result<()>
         where
             for<'f> Behaviour<'f, C, S>: From<&'f mut B>
@@ -517,8 +517,8 @@ impl<'a, C: CliBehaviour, S: ServBehaviour> EmbassySunset<'a, C, S> {
 
 
 pub async fn io_copy<const B: usize, R, W>(r: &mut R, w: &mut W) -> Result<()>
-    where R: asynch::Read+Io<Error=sunset::Error>,
-        W: asynch::Write+Io<Error=sunset::Error>
+    where R: Read<Error=sunset::Error>,
+        W: Write<Error=sunset::Error>
 {
     let mut b = [0u8; B];
     loop {
@@ -527,15 +527,15 @@ pub async fn io_copy<const B: usize, R, W>(r: &mut R, w: &mut W) -> Result<()>
             return sunset::error::ChannelEOF.fail();
         }
         let b = &b[..n];
-        w.write_all(b).await?;
+        w.write_all(b).await?
     }
     #[allow(unreachable_code)]
     Ok::<_, Error>(())
 }
 
 pub async fn io_copy_nowriteerror<const B: usize, R, W>(r: &mut R, w: &mut W) -> Result<()>
-    where R: asynch::Read+Io<Error=sunset::Error>,
-        W: asynch::Write,
+    where R: Read<Error=sunset::Error>,
+        W: Write,
 {
     let mut b = [0u8; B];
     loop {
@@ -553,8 +553,8 @@ pub async fn io_copy_nowriteerror<const B: usize, R, W>(r: &mut R, w: &mut W) ->
 }
 
 pub async fn io_buf_copy<R, W>(r: &mut R, w: &mut W) -> Result<()>
-    where R: asynch::BufRead+Io<Error=sunset::Error>,
-        W: asynch::Write+Io<Error=sunset::Error>
+    where R: BufRead<Error=sunset::Error>,
+        W: Write<Error=sunset::Error>
 {
     loop {
         let b = r.fill_buf().await?;
@@ -570,8 +570,8 @@ pub async fn io_buf_copy<R, W>(r: &mut R, w: &mut W) -> Result<()>
 }
 
 pub async fn io_buf_copy_noreaderror<R, W>(r: &mut R, w: &mut W) -> Result<()>
-    where R: asynch::BufRead,
-        W: asynch::Write+Io<Error=sunset::Error>
+    where R: BufRead,
+        W: Write<Error=sunset::Error>
 {
     loop {
         let b = match r.fill_buf().await {

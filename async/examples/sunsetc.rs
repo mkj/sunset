@@ -17,7 +17,7 @@ use sunset_embassy::{SSHClient, SunsetRawMutex};
 
 use sunset_async::{CmdlineClient, AgentClient};
 
-use embedded_io::adapters::FromTokio;
+use embedded_io_adapters::tokio_1::FromTokio;
 
 use zeroize::Zeroizing;
 

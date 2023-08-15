@@ -43,7 +43,7 @@ cortex-m-rt = "0.7.0"
 
 embedded-hal-1 = { package = "embedded-hal", version = "1.0.0-alpha.11" }
 embedded-hal-async = { version = "0.2.0-alpha.1" }
-embedded-io = { version = "0.4", features = ["async", "defmt"] }
+embedded-io-async = "0.5"
 heapless = "0.7.15"
 
 getrandom = { version = "0.2", default-features = false, features = ["custom"]}

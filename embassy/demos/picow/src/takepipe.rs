@@ -10,7 +10,7 @@ pub use defmt::{debug, info, warn, panic, error, trace};
 
 use core::ops::DerefMut;
 
-use embedded_io::{asynch, Io};
+use embedded_io_async::{Write, Read, ErrorType};
 
 use embassy_sync::{pipe, mutex::Mutex, signal::Signal};
 use embassy_sync::pipe::Pipe;
@@ -123,25 +123,25 @@ pub(crate) struct TakePipeWrite<'a> {
     pipe: &'a TakePipeStorage,
 }
 
-impl<'a> asynch::Read for TakePipeRead<'a> {
+impl<'a> Read for TakePipeRead<'a> {
     async fn read(&mut self, buf: &mut [u8]) -> sunset::Result<usize> {
         let r = self.pipe.fanin.read(buf).await;
         Ok(r)
     }
 }
 
-impl<'a> asynch::Write for TakePipeWrite<'a> {
+impl<'a> Write for TakePipeWrite<'a> {
     async fn write(&mut self, buf: &[u8]) -> sunset::Result<usize> {
         let r = self.pipe.fanout.write(buf).await;
         Ok(r)
     }
 }
 
-impl Io for TakePipeRead<'_> {
+impl ErrorType for TakePipeRead<'_> {
     type Error = sunset::Error;
 }
 
-impl Io for TakePipeWrite<'_> {
+impl ErrorType for TakePipeWrite<'_> {
     type Error = sunset::Error;
 }
 
@@ -151,7 +151,7 @@ pub(crate) struct TakeRead<'a> {
     counter: u64,
 }
 
-impl asynch::Read for TakeRead<'_> {
+impl Read for TakeRead<'_> {
 
     async fn read(&mut self, buf: &mut [u8]) -> sunset::Result<usize> {
         let p = self.shared.ok_or(sunset::Error::ChannelEOF)?;
@@ -182,7 +182,7 @@ impl asynch::Read for TakeRead<'_> {
     }
 }
 
-impl Io for TakeRead<'_> {
+impl ErrorType for TakeRead<'_> {
     type Error = sunset::Error;
 }
 
@@ -192,7 +192,7 @@ pub(crate) struct TakeWrite<'a> {
     counter: u64,
 }
 
-impl asynch::Write for TakeWrite<'_> {
+impl Write for TakeWrite<'_> {
     async fn write(&mut self, buf: &[u8]) -> sunset::Result<usize> {
         let p = self.shared.ok_or(sunset::Error::ChannelEOF)?;
 
@@ -222,6 +222,6 @@ impl asynch::Write for TakeWrite<'_> {
     }
 }
 
-impl Io for TakeWrite<'_> {
+impl ErrorType for TakeWrite<'_> {
     type Error = sunset::Error;
 }

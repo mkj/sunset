@@ -5,7 +5,7 @@
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
 
-use embedded_io::{asynch, Io};
+use embedded_io_async::{Read, Write, ErrorType};
 
 use crate::*;
 use embassy_sunset::EmbassySunset;
@@ -50,17 +50,17 @@ impl<C: CliBehaviour, S: ServBehaviour> Clone for ChanIO<'_, C, S> {
     }
 }
 
-impl<C: CliBehaviour, S: ServBehaviour> Io for ChanIO<'_, C, S> {
+impl<C: CliBehaviour, S: ServBehaviour> ErrorType for ChanIO<'_, C, S> {
     type Error = sunset::Error;
 }
 
-impl<'a, C: CliBehaviour, S: ServBehaviour> asynch::Read for ChanIO<'a, C, S> {
+impl<'a, C: CliBehaviour, S: ServBehaviour> Read for ChanIO<'a, C, S> {
     async fn read(&mut self, buf: &mut [u8]) -> Result<usize, sunset::Error> {
         self.sunset.read_channel(self.num, self.dt, buf).await
     }
 }
 
-impl<'a, C: CliBehaviour, S: ServBehaviour> asynch::Write for ChanIO<'a, C, S> {
+impl<'a, C: CliBehaviour, S: ServBehaviour> Write for ChanIO<'a, C, S> {
     async fn write(&mut self, buf: &[u8]) -> Result<usize, sunset::Error> {
         self.sunset.write_channel(self.num, self.dt, buf).await
     }
@@ -146,37 +146,37 @@ impl<'a, C: CliBehaviour, S: ServBehaviour> ChanOut<'a, C, S> {
     }
 }
 
-impl<C: CliBehaviour, S: ServBehaviour> Io for ChanInOut<'_, C, S> {
+impl<C: CliBehaviour, S: ServBehaviour> ErrorType for ChanInOut<'_, C, S> {
     type Error = sunset::Error;
 }
 
-impl<C: CliBehaviour, S: ServBehaviour> Io for ChanIn<'_, C, S> {
+impl<C: CliBehaviour, S: ServBehaviour> ErrorType for ChanIn<'_, C, S> {
     type Error = sunset::Error;
 }
 
-impl<C: CliBehaviour, S: ServBehaviour> Io for ChanOut<'_, C, S> {
+impl<C: CliBehaviour, S: ServBehaviour> ErrorType for ChanOut<'_, C, S> {
     type Error = sunset::Error;
 }
 
-impl<'a, C: CliBehaviour, S: ServBehaviour> asynch::Read for ChanInOut<'a, C, S> {
+impl<'a, C: CliBehaviour, S: ServBehaviour> Read for ChanInOut<'a, C, S> {
     async fn read(&mut self, buf: &mut [u8]) -> Result<usize, sunset::Error> {
         self.0.read(buf).await
     }
 }
 
-impl<'a, C: CliBehaviour, S: ServBehaviour> asynch::Write for ChanInOut<'a, C, S> {
+impl<'a, C: CliBehaviour, S: ServBehaviour> Write for ChanInOut<'a, C, S> {
     async fn write(&mut self, buf: &[u8]) -> Result<usize, sunset::Error> {
         self.0.write(buf).await
     }
 }
 
-impl<'a, C: CliBehaviour, S: ServBehaviour> asynch::Read for ChanIn<'a, C, S> {
+impl<'a, C: CliBehaviour, S: ServBehaviour> Read for ChanIn<'a, C, S> {
     async fn read(&mut self, buf: &mut [u8]) -> Result<usize, sunset::Error> {
         self.0.read(buf).await
     }
 }
 
-impl<'a, C: CliBehaviour, S: ServBehaviour> asynch::Write for ChanOut<'a, C, S> {
+impl<'a, C: CliBehaviour, S: ServBehaviour> Write for ChanOut<'a, C, S> {
     async fn write(&mut self, buf: &[u8]) -> Result<usize, sunset::Error> {
         self.0.write(buf).await
     }

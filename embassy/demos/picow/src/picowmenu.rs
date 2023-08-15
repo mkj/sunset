@@ -9,13 +9,13 @@ pub use log::{debug, error, info, log, trace, warn};
 #[cfg(feature = "defmt")]
 pub use defmt::{debug, error, info, panic, trace, warn};
 
-use core::fmt::{Write, Debug, Display};
+use core::fmt::{Write as _, Debug, Display};
 use core::future::{poll_fn, Future};
 use core::ops::DerefMut;
 use core::sync::atomic::Ordering::{Relaxed, SeqCst};
 use core::str::FromStr;
 
-use embedded_io::{asynch, Io};
+use embedded_io_async::{Write as AsyncWrite, Read as AsyncRead, ErrorType};
 
 use embassy_sync::waitqueue::MultiWakerRegistration;
 use embassy_time::Duration;
@@ -99,8 +99,8 @@ impl MenuCtx {
         mut chanw: &mut W,
     ) -> Result<bool>
     where
-        R: asynch::Read + Io<Error = sunset::Error>,
-        W: asynch::Write + Io<Error = sunset::Error>,
+        R: AsyncRead<Error = sunset::Error>,
+        W: AsyncWrite<Error = sunset::Error>,
     {
         if self.switch_usb1 {
             self.switch_usb1 = false;
@@ -527,7 +527,7 @@ fn endis(v: bool) -> &'static str {
     }
 }
 
-fn prkey(context: &mut dyn Write, name: &str, k: &Option<Ed25519PubKey>) {
+fn prkey(context: &mut dyn core::fmt::Write, name: &str, k: &Option<Ed25519PubKey>) {
     if let Some(k) = k {
         let _ = writeln!(context, "{} ed25519 todo", name);
     } else {
@@ -779,8 +779,8 @@ fn do_net_static(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx) {
 
 // Returns an error on EOF etc.
 pub(crate) async fn request_pw<E>(
-    tx: &mut impl asynch::Write<Error = E>,
-    rx: &mut impl asynch::Read<Error = E>,
+    tx: &mut impl AsyncWrite<Error = E>,
+    rx: &mut impl AsyncRead<Error = E>,
 ) -> Result<String<MAX_PW_LEN>, ()> {
     tx.write_all(b"\r\nEnter Password: ").await.map_err(|_| ())?;
     let mut pw = Vec::<u8, MAX_PW_LEN>::new();

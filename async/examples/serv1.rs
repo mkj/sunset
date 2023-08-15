@@ -18,7 +18,7 @@ use tokio::sync::oneshot;
 use tokio::runtime::Runtime;
 use tokio::task::spawn_local;
 
-use embedded_io::adapters::FromTokio;
+use embedded_io_adapters::tokio_1::FromTokio;
 
 use sunset::*;
 use sunset_embassy::SSHServer;

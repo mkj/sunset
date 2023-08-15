@@ -15,7 +15,7 @@ use rand::rngs::OsRng;
 use rand::RngCore;
 
 use demo_common::menu::Runner as MenuRunner;
-use embedded_io::asynch::Read;
+use embedded_io_async::Read;
 use embassy_sync::signal::Signal;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_net_tuntap::TunTapDevice;
