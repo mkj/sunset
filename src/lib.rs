@@ -6,6 +6,10 @@
 // avoids headscratching
 #![deny(unused_must_use)]
 
+// for the time being silence the lint. need to figure if we actually
+// want to work with Send (not needed for embassy)
+#![allow(async_fn_in_trait)]
+
 // XXX unused_imports only during dev churn
 #![allow(unused_imports)]
 

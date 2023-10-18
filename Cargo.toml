@@ -53,7 +53,7 @@ rsa = { version = "0.8", default-features = false, optional = true, features = [
 # TODO: getrandom feature is a workaround for missing ssh-key dependency with rsa. fixed in pending 0.6
 ssh-key = { version = "0.5", default-features = false, optional = true, features = ["getrandom"] }
 
-embedded-io = { version = "0.5", optional = true }
+embedded-io = { version = "0.6", optional = true }
 
 # for debug printing
 pretty-hex = { version = "0.3", default-features = false }
@@ -88,21 +88,22 @@ x25519-dalek = { git = "https://github.com/mkj/curve25519-dalek", branch = "suns
 # ed25519-dalek = { path = "/home/matt/3rd/rs/crypto/curve25519-dalek/ed25519-dalek" }
 # x25519-dalek = { path = "/home/matt/3rd/rs/crypto/curve25519-dalek/x25519-dalek" }
 
-embassy-executor = { git = "https://github.com/embassy-rs/embassy", rev = "b6b44480457d272aace977e885d5dba252fd2bed" }
-embassy-futures = { git = "https://github.com/embassy-rs/embassy", rev = "b6b44480457d272aace977e885d5dba252fd2bed" }
-embassy-rp = { git = "https://github.com/embassy-rs/embassy", rev = "b6b44480457d272aace977e885d5dba252fd2bed" }
-embassy-usb = { git = "https://github.com/embassy-rs/embassy", rev = "b6b44480457d272aace977e885d5dba252fd2bed" }
-embassy-time = { git = "https://github.com/embassy-rs/embassy", rev = "b6b44480457d272aace977e885d5dba252fd2bed" }
-embassy-usb-driver = { git = "https://github.com/embassy-rs/embassy", rev = "b6b44480457d272aace977e885d5dba252fd2bed" }
+embassy-executor = { git = "https://github.com/embassy-rs/embassy", rev = "d496a1213c70cdabf12c802e8d39ea6abbce6720" }
+embassy-time = { git = "https://github.com/embassy-rs/embassy", rev = "d496a1213c70cdabf12c802e8d39ea6abbce6720" }
+embassy-futures = { git = "https://github.com/embassy-rs/embassy", rev = "d496a1213c70cdabf12c802e8d39ea6abbce6720" }
+embassy-rp = { git = "https://github.com/embassy-rs/embassy", rev = "d496a1213c70cdabf12c802e8d39ea6abbce6720" }
+embassy-usb = { git = "https://github.com/embassy-rs/embassy", rev = "d496a1213c70cdabf12c802e8d39ea6abbce6720" }
+embassy-sync = { git = "https://github.com/embassy-rs/embassy", rev = "d496a1213c70cdabf12c802e8d39ea6abbce6720" }
+embassy-usb-driver = { git = "https://github.com/embassy-rs/embassy", rev = "d496a1213c70cdabf12c802e8d39ea6abbce6720" }
 # for cyw43
-embassy-net = { git = "https://github.com/embassy-rs/embassy", rev = "b6b44480457d272aace977e885d5dba252fd2bed" }
-embassy-net-driver-channel = { git = "https://github.com/embassy-rs/embassy", rev = "b6b44480457d272aace977e885d5dba252fd2bed" }
-embassy-net-driver = { git = "https://github.com/embassy-rs/embassy", rev = "b6b44480457d272aace977e885d5dba252fd2bed" }
-embassy-net-tuntap = { git = "https://github.com/embassy-rs/embassy", rev = "b6b44480457d272aace977e885d5dba252fd2bed" }
+embassy-net = { git = "https://github.com/embassy-rs/embassy", rev = "d496a1213c70cdabf12c802e8d39ea6abbce6720" }
+embassy-net-driver-channel = { git = "https://github.com/embassy-rs/embassy", rev = "d496a1213c70cdabf12c802e8d39ea6abbce6720" }
+embassy-net-driver = { git = "https://github.com/embassy-rs/embassy", rev = "d496a1213c70cdabf12c802e8d39ea6abbce6720" }
+embassy-net-tuntap = { git = "https://github.com/embassy-rs/embassy", rev = "d496a1213c70cdabf12c802e8d39ea6abbce6720" }
 
-cyw43 = { git = "https://github.com/embassy-rs/embassy/", rev = "b6b44480457d272aace977e885d5dba252fd2bed" }
-cyw43-pio = { git = "https://github.com/embassy-rs/embassy/", rev = "b6b44480457d272aace977e885d5dba252fd2bed" }
-embassy-net-w5500 = { git = "https://github.com/embassy-rs/embassy/", rev = "b6b44480457d272aace977e885d5dba252fd2bed" }
+cyw43 = { git = "https://github.com/embassy-rs/embassy/", rev = "d496a1213c70cdabf12c802e8d39ea6abbce6720" }
+cyw43-pio = { git = "https://github.com/embassy-rs/embassy/", rev = "d496a1213c70cdabf12c802e8d39ea6abbce6720" }
+embassy-net-wiznet = { git = "https://github.com/embassy-rs/embassy/", rev = "d496a1213c70cdabf12c802e8d39ea6abbce6720" }
 
 # embassy-net = { path = "/home/matt/3rd/rs/embassy/embassy-net" }
 # embassy-net-driver = { path = "/home/matt/3rd/rs/embassy/embassy-net-driver" }

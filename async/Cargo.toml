@@ -16,12 +16,10 @@ argh = "0.1"
 
 ssh-key = { version = "0.5", default-features = false, features = [ "std"] }
 
-embassy-sync = { version = "0.2.0" }
+embassy-sync = { version = "0.3.0" }
 embassy-futures = { version = "0.1.0" }
 
-# async feature requires nightly for async fn in trait
-# https://github.com/rust-lang/rust/issues/91611
-embedded-io-async = "0.5"
+embedded-io-async = "0.6"
 
 # "net" for AsyncFd on unix
 tokio = { version = "1.25", features = ["net", "io-util", "signal"] }
@@ -49,7 +47,7 @@ zeroize = "1.5"
 tokio = { version = "1.17", features = ["full"] }
 
 # adapters for tokio and async-std
-embedded-io-adapters = { version = "0.5", features = ["tokio-1"] }
+embedded-io-adapters = { version = "0.6", features = ["tokio-1"] }
 
 simplelog = "0.12"
 # for simplelog

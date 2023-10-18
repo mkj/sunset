@@ -14,16 +14,16 @@ cyw43-pio = { version = "0.1.0", optional = true }
 # cyw43 = { path = "/home/matt/3rd/rs/cyw43", features = ["defmt"] }
 # cyw43-pio = { path = "/home/matt/3rd/rs/cyw43/cyw43-pio" }
 
-embassy-net-w5500 = { version = "0.1.0", optional = true }
+embassy-net-wiznet = { version = "0.1.0", optional = true }
 
-embassy-executor = { version = "0.2",  features = ["defmt", "integrated-timers", "executor-thread", "arch-cortex-m", "nightly"] }
+embassy-executor = { version = "0.3",  features = ["defmt", "integrated-timers", "executor-thread", "arch-cortex-m", "nightly"] }
 embassy-time = { version = "0.1",  features = ["defmt", "defmt-timestamp-uptime", "unstable-traits", "nightly"] }
 embassy-rp = { version = "0.1.0",  features = ["defmt", "unstable-traits", "nightly", "unstable-pac", "time-driver"] }
 # embassy-net/nightly is required for asynch::Read/Write on TcpReader/TcpWriter
-embassy-net = { version = "0.1.0", features = ["tcp", "dhcpv4", "medium-ethernet", "nightly"] }
-embassy-net-driver = { version = "0.1.0" }
+embassy-net = { version = "0.2.0", features = ["tcp", "dhcpv4", "medium-ethernet", "nightly"] }
+embassy-net-driver = { version = "0.2.0" }
 embassy-usb-driver = { version = "0.1.0" }
-embassy-sync = { version = "0.2.0" }
+embassy-sync = { version = "0.3.0" }
 embassy-futures = { version = "0.1.0" }
 embassy-usb = { version = "0.1.0" }
 atomic-polyfill = "0.1.5"
@@ -42,8 +42,10 @@ cortex-m = { version = "0.7.6", features = ["critical-section-single-core"]}
 cortex-m-rt = "0.7.0"
 
 embedded-hal-1 = { package = "embedded-hal", version = "1.0.0-alpha.11" }
-embedded-hal-async = { version = "0.2.0-alpha.1" }
-embedded-io-async = "0.5"
+embedded-hal-async = { version = "1.0.0-alpha.10" }
+embedded-hal-bus = { version = "0.1.0-rc.1", features = ["async"], optional = true }
+embedded-io-async = "0.6"
+embedded-storage-async = { version = "0.4.0" }
 heapless = "0.7.15"
 
 getrandom = { version = "0.2", default-features = false, features = ["custom"]}
@@ -70,7 +72,7 @@ defmt = ["dep:defmt", "sunset/defmt", "sunset-embassy/defmt", "smoltcp/defmt"]
 # for pico w board
 cyw43 = ["dep:cyw43", "dep:cyw43-pio"]
 # for wiznet w5500-evb-pico board
-w5500 = ["dep:embassy-net-w5500"]
+w5500 = ["dep:embassy-net-wiznet", "dep:embedded-hal-bus"]
 
 # Use cyw43 firmware already on flash. This saves time when developing.
 # probe-rs-cli download firmware/43439A0.bin --format bin --chip RP2040 --base-address 0x10100000

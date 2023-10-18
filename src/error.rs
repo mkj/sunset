@@ -204,16 +204,6 @@ impl embedded_io::Error for Error {
     }
 }
 
-#[cfg(feature = "embedded-io")]
-impl From<embedded_io::WriteAllError<Error>> for Error {
-    fn from(e: embedded_io::WriteAllError<Error>) -> Error {
-        match e {
-            embedded_io::WriteAllError::WriteZero => ChannelEOF.build(),
-            embedded_io::WriteAllError::Other(e) => e,
-        }
-    }
-}
-
 pub type Result<T, E = Error> = core::result::Result<T, E>;
 
 pub trait TrapBug<T> {

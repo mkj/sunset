@@ -22,6 +22,7 @@ use core::borrow::Borrow;
 use sunset_sshwire_derive::*;
 use sunset::sshwire;
 use sunset::sshwire::OwnOrBorrow;
+use embedded_storage_async::nor_flash::NorFlash;
 
 use crate::demo_common;
 use demo_common::SSHConfig;
@@ -52,9 +53,9 @@ fn config_hash(config: &SSHConfig) -> Result<[u8; 32]> {
 }
 
 /// Loads a SSHConfig at startup. Good for persisting hostkeys.
-pub fn load_or_create(flash: &mut Fl<'_>) -> Result<SSHConfig> {
+pub async fn load_or_create(flash: &mut Fl<'_>) -> Result<SSHConfig> {
     use snafu::Error;
-    match load(flash) {
+    match load(flash).await {
         Ok(c) => {
             info!("Good existing config");
             return Ok(c)
@@ -63,21 +64,21 @@ pub fn load_or_create(flash: &mut Fl<'_>) -> Result<SSHConfig> {
         Err(e) => info!("Existing config bad, making new. {}", e.description()),
     }
 
-    create(flash)
+    create(flash).await
 }
 
-pub fn create(flash: &mut Fl<'_>) -> Result<SSHConfig> {
+pub async fn create(flash: &mut Fl<'_>) -> Result<SSHConfig> {
     let c = SSHConfig::new()?;
-    if let Err(_) = save(flash, &c) {
+    if let Err(_) = save(flash, &c).await {
         warn!("Error writing config");
     }
     Ok(c)
 }
 
-pub fn load(flash: &mut Fl<'_>) -> Result<SSHConfig> {
+pub async fn load(flash: &mut Fl<'_>) -> Result<SSHConfig> {
     // let mut buf = [0u8; ERASE_SIZE];
     let mut buf = [0u8; FlashConfig::BUF_SIZE];
-    flash.read(CONFIG_OFFSET, &mut buf).map_err(|_| Error::msg("flash error"))?;
+    flash.read(CONFIG_OFFSET, &mut buf).await.map_err(|_| Error::msg("flash error"))?;
 
     // use pretty_hex::PrettyHex;
     // use core::fmt::Write;
@@ -104,7 +105,7 @@ pub fn load(flash: &mut Fl<'_>) -> Result<SSHConfig> {
     }
 }
 
-pub fn save(flash: &mut Fl<'_>, config: &SSHConfig) -> Result<()> {
+pub async fn save(flash: &mut Fl<'_>, config: &SSHConfig) -> Result<()> {
     let mut buf = [0u8; ERASE_SIZE];
     let sc = FlashConfig {
         version: SSHConfig::CURRENT_VERSION,
@@ -122,10 +123,11 @@ pub fn save(flash: &mut Fl<'_>, config: &SSHConfig) -> Result<()> {
 
     trace!("flash erase");
     flash.erase(CONFIG_OFFSET, CONFIG_OFFSET + ERASE_SIZE as u32)
+    .await
     .map_err(|_| Error::msg("flash erase error"))?;
 
     trace!("flash write");
-    flash.write(CONFIG_OFFSET, &buf)
+    flash.write(CONFIG_OFFSET, &buf).await
     .map_err(|_| Error::msg("flash write error"))?;
 
     info!("flash save done");

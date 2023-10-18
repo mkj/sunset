@@ -16,7 +16,7 @@ use embassy_sync::{pipe, mutex::Mutex, signal::Signal};
 use embassy_sync::pipe::Pipe;
 use embassy_futures::select::{select, Either};
 
-use sunset_embassy::{SunsetMutex, SunsetRawMutex};
+use sunset_embassy::SunsetRawMutex;
 
 pub const READ_SIZE: usize = 4000;
 pub const WRITE_SIZE: usize = 64;
@@ -37,7 +37,6 @@ pub const WRITE_SIZE: usize = 64;
 pub(crate) struct TakePipeStorage {
 	fanout: Pipe<SunsetRawMutex, READ_SIZE>,
     fanin: Pipe<SunsetRawMutex, WRITE_SIZE>,
-    wake: Signal<SunsetRawMutex, ()>,
 }
 
 impl TakePipeStorage {
@@ -45,11 +44,15 @@ impl TakePipeStorage {
         Default::default()
     }
 
-    pub fn pipe(&self) -> TakePipe {
+    pub fn build(&mut self) -> TakePipe {
+        let (fanout_r, fanout_w) = self.fanout.split();
+        let (fanin_r, fanin_w) = self.fanin.split();
         TakePipe {
-            shared_read: Mutex::new((0, self.fanout.reader())),
-            shared_write: Mutex::new((0, self.fanin.writer())),
-            pipe: self,
+            shared_read: Mutex::new((0, fanout_r)),
+            shared_write: Mutex::new((0, fanin_w)),
+            reader: fanin_r,
+            writer: fanout_w,
+            wake: Signal::new(),
         }
     }
 }
@@ -59,21 +62,24 @@ impl Default for TakePipeStorage {
         Self {
             fanout: Pipe::new(),
             fanin: Pipe::new(),
-            wake: Signal::new(),
         }
     }
 }
 
 pub(crate) struct TakePipe<'a> {
+    // fanout
     shared_read: Mutex<SunsetRawMutex, (u64, pipe::Reader<'a, SunsetRawMutex, READ_SIZE>)>,
+    writer: pipe::Writer<'a, SunsetRawMutex, READ_SIZE>,
+    // fanin
+    reader: pipe::Reader<'a, SunsetRawMutex, WRITE_SIZE>,
     shared_write: Mutex<SunsetRawMutex, (u64, pipe::Writer<'a, SunsetRawMutex, WRITE_SIZE>)>,
-    pipe: &'a TakePipeStorage,
+    wake: Signal<SunsetRawMutex, ()>,
 }
 
 impl<'a> TakePipe<'a> {
     pub async fn take(&'a self) -> (TakeRead<'a>, TakeWrite<'a>) {
 
-        self.pipe.wake.signal(());
+        self.wake.signal(());
         let mut lr = self.shared_read.lock().await;
         let (cr, _r) = lr.deref_mut();
         let mut lw = self.shared_write.lock().await;
@@ -85,16 +91,14 @@ impl<'a> TakePipe<'a> {
         // that wouldn't deal with data that has already progressed
         // further along out the SSH channel etc. So we leave that
         // for high levels to deal with if needed.
-        self.pipe.wake.reset();
+        self.wake.reset();
 
         let r = TakeRead {
-            pipe: self.pipe,
-            shared: Some(&self.shared_read),
+            pipe: Some(self),
             counter: *cr,
         };
         let w = TakeWrite {
-            pipe: self.pipe,
-            shared: Some(&self.shared_write),
+            pipe: Some(self),
             counter: *cw,
         };
         (r, w)
@@ -106,33 +110,33 @@ impl<'a> TakePipe<'a> {
 
     pub fn split(&'a self) -> (TakePipeRead<'a>, TakePipeWrite<'a>) {
         let r = TakePipeRead {
-            pipe: self.pipe,
+            pipe: self,
         };
         let w = TakePipeWrite {
-            pipe: self.pipe,
+            pipe: self,
         };
         (r, w)
     }
 }
 
 pub(crate) struct TakePipeRead<'a> {
-    pipe: &'a TakePipeStorage,
+    pipe: &'a TakePipe<'a>,
 }
 
 pub(crate) struct TakePipeWrite<'a> {
-    pipe: &'a TakePipeStorage,
+    pipe: &'a TakePipe<'a>,
 }
 
 impl<'a> Read for TakePipeRead<'a> {
     async fn read(&mut self, buf: &mut [u8]) -> sunset::Result<usize> {
-        let r = self.pipe.fanin.read(buf).await;
+        let r = self.pipe.reader.read(buf).await;
         Ok(r)
     }
 }
 
 impl<'a> Write for TakePipeWrite<'a> {
     async fn write(&mut self, buf: &[u8]) -> sunset::Result<usize> {
-        let r = self.pipe.fanout.write(buf).await;
+        let r = self.pipe.writer.write(buf).await;
         Ok(r)
     }
 }
@@ -146,18 +150,17 @@ impl ErrorType for TakePipeWrite<'_> {
 }
 
 pub(crate) struct TakeRead<'a> {
-    pipe: &'a TakePipeStorage,
-    shared: Option<&'a SunsetMutex<(u64, pipe::Reader<'a, SunsetRawMutex, READ_SIZE>)>>,
+    pipe: Option<&'a TakePipe<'a>>,
     counter: u64,
 }
 
 impl Read for TakeRead<'_> {
 
     async fn read(&mut self, buf: &mut [u8]) -> sunset::Result<usize> {
-        let p = self.shared.ok_or(sunset::Error::ChannelEOF)?;
+        let p = self.pipe.ok_or(sunset::Error::ChannelEOF)?;
 
         let op = async {
-            let mut p = p.lock().await;
+            let mut p = p.shared_read.lock().await;
             let (c, o) = p.deref_mut();
             if *c != self.counter {
                 return Err(sunset::Error::ChannelEOF);
@@ -167,7 +170,7 @@ impl Read for TakeRead<'_> {
 
         let r = select(
             op,
-            self.pipe.wake.wait(),
+            p.wake.wait(),
         );
 
         match r.await {
@@ -175,7 +178,7 @@ impl Read for TakeRead<'_> {
             Either::First(l) => l,
             // lost the pipe
             Either::Second(()) => {
-                self.shared = None;
+                self.pipe = None;
                 Err(sunset::Error::ChannelEOF)
             }
         }
@@ -187,17 +190,16 @@ impl ErrorType for TakeRead<'_> {
 }
 
 pub(crate) struct TakeWrite<'a> {
-    pipe: &'a TakePipeStorage,
-    shared: Option<&'a SunsetMutex<(u64, pipe::Writer<'a, SunsetRawMutex, WRITE_SIZE>)>>,
+    pipe: Option<&'a TakePipe<'a>>,
     counter: u64,
 }
 
 impl Write for TakeWrite<'_> {
     async fn write(&mut self, buf: &[u8]) -> sunset::Result<usize> {
-        let p = self.shared.ok_or(sunset::Error::ChannelEOF)?;
+        let p = self.pipe.ok_or(sunset::Error::ChannelEOF)?;
 
         let op = async {
-            let mut p = p.lock().await;
+            let mut p = p.shared_write.lock().await;
             let (c, o) = p.deref_mut();
             if *c != self.counter {
                 return Err(sunset::Error::ChannelEOF);
@@ -207,7 +209,7 @@ impl Write for TakeWrite<'_> {
 
         let r = select(
             op,
-            self.pipe.wake.wait(),
+            p.wake.wait(),
         );
 
         match r.await {
@@ -215,7 +217,7 @@ impl Write for TakeWrite<'_> {
             Either::First(l) => l,
             // lost the pipe
             Either::Second(_) => {
-                self.shared = None;
+                self.pipe = None;
                 Err(sunset::Error::ChannelEOF)
             }
         }

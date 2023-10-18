@@ -72,9 +72,9 @@ async fn main(spawner: Spawner) {
     let mut flash = flashconfig::Fl::new(p.FLASH, p.DMA_CH2);
 
     let config = if option_env!("RESET_CONFIG").is_some() {
-        flashconfig::create(&mut flash).unwrap()
+        flashconfig::create(&mut flash).await.unwrap()
     } else {
-        flashconfig::load_or_create(&mut flash).unwrap()
+        flashconfig::load_or_create(&mut flash).await.unwrap()
     };
     let flash = &*singleton!(SunsetMutex::new(flash));
     let config = &*singleton!(SunsetMutex::new(config));
@@ -82,13 +82,13 @@ async fn main(spawner: Spawner) {
     // A shared pipe to a local USB-serial (CDC)
     let usb_pipe = {
         let p = singleton!(takepipe::TakePipeStorage::new());
-        singleton!(p.pipe())
+        singleton!(p.build())
     };
 
     // A shared pipe to a local uart
     let serial1_pipe = {
         let s = singleton!(takepipe::TakePipeStorage::new());
-        singleton!(s.pipe())
+        singleton!(s.build())
     };
     spawner
         .spawn(serial::task(
@@ -165,7 +165,7 @@ async fn cyw43_listener(
 #[cfg(feature = "w5500")]
 #[embassy_executor::task(pool_size = 4)]
 async fn w5500_listener(
-    stack: &'static Stack<embassy_net_w5500::Device<'static>>,
+    stack: &'static Stack<embassy_net_wiznet::Device<'static>>,
     config: &'static SunsetMutex<SSHConfig>,
     global: &'static GlobalState,
 ) -> ! {

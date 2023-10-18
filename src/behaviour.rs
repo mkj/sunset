@@ -234,7 +234,7 @@ pub trait ServBehaviour {
     // TODO: change password
     /// Implementations should perform password hash comparisons
     /// in constant time, using
-    /// [`subtle::ConstantTimeEq`](subtle::ConstantTimeEq) or similar.
+    /// [`subtle::ConstantTimeEq`] or similar.
     ///
     /// Implementations may need to take care to avoid leaking user existence
     /// based on timing.

@@ -329,7 +329,7 @@ impl<'a> CmdlineRunner<'a> {
             }
 
             select_biased! {
-                msg = self.notify.recv().fuse() => {
+                msg = self.notify.receive().fuse() => {
                     match msg {
                         Msg::Authed => {
                             if !matches!(self.state, CmdlineState::PreAuth) {

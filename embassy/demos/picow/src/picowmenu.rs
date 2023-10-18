@@ -147,7 +147,7 @@ impl MenuCtx {
 
             let conf = self.state.config.lock().await;
             let mut fl = self.state.flash.lock().await;
-            if let Err(_e) = flashconfig::save(&mut fl, &conf) {
+            if let Err(_e) = flashconfig::save(&mut fl, &conf).await {
                 warn!("Error writing flash");
             }
         }

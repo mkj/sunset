@@ -16,9 +16,9 @@ use embassy_rp::gpio::{Input, Level, Output, Pull};
 use embassy_rp::peripherals::*;
 use embassy_rp::spi::{Async, Config as SpiConfig, Spi};
 use embassy_time::Delay;
-use embedded_hal_async::spi::ExclusiveDevice;
+use embedded_hal_bus::spi::ExclusiveDevice;
 
-use embassy_net_w5500::*;
+use embassy_net_wiznet::*;
 
 use static_cell::make_static;
 
@@ -31,6 +31,7 @@ use crate::{SSHConfig, SunsetMutex};
 async fn ethernet_task(
     runner: Runner<
         'static,
+        embassy_net_wiznet::chip::W5500,
         ExclusiveDevice<Spi<'static, SPI0, Async>, Output<'static, PIN_17>, Delay>,
         Input<'static, PIN_21>,
         Output<'static, PIN_20>,
@@ -51,7 +52,7 @@ pub(crate) async fn w5500_stack(
     dma1: DMA_CH1,
     spi0: SPI0,
     config: &'static SunsetMutex<SSHConfig>,
-) -> &'static embassy_net::Stack<embassy_net_w5500::Device<'static>> {
+) -> &'static embassy_net::Stack<embassy_net_wiznet::Device<'static>> {
     let mut spi_cfg = SpiConfig::default();
     spi_cfg.frequency = 50_000_000;
     let (miso, mosi, clk) = (p16, p19, p18);
@@ -63,7 +64,7 @@ pub(crate) async fn w5500_stack(
     let mac_addr = config.lock().await.mac;
     // 
     let state = make_static!(State::<8, 8>::new());
-    let (device, runner) = embassy_net_w5500::new(
+    let (device, runner) = embassy_net_wiznet::new(
         mac_addr,
         state,
         ExclusiveDevice::new(spi, cs, Delay),
