@@ -20,6 +20,10 @@ OUT="$(realpath ci_out)"
 which cargo-bloat > /dev/null || cargo install cargo-bloat
 if [ -z "$OFFLINE" ]; then
     rustup toolchain add nightly
+    (
+    cd embassy/demos/picow
+    rustup target add thumbv6m-none-eabi
+    )
 fi
 
 # stable - disabled now due to async fn in Behaviour
