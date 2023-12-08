@@ -15,7 +15,6 @@ use heapless::Vec;
 use crate::*;
 use sshnames::*;
 use client::Client;
-use encrypt::KeyState;
 use packets::{Packet,ParseContext};
 use server::Server;
 use traffic::TrafSend;

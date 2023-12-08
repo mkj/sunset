@@ -37,7 +37,8 @@ const fixed_options_kex: &[&str] =
 
 /// Options that can't be negotiated
 const marker_only_kexs: &[&str] =
-    &[SSH_NAME_EXT_INFO_C, SSH_NAME_EXT_INFO_S, SSH_NAME_KEXGUESS2];
+    &[SSH_NAME_EXT_INFO_C, SSH_NAME_EXT_INFO_S, SSH_NAME_KEXGUESS2,
+    SSH_NAME_STRICT_KEX_C, SSH_NAME_STRICT_KEX_S];
 
 const fixed_options_hostsig: &[&str] = &[
     SSH_NAME_ED25519,
@@ -68,12 +69,14 @@ impl AlgoConfig {
         // Only clients are interested in ext-info
         // TODO perhaps it could go behind cfg rsa?
         if is_client {
-            // OK unwrap: static arrays are < MAX_LOCAL_NAMES+slack
+            // OK unwrap: static arrays are <= MAX_LOCAL_NAMES
             kexs.0.push(SSH_NAME_EXT_INFO_C).unwrap();
-
+            kexs.0.push(SSH_NAME_STRICT_KEX_C).unwrap();
+        } else {
+            kexs.0.push(SSH_NAME_STRICT_KEX_S).unwrap();
         }
 
-        // OK unwrap: static arrays are < MAX_LOCAL_NAMES+slack
+        // OK unwrap: static arrays are <= MAX_LOCAL_NAMES
         kexs.0.push(SSH_NAME_KEXGUESS2).unwrap();
 
         AlgoConfig {
@@ -222,6 +225,10 @@ pub(crate) struct Algos {
 
     // whether the remote side supports ext-info
     pub send_ext_info: bool,
+
+    // whether the remote side supports strict kex. will be ignored
+    // for non-first KEX
+    pub strict_kex: bool,
 }
 
 impl fmt::Display for Algos {
@@ -387,6 +394,9 @@ impl Kex {
             // The first KEX's H becomes the persistent sess_id
             let sess_id = sess_id.get_or_insert(output.h.clone());
             let keys = Keys::derive(output, sess_id, &algos)?;
+            if algos.strict_kex {
+                s.enable_strict_kex()
+            }
             s.rekey(keys);
             *self = Kex::Idle;
             Ok(())
@@ -430,6 +440,14 @@ impl Kex {
             // OK unwrap: p.kex is a remote list
             p.kex.has_algo(SSH_NAME_EXT_INFO_C).unwrap()
         };
+
+        // we always send strict-kex, so just check if the other had it
+        let other_strict = if is_client {
+            SSH_NAME_STRICT_KEX_S
+        } else {
+            SSH_NAME_STRICT_KEX_C
+        };
+        let strict_kex = p.kex.has_algo(other_strict).unwrap();
 
         debug!("hostsig {:?}    vs   {:?}", p.hostsig, conf.hostsig);
         let hostsig_method = p
@@ -500,6 +518,7 @@ impl Kex {
             discard_next,
             is_client,
             send_ext_info,
+            strict_kex,
         })
     }
 }

@@ -2860,7 +2860,6 @@ dependencies = [
 name = "sunset-demo-embassy-common"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "bcrypt",
  "defmt",
  "ed25519-dalek 2.0.0-rc.3",
@@ -2878,7 +2877,6 @@ dependencies = [
  "sunset",
  "sunset-embassy",
  "sunset-sshwire-derive",
- "tokio",
 ]
 
 [[package]]

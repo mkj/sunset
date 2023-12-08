@@ -437,9 +437,12 @@ impl<'s, 'a> TrafSend<'s, 'a> {
         self.out.send_packet(p.into(), self.keys)
     }
 
-
     pub fn rekey(&mut self, keys: encrypt::Keys) {
         self.keys.rekey(keys)
+    }
+
+    pub fn enable_strict_kex(&mut self) {
+        self.keys.enable_strict_kex()
     }
 
     pub fn send_version(&mut self) -> Result<(), Error> {

@@ -18,6 +18,12 @@ pub const SSH_NAME_EXT_INFO_C: &str = "ext-info-c";
 /// Implemented by Dropbear to improve first_kex_packet_follows, described
 /// [https://mailarchive.ietf.org/arch/msg/secsh/3n6lNzDHmsGsIQSqhmHHwigIbuo/](https://mailarchive.ietf.org/arch/msg/secsh/3n6lNzDHmsGsIQSqhmHHwigIbuo/)
 pub const SSH_NAME_KEXGUESS2: &str = "kexguess2@matt.ucc.asn.au";
+/// Strict Kex
+/// TODO
+pub const SSH_NAME_STRICT_KEX_S: &str = "kex-strict-s-v00@openssh.com";
+/// Strict Kex
+/// TODO
+pub const SSH_NAME_STRICT_KEX_C: &str = "kex-strict-c-v00@openssh.com";
 
 /// [RFC8709](https://tools.ietf.org/html/rfc8709)
 pub const SSH_NAME_ED25519: &str = "ssh-ed25519";

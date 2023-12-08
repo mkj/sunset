@@ -173,6 +173,8 @@ impl<'a, C: CliBehaviour, S: ServBehaviour> EmbassySunset<'a, C, S> {
             }
             Ok::<_, sunset::Error>(())
         };
+
+        // TODO: if RX fails (bad decrypt etc) it doesn't cancel prog, so gets stuck
         let rx = select(rx, rx_stop.wait());
         let rx = async {
             let r = rx.await;

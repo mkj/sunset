@@ -45,9 +45,12 @@ const MAX_KEY_LEN: usize = 64;
 #[derive(Debug)]
 pub(crate) struct KeyState {
     keys: Keys,
-    // Packet sequence numbers. These don't reset with rekeying.
+    // Packet sequence numbers.
+    // These reset on newkeys when strict kex is in effect.
     pub seq_encrypt: Wrapping<u32>,
     pub seq_decrypt: Wrapping<u32>,
+    strict_kex: bool,
+    done_first_kex: bool,
 }
 
 impl KeyState {
@@ -57,6 +60,8 @@ impl KeyState {
             keys: Keys::new_cleartext(),
             seq_encrypt: Wrapping(0),
             seq_decrypt: Wrapping(0),
+            strict_kex: false,
+            done_first_kex: false
         }
     }
 
@@ -65,10 +70,21 @@ impl KeyState {
             || matches!(self.keys.dec, DecKey::NoCipher)
     }
 
-    /// Updates with new keys, keeping the same sequence numbers
+    /// Updates with new keys
     pub fn rekey(&mut self, keys: Keys) {
         trace!("rekey");
-        self.keys = keys
+        self.keys = keys;
+        self.done_first_kex = true;
+        if self.strict_kex {
+            self.seq_decrypt = Wrapping(0);
+            self.seq_encrypt = Wrapping(0);
+        }
+    }
+
+    pub fn enable_strict_kex(&mut self) {
+        if !self.done_first_kex {
+            self.strict_kex = true
+        }
     }
 
     pub fn recv_seq(&self) -> u32 {
