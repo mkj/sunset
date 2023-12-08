@@ -36,7 +36,6 @@ pub(crate) use sunset_demo_embassy_common as demo_common;
 mod flashconfig;
 mod picowmenu;
 mod serial;
-mod takepipe;
 mod usb;
 mod keyboard;
 #[cfg(feature = "w5500")]
@@ -50,7 +49,7 @@ compile_error!("No network device selected. Use cyw43 or w5500 feature");
 #[cfg(all(feature = "cyw43", feature = "w5500"))]
 compile_error!("Select only one of cyw43 or w5500");
 
-use demo_common::{SSHConfig, DemoServer};
+use demo_common::{SSHConfig, DemoServer, takepipe};
 
 use takepipe::TakePipe;
 

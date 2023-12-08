@@ -9,6 +9,7 @@ mod server;
 pub mod config;
 pub mod menu;
 pub mod demo_menu;
+pub mod takepipe;
 
 pub use server::{DemoServer, listener};
 pub use config::SSHConfig;

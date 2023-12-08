@@ -28,6 +28,11 @@ defmt = { version = "0.3", optional = true }
 log = "0.4"
 pretty-hex = { version = "0.3", default-features = false }
 
+[dev-dependencies]
+anyhow = { version = "1.0" }
+sunset = { path = "../../..", features = ["std"] }
+tokio = { version = "1.25", features = ["full"] }
+
 [features]
 defmt = ["dep:defmt", "embedded-io-async/defmt-03"]
 log = ["embassy-net/log"]
