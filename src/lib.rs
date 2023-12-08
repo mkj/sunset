@@ -13,8 +13,6 @@
 // XXX unused_imports only during dev churn
 #![allow(unused_imports)]
 
-#![feature(async_fn_in_trait)]
-
 // XXX decide what is public
 pub mod conn;
 pub mod encrypt;
