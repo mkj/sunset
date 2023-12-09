@@ -452,5 +452,10 @@ impl<'s, 'a> TrafSend<'s, 'a> {
     pub fn can_output(&self) -> bool {
         self.out.can_output()
     }
+
+    /// Returns the current receive sequence number
+    pub fn recv_seq(&self) -> u32 {
+        self.keys.seq_decrypt.0
+    }
 }
 

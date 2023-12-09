@@ -191,22 +191,32 @@ impl<C: CliBehaviour, S: ServBehaviour> Conn<C, S> {
 
     /// Check that a packet is received in the correct state
     fn check_packet(&self, p: &Packet) -> Result<()> {
-        let r = match p.category() {
-            packets::Category::All => Ok(()),
-            packets::Category::Kex => Ok(()),
-            packets::Category::Auth => {
-                match self.state {
-                    | ConnState::PreAuth
-                    | ConnState::Authed
-                    => Ok(()),
-                    _ => Err(Error::SSHProtoError),
-                }
+        let r = if self.is_first_kex() && self.kex.is_strict() {
+            match p.category() {
+                packets::Category::Kex => Ok(()),
+                _ => {
+                    debug!("Non-kex packet during strict kex");
+                    Err(Error::SSHProtoError)
+                },
             }
-            packets::Category::Sess => {
-                match self.state {
-                    ConnState::Authed
-                    => Ok(()),
-                    _ => Err(Error::SSHProtoError),
+        } else {
+            match p.category() {
+                packets::Category::All => Ok(()),
+                packets::Category::Kex => Ok(()),
+                packets::Category::Auth => {
+                    match self.state {
+                        | ConnState::PreAuth
+                        | ConnState::Authed
+                        => Ok(()),
+                        _ => Err(Error::SSHProtoError),
+                    }
+                }
+                packets::Category::Sess => {
+                    match self.state {
+                        ConnState::Authed
+                        => Ok(()),
+                        _ => Err(Error::SSHProtoError),
+                    }
                 }
             }
         };
@@ -219,6 +229,10 @@ impl<C: CliBehaviour, S: ServBehaviour> Conn<C, S> {
             debug!("state is {:?}", self.state);
         }
         r
+    }
+
+    fn is_first_kex(&self) -> bool {
+        self.sess_id.is_none()
     }
 
     async fn dispatch_packet(
@@ -237,6 +251,7 @@ impl<C: CliBehaviour, S: ServBehaviour> Conn<C, S> {
                     self.cliserv.is_client(),
                     &self.algo_conf,
                     &self.remote_version,
+                    self.is_first_kex(),
                     s,
                 )?;
             }
@@ -256,7 +271,7 @@ impl<C: CliBehaviour, S: ServBehaviour> Conn<C, S> {
                     return Err(Error::SSHProtoError);
                 }
 
-                self.kex.handle_kexdhreply(&p, s, b.client()?, self.sess_id.is_none()).await?;
+                self.kex.handle_kexdhreply(&p, s, b.client()?, self.is_first_kex()).await?;
             }
             Packet::NewKeys(_) => {
                 self.kex.handle_newkeys(&mut self.sess_id, s)?;

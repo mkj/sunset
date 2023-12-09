@@ -269,6 +269,7 @@ impl Kex {
     pub fn handle_kexinit(
         &mut self, remote_kexinit: packets::KexInit, is_client: bool, algo_conf: &AlgoConfig,
         remote_version: &RemoteVersion,
+        first_kex: bool,
         s: &mut TrafSend,
     ) -> Result<()> {
         // Reply if we haven't already received one. This will bump the state to Kex::KexInit
@@ -285,6 +286,13 @@ impl Kex {
 
         let algos = Self::algo_negotiation(is_client, &remote_kexinit, algo_conf)?;
         debug!("{algos}");
+
+        if first_kex && algos.strict_kex {
+            if s.recv_seq() != 1 {
+                debug!("kexinit has strict kex but wasn't first packet");
+                return error::PacketWrong.fail();
+            }
+        }
         if is_client {
             let p = algos.kex.make_kexdhinit()?;
             s.send(p)?;
@@ -520,6 +528,14 @@ impl Kex {
             send_ext_info,
             strict_kex,
         })
+    }
+
+    pub fn is_strict(&self) -> bool {
+        match self {
+            Kex::KexDH { algos: Algos { strict_kex: true, ..}, .. } => true,
+            Kex::NewKeys { algos: Algos { strict_kex: true, ..}, .. } => true,
+            _ => false,
+        }
     }
 }
 
