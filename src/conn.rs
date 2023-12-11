@@ -176,7 +176,17 @@ impl<C: CliBehaviour, S: ServBehaviour> Conn<C, S> {
         let r = sshwire::packet_from_bytes(payload, &self.parse_ctx);
 
         match r {
-            Ok(p) => self.dispatch_packet(p, s, b).await,
+            Ok(p) => {
+                let num = p.message_num() as u8;
+                let a = self.dispatch_packet(p, s, b).await;
+                match a {
+                    | Err(Error::SSHProtoError)
+                    | Err(Error::PacketWrong)
+                    => debug!("Error handling {num} packet"),
+                    _ => (),
+                }
+                a
+            }
             Err(Error::UnknownPacket { number }) => {
                 trace!("Unimplemented packet type {number}");
                 s.send(packets::Unimplemented { seq })?;
@@ -192,6 +202,7 @@ impl<C: CliBehaviour, S: ServBehaviour> Conn<C, S> {
     /// Check that a packet is received in the correct state
     fn check_packet(&self, p: &Packet) -> Result<()> {
         let r = if self.is_first_kex() && self.kex.is_strict() {
+            // Strict Kex doesn't allow even packets like Ignore or Debug
             match p.category() {
                 packets::Category::Kex => Ok(()),
                 _ => {
@@ -199,7 +210,18 @@ impl<C: CliBehaviour, S: ServBehaviour> Conn<C, S> {
                     Err(Error::SSHProtoError)
                 },
             }
+        } else if !matches!(self.kex, Kex::Idle) {
+            // Normal KEX only allows certain packets
+            match p.category() {
+                packets::Category::All => Ok(()),
+                packets::Category::Kex => Ok(()),
+                _ => {
+                    debug!("Invalid packet during kex");
+                    Err(Error::SSHProtoError)
+                },
+            }
         } else {
+            // No KEX in progress, check for post-auth packets
             match p.category() {
                 packets::Category::All => Ok(()),
                 packets::Category::Kex => Ok(()),
@@ -220,8 +242,6 @@ impl<C: CliBehaviour, S: ServBehaviour> Conn<C, S> {
                 }
             }
         };
-
-        // TODO: reject other packets while kex is in progress?
 
         if r.is_err() {
             error!("Received unexpected packet {}",
