@@ -749,6 +749,7 @@ mod tests {
                     discard_next: false,
                     is_client: false,
                     send_ext_info: true,
+                    strict_kex: false,
                 })
             })
             // and plaintext

@@ -991,8 +991,8 @@ mod tests {
         let serv_init = if let Packet::KexInit(k) = serv_init { k } else { panic!() };
         assert!(ts.next().is_none());
 
-        serv.handle_kexinit(cli_init, false, &serv_conf, &version, &mut ts.sender()).unwrap();
-        cli.handle_kexinit(serv_init, true, &cli_conf, &version, &mut tc.sender()).unwrap();
+        serv.handle_kexinit(cli_init, false, &serv_conf, &version, true, &mut ts.sender()).unwrap();
+        cli.handle_kexinit(serv_init, true, &cli_conf, &version, true, &mut tc.sender()).unwrap();
 
         let cli_dhinit = tc.next().unwrap();
         let cli_dhinit = if let Packet::KexDHInit(k) = cli_dhinit { k } else { panic!() };
