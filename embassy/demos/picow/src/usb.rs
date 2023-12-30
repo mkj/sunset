@@ -53,6 +53,7 @@ pub(crate) async fn task(
     let mut device_descriptor = [0; 256];
     let mut config_descriptor = [0; 256];
     let mut bos_descriptor = [0; 256];
+    let mut msos_descriptor = [0; 16];
     let mut control_buf = [0; 64];
 
     // lives longer than builder
@@ -66,6 +67,7 @@ pub(crate) async fn task(
         &mut device_descriptor,
         &mut config_descriptor,
         &mut bos_descriptor,
+        &mut msos_descriptor,
         &mut control_buf,
     );
 

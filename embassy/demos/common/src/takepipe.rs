@@ -165,7 +165,8 @@ impl Read for TakeRead<'_> {
             if *c != self.counter {
                 return Err(sunset::Error::ChannelEOF);
             }
-            Ok(o.read(buf).await)
+            // OK unwrap, pipe.read() is infallible
+            Ok(o.read(buf).await.unwrap())
         };
 
         let r = select(
@@ -204,7 +205,8 @@ impl Write for TakeWrite<'_> {
             if *c != self.counter {
                 return Err(sunset::Error::ChannelEOF);
             }
-            Ok(o.write(buf).await)
+            // OK unwrap, pipe.write is infallible
+            Ok(o.write(buf).await.unwrap())
         };
 
         let r = select(

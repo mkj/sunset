@@ -50,14 +50,7 @@ Desirable:
 
 ## Rust versions
 
-At present `sunset` requires nightly Rust, in order to use async functions in
-the `Behaviour` traits. It is intended to switch to stable Rust once that
-feature stabilises.
-
-`sunset-embassy` requires a nightly Rust version, as required by Embassy. See the
-[embassy/rust-toolchain.toml](rust-toolchain.toml) for a known-good version.
-Once [async functions in traits](https://github.com/rust-lang/rust/issues/91611)
-becomes stable, Embassy should support stable Rust too.
+At present Sunset will build with latest stable (1.75 at time of writing).
 
 ## Safety
 

@@ -31,8 +31,10 @@ pub(crate) async fn task(
     pin_rts: PIN_3,
     pipe: &'static TakePipe<'static>,
 ) -> ! {
-    let tx_buf = singleton!([0u8; 16]).as_mut_slice();
-    let rx_buf = singleton!([0u8; 300]).as_mut_slice();
+    static TX_BUF: StaticCell<[u8; 16]> = StaticCell::new();
+    let tx_buf = TX_BUF.init(Default::default()).as_mut_slice();
+    static RX_BUF: StaticCell<[u8; 300]> = StaticCell::new();
+    let rx_buf = RX_BUF.init_with(|| [0u8; 300]).as_mut_slice();
     let uart = BufferedUart::new_with_rtscts(
         uart,
         Irqs,

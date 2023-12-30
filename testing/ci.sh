@@ -26,16 +26,16 @@ if [ -z "$OFFLINE" ]; then
     )
 fi
 
-# stable - disabled now due to async fn in Behaviour
-#cargo test
+# stable
+cargo test
 # build non-testing, will be no_std
-#cargo build
-cargo +nightly build
-# nightly
-cargo +nightly test
+cargo build
+cargo doc
+cargo test --doc
 
-cargo +nightly doc
-cargo +nightly test --doc
+# nightly
+cargo +nightly build
+cargo +nightly test
 
 (
 cd async

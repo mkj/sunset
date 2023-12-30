@@ -26,7 +26,6 @@ use static_cell::StaticCell;
 use rand::rngs::OsRng;
 use rand::RngCore;
 
-use crate::demo_common::singleton;
 use crate::{SunsetMutex, SSHConfig};
 
 bind_interrupts!(struct Irqs {
@@ -60,7 +59,8 @@ pub(crate) async fn wifi_stack(spawner: &Spawner,
     let mut pio = Pio::new(pio0, Irqs);
     let spi = PioSpi::new(&mut pio.common, pio.sm0, pio.irq0, cs, p24, p29, dma);
 
-    let state = singleton!(cyw43::State::new());
+    static STATE: StaticCell<cyw43::State> = StaticCell::new();
+    let state = STATE.init_with(|| cyw43::State::new());
     let (net_device, mut control, runner) = cyw43::new(state, pwr, spi, fw).await;
     spawner.spawn(wifi_task(runner)).unwrap();
 
@@ -99,16 +99,18 @@ pub(crate) async fn wifi_stack(spawner: &Spawner,
 
     let seed = OsRng.next_u64();
 
+    static SR: StaticCell<StackResources::<{crate::NUM_SOCKETS}>> = StaticCell::new();
+
     // Init network stack
-    let stack = Stack::new(
+    static STACK: StaticCell<Stack<cyw43::NetDriver>> = StaticCell::new();
+    let stack = STACK.init_with(|| Stack::new(
         net_device,
         config,
-        singleton!(StackResources::<{crate::NUM_SOCKETS}>::new()),
-        seed
+        SR.init_with(|| StackResources::new()),
+        seed)
     );
 
-    let stack = &*singleton!(stack);
-    spawner.spawn(net_task(&stack)).unwrap();
+    spawner.spawn(net_task(stack)).unwrap();
 
     stack
 }

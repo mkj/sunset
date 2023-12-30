@@ -704,8 +704,10 @@ fn do_wifi_wpa2(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx) {
             let _ = writeln!(out, "Too long pw");
             return;
         }
-        c.wifi_net = net.into();
-        c.wifi_pw = Some(pw.into())
+        // OK unwrap, checked length
+        c.wifi_net = net.try_into().unwrap();
+        // OK unwrap, checked length
+        c.wifi_pw = Some(pw.try_into().unwrap())
     });
     wifi_entry(context);
 }
@@ -795,5 +797,5 @@ pub(crate) async fn request_pw<E>(
     }
 
     let pw = core::str::from_utf8(&pw).map_err(|_| ())?;
-    return Ok(pw.into());
+    pw.try_into().map_err(|_| ())
 }

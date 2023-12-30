@@ -1,8 +1,7 @@
 #![cfg_attr(not(any(feature = "std", test)), no_std)]
 
-#![feature(type_alias_impl_trait)]
-#![feature(async_fn_in_trait)]
-// #![allow(incomplete_features)]
+// avoid warning about Send for the time being
+#[allow(async_fn_in_trait)]
 
 mod server;
 

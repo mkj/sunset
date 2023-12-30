@@ -1,8 +1,5 @@
 #![no_std]
 #![no_main]
-#![feature(type_alias_impl_trait)]
-#![feature(async_fn_in_trait)]
-// #![allow(incomplete_features)]
 
 #[allow(unused_imports)]
 #[cfg(not(feature = "defmt"))]
@@ -30,7 +27,6 @@ use embassy_sync::signal::Signal;
 use sunset::*;
 use sunset_embassy::{SSHServer, SunsetMutex};
 
-use crate::demo_common::singleton;
 pub(crate) use sunset_demo_embassy_common as demo_common;
 
 mod flashconfig;
@@ -75,19 +71,25 @@ async fn main(spawner: Spawner) {
     } else {
         flashconfig::load_or_create(&mut flash).await.unwrap()
     };
-    let flash = &*singleton!(SunsetMutex::new(flash));
-    let config = &*singleton!(SunsetMutex::new(config));
+    static FLASH: StaticCell<SunsetMutex<flashconfig::Fl>> = StaticCell::new();
+    let flash = FLASH.init(SunsetMutex::new(flash));
+    static CONFIG: StaticCell<SunsetMutex<SSHConfig>> = StaticCell::new();
+    let config = CONFIG.init(SunsetMutex::new(config));
 
     // A shared pipe to a local USB-serial (CDC)
+    static USBS: StaticCell<takepipe::TakePipeStorage> = StaticCell::new();
+    static USBP: StaticCell<takepipe::TakePipe> = StaticCell::new();
     let usb_pipe = {
-        let p = singleton!(takepipe::TakePipeStorage::new());
-        singleton!(p.build())
+        let p = USBS.init(Default::default());
+        USBP.init_with(|| p.build())
     };
 
     // A shared pipe to a local uart
+    static SERS: StaticCell<takepipe::TakePipeStorage> = StaticCell::new();
+    static SERP: StaticCell<takepipe::TakePipe> = StaticCell::new();
     let serial1_pipe = {
-        let s = singleton!(takepipe::TakePipeStorage::new());
-        singleton!(s.build())
+        let p = SERS.init(Default::default());
+        SERP.init_with(|| p.build())
     };
     spawner
         .spawn(serial::task(
@@ -101,10 +103,12 @@ async fn main(spawner: Spawner) {
         .unwrap();
 
     // Watchdog currently only used for triggering reset manually
-    let watchdog = singleton!(SunsetMutex::new(
+    static WD: StaticCell<SunsetMutex<embassy_rp::watchdog::Watchdog>> = StaticCell::new();
+    let watchdog = WD.init(SunsetMutex::new(
         embassy_rp::watchdog::Watchdog::new(p.WATCHDOG)
     ));
 
+    static STATE: StaticCell<GlobalState> = StaticCell::new();
     let state;
 
     // Spawn network tasks to handle incoming connections with demo_common::session()
@@ -120,8 +124,7 @@ async fn main(spawner: Spawner) {
         let net_mac = match stack.hardware_address() {
             HardwareAddress::Ethernet(EthernetAddress(eth)) => eth,
         };
-        let g = GlobalState { usb_pipe, serial1_pipe, config, flash, watchdog, net_mac };
-        state = singleton!(g);
+        state = STATE.init_with(|| GlobalState { usb_pipe, serial1_pipe, config, flash, watchdog, net_mac });
         for _ in 0..NUM_LISTENERS {
             spawner.spawn(cyw43_listener(&stack, config, state)).unwrap();
         }
@@ -139,8 +142,7 @@ async fn main(spawner: Spawner) {
         let net_mac = match stack.hardware_address() {
             HardwareAddress::Ethernet(EthernetAddress(eth)) => eth,
         };
-        let g = GlobalState { usb_pipe, serial1_pipe, config, flash, watchdog, net_mac };
-        state = singleton!(g);
+        state = STATE.init_with(|| GlobalState { usb_pipe, serial1_pipe, config, flash, watchdog, net_mac });
         for _ in 0..NUM_LISTENERS {
             spawner.spawn(w5500_listener(&stack, config, state)).unwrap();
         }

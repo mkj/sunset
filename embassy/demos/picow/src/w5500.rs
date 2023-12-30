@@ -20,8 +20,7 @@ use embedded_hal_bus::spi::ExclusiveDevice;
 
 use embassy_net_wiznet::*;
 
-use static_cell::make_static;
-
+use static_cell::StaticCell;
 use rand::rngs::OsRng;
 use rand::RngCore;
 
@@ -63,7 +62,8 @@ pub(crate) async fn w5500_stack(
 
     let mac_addr = config.lock().await.mac;
     // 
-    let state = make_static!(State::<8, 8>::new());
+    static STATE: StaticCell<State<8, 8>> = StaticCell::new();
+    let state = STATE.init_with(|| State::new());
     let (device, runner) = embassy_net_wiznet::new(
         mac_addr,
         state,
@@ -84,15 +84,17 @@ pub(crate) async fn w5500_stack(
     let seed = OsRng.next_u64();
 
     // Init network stack
-    let stack = &*make_static!(Stack::new(
+    static SR: StaticCell<StackResources::<{crate::NUM_SOCKETS}>> = StaticCell::new();
+    static STACK: StaticCell<Stack<embassy_net_wiznet::Device>> = StaticCell::new();
+    let stack = STACK.init_with(|| Stack::new(
         device,
         config,
-        make_static!(StackResources::<{ crate::NUM_SOCKETS }>::new()),
+        SR.init_with(|| StackResources::new()),
         seed
     ));
 
     // Launch network task
-    spawner.spawn(net_task(&stack)).unwrap();
+    spawner.spawn(net_task(stack)).unwrap();
 
     stack
 }

@@ -24,7 +24,7 @@ sunset-sshwire-derive = { version = "0.1", path = "sshwire-derive" }
 snafu = { version = "0.7", default-features = false, features = ["rust_1_61"] }
 # TODO: check that log macro calls disappear in no_std builds
 log = { version = "0.4" }
-heapless = "0.7.10"
+heapless = "0.8"
 
 # allows avoiding utf8 for SSH identifier names
 ascii = { version = "1.0", default-features = false }
@@ -88,22 +88,22 @@ x25519-dalek = { git = "https://github.com/mkj/curve25519-dalek", branch = "suns
 # ed25519-dalek = { path = "/home/matt/3rd/rs/crypto/curve25519-dalek/ed25519-dalek" }
 # x25519-dalek = { path = "/home/matt/3rd/rs/crypto/curve25519-dalek/x25519-dalek" }
 
-embassy-executor = { git = "https://github.com/embassy-rs/embassy", rev = "78a7ee7ec48a6ed26d770165e777beb06e92777c" }
-embassy-time = { git = "https://github.com/embassy-rs/embassy", rev = "78a7ee7ec48a6ed26d770165e777beb06e92777c" }
-# embassy-futures = { git = "https://github.com/embassy-rs/embassy", rev = "78a7ee7ec48a6ed26d770165e777beb06e92777c" }
-embassy-rp = { git = "https://github.com/embassy-rs/embassy", rev = "78a7ee7ec48a6ed26d770165e777beb06e92777c" }
-embassy-usb = { git = "https://github.com/embassy-rs/embassy", rev = "78a7ee7ec48a6ed26d770165e777beb06e92777c" }
-# embassy-sync = { git = "https://github.com/embassy-rs/embassy", rev = "78a7ee7ec48a6ed26d770165e777beb06e92777c" }
-embassy-usb-driver = { git = "https://github.com/embassy-rs/embassy", rev = "78a7ee7ec48a6ed26d770165e777beb06e92777c" }
+embassy-executor = { git = "https://github.com/embassy-rs/embassy", rev = "90e96d281f87efdbea3a1418f5354f14386a42e8" }
+embassy-time = { git = "https://github.com/embassy-rs/embassy", rev = "90e96d281f87efdbea3a1418f5354f14386a42e8" }
+# embassy-futures = { git = "https://github.com/embassy-rs/embassy", rev = "90e96d281f87efdbea3a1418f5354f14386a42e8" }
+embassy-rp = { git = "https://github.com/embassy-rs/embassy", rev = "90e96d281f87efdbea3a1418f5354f14386a42e8" }
+embassy-usb = { git = "https://github.com/embassy-rs/embassy", rev = "90e96d281f87efdbea3a1418f5354f14386a42e8" }
+# embassy-sync = { git = "https://github.com/embassy-rs/embassy", rev = "90e96d281f87efdbea3a1418f5354f14386a42e8" }
+embassy-usb-driver = { git = "https://github.com/embassy-rs/embassy", rev = "90e96d281f87efdbea3a1418f5354f14386a42e8" }
 # for cyw43
-embassy-net = { git = "https://github.com/embassy-rs/embassy", rev = "78a7ee7ec48a6ed26d770165e777beb06e92777c" }
-embassy-net-driver-channel = { git = "https://github.com/embassy-rs/embassy", rev = "78a7ee7ec48a6ed26d770165e777beb06e92777c" }
-embassy-net-driver = { git = "https://github.com/embassy-rs/embassy", rev = "78a7ee7ec48a6ed26d770165e777beb06e92777c" }
-embassy-net-tuntap = { git = "https://github.com/embassy-rs/embassy", rev = "78a7ee7ec48a6ed26d770165e777beb06e92777c" }
+embassy-net = { git = "https://github.com/embassy-rs/embassy", rev = "90e96d281f87efdbea3a1418f5354f14386a42e8" }
+embassy-net-driver-channel = { git = "https://github.com/embassy-rs/embassy", rev = "90e96d281f87efdbea3a1418f5354f14386a42e8" }
+embassy-net-driver = { git = "https://github.com/embassy-rs/embassy", rev = "90e96d281f87efdbea3a1418f5354f14386a42e8" }
+embassy-net-tuntap = { git = "https://github.com/embassy-rs/embassy", rev = "90e96d281f87efdbea3a1418f5354f14386a42e8" }
 
-cyw43 = { git = "https://github.com/embassy-rs/embassy/", rev = "78a7ee7ec48a6ed26d770165e777beb06e92777c" }
-cyw43-pio = { git = "https://github.com/embassy-rs/embassy/", rev = "78a7ee7ec48a6ed26d770165e777beb06e92777c" }
-embassy-net-wiznet = { git = "https://github.com/embassy-rs/embassy/", rev = "78a7ee7ec48a6ed26d770165e777beb06e92777c" }
+cyw43 = { git = "https://github.com/embassy-rs/embassy/", rev = "90e96d281f87efdbea3a1418f5354f14386a42e8" }
+cyw43-pio = { git = "https://github.com/embassy-rs/embassy/", rev = "90e96d281f87efdbea3a1418f5354f14386a42e8" }
+embassy-net-wiznet = { git = "https://github.com/embassy-rs/embassy/", rev = "90e96d281f87efdbea3a1418f5354f14386a42e8" }
 
 # embassy-net = { path = "/home/matt/3rd/rs/embassy/embassy-net" }
 # embassy-net-driver = { path = "/home/matt/3rd/rs/embassy/embassy-net-driver" }

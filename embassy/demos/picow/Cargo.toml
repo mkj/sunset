@@ -16,16 +16,16 @@ cyw43-pio = { version = "0.1.0", optional = true }
 
 embassy-net-wiznet = { version = "0.1.0", optional = true }
 
-embassy-executor = { version = "0.3",  features = ["defmt", "integrated-timers", "executor-thread", "arch-cortex-m", "nightly"] }
-embassy-time = { version = "0.1",  features = ["defmt", "defmt-timestamp-uptime", "unstable-traits", "nightly"] }
-embassy-rp = { version = "0.1.0",  features = ["defmt", "unstable-traits", "nightly", "unstable-pac", "time-driver"] }
+embassy-executor = { version = "0.4",  features = ["defmt", "integrated-timers", "executor-thread", "arch-cortex-m"] }
+embassy-time = { version = "0.2",  features = ["defmt", "defmt-timestamp-uptime"] }
+embassy-rp = { version = "0.1",  features = ["defmt", "unstable-pac", "time-driver"] }
 # embassy-net/nightly is required for asynch::Read/Write on TcpReader/TcpWriter
-embassy-net = { version = "0.2.0", features = ["tcp", "dhcpv4", "medium-ethernet", "nightly"] }
-embassy-net-driver = { version = "0.2.0" }
-embassy-usb-driver = { version = "0.1.0" }
-embassy-sync = { version = "0.3.0" }
-embassy-futures = { version = "0.1.0" }
-embassy-usb = { version = "0.1.0" }
+embassy-net = { version = "0.2", features = ["tcp", "dhcpv4", "medium-ethernet"] }
+embassy-net-driver = { version = "0.2" }
+embassy-usb-driver = { version = "0.1" }
+embassy-sync = { version = "0.5" }
+embassy-futures = { version = "0.1" }
+embassy-usb = { version = "0.1" }
 atomic-polyfill = "0.1.5"
 static_cell = { version = "1.0", features = [ "nightly" ] }
 
@@ -46,28 +46,20 @@ embedded-hal-async = { version = "1.0.0-alpha.10" }
 embedded-hal-bus = { version = "0.1.0-rc.1", features = ["async"], optional = true }
 embedded-io-async = "0.6"
 embedded-storage-async = { version = "0.4.0" }
-heapless = "0.7.15"
-
-getrandom = { version = "0.2", default-features = false, features = ["custom"]}
-pin-utils = "0.1"
-
-# using local fork
-# menu = "0.3"
+heapless = "0.8"
 
 caprand = { git = "https://github.com/mkj/caprand" }
+getrandom = { version = "0.2", features = ["custom"] }
 
 critical-section = "1.1"
 rand = { version = "0.8", default-features = false, features = ["getrandom"] }
 sha2 = { version = "0.10", default-features = false }
 
-# for defmt feature
-smoltcp = { version = "0.10", default-features = false }
-
 usbd-hid = "0.6"
 
 [features]
 default = ["cyw43", "defmt", "sunset-demo-embassy-common/defmt" ]
-defmt = ["dep:defmt", "sunset/defmt", "sunset-embassy/defmt", "smoltcp/defmt"]
+defmt = ["dep:defmt", "sunset/defmt", "sunset-embassy/defmt"]
 
 # for pico w board
 cyw43 = ["dep:cyw43", "dep:cyw43-pio"]

@@ -1,15 +1,11 @@
-#![feature(type_alias_impl_trait)]
-#![feature(async_fn_in_trait)]
-#![allow(incomplete_features)]
 
 #[allow(unused_imports)]
 use {
     log::{debug, error, info, log, trace, warn},
 };
 
-use embassy_executor::{Spawner, Executor};
+use embassy_executor::Spawner;
 use embassy_net::{Stack, StackResources};
-use static_cell::StaticCell;
 
 use rand::rngs::OsRng;
 use rand::RngCore;
@@ -25,7 +21,6 @@ use sunset_embassy::{SSHServer, SunsetMutex};
 
 mod setupmenu;
 pub(crate) use sunset_demo_embassy_common as demo_common;
-use crate::demo_common::singleton;
 
 use demo_common::{SSHConfig, demo_menu, DemoServer};
 
@@ -43,11 +38,11 @@ async fn main_task(spawner: Spawner) {
     // TODO config
     let opt_tap0 = "tap0";
 
-    let config = &*singleton!(  {
+    let config = Box::leak(Box::new({
         let mut config = SSHConfig::new().unwrap();
         config.set_console_pw(Some("pw")).unwrap();
         SunsetMutex::new(config)
-    } );
+    }));
 
     let net_config = if let Some(ref s) = config.lock().await.ip4_static {
         embassy_net::Config::ipv4_static(s.clone())
@@ -61,12 +56,13 @@ async fn main_task(spawner: Spawner) {
     let seed = OsRng.next_u64();
 
     // Init network stack
-    let stack = &*singleton!(Stack::new(
+    let res = Box::leak(Box::new(StackResources::<NUM_SOCKETS>::new()));
+    let stack = Box::leak(Box::new(Stack::new(
         device,
         net_config,
-        singleton!(StackResources::<NUM_SOCKETS>::new()),
+        res,
         seed
-    ));
+    )));
 
     // Launch network task
     spawner.spawn(net_task(stack)).unwrap();
@@ -140,10 +136,8 @@ async fn listener(stack: &'static Stack<TunTapDevice>,
     demo_common::listener::<_, StdDemo>(stack, config, ()).await
 }
 
-
-static EXECUTOR: StaticCell<Executor> = StaticCell::new();
-
-fn main() {
+#[embassy_executor::main]
+async fn main(spawner: Spawner) {
     env_logger::builder()
         .filter_level(log::LevelFilter::Trace)
         .filter_module("sunset::runner", log::LevelFilter::Info)
@@ -156,8 +150,5 @@ fn main() {
         .format_timestamp_nanos()
         .init();
 
-    let executor = EXECUTOR.init(Executor::new());
-    executor.run(|spawner| {
-        spawner.spawn(main_task(spawner)).unwrap();
-    });
+    spawner.spawn(main_task(spawner)).unwrap();
 }

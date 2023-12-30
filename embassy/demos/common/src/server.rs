@@ -26,25 +26,6 @@ use sunset_embassy::{SSHServer, SunsetMutex};
 
 use crate::SSHConfig;
 
-// #[macro_export]
-// macro_rules! singleton {
-//     ($val:expr) => {{
-//         type T = impl Sized;
-//         static STATIC_CELL: StaticCell<T> = StaticCell::new();
-//         STATIC_CELL.init($val)
-//     }};
-// }
-#[macro_export]
-macro_rules! singleton {
-    ($val:expr) => {{
-        type T = impl Sized;
-        static STATIC_CELL: StaticCell<T> = StaticCell::new();
-        let (x,) = STATIC_CELL.init(($val,));
-        x
-    }};
-}
-
-
 // common entry point
 pub async fn listener<D: Driver, S: DemoServer>(stack: &'static Stack<D>,
     config: &SunsetMutex<SSHConfig>,
