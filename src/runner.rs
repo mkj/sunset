@@ -22,6 +22,10 @@ use conn::{Conn, Dispatched};
 // was completed. The `ChanHandle` is consumed by `Runner::channel_done()`.
 // Internally sunset uses `ChanNum`, which is just a newtype around u32.
 
+/// A SSH session instance
+///
+/// An application provides network or channel data to `Runner` method calls,
+/// and provides customisation callbacks via `CliBehaviour` or `ServBehaviour`.
 pub struct Runner<'a, C: CliBehaviour, S: ServBehaviour> {
     conn: Conn<C, S>,
 
@@ -222,6 +226,7 @@ impl<'a, C: CliBehaviour, S: ServBehaviour> Runner<'a, C, S> {
     }
 
     /// Send data from this application out the wire.
+    ///
     /// Returns `Ok(len)` consumed, `Err(Error::ChannelEof)` on EOF,
     /// or other errors.
     pub fn channel_send(
@@ -254,6 +259,7 @@ impl<'a, C: CliBehaviour, S: ServBehaviour> Runner<'a, C, S> {
     }
 
     /// Receive data coming from the wire into this application.
+    ///
     /// Returns `Ok(len)` received, `Err(Error::ChannelEof)` on EOF,
     /// or other errors. Ok(0) indicates no data available, ie pending.
     /// TODO: EOF is unimplemented
@@ -286,7 +292,7 @@ impl<'a, C: CliBehaviour, S: ServBehaviour> Runner<'a, C, S> {
         Ok(len)
     }
 
-    /// Receives input data, either dt or normal.
+    /// Receives input data, either normal or extended.
     pub fn channel_input_either(
         &mut self,
         chan: &ChanHandle,
@@ -307,7 +313,7 @@ impl<'a, C: CliBehaviour, S: ServBehaviour> Runner<'a, C, S> {
 
 
     /// Discards any channel input data pending for `chan`, regardless of whether
-    /// normal or `dt`.
+    /// normal or extended.
     pub fn discard_channel_input(&mut self, chan: &ChanHandle) -> Result<()> {
         let len = self.traf_in.discard_channel_input(chan.0);
         let wind_adjust = self.conn.channels.finished_input(chan.0, len)?;
@@ -321,7 +327,7 @@ impl<'a, C: CliBehaviour, S: ServBehaviour> Runner<'a, C, S> {
     /// Indicates when channel data is ready.
     ///
     /// When channel data is ready, returns a tuple
-    /// `Some((channel, dt, len))`
+    /// `Some((channel, data, len))`
     /// `len` is the amount of data ready remaining to read, will always be non-zero.
     /// Note that this returns a `ChanNum` index rather than a `ChanHandle` (which would
     /// be owned by the caller already.
@@ -363,6 +369,7 @@ impl<'a, C: CliBehaviour, S: ServBehaviour> Runner<'a, C, S> {
     }
 
     /// Returns `true` if the channel and `dt` are currently valid for writing.
+    ///
     /// Note that they may not be ready to send output.
     pub fn valid_channel_send(&self, chan: &ChanHandle, dt: ChanData) -> bool {
         self.conn.channels.valid_send(chan.0, dt)

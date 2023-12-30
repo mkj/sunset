@@ -70,10 +70,10 @@ async fn session<S: DemoServer>(socket: &mut TcpSocket<'_>, config: &SunsetMutex
     let src = socket.remote_endpoint().unwrap();
     info!("Connection from {}:{}", src.addr, src.port);
 
-    let s = S::new(init);
+    let demo = S::new(init);
 
     let conf = config.lock().await.clone();
-    let app = ServerApp::new(&s, conf)?;
+    let app = ServerApp::new(&demo, conf)?;
     let app = Mutex::<NoopRawMutex, _>::new(app);
 
     let mut ssh_rxbuf = [0; 2000];
@@ -81,7 +81,7 @@ async fn session<S: DemoServer>(socket: &mut TcpSocket<'_>, config: &SunsetMutex
     let serv = SSHServer::new(&mut ssh_rxbuf, &mut ssh_txbuf)?;
     let serv = &serv;
 
-    let session = s.run(serv);
+    let session = demo.run(serv);
 
     let (mut rsock, mut wsock) = socket.split();
 

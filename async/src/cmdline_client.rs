@@ -50,6 +50,9 @@ enum Msg {
     Exited,
 }
 
+/// A commandline client session
+///
+/// This opens a single channel and presents it to the stdin/stdout terminal.
 pub struct CmdlineClient {
     cmd: SessionCommand<String>,
     want_pty: bool,
@@ -101,6 +104,11 @@ impl CmdlineClient {
         }
     }
 
+    /// Splits a `CmdlineClient` into hooks and the runner.
+    ///
+    /// `CmdlineRunner` should be awaited until the session completes.
+    /// `CmdlineHooks` can be used to exit early (and may in future provide
+    /// other functionality).
     pub fn split(&mut self) -> (CmdlineHooks, CmdlineRunner) {
 
         let pty = self.make_pty();
@@ -306,8 +314,10 @@ impl<'a> CmdlineRunner<'a> {
         Ok(())
     }
 
-    /// Runs the `CmdlineClient` session. Requests a shell or command, performs
-    /// channel IO.
+    /// Runs the `CmdlineClient` session to completion.
+    ///
+    /// Performs authentication, requests a shell or command, performs channel IO.
+    /// Will return `Ok` after the session ends normally, or an error.
     pub async fn run(&mut self, cli: &'a SSHClient<'a, CmdlineHooks<'a>>) -> Result<()> {
         // chanio is only set once a channel is opened below
         let chanio = Fuse::terminated();

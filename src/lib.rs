@@ -13,17 +13,25 @@
 // XXX unused_imports only during dev churn
 #![allow(unused_imports)]
 
-// XXX decide what is public
-pub mod conn;
-pub mod encrypt;
-pub mod error;
-pub mod ident;
-pub mod kex;
-pub mod test;
-pub mod namelist;
-pub mod random;
+pub mod sshwire;
+pub mod packets;
 pub mod sshnames;
-pub mod sign;
+pub mod config;
+// exported so that UnusedCli can be used
+pub mod behaviour;
+// exported so that some Channel error variants can be created with .fail().
+// perhaps the ones of interest should be expored separately.
+pub mod error;
+// perhaps don't need this, users could just use getrandom?
+pub mod random;
+
+mod conn;
+mod encrypt;
+mod ident;
+mod kex;
+mod test;
+mod namelist;
+mod sign;
 
 mod client;
 mod cliauth;
@@ -31,24 +39,15 @@ mod cliauth;
 mod server;
 mod servauth;
 
-// mod bhtokio;
-// mod bhnostd;
-
-pub mod sunsetlog;
+mod sunsetlog;
 mod auth;
 mod channel;
 mod runner;
-// TODO only public for UnusedCli etc.
-pub mod behaviour;
 mod termmodes;
 mod ssh_chapoly;
 mod traffic;
 mod noasync;
 
-pub mod packets;
-pub mod sshwire;
-pub mod config;
-pub mod prelude;
 
 // Application API
 pub use behaviour::{Behaviour, ServBehaviour, CliBehaviour,

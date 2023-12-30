@@ -149,6 +149,9 @@ pub trait CliBehaviour {
     ///
     /// `key` is a key previously returned from `next_authkey()`,
     /// it will be one of the `Agent...` variants.
+    ///
+    /// The client can call [`msg.enc()`](crate::sshwire::SSHEncode::enc()) to obtain the
+    /// message to use for agent signing.
     #[allow(unused)]
     async fn agent_sign(&mut self, key: &sign::SignKey, msg: &AuthSigMsg<'_>) -> BhResult<sign::OwnedSig> {
         Err(BhError::Fail)

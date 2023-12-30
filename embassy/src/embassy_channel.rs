@@ -72,7 +72,7 @@ impl<'a, C: CliBehaviour, S: ServBehaviour> Write for ChanIO<'a, C, S> {
 
 // Public wrappers for In only
 
-/// An standard bidirectional SSH channel
+/// A standard bidirectional SSH channel
 #[derive(Debug)]
 pub struct ChanInOut<'a, C: CliBehaviour, S: ServBehaviour>(ChanIO<'a, C, S>);
 

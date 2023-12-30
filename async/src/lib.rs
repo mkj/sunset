@@ -11,11 +11,11 @@ mod agent;
 #[cfg(unix)]
 mod fdio;
 #[cfg(unix)]
-pub use fdio::{stdin, stdout, stderr_out};
+use fdio::{stdin, stdout, stderr_out};
 
-pub use pty::{raw_pty, RawPtyGuard};
+use pty::{raw_pty, RawPtyGuard};
 
-pub use cmdline_client::CmdlineClient;
+pub use cmdline_client::{CmdlineClient, CmdlineRunner, CmdlineHooks};
 
 pub use agent::AgentClient;
 

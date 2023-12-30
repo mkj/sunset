@@ -14,6 +14,7 @@ use crate::channel::ChanNum;
 
 // TODO: can we make Snafu not require Debug?
 
+/// The Sunset error type.
 #[non_exhaustive]
 #[derive(Snafu, Debug)]
 #[snafu(context(suffix(false)))]
@@ -204,6 +205,7 @@ impl embedded_io::Error for Error {
     }
 }
 
+/// A Sunset-specific Result type.
 pub type Result<T, E = Error> = core::result::Result<T, E>;
 
 pub trait TrapBug<T> {

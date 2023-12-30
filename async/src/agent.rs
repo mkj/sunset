@@ -14,10 +14,9 @@ use sunset_sshwire_derive::*;
 
 use crate::*;
 use sunset::sshwire;
-use sunset::{PubKey, AuthSigMsg, Signature};
+use sunset::{PubKey, AuthSigMsg, Signature,OwnedSig, SignKey};
 use sshwire::{WireError, WireResult, BinString, TextString, Blob, SSHSink, SSHSource, SSHDecode, SSHEncode};
 use sshwire::{SSHEncodeEnum, SSHDecodeEnum};
-use sunset::sign::{OwnedSig, SignKey};
 use sunset::sshnames::*;
 
 // Must be sufficient for the list of all public keys
@@ -105,12 +104,16 @@ impl<'de: 'a, 'a> SSHDecode<'de> for AgentIdentitiesAnswer<'a> {
     }
 }
 
+/// A SSH Agent client
 pub struct AgentClient {
     conn: UnixStream,
     buf: Vec<u8>,
 }
 
 impl AgentClient {
+    /// Create a new client
+    ///
+    /// `path` is a Unix socket to a ssh-agent, such as that from `$SSH_AUTH_SOCK`.
     pub async fn new(path: impl AsRef<Path>) -> Result<Self, std::io::Error> {
         let conn = UnixStream::connect(path).await?;
         Ok(Self {

@@ -80,7 +80,7 @@ pub enum ChanFail {
 
 /// SSH agent message numbers
 ///
-/// [draft-miller-ssh-agent-04](https://tools.ietf.org/html/draft-miller-ssh-agent-04)
+/// [draft-miller-ssh-agent](https://datatracker.ietf.org/doc/html/draft-miller-ssh-agent-11#section-5.1)
 #[allow(non_camel_case_types)]
 #[derive(Debug, Copy, Clone)]
 pub enum AgentMessageNum {
@@ -93,5 +93,5 @@ pub enum AgentMessageNum {
 
 }
 
-/// [draft-miller-ssh-agent-04](https://datatracker.ietf.org/doc/html/draft-miller-ssh-agent-04)
+/// [draft-miller-ssh-agent](https://datatracker.ietf.org/doc/html/draft-miller-ssh-agent-11#section-5.3)
 pub const SSH_AGENT_FLAG_RSA_SHA2_256: u32 = 0x02;
