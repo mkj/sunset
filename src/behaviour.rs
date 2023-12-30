@@ -21,13 +21,15 @@ use sshwire::TextString;
 // Result, it can return an error or other options like Disconnect?
 pub type BhResult<T> = core::result::Result<T, BhError>;
 
+/// At present only a single failure type is implemented
 #[derive(Debug,Snafu)]
 pub enum BhError {
     Fail,
 }
 
 /// A stack-allocated string to store responses for usernames or passwords.
-// 100 bytes is an arbitrary size.
+///
+/// Presently limited to 100 bytes as an arbitrary fixed size.
 // TODO this might get replaced with something better
 pub type ResponseString = heapless::String<100>;
 
@@ -41,6 +43,12 @@ pub type ResponseString = heapless::String<100>;
 // TODO: another interim option would to split the async trait methods
 // into a separate trait (which impls the non-async trait)
 
+/// Provides either client or server application behaviour
+///
+/// The actual behaviour is provided by [`CliBehaviour`] or [`ServBehaviour`].
+///
+/// Applications using sunset-embassy don't need to use this directly,
+/// instead passing a CliBehaviour or ServBehaviour.
 pub enum Behaviour<'a, C: CliBehaviour, S: ServBehaviour> {
     Client(&'a mut C),
     Server(&'a mut S),
@@ -61,13 +69,13 @@ impl<'a, S: ServBehaviour> From<&'a mut S> for Behaviour<'a, UnusedCli, S> {
 impl<'a, C, S> Behaviour<'a, C, S>
     where C: CliBehaviour, S: ServBehaviour
 {
+    /// Create a new client `Behaviour` instance
     pub fn new_client(b: &'a mut C) -> Behaviour<C, UnusedServ> {
         Behaviour::<C, UnusedServ>::Client(b)
-        // b.into()
     }
 
+    /// Create a new server `Behaviour` instance
     pub fn new_server(b: &'a mut S) -> Behaviour<UnusedCli, S> {
-        // b.into()
         Behaviour::<UnusedCli, S>::Server(b)
     }
 
@@ -116,6 +124,15 @@ impl<'a, C, S> Behaviour<'a, C, S>
     }
 }
 
+/// Defines application behaviour as a client
+///
+/// The trait methods are called by the Sunset runner during the connection. Some
+/// methods request information, such as [`username()`][Self::username]. Other
+/// methods inform of events that have occurred, such as [`session_opened()`][Self::session_opened]
+/// or [`disconnected()`][Self::disconnected].
+///
+/// When running async with `sunset-embassy`, the `CliBehaviour` will be passed inside
+/// a `SunsetMutex` to allow external mutability if needed.
 pub trait CliBehaviour {
     /// Provide the user to use for authentication. Will only be called once
     /// per session.
@@ -201,6 +218,17 @@ pub trait CliBehaviour {
     }
 }
 
+/// Defines application behaviour as a server
+///
+/// The trait methods are called by the Sunset runner during the connection. The response
+/// from these methods changes how the connection is handled, for example whether to allow authentication
+/// or opening a channel.
+///
+/// Channel requests also provide a [`ChanHandle`] argument which can be passed to IO methods
+/// to read/write data.
+///
+/// When running async with `sunset-embassy`, the `ServBehaviour` will be passed inside
+/// a `SunsetMutex` to allow external mutability if needed.
 pub trait ServBehaviour {
     // TODO: load keys on demand?
     // at present `async` isn't very useful here, since it can't load keys
@@ -209,10 +237,14 @@ pub trait ServBehaviour {
     // Also could make it take a closure to call with the key, lets it just
     // be loaded on the stack rather than kept in memory for the whole lifetime.
     // TODO: a slice of references is a bit awkward?
+
+    /// Requests hostkeys for the server
     fn hostkeys(&mut self) -> BhResult<heapless::Vec<&SignKey, 2>>;
 
     #[allow(unused)]
     // TODO: or return a slice of enums
+    /// Queries whether password authentication should be allowed
+    ///
     /// Implementations should take care to avoid leaking user existence
     /// based on timing.
     fn have_auth_password(&self, username: TextString) -> bool {
@@ -220,6 +252,8 @@ pub trait ServBehaviour {
     }
 
     #[allow(unused)]
+    /// Queries whether pubkey authentication should be allowed
+    ///
     /// Implementations should take care to avoid leaking user existence
     /// based on timing.
     fn have_auth_pubkey(&self, username: TextString) -> bool {
@@ -229,6 +263,8 @@ pub trait ServBehaviour {
     #[allow(unused)]
     /// Return true to allow the user to log in with no authentication
     ///
+    /// This obviously has security implications.
+    ///
     /// Implementations may need to take care to avoid leaking user existence
     /// based on timing.
     async fn auth_unchallenged(&mut self, username: TextString<'_>) -> bool {
@@ -237,9 +273,10 @@ pub trait ServBehaviour {
 
     #[allow(unused)]
     // TODO: change password
-    /// Implementations should perform password hash comparisons
-    /// in constant time, using
-    /// [`subtle::ConstantTimeEq`] or similar.
+    /// Test if a password is valid.
+    ///
+    /// Implementations should store passwords hashed, and perform password hash comparisons
+    /// in constant time, using [`subtle::ConstantTimeEq`] or similar.
     ///
     /// Implementations may need to take care to avoid leaking user existence
     /// based on timing.
@@ -258,7 +295,7 @@ pub trait ServBehaviour {
         false
     }
 
-    /// Returns whether a session can be opened
+    /// Returns whether a session (shell or command) can be opened
     fn open_session(&mut self, chan: ChanHandle) -> channel::ChanOpened;
 
     #[allow(unused)]
@@ -271,19 +308,19 @@ pub trait ServBehaviour {
         ChanOpened::Failure((ChanFail::SSH_OPEN_UNKNOWN_CHANNEL_TYPE, chan))
     }
 
-    /// Returns a boolean request success status
+    /// Called when a shell is requested, returns a boolean request success status
     #[allow(unused)]
     fn sess_shell(&mut self, chan: ChanNum) -> bool {
         false
     }
 
-    /// Returns a boolean request success status
+    /// Called when a command execution is requested, returns a boolean request success status
     #[allow(unused)]
     fn sess_exec(&mut self, chan: ChanNum, cmd: TextString) -> bool {
         false
     }
 
-    /// Returns a boolean request success status
+    /// Called when a PTY (interactive terminal) is requested, returns a boolean request success status
     #[allow(unused)]
     fn sess_pty(&mut self, chan: ChanNum, pty: &Pty) -> bool {
         false

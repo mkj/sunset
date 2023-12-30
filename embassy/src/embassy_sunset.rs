@@ -120,6 +120,11 @@ impl<'a> EmbassySunset<'a> {
          }
     }
 
+    /// Runs the session to completion
+    ///
+    /// `b` is a bit tricky, it allows passing either a Mutex<CliBehaviour> or
+    /// Mutex<ServBehaviour> (to be converted into a Behaviour in progress() after 
+    /// the mutex is locked).
     pub async fn run<B: ?Sized, M: RawMutex, C: CliBehaviour, S: ServBehaviour>(&self,
         rsock: &mut impl Read,
         wsock: &mut impl Write,
@@ -294,6 +299,8 @@ impl<'a> EmbassySunset<'a> {
     }
 
     /// Returns ControlFlow::Break on session exit.
+    ///
+    /// B will be either a CliBehaviour or ServBehaviour
     async fn progress<B: ?Sized, M: RawMutex, C: CliBehaviour, S: ServBehaviour>(&self,
         b: &Mutex<M, B>)
         -> Result<ControlFlow<()>>

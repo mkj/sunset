@@ -342,8 +342,11 @@ impl DemoServer for PicoServer {
             let username = self.username.lock().await;
             let mut stdio2 = stdio.clone();
             match username.as_str() {
+                // Open the config menu
                 "config" => menu(&mut stdio, &mut stdio2, false, self.global).await,
+                // Open the usb serial directly
                 "usb" => serial(&mut stdio, &mut stdio2, self.global.usb_pipe).await,
+                // Open the normal (?) serial directly (either usb or uart)
                 _ => serial(&mut stdio, &mut stdio2, default_pipe).await,
             }
         };
