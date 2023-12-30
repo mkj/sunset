@@ -78,7 +78,7 @@ impl<'a> Inner<'a> {
 ///
 /// Applications use `embassy_sunset::{Client,Server}`.
 pub(crate) struct EmbassySunset<'a> {
-    inner: Mutex<SunsetRawMutex, Inner<'a>>,
+    inner: SunsetMutex<Inner<'a>>,
 
     progress_notify: Signal<SunsetRawMutex, ()>,
 

@@ -5,7 +5,6 @@ use {
 };
 use anyhow::{Context, Result, anyhow, bail};
 use argh::FromArgs;
-use embassy_sync::mutex::Mutex;
 
 use tokio::net::TcpStream;
 use tokio::task::spawn_local;
@@ -13,7 +12,7 @@ use tokio::task::spawn_local;
 use std::io::Read;
 
 use sunset::*;
-use sunset_embassy::{SSHClient, SunsetRawMutex};
+use sunset_embassy::{SSHClient, SunsetMutex};
 
 use sunset_async::{CmdlineClient, AgentClient};
 
@@ -112,7 +111,7 @@ async fn run(args: Args) -> Result<()> {
 
         let (hooks, mut cmdrun) = app.split();
 
-        let hooks = Mutex::<SunsetRawMutex, _>::new(hooks);
+        let hooks = SunsetMutex::new(hooks);
 
         // SSH connection future
         let ssh_fut = async {

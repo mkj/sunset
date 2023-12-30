@@ -16,7 +16,7 @@ use embassy_sync::{pipe, mutex::Mutex, signal::Signal};
 use embassy_sync::pipe::Pipe;
 use embassy_futures::select::{select, Either};
 
-use sunset_embassy::SunsetRawMutex;
+use sunset_embassy::{SunsetRawMutex, SunsetMutex};
 
 pub const READ_SIZE: usize = 4000;
 pub const WRITE_SIZE: usize = 64;
@@ -68,11 +68,11 @@ impl Default for TakePipeStorage {
 
 pub struct TakePipe<'a> {
     // fanout
-    shared_read: Mutex<SunsetRawMutex, (u64, pipe::Reader<'a, SunsetRawMutex, READ_SIZE>)>,
+    shared_read: SunsetMutex<(u64, pipe::Reader<'a, SunsetRawMutex, READ_SIZE>)>,
     writer: pipe::Writer<'a, SunsetRawMutex, READ_SIZE>,
     // fanin
     reader: pipe::Reader<'a, SunsetRawMutex, WRITE_SIZE>,
-    shared_write: Mutex<SunsetRawMutex, (u64, pipe::Writer<'a, SunsetRawMutex, WRITE_SIZE>)>,
+    shared_write: SunsetMutex<(u64, pipe::Writer<'a, SunsetRawMutex, WRITE_SIZE>)>,
     wake: Signal<SunsetRawMutex, ()>,
 }
 

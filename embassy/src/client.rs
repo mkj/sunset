@@ -1,5 +1,3 @@
-use embassy_sync::mutex::Mutex;
-use embassy_sync::blocking_mutex::raw::RawMutex;
 use embedded_io_async::{Read, Write};
 
 use sunset::*;
@@ -19,7 +17,7 @@ use embassy_channel::{ChanInOut, ChanIn};
 /// may open remote channels with [`open_session_pty()`][Self::open_session_pty] etc.
 ///
 /// This is async executor agnostic, though requires the `CliBehaviour` instance
-/// to be wrapped in an Embassy [`Mutex`].
+/// to be wrapped in a [`SunsetMutex`].
 pub struct SSHClient<'a> {
     sunset: EmbassySunset<'a>,
 }
