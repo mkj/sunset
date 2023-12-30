@@ -22,16 +22,14 @@ use runner::ChanHandle;
 
 use snafu::ErrorCompat;
 
-pub(crate) struct Channels<C: CliBehaviour, S: ServBehaviour> {
+pub(crate) struct Channels {
     ch: [Option<Channel>; config::MAX_CHANNELS],
-    _ph: (PhantomData<C>, PhantomData<S>),
 }
 
-impl<C: CliBehaviour, S: ServBehaviour> Channels<C, S> {
+impl Channels {
     pub fn new() -> Self {
         Channels {
             ch: Default::default(),
-            _ph: Default::default()
         }
     }
 
@@ -219,7 +217,7 @@ impl<C: CliBehaviour, S: ServBehaviour> Channels<C, S> {
         }
     }
 
-    fn dispatch_open(
+    fn dispatch_open<C: CliBehaviour, S: ServBehaviour>(
         &mut self,
         p: &ChannelOpen<'_>,
         s: &mut TrafSend,
@@ -241,7 +239,7 @@ impl<C: CliBehaviour, S: ServBehaviour> Channels<C, S> {
     }
 
     // the caller will send failure messages if required
-    fn dispatch_open_inner(
+    fn dispatch_open_inner<C: CliBehaviour, S: ServBehaviour>(
         &mut self,
         p: &ChannelOpen<'_>,
         s: &mut TrafSend,
@@ -304,7 +302,7 @@ impl<C: CliBehaviour, S: ServBehaviour> Channels<C, S> {
     }
 
     // Some returned errors will be caught by caller and returned as SSH messages
-    async fn dispatch_inner(
+    async fn dispatch_inner<C: CliBehaviour, S: ServBehaviour>(
         &mut self,
         packet: Packet<'_>,
         is_client: bool,
@@ -417,7 +415,7 @@ impl<C: CliBehaviour, S: ServBehaviour> Channels<C, S> {
     /// Incoming packet handling
     // TODO: protocol errors etc should perhaps be less fatal,
     // ssh implementations are usually imperfect.
-    pub async fn dispatch(
+    pub async fn dispatch<C: CliBehaviour, S: ServBehaviour>(
         &mut self,
         packet: Packet<'_>,
         is_client: bool,

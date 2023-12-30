@@ -228,7 +228,7 @@ pub trait DemoServer {
     /// A task to run for each incoming connection.
     // TODO: eventually the compiler should add must_use automatically?
     #[must_use]
-    async fn run<'f, S: ServBehaviour>(&self, serv: &'f SSHServer<'f, S>) -> Result<()>;
+    async fn run<'f>(&self, serv: &'f SSHServer<'f>) -> Result<()>;
 }
 
 

@@ -23,7 +23,7 @@ use config::MAX_CHANNELS;
 use kex::{Kex, SessId, AlgoConfig};
 
 /// The core state of a SSH instance.
-pub(crate) struct Conn<C: CliBehaviour, S: ServBehaviour> {
+pub(crate) struct Conn {
     state: ConnState,
 
     // State of any current Key Exchange
@@ -42,7 +42,7 @@ pub(crate) struct Conn<C: CliBehaviour, S: ServBehaviour> {
     // 256 bytes -> 112 bytes
     pub(crate) remote_version: ident::RemoteVersion,
 
-    pub(crate) channels: Channels<C, S>,
+    pub(crate) channels: Channels,
 }
 
 // TODO: what tricks can we do to optimise away client or server code if we only
@@ -84,7 +84,7 @@ pub(crate) struct Dispatched {
     pub disconnect: bool,
 }
 
-impl<C: CliBehaviour, S: ServBehaviour> Conn<C, S> {
+impl Conn {
     pub fn new_client() -> Result<Self> {
         let algo_conf = AlgoConfig::new(true);
         Self::new(ClientServer::Client(client::Client::new()), algo_conf)
@@ -114,7 +114,7 @@ impl<C: CliBehaviour, S: ServBehaviour> Conn<C, S> {
 
     /// Updates `ConnState` and sends any packets required to progress the connection state.
     // TODO can this just move to the bottom of handle_payload(), and make module-private?
-    pub(crate) async fn progress(
+    pub(crate) async fn progress<C: CliBehaviour, S: ServBehaviour>(
         &mut self,
         s: &mut TrafSend<'_, '_>,
         b: &mut Behaviour<'_, C, S>,
@@ -166,7 +166,7 @@ impl<C: CliBehaviour, S: ServBehaviour> Conn<C, S> {
     /// Consumes an input payload which is a view into [`traffic::Traffic::rxbuf`].
     /// We queue response packets that can be sent (written into the same buffer)
     /// after `handle_payload()` runs.
-    pub(crate) async fn handle_payload(
+    pub(crate) async fn handle_payload<C: CliBehaviour, S: ServBehaviour>(
         &mut self, payload: &[u8], seq: u32,
         s: &mut TrafSend<'_, '_>,
         b: &mut Behaviour<'_, C, S>,
@@ -255,7 +255,7 @@ impl<C: CliBehaviour, S: ServBehaviour> Conn<C, S> {
         self.sess_id.is_none()
     }
 
-    async fn dispatch_packet(
+    async fn dispatch_packet<C: CliBehaviour, S: ServBehaviour>(
         &mut self, packet: Packet<'_>, s: &mut TrafSend<'_, '_>, b: &mut Behaviour<'_, C, S>,
     ) -> Result<Dispatched, Error> {
         // TODO: perhaps could consolidate packet client vs server checks

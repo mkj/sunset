@@ -323,9 +323,9 @@ impl DemoServer for PicoServer {
         *u = username.try_into().unwrap_or(String::new());
     }
 
-    async fn run<'f, S: ServBehaviour>(
+    async fn run<'f>(
         &self,
-        serv: &'f SSHServer<'f, S>,
+        serv: &'f SSHServer<'f>,
     ) -> Result<()> {
         let session = async {
             // wait for a shell to start

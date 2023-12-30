@@ -26,8 +26,8 @@ use conn::{Conn, Dispatched};
 ///
 /// An application provides network or channel data to `Runner` method calls,
 /// and provides customisation callbacks via `CliBehaviour` or `ServBehaviour`.
-pub struct Runner<'a, C: CliBehaviour, S: ServBehaviour> {
-    conn: Conn<C, S>,
+pub struct Runner<'a> {
+    conn: Conn,
 
     /// Binary packet handling from the network buffer
     traf_in: TrafIn<'a>,
@@ -45,7 +45,7 @@ pub struct Runner<'a, C: CliBehaviour, S: ServBehaviour> {
     closed: bool,
 }
 
-impl<C: CliBehaviour, S: ServBehaviour> core::fmt::Debug for Runner<'_, C, S> {
+impl core::fmt::Debug for Runner<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Runner")
         .field("keys", &self.keys)
@@ -61,12 +61,12 @@ pub struct Progress {
     pub disconnected: bool,
 }
 
-impl<'a, C: CliBehaviour> Runner<'a, C, UnusedServ> {
-    /// `inbuf` must be sized to fit the largest SSH packet allowed.
+impl<'a> Runner<'a> {
+    /// `inbuf` and `outbuf` must be sized to fit the largest SSH packet allowed.
     pub fn new_client(
         inbuf: &'a mut [u8],
         outbuf: &'a mut [u8],
-    ) -> Result<Runner<'a, C, UnusedServ>, Error> {
+    ) -> Result<Runner<'a>, Error> {
         let conn = Conn::new_client()?;
         let runner = Runner {
             conn,
@@ -80,14 +80,12 @@ impl<'a, C: CliBehaviour> Runner<'a, C, UnusedServ> {
 
         Ok(runner)
     }
-}
 
-
-impl<'a, S: ServBehaviour> Runner<'a, UnusedCli, S> {
+    /// `inbuf` and `outbuf` must be sized to fit the largest SSH packet allowed.
     pub fn new_server(
         inbuf: &'a mut [u8],
         outbuf: &'a mut [u8],
-    ) -> Result<Runner<'a, UnusedCli, S>, Error> {
+    ) -> Result<Runner<'a>, Error> {
         let conn = Conn::new_server()?;
         let runner = Runner {
             conn,
@@ -101,9 +99,6 @@ impl<'a, S: ServBehaviour> Runner<'a, UnusedCli, S> {
 
         Ok(runner)
     }
-}
-
-impl<'a, C: CliBehaviour, S: ServBehaviour> Runner<'a, C, S> {
     pub fn is_client(&self) -> bool {
         self.conn.is_client()
     }
@@ -121,7 +116,7 @@ impl<'a, C: CliBehaviour, S: ServBehaviour> Runner<'a, C, S> {
     ///
     /// Returns `Ok(true)` if an input packet was handled, `Ok(false)` if no packet was ready
     /// (Can also return various errors)
-    pub async fn progress(&mut self, behaviour: &mut Behaviour<'_, C, S>)
+    pub async fn progress<C: CliBehaviour, S: ServBehaviour>(&mut self, behaviour: &mut Behaviour<'_, C, S>)
         -> Result<Progress>
     {
         let mut prog = Progress::default();

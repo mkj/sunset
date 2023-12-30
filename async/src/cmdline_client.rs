@@ -35,11 +35,11 @@ enum CmdlineState<'a> {
     PreAuth,
     Authed,
     Opening {
-        io: ChanInOut<'a, CmdlineHooks<'a>, UnusedServ>,
-        extin: Option<ChanIn<'a, CmdlineHooks<'a>, UnusedServ>>,
+        io: ChanInOut<'a>,
+        extin: Option<ChanIn<'a>>,
     },
     Ready {
-        io: ChanInOut<'a, CmdlineHooks<'a>, UnusedServ>,
+        io: ChanInOut<'a>,
     },
 }
 
@@ -184,8 +184,8 @@ impl<'a> CmdlineRunner<'a> {
         }
     }
 
-    async fn chan_run(io: ChanInOut<'a, CmdlineHooks<'a>, UnusedServ>,
-        io_err: Option<ChanIn<'a, CmdlineHooks<'a>, UnusedServ>>,
+    async fn chan_run(io: ChanInOut<'a>,
+        io_err: Option<ChanIn<'a>>,
         pty_guard: Option<RawPtyGuard>) -> Result<()> {
         // out
         let fo = async {
@@ -318,7 +318,7 @@ impl<'a> CmdlineRunner<'a> {
     ///
     /// Performs authentication, requests a shell or command, performs channel IO.
     /// Will return `Ok` after the session ends normally, or an error.
-    pub async fn run(&mut self, cli: &'a SSHClient<'a, CmdlineHooks<'a>>) -> Result<()> {
+    pub async fn run(&mut self, cli: &'a SSHClient<'a>) -> Result<()> {
         // chanio is only set once a channel is opened below
         let chanio = Fuse::terminated();
         pin_mut!(chanio);
@@ -385,7 +385,7 @@ impl<'a> CmdlineRunner<'a> {
         Ok(())
     }
 
-    async fn open_session(&mut self, cli: &'a SSHClient<'a, CmdlineHooks<'a>>) -> Result<()> {
+    async fn open_session(&mut self, cli: &'a SSHClient<'a>) -> Result<()> {
         debug_assert!(matches!(self.state, CmdlineState::Authed));
 
         let (io, extin) = if self.want_pty {

@@ -49,8 +49,8 @@ struct Wakers {
     chan_close: [WakerRegistration; MAX_CHANNELS],
 }
 
-struct Inner<'a, C: CliBehaviour, S: ServBehaviour> {
-    runner: Runner<'a, C, S>,
+struct Inner<'a> {
+    runner: Runner<'a>,
 
     wakers: Wakers,
 
@@ -59,11 +59,11 @@ struct Inner<'a, C: CliBehaviour, S: ServBehaviour> {
     chan_handles: [Option<ChanHandle>; MAX_CHANNELS],
 }
 
-impl<'a, C: CliBehaviour, S: ServBehaviour> Inner<'a, C, S> {
+impl<'a> Inner<'a> {
     /// Helper to lookup the corresponding ChanHandle
     ///
     /// Returns split references that will be required by many callers
-    fn fetch(&mut self, num: ChanNum) -> Result<(&mut Runner<'a, C, S>, &ChanHandle, &mut Wakers)> {
+    fn fetch(&mut self, num: ChanNum) -> Result<(&mut Runner<'a>, &ChanHandle, &mut Wakers)> {
         self.chan_handles[num.0 as usize].as_ref().map(|ch| {
             (&mut self.runner, ch, &mut self.wakers)
         })
@@ -71,14 +71,14 @@ impl<'a, C: CliBehaviour, S: ServBehaviour> Inner<'a, C, S> {
     }
 }
 
-/// Provides an async wrapper for sunset core
+/// Provides an async wrapper for Sunset core
 ///
-/// A `ChanHandle` provided by sunset core must be added with `add_channel()` before
+/// A [`ChanHandle`] provided by sunset core must be added with [`add_channel()`] before
 /// a method can be called with the equivalent ChanNum.
 ///
 /// Applications use `embassy_sunset::{Client,Server}`.
-pub(crate) struct EmbassySunset<'a, C: CliBehaviour, S: ServBehaviour> {
-    inner: Mutex<SunsetRawMutex, Inner<'a, C, S>>,
+pub(crate) struct EmbassySunset<'a> {
+    inner: Mutex<SunsetRawMutex, Inner<'a>>,
 
     progress_notify: Signal<SunsetRawMutex, ()>,
 
@@ -94,8 +94,8 @@ pub(crate) struct EmbassySunset<'a, C: CliBehaviour, S: ServBehaviour> {
     chan_refcounts: [AtomicUsize; MAX_CHANNELS],
 }
 
-impl<'a, C: CliBehaviour, S: ServBehaviour> EmbassySunset<'a, C, S> {
-    pub fn new(runner: Runner<'a, C, S>) -> Self {
+impl<'a> EmbassySunset<'a> {
+    pub fn new(runner: Runner<'a>) -> Self {
         let wakers = Wakers {
             chan_read: Default::default(),
             chan_write: Default::default(),
@@ -120,7 +120,7 @@ impl<'a, C: CliBehaviour, S: ServBehaviour> EmbassySunset<'a, C, S> {
          }
     }
 
-    pub async fn run<B: ?Sized, M: RawMutex>(&self,
+    pub async fn run<B: ?Sized, M: RawMutex, C: CliBehaviour, S: ServBehaviour>(&self,
         rsock: &mut impl Read,
         wsock: &mut impl Write,
         b: &Mutex<M, B>) -> Result<()>
@@ -224,7 +224,7 @@ impl<'a, C: CliBehaviour, S: ServBehaviour> EmbassySunset<'a, C, S> {
         self.wake_progress()
     }
 
-    fn wake_channels(&self, inner: &mut Inner<C, S>) -> Result<()> {
+    fn wake_channels(&self, inner: &mut Inner) -> Result<()> {
         // Read wakers
         let w = &mut inner.wakers;
         if let Some((num, dt, _len)) = inner.runner.ready_channel_input() {
@@ -278,7 +278,7 @@ impl<'a, C: CliBehaviour, S: ServBehaviour> EmbassySunset<'a, C, S> {
     /// without "async Drop" it isn't possible to take the `inner` lock during
     /// `drop()`.
     /// Instead this runs periodically from an async context to release channels.
-    fn clear_refcounts(&self, inner: &mut Inner<C, S>) -> Result<()> {
+    fn clear_refcounts(&self, inner: &mut Inner) -> Result<()> {
         for (ch, count) in inner.chan_handles.iter_mut().zip(self.chan_refcounts.iter()) {
             let count = count.load(Relaxed);
             if count > 0 {
@@ -294,7 +294,7 @@ impl<'a, C: CliBehaviour, S: ServBehaviour> EmbassySunset<'a, C, S> {
     }
 
     /// Returns ControlFlow::Break on session exit.
-    async fn progress<B: ?Sized, M: RawMutex>(&self,
+    async fn progress<B: ?Sized, M: RawMutex, C: CliBehaviour, S: ServBehaviour>(&self,
         b: &Mutex<M, B>)
         -> Result<ControlFlow<()>>
         where
@@ -342,14 +342,14 @@ impl<'a, C: CliBehaviour, S: ServBehaviour> EmbassySunset<'a, C, S> {
     }
 
     pub(crate) async fn with_runner<F, R>(&self, f: F) -> R
-        where F: FnOnce(&mut Runner<C, S>) -> R {
+        where F: FnOnce(&mut Runner) -> R {
         let mut inner = self.inner.lock().await;
         f(&mut inner.runner)
     }
 
     /// helper to perform a function on the `inner`, returning a `Poll` value
     async fn poll_inner<F, T>(&self, mut f: F) -> T
-        where F: FnMut(&mut Inner<C, S>, &mut Context) -> Poll<T> {
+        where F: FnMut(&mut Inner, &mut Context) -> Poll<T> {
         poll_fn(|cx| {
             // Attempt to lock .inner
             let i = self.inner.lock();
