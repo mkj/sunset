@@ -9,6 +9,8 @@ pub use log::{debug, error, info, log, trace, warn};
 #[cfg(feature = "defmt")]
 pub use defmt::{debug, error, info, panic, trace, warn};
 
+use core::ops::ControlFlow;
+
 use {defmt_rtt as _, panic_probe as _};
 
 use embassy_executor::Spawner;
@@ -236,7 +238,7 @@ where
             menu.input_byte(*c);
             menu.context.out.flush(chanw).await?;
 
-            if menu.context.progress(chanr, chanw).await? {
+            if let ControlFlow::Break(_) = menu.context.progress(chanr, chanw).await? {
                 break 'io;
             }
         }

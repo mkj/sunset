@@ -11,7 +11,7 @@ pub use defmt::{debug, error, info, panic, trace, warn};
 
 use core::fmt::{Write as _, Debug, Display};
 use core::future::{poll_fn, Future};
-use core::ops::DerefMut;
+use core::ops::{DerefMut, ControlFlow};
 use core::sync::atomic::Ordering::{Relaxed, SeqCst};
 use core::str::FromStr;
 
@@ -92,12 +92,12 @@ impl MenuCtx {
         true
     }
 
-    // Returns `Ok(true)` to exit the menu
+    // Returns `Ok(Break)` to exit the menu
     pub(crate) async fn progress<R, W>(
         &mut self,
         mut chanr: &mut R,
         mut chanw: &mut W,
-    ) -> Result<bool>
+    ) -> Result<ControlFlow<()>>
     where
         R: AsyncRead<Error = sunset::Error>,
         W: AsyncWrite<Error = sunset::Error>,
@@ -117,7 +117,7 @@ impl MenuCtx {
                 }
                 crate::serial(chanr, chanw, self.state.usb_pipe).await?;
                 // TODO we could return to the menu on serial error?
-                return Ok(true);
+                return Ok(ControlFlow::Break(()));
             }
         }
 
@@ -136,7 +136,7 @@ impl MenuCtx {
                 }
                 crate::serial(chanr, chanw, self.state.serial1_pipe).await?;
                 // TODO we could return to the menu on serial error?
-                return Ok(true);
+                return Ok(ControlFlow::Break(()));
             }
         }
 
@@ -153,7 +153,7 @@ impl MenuCtx {
         }
 
         if self.logout {
-            return Ok(true);
+            return Ok(ControlFlow::Break(()));
         }
 
         if self.reset {
@@ -171,7 +171,7 @@ impl MenuCtx {
 
         // write messages from handling
         self.out.flush(&mut chanw).await?;
-        Ok(false)
+        Ok(ControlFlow::Continue(()))
     }
 }
 
