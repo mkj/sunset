@@ -19,6 +19,7 @@ use sshnames::*;
 use sshwire::{BinString, TextString, SSHEncodeEnum};
 use traffic::TrafSend;
 use runner::ChanHandle;
+use behaviour::Behaviour;
 
 use snafu::ErrorCompat;
 

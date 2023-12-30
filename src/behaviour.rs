@@ -4,6 +4,8 @@ use {
     log::{debug, error, info, log, trace, warn},
 };
 
+use core::convert::Infallible;
+
 use snafu::prelude::*;
 
 use crate::*;
@@ -296,10 +298,11 @@ pub trait ServBehaviour {
     }
 }
 
-/// A placeholder that will not be instantiated
+// Placeholders that will not be instantiated
+// For some reason these need to be public because they leak
+// from the async call to EmbassySunset::run() ?
 #[doc(hidden)]
-#[derive(Debug)]
-pub struct UnusedCli;
+pub struct UnusedCli(Infallible);
 impl CliBehaviour for UnusedCli {
     fn username(&mut self) -> BhResult<ResponseString> {
         unreachable!()
@@ -312,10 +315,8 @@ impl CliBehaviour for UnusedCli {
     }
 }
 
-/// A placeholder that will not be instantiated
 #[doc(hidden)]
-#[derive(Debug)]
-pub struct UnusedServ;
+pub struct UnusedServ(Infallible);
 impl ServBehaviour for UnusedServ {
     fn hostkeys(&mut self) -> BhResult<heapless::Vec<&SignKey, 2>> {
         unreachable!()

@@ -8,7 +8,7 @@ pub use defmt::{debug, error, info, panic, trace, warn};
 
 use core::future::{poll_fn, Future};
 use core::task::{Poll, Context};
-use core::ops::ControlFlow;
+use core::ops::{ControlFlow, DerefMut};
 use core::sync::atomic::AtomicBool;
 use core::sync::atomic::Ordering::{Relaxed, SeqCst};
 
@@ -310,8 +310,12 @@ impl<'a> EmbassySunset<'a> {
             let mut inner = self.inner.lock().await;
             {
                 {
+                    // lock the Mutex around the CliBehaviour or ServBehaviour
                     let mut b = b.lock().await;
-                    let b: &mut B = &mut b;
+                    // dereference the MutexGuard
+                    let b = b.deref_mut();
+                    // create either Behaviour<C, UnusedServ> or Behaviour<UnusedCli, S>
+                    // to pass to the runner.
                     let mut b: Behaviour<C, S> = b.into();
                     ret = inner.runner.progress(&mut b).await?;
                     // b is dropped, allowing other users

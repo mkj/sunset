@@ -1,9 +1,6 @@
-use embassy_sync::mutex::Mutex;
-use embassy_sync::blocking_mutex::raw::RawMutex;
 use embedded_io_async::{Read, Write};
 
 use sunset::*;
-use sunset::behaviour::UnusedCli;
 
 use crate::*;
 use embassy_sunset::EmbassySunset;
@@ -17,7 +14,7 @@ use embassy_sunset::EmbassySunset;
 /// and [`stdio_stderr()`][Self::stdio_stderr] methods.
 ///
 /// This is async executor agnostic, though requires the `ServBehaviour` instance
-/// to be wrapped in an Embassy [`Mutex`].
+/// to be wrapped in a [`SunsetMutex`].
 pub struct SSHServer<'a> {
     sunset: EmbassySunset<'a>,
 }
@@ -31,12 +28,14 @@ impl<'a> SSHServer<'a> {
         Ok(Self { sunset })
     }
 
-    pub async fn run<B: ?Sized, M: RawMutex, S: ServBehaviour>(&self,
+    /// Runs the session to completion.
+    ///
+    /// `rsock` and `wsock` are the SSH network channel (TCP port 22 or equivalent).
+    /// `b` is an instance of [`ServBehaviour`] which defines application behaviour.
+    pub async fn run<S: ServBehaviour>(&self,
         rsock: &mut impl Read,
         wsock: &mut impl Write,
-        b: &Mutex<M, B>) -> Result<()>
-        where
-            for<'f> Behaviour<'f, UnusedCli, S>: From<&'f mut B>
+        b: &SunsetMutex<S>) -> Result<()>
     {
         self.sunset.run(rsock, wsock, b).await
     }

@@ -1,7 +1,6 @@
 use embedded_io_async::{Read, Write};
 
 use sunset::*;
-use sunset::behaviour::UnusedServ;
 
 use crate::*;
 use sunset::ChanData;
@@ -30,12 +29,14 @@ impl<'a> SSHClient<'a> {
         Ok(Self { sunset })
     }
 
-    pub async fn run<B: ?Sized, M: RawMutex, C: CliBehaviour>(&self,
+    /// Runs the session to completion.
+    ///
+    /// `rsock` and `wsock` are the SSH network channel (TCP port 22 or equivalent).
+    /// `b` is an instance of [`CliBehaviour`] which defines application behaviour.
+    pub async fn run<C: CliBehaviour>(&self,
         rsock: &mut impl Read,
         wsock: &mut impl Write,
-        b: &Mutex<M, B>) -> Result<()>
-        where
-            for<'f> Behaviour<'f, C, UnusedServ>: From<&'f mut B>
+        b: &SunsetMutex<C>) -> Result<()>
     {
         self.sunset.run(rsock, wsock, b).await
     }

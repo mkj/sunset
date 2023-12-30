@@ -18,7 +18,7 @@ pub mod packets;
 pub mod sshnames;
 pub mod config;
 // exported so that UnusedCli can be used
-pub mod behaviour;
+mod behaviour;
 // exported so that some Channel error variants can be created with .fail().
 // perhaps the ones of interest should be expored separately.
 pub mod error;

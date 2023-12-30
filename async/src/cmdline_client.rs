@@ -8,7 +8,6 @@ use core::fmt::Debug;
 use sunset::{AuthSigMsg, SignKey, OwnedSig, Pty, sshnames};
 use sunset::{BhError, BhResult};
 use sunset::{Error, Result, Runner, SessionCommand};
-use sunset::behaviour::{UnusedCli, UnusedServ};
 use sunset_embassy::*;
 
 use std::collections::VecDeque;

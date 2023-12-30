@@ -13,7 +13,7 @@ use packets::{ChannelDataExt, ChannelData};
 use crate::channel::{ChanNum, ChanData};
 use encrypt::KeyState;
 use traffic::{TrafIn, TrafOut, TrafSend};
-use behaviour::{UnusedCli, UnusedServ};
+use behaviour::Behaviour;
 
 use conn::{Conn, Dispatched};
 

@@ -21,6 +21,7 @@ use traffic::TrafSend;
 use channel::Channels;
 use config::MAX_CHANNELS;
 use kex::{Kex, SessId, AlgoConfig};
+use behaviour::Behaviour;
 
 /// The core state of a SSH instance.
 pub(crate) struct Conn {
