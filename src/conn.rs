@@ -100,7 +100,7 @@ impl Conn {
         Ok(Conn {
             sess_id: None,
             kex: Kex::new(),
-            remote_version: ident::RemoteVersion::new(),
+            remote_version: ident::RemoteVersion::new(cliserv.is_client()),
             state: ConnState::SendIdent,
             algo_conf,
             cliserv,

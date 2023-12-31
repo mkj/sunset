@@ -896,7 +896,7 @@ mod tests {
     impl TrafCatcher {
         fn new() -> Self {
             let traf_in = traffic::TrafIn::new(vec![0u8; 3000].leak());
-            let mut rv = RemoteVersion::new();
+            let mut rv = RemoteVersion::new(false);
             rv.consume(b"SSH-2.0-thing\r\n").unwrap();
             rv.version().unwrap();
 
@@ -958,7 +958,7 @@ mod tests {
         // needs to be hardcoded because that's what we send.
         let mut s = Vec::from(crate::ident::OUR_VERSION);
         s.extend_from_slice(b"\r\n");
-        let mut version = RemoteVersion::new();
+        let mut version = RemoteVersion::new(true);
         version.consume(s.as_slice()).unwrap();
 
         let mut keys = vec![];

@@ -33,6 +33,7 @@ pub struct RemoteVersion {
     /// Parse state
     st: VersPars,
     num_lines: usize,
+    is_client: bool,
 }
 
 /// Version parsing state.
@@ -59,11 +60,12 @@ pub(crate) enum VersPars {
 }
 
 impl RemoteVersion {
-    pub fn new() -> Self {
+    pub fn new(is_client: bool) -> Self {
         RemoteVersion {
             storage: [0; MAX_REMOTE_VERSION_LEN],
             st: VersPars::Start(0),
             num_lines: 0,
+            is_client,
         }
     }
 
@@ -113,7 +115,8 @@ impl RemoteVersion {
                     if b == LF {
                         self.st = VersPars::Start(0);
                         self.num_lines += 1;
-                        if self.num_lines > MAX_LINES {
+                        // only client allows extra unknown lines
+                        if !self.is_client || self.num_lines > MAX_LINES {
                             return Err(Error::NotSSH);
                         }
                     }
@@ -160,8 +163,9 @@ mod tests {
     use crate::error::{Error,TrapBug,Result};
     use crate::sunsetlog::init_test_log;
 
+    // Tests as a client, allowing leading ignored lines
     fn test_version(v: &str, split: usize, expect: &str) -> Result<usize> {
-        let mut r = ident::RemoteVersion::new();
+        let mut r = ident::RemoteVersion::new(true);
 
         let split = split.min(v.len());
         let (a, b) = v.as_bytes().split_at(split);
@@ -209,6 +213,19 @@ mod tests {
             // a CR by itself is insufficient
             test_version(&format!("{long}     \x0dSSH-2.0-works\x0d\x0a"), i, "").unwrap_err();
         }
+        Ok(())
+    }
+
+
+    #[test]
+    /// check server doesn't allow leading lines
+    fn version_server_lines() -> Result<()> {
+        // server instance, is_client false
+        let mut r = ident::RemoteVersion::new(false);
+        r.consume(b"SSH-2.0-aaa").unwrap();
+        let mut r = ident::RemoteVersion::new(false);
+        // disallow leading lines
+        r.consume(b"zzz\x0d\x0aSSH-2.0-aaa").unwrap_err();
         Ok(())
     }
 
