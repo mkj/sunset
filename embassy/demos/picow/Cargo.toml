@@ -16,17 +16,16 @@ cyw43-pio = { version = "0.1.0", optional = true }
 
 embassy-net-wiznet = { version = "0.1.0", optional = true }
 
-embassy-executor = { version = "0.4",  features = ["defmt", "integrated-timers", "executor-thread", "arch-cortex-m"] }
-embassy-time = { version = "0.2",  features = ["defmt", "defmt-timestamp-uptime"] }
+embassy-executor = { version = "0.5",  features = ["defmt", "integrated-timers", "executor-thread", "arch-cortex-m"] }
+embassy-time = { version = "0.3",  features = ["defmt", "defmt-timestamp-uptime"] }
 embassy-rp = { version = "0.1",  features = ["defmt", "unstable-pac", "time-driver"] }
-# embassy-net/nightly is required for asynch::Read/Write on TcpReader/TcpWriter
-embassy-net = { version = "0.2", features = ["tcp", "dhcpv4", "medium-ethernet"] }
+embassy-net = { version = "0.4", features = ["tcp", "dhcpv4", "medium-ethernet"] }
 embassy-net-driver = { version = "0.2" }
 embassy-usb-driver = { version = "0.1" }
 embassy-sync = { version = "0.5" }
 embassy-futures = { version = "0.1" }
 embassy-usb = { version = "0.1" }
-atomic-polyfill = "0.1.5"
+atomic-polyfill = "1.0"
 static_cell = { version = "1.0", features = [ "nightly" ] }
 
 defmt = { version  = "0.3", optional = true }
@@ -41,11 +40,11 @@ snafu = { version = "0.7", default-features = false, features = ["rust_1_61"] }
 cortex-m = { version = "0.7.6", features = ["critical-section-single-core"]}
 cortex-m-rt = "0.7.0"
 
-embedded-hal-1 = { package = "embedded-hal", version = "1.0.0-alpha.11" }
-embedded-hal-async = { version = "1.0.0-alpha.10" }
+embedded-hal = "1.0"
+embedded-hal-async = "1.0"
 embedded-hal-bus = { version = "0.1.0-rc.1", features = ["async"], optional = true }
 embedded-io-async = "0.6"
-embedded-storage-async = { version = "0.4.0" }
+embedded-storage-async = "0.4"
 heapless = "0.8"
 
 caprand = { git = "https://github.com/mkj/caprand" }

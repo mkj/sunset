@@ -64,7 +64,7 @@ futures = { version = "0.3", default-features = false }
 defmt = { version  = "0.3", optional = true }
 
 [features]
-std = ["snafu/std", "snafu/backtraces", "ssh-key/alloc"]
+std = ["snafu/std", "snafu/backtrace", "ssh-key/alloc"]
 rsa = ["dep:rsa", "ssh-key/rsa"]
 # allows conversion to/from OpenSSH key formats
 openssh-key = ["ssh-key"]
@@ -87,28 +87,6 @@ x25519-dalek = { git = "https://github.com/mkj/curve25519-dalek", branch = "suns
 # curve25519-dalek = { path = "/home/matt/3rd/rs/crypto/curve25519-dalek/curve25519-dalek" }
 # ed25519-dalek = { path = "/home/matt/3rd/rs/crypto/curve25519-dalek/ed25519-dalek" }
 # x25519-dalek = { path = "/home/matt/3rd/rs/crypto/curve25519-dalek/x25519-dalek" }
-
-embassy-executor = { git = "https://github.com/embassy-rs/embassy", rev = "90e96d281f87efdbea3a1418f5354f14386a42e8" }
-embassy-time = { git = "https://github.com/embassy-rs/embassy", rev = "90e96d281f87efdbea3a1418f5354f14386a42e8" }
-# embassy-futures = { git = "https://github.com/embassy-rs/embassy", rev = "90e96d281f87efdbea3a1418f5354f14386a42e8" }
-embassy-rp = { git = "https://github.com/embassy-rs/embassy", rev = "90e96d281f87efdbea3a1418f5354f14386a42e8" }
-embassy-usb = { git = "https://github.com/embassy-rs/embassy", rev = "90e96d281f87efdbea3a1418f5354f14386a42e8" }
-# embassy-sync = { git = "https://github.com/embassy-rs/embassy", rev = "90e96d281f87efdbea3a1418f5354f14386a42e8" }
-embassy-usb-driver = { git = "https://github.com/embassy-rs/embassy", rev = "90e96d281f87efdbea3a1418f5354f14386a42e8" }
-# for cyw43
-embassy-net = { git = "https://github.com/embassy-rs/embassy", rev = "90e96d281f87efdbea3a1418f5354f14386a42e8" }
-embassy-net-driver-channel = { git = "https://github.com/embassy-rs/embassy", rev = "90e96d281f87efdbea3a1418f5354f14386a42e8" }
-embassy-net-driver = { git = "https://github.com/embassy-rs/embassy", rev = "90e96d281f87efdbea3a1418f5354f14386a42e8" }
-embassy-net-tuntap = { git = "https://github.com/embassy-rs/embassy", rev = "90e96d281f87efdbea3a1418f5354f14386a42e8" }
-
-cyw43 = { git = "https://github.com/embassy-rs/embassy/", rev = "90e96d281f87efdbea3a1418f5354f14386a42e8" }
-cyw43-pio = { git = "https://github.com/embassy-rs/embassy/", rev = "90e96d281f87efdbea3a1418f5354f14386a42e8" }
-embassy-net-wiznet = { git = "https://github.com/embassy-rs/embassy/", rev = "90e96d281f87efdbea3a1418f5354f14386a42e8" }
-
-# embassy-net = { path = "/home/matt/3rd/rs/embassy/embassy-net" }
-# embassy-net-driver = { path = "/home/matt/3rd/rs/embassy/embassy-net-driver" }
-# embassy-net-driver-channel = { path = "/home/matt/3rd/rs/embassy/embassy-net-driver-channel" }
-# embassy-net-tuntap = { path = "/home/matt/3rd/rs/embassy/embassy-net-tuntap" }
 
 # these are mostly applicable to picow, but can't hurt generally
 [profile.dev]

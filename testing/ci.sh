@@ -13,8 +13,7 @@ fi
 mkdir -p ci_out
 OUT="$(realpath ci_out)"
 
-# disabled for now, doesn't like unstable features
-#export RUSTDOCFLAGS='-D warnings'
+export RUSTDOCFLAGS='-D warnings'
 
 # dependencies
 which cargo-bloat > /dev/null || cargo install cargo-bloat
