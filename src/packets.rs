@@ -27,7 +27,7 @@ use sshwire::{SSHEncode, SSHDecode, SSHSource, SSHSink, WireResult, WireError};
 use sshwire::{SSHEncodeEnum, SSHDecodeEnum};
 
 #[cfg(feature = "rsa")]
-use rsa::PublicKeyParts;
+use rsa::traits::PublicKeyParts;
 
 // Any `enum` needs to have special handling to select a variant when deserializing.
 // This is mostly done with `#[sshwire(...)]` attributes.
@@ -385,7 +385,6 @@ pub struct RSAPubKey {
 #[cfg(feature = "rsa")]
 impl SSHEncode for RSAPubKey {
     fn enc(&self, s: &mut dyn SSHSink) -> WireResult<()> {
-        use rsa::PublicKeyParts;
         self.key.e().enc(s)?;
         self.key.n().enc(s)?;
         Ok(())
@@ -395,7 +394,6 @@ impl SSHEncode for RSAPubKey {
 #[cfg(feature = "rsa")]
 impl<'de> SSHDecode<'de> for RSAPubKey {
     fn dec<S>(s: &mut S) -> WireResult<Self> where S: SSHSource<'de> {
-        use rsa::PublicKeyParts;
         let e = SSHDecode::dec(s)?;
         let n = SSHDecode::dec(s)?;
         let key = rsa::RsaPublicKey::new(n, e)

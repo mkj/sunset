@@ -22,8 +22,6 @@ use tokio::signal::unix::{signal, SignalKind};
 use futures::{select_biased, future::Fuse};
 use futures::FutureExt;
 
-use pretty_hex::PrettyHex;
-
 use crate::*;
 use crate::AgentClient;
 use crate::{raw_pty, RawPtyGuard};

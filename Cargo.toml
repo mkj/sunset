@@ -21,7 +21,7 @@ members = [
 [dependencies]
 sunset-sshwire-derive = { version = "0.1", path = "sshwire-derive" }
 
-snafu = { version = "0.7", default-features = false, features = ["rust_1_61"] }
+snafu = { version = "0.8", default-features = false, features = ["rust_1_61"] }
 # TODO: check that log macro calls disappear in no_std builds
 log = { version = "0.4" }
 heapless = "0.8"
@@ -49,14 +49,14 @@ ed25519-dalek = { version = "2.0.0-rc.3", default-features = false, features = [
 x25519-dalek = { version = "2.0.0-rc.3", default-features = false, features = ["zeroize"] }
 curve25519-dalek = { version = "4.0.0", default-features = false, features = ["zeroize"] }
 # p521 = { version = "0.13.2", default-features = false, features = ["ecdh", "ecdsa"] }
-rsa = { version = "0.8", default-features = false, optional = true, features = ["sha2"] }
+rsa = { version = "0.9", default-features = false, optional = true, features = ["sha2"] }
 # TODO: getrandom feature is a workaround for missing ssh-key dependency with rsa. fixed in pending 0.6
-ssh-key = { version = "0.5", default-features = false, optional = true, features = ["getrandom"] }
+ssh-key = { version = "0.6", default-features = false, optional = true, features = ["getrandom"] }
 
 embedded-io = { version = "0.6", optional = true }
 
 # for debug printing
-pretty-hex = { version = "0.3", default-features = false }
+pretty-hex = { version = "0.4", default-features = false }
 
 # for non_async
 futures = { version = "0.3", default-features = false }
@@ -74,9 +74,9 @@ defmt = ["dep:defmt"]
 
 [dev-dependencies]
 # examples want std::error
-snafu = { version = "0.7", default-features = true }
+snafu = { version = "0.8", default-features = true }
 anyhow = { version = "1.0" }
-pretty-hex = "0.3"
+pretty-hex = "0.4"
 simplelog = { version = "0.12", features = ["test"] }
 
 

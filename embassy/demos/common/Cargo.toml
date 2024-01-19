@@ -26,7 +26,7 @@ ed25519-dalek = { version = "2.0.0-rc.2", default-features = false }
 
 defmt = { version = "0.3", optional = true }
 log = "0.4"
-pretty-hex = { version = "0.3", default-features = false }
+pretty-hex = { version = "0.4", default-features = false }
 
 [dev-dependencies]
 anyhow = { version = "1.0" }

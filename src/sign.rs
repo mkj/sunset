@@ -21,15 +21,11 @@ use core::mem::discriminant;
 
 use digest::Digest;
 
+// RSA requires alloc.
 #[cfg(feature = "rsa")]
 use packets::RSAPubKey;
 #[cfg(feature = "rsa")]
 use rsa::signature::{DigestSigner, DigestVerifier};
-
-// #[cfg(feature = "rsa")]
-// use rsa::{PublicKey, RsaPrivateKey, RsaPublicKey, PaddingScheme};
-
-// RSA requires alloc.
 
 #[derive(Debug, Clone, Copy)]
 pub enum SigType {
@@ -129,16 +125,18 @@ impl SigType {
         s: &packets::RSASig,
     ) -> Result<()> {
         let verifying_key =
-            rsa::pkcs1v15::VerifyingKey::<sha2::Sha256>::new_with_prefix(
+            rsa::pkcs1v15::VerifyingKey::<sha2::Sha256>::new(
                 k.key.clone(),
             );
-        let s: Box<[u8]> = s.sig.0.into();
-        let signature = s.into();
+        let signature = s.sig.0.try_into().map_err(|e| {
+            trace!("RSA bad signature: {e}");
+            Error::BadSig
+        })?;
 
         let mut h = sha2::Sha256::new();
         sshwire::hash_ser(&mut h, msg)?;
         verifying_key.verify_digest(h, &signature).map_err(|e| {
-            trace!("RSA signature failed: {e}");
+            trace!("RSA verify failed: {e}");
             Error::BadSig
         })
     }
@@ -148,13 +146,13 @@ pub enum OwnedSig {
     // just store raw bytes here.
     Ed25519([u8; 64]),
     #[cfg(feature = "rsa")]
-    RSA(rsa::pkcs1v15::Signature),
+    RSA(Box<[u8]>),
 }
 
 #[cfg(feature = "rsa")]
 impl From<rsa::pkcs1v15::Signature> for OwnedSig {
     fn from(s: rsa::pkcs1v15::Signature) -> Self {
-        OwnedSig::RSA(s)
+        OwnedSig::RSA(s.into())
     }
 }
 
@@ -168,8 +166,8 @@ impl TryFrom<Signature<'_>> for OwnedSig {
             }
             #[cfg(feature = "rsa")]
             Signature::RSA(s) => {
-                let s: Box<[u8]> = s.sig.0.into();
-                Ok(OwnedSig::RSA(s.into()))
+                let s = s.sig.0.try_into().map_err(|_| Error::BadSig)?;
+                Ok(OwnedSig::RSA(s))
             }
             Signature::Unknown(u) => {
                 debug!("Unknown {u} signature");
@@ -255,7 +253,7 @@ impl SignKey {
             }
 
             #[cfg(feature = "rsa")]
-            SignKey::RSA(k) => PubKey::RSA(RSAPubKey { key: k.deref().clone() }),
+            SignKey::RSA(k) => PubKey::RSA(RSAPubKey { key: k.into() }),
 
             #[cfg(feature = "rsa")]
             SignKey::AgentRSA(pk) => PubKey::RSA(RSAPubKey { key: pk.clone() }),
@@ -318,7 +316,7 @@ impl SignKey {
             #[cfg(feature = "rsa")]
             SignKey::RSA(k) => {
                 let signing_key =
-                    rsa::pkcs1v15::SigningKey::<sha2::Sha256>::new_with_prefix(
+                    rsa::pkcs1v15::SigningKey::<sha2::Sha256>::new(
                         k.clone(),
                     );
                 let mut h = sha2::Sha256::new();
@@ -327,7 +325,7 @@ impl SignKey {
                     trace!("RSA signing failed: {e:?}");
                     Error::bug()
                 })?;
-                sig.into()
+                OwnedSig::RSA(sig.into())
             }
 
             // callers should check for agent keys first
@@ -399,7 +397,10 @@ impl TryFrom<ssh_key::PrivateKey> for SignKey {
                 .map_err(|_| Error::BadKey)?;
                 Ok(SignKey::RSA(key))
             }
-            _ => Err(Error::NotAvailable { what: k.algorithm().as_str() }),
+            _ => {
+                debug!("Unknown ssh-key algorithm {}", k.algorithm().as_str());
+                Err(Error::NotAvailable { what: "ssh key algorithm" })
+            },
         }
     }
 }
