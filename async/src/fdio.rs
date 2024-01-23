@@ -2,8 +2,10 @@
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
 
-use tokio::io::{AsyncRead, AsyncWrite, ReadBuf, Interest};
-use tokio::io::unix::AsyncFd;
+// use tokio::io::{AsyncRead, AsyncWrite, ReadBuf, Interest};
+// use tokio::io::unix::AsyncFd;
+use smol::Async as AsyncFd;
+use smol::AsyncRead, AsyncWRite;
 
 use std::os::fd::{AsRawFd, RawFd, FromRawFd};
 use std::fs::File;
@@ -88,30 +90,7 @@ impl<F: Read+Unpin> AsyncRead for InFd<F> {
                 Poll::Ready(Ok(()))
             }
             Self::Async(a) => {
-                // XXX loop was copy pasted from AsyncFd docs, perhaps it could be simpler
-                loop {
-                    let mut guard = match a.poll_read_ready(cx)? {
-                        Poll::Ready(r) => r,
-                        Poll::Pending => return Poll::Pending,
-                    };
-
-                    match guard.try_io(|inner| {
-                        let mut fd = inner.get_ref();
-
-                        let b = buf.initialize_unfilled();
-                        let r = fd.read(b);
-                        match r {
-                            Ok(s) => {
-                                buf.advance(s);
-                                Ok(())
-                            }
-                            Err(_) => Err(std::io::Error::last_os_error()),
-                        }
-                    }) {
-                        Ok(result) => return Poll::Ready(result),
-                        Err(_would_block) => continue,
-                    }
-                }
+                a.poll_readable(cx, buf)
             }
         }
     }
@@ -127,7 +106,8 @@ impl<F: Write+Unpin> AsyncWrite for OutFd<F> {
             Self::Sync(f) => Poll::Ready(f.write(buf)),
             Self::Async(a) => {
                 loop {
-                    let mut guard = match a.poll_write_ready(cx)? {
+                    if let Poll::Ready(_)
+                    let mut guard = match a.poll_writable(cx)? {
                         Poll::Ready(r) => r,
                         Poll::Pending => return Poll::Pending,
                     };

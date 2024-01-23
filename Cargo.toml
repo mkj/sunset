@@ -64,7 +64,7 @@ futures = { version = "0.3", default-features = false }
 defmt = { version  = "0.3", optional = true }
 
 [features]
-std = ["snafu/std", "snafu/backtrace", "ssh-key/alloc"]
+std = ["snafu/std", "ssh-key/alloc"]
 rsa = ["dep:rsa", "ssh-key/rsa"]
 # allows conversion to/from OpenSSH key formats
 openssh-key = ["ssh-key"]

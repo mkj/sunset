@@ -15,9 +15,9 @@ use embassy_sync::channel::{Channel, Sender, Receiver};
 use embassy_sync::signal::Signal;
 use embedded_io_async::{Read as _, Write as _};
 
-use tokio::io::AsyncReadExt;
-use tokio::io::AsyncWriteExt;
-use tokio::signal::unix::{signal, SignalKind};
+use smol::io::AsyncReadExt;
+use smol::io::AsyncWriteExt;
+// use tokio::signal::unix::{signal, SignalKind};
 
 use futures::{select_biased, future::Fuse};
 use futures::FutureExt;
@@ -320,20 +320,20 @@ impl<'a> CmdlineRunner<'a> {
         let chanio = Fuse::terminated();
         pin_mut!(chanio);
 
-        let mut winch_signal = self.want_pty
-            .then(|| signal(SignalKind::window_change()))
-            .transpose()
-            .unwrap_or_else(|_| {
-                warn!("Couldn't watch for window change signals");
-                None
-            });
+        // let mut winch_signal = self.want_pty
+        //     .then(|| signal(SignalKind::window_change()))
+        //     .transpose()
+        //     .unwrap_or_else(|_| {
+        //         warn!("Couldn't watch for window change signals");
+        //         None
+        //     });
 
         loop {
-            let winch_fut = Fuse::terminated();
-            pin_mut!(winch_fut);
-            if let Some(w) = winch_signal.as_mut() {
-                winch_fut.set(w.recv().fuse());
-            }
+            // let winch_fut = Fuse::terminated();
+            // pin_mut!(winch_fut);
+            // if let Some(w) = winch_signal.as_mut() {
+            //     winch_fut.set(w.recv().fuse());
+            // }
 
             select_biased! {
                 msg = self.notify.receive().fuse() => {
@@ -372,10 +372,10 @@ impl<'a> CmdlineRunner<'a> {
                     break;
                 }
 
-                _ = winch_fut => {
-                    self.window_change_signal().await;
-                    Ok::<_, sunset::Error>(())
-                }
+                // _ = winch_fut => {
+                //     self.window_change_signal().await;
+                //     Ok::<_, sunset::Error>(())
+                // }
             }?
         }
 

@@ -25,6 +25,8 @@ embedded-io-async = "0.6"
 tokio = { version = "1.25", features = ["net", "io-util", "signal"] }
 futures = "0.3"
 
+smol = "2.0"
+
 libc = "0.2"
 nix = "0.26"
 
@@ -46,7 +48,7 @@ zeroize = "1.5"
 tokio = { version = "1.25", features = ["full"] }
 
 # adapters for tokio and async-std
-embedded-io-adapters = { version = "0.6", features = ["tokio-1"] }
+embedded-io-adapters = { version = "0.6", features = ["tokio-1", "futures-03"] }
 
 simplelog = "0.12"
 # for simplelog

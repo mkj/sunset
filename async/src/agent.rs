@@ -7,8 +7,8 @@ use {
 use std::path::Path;
 
 use pretty_hex::PrettyHex;
-use tokio::net::UnixStream;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use smol::net::unix::UnixStream;
+use smol::io::{AsyncReadExt, AsyncWriteExt};
 
 use sunset_sshwire_derive::*;
 

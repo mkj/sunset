@@ -7,7 +7,6 @@ use anyhow::{Context, Result, anyhow, bail};
 use argh::FromArgs;
 
 use tokio::net::TcpStream;
-use tokio::task::spawn_local;
 
 use std::io::Read;
 
@@ -23,8 +22,7 @@ use zeroize::Zeroizing;
 use simplelog::*;
 use time::UtcOffset;
 
-#[tokio::main]
-async fn real_main(tz: UtcOffset) -> Result<()> {
+fn real_main(tz: UtcOffset) -> Result<()> {
     let args = parse_args(tz)?;
 
     // TODO: currently we just run it all on a single thread.
@@ -33,8 +31,11 @@ async fn real_main(tz: UtcOffset) -> Result<()> {
     // (or something wrapping std::sync::Mutex) and make
     // `CliBehaviour : Send`. But then embedded platforms won't work,
     // need to figure how to make it configurable.
-    let local = tokio::task::LocalSet::new();
-    local.run_until(run(args)).await
+    // let local = tokio::task::LocalSet::new();
+    // local.run_until(run(args)).await
+
+    let local = smol::LocalExecutor::new();
+    smol::block_on(local.run(run(args)))
 }
 
 fn main() {
@@ -73,7 +74,7 @@ async fn run(args: Args) -> Result<()> {
         want_pty = false
     }
 
-    let ssh_task = spawn_local(async move {
+    let ssh_task = async move {
         let mut rxbuf = Zeroizing::new(vec![0; 3000]);
         let mut txbuf = Zeroizing::new(vec![0; 3000]);
         let ssh = SSHClient::new(&mut rxbuf, &mut txbuf)?;
@@ -135,11 +136,11 @@ async fn run(args: Args) -> Result<()> {
         res_ssh?;
         res_session?;
         Ok::<_, anyhow::Error>(())
-    });
+    };
 
     match ssh_task.await {
         Err(_) => Err(anyhow!("Sunset task panicked")),
-        Ok(r) => r,
+        Ok(r) => Ok(r),
     }
 }
 
