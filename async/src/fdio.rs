@@ -5,7 +5,9 @@ use log::{debug, error, info, log, trace, warn};
 // use tokio::io::{AsyncRead, AsyncWrite, ReadBuf, Interest};
 // use tokio::io::unix::AsyncFd;
 use smol::Async as AsyncFd;
-use smol::AsyncRead, AsyncWRite;
+use smol::prelude::*;
+
+use futures::pin_mut;
 
 use std::os::fd::{AsRawFd, RawFd, FromRawFd};
 use std::fs::File;
@@ -18,7 +20,7 @@ use core::task::{Context, Poll};
 use nix::fcntl::{fcntl, FcntlArg, OFlag};
 
 // Returns Ok(None) if the FD isn't suitable for async
-fn dup_async(f: &impl AsRawFd, interest: Interest) -> Result<Option<AsyncFd<File>>, IoError> {
+fn dup_async(f: &impl AsRawFd) -> Result<Option<AsyncFd<File>>, IoError> {
     // Duplicate the fd so we can set non-blocking without interfering
     // with other users (including println!() etc)
     let fd = nix::unistd::dup(f.as_raw_fd())?;
@@ -27,7 +29,7 @@ fn dup_async(f: &impl AsRawFd, interest: Interest) -> Result<Option<AsyncFd<File
     debug!("dup fd {} -> {}", f.as_raw_fd(), fd);
     let fa = unsafe { File::from_raw_fd(fd) };
 
-    match AsyncFd::with_interest(fa, interest) {
+    match AsyncFd::new(fa) {
         Ok(a) => {
             // Set async FD non-blocking
             fcntl(fd, FcntlArg::F_SETFL(OFlag::O_NONBLOCK))?;
@@ -54,7 +56,7 @@ pub enum OutFd<F> {
 
 pub fn stdin() -> Result<InFd<std::io::Stdin>, IoError> {
     let f = std::io::stdin();
-    Ok(match dup_async(&f, Interest::READABLE)? {
+    Ok(match dup_async(&f)? {
         Some(a) => InFd::Async(a),
         None => InFd::Sync(f),
     })
@@ -62,7 +64,7 @@ pub fn stdin() -> Result<InFd<std::io::Stdin>, IoError> {
 
 pub fn stdout() -> Result<OutFd<std::io::Stdout>, IoError> {
     let f = std::io::stdout();
-    Ok(match dup_async(&f, Interest::WRITABLE)? {
+    Ok(match dup_async(&f)? {
         Some(a) => OutFd::Async(a),
         None => OutFd::Sync(f)
     })
@@ -70,31 +72,32 @@ pub fn stdout() -> Result<OutFd<std::io::Stdout>, IoError> {
 
 pub fn stderr_out() -> Result<OutFd<std::io::Stderr>, IoError> {
     let f = std::io::stderr();
-    Ok(match dup_async(&f, Interest::WRITABLE)? {
+    Ok(match dup_async(&f)? {
         Some(a) => OutFd::Async(a),
         None => OutFd::Sync(f)
     })
 }
 
 impl<F: Read+Unpin> AsyncRead for InFd<F> {
+
     fn poll_read(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &mut ReadBuf,
-    ) -> Poll<Result<(), IoError>> {
+                self: Pin<&mut Self>,
+                cx: &mut Context<'_>,
+                buf: &mut [u8],
+            ) -> Poll<std::io::Result<usize>> {
         match self.get_mut() {
             Self::Sync(f) => {
-                let b = buf.initialize_unfilled();
-                let l = f.read(b)?;
-                buf.advance(l);
-                Poll::Ready(Ok(()))
+                let l = f.read(buf)?;
+                Poll::Ready(Ok(l))
             }
             Self::Async(a) => {
-                a.poll_readable(cx, buf)
+                pin_mut!(a);
+                a.poll_read(cx, buf)
             }
         }
     }
 }
+
 
 impl<F: Write+Unpin> AsyncWrite for OutFd<F> {
     fn poll_write(
@@ -105,22 +108,8 @@ impl<F: Write+Unpin> AsyncWrite for OutFd<F> {
         match self.get_mut() {
             Self::Sync(f) => Poll::Ready(f.write(buf)),
             Self::Async(a) => {
-                loop {
-                    if let Poll::Ready(_)
-                    let mut guard = match a.poll_writable(cx)? {
-                        Poll::Ready(r) => r,
-                        Poll::Pending => return Poll::Pending,
-                    };
-
-                    match guard.try_io(|inner| {
-                        let mut fd = inner.get_ref();
-                        fd.write(buf)
-                            .map_err(|_| std::io::Error::last_os_error())
-                        }) {
-                        Ok(result) => return Poll::Ready(result),
-                        Err(_would_block) => continue,
-                    }
-                }
+                pin_mut!(a);
+                a.poll_write(cx, buf)
             }
         }
     }
@@ -130,15 +119,10 @@ impl<F: Write+Unpin> AsyncWrite for OutFd<F> {
         _cx: &mut Context<'_>,
     ) -> Poll<std::io::Result<()>> {
         Poll::Ready(Ok(()))
-        }
+    }
 
-    fn poll_shutdown(
-        self: Pin<&mut Self>,
-        _cx: &mut Context<'_>,
-    ) -> Poll<std::io::Result<()>> {
+    fn poll_close(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
         warn!("shutdown on fd not implemented");
         Poll::Ready(Ok(()))
-        // nix::sys::socket::shutdown(*self.f.get_ref(), nix::sys::socket::Shutdown::Write)?;
-        // Poll::Ready(Ok(()))
     }
 }

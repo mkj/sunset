@@ -1243,7 +1243,6 @@ dependencies = [
  "embedded-io",
  "embedded-io-async",
  "futures",
- "tokio",
 ]
 
 [[package]]
@@ -2943,6 +2942,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "argh",
+ "async-net",
  "embassy-futures",
  "embassy-sync 0.5.0",
  "embedded-io-adapters",
@@ -2961,7 +2961,6 @@ dependencies = [
  "sunset-embassy",
  "sunset-sshwire-derive",
  "time",
- "tokio",
  "whoami",
  "zeroize",
 ]

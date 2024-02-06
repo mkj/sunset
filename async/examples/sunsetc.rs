@@ -6,7 +6,9 @@ use {
 use anyhow::{Context, Result, anyhow, bail};
 use argh::FromArgs;
 
-use tokio::net::TcpStream;
+// use tokio::net::TcpStream;
+use async_net::TcpStream;
+use futures::AsyncReadExt;
 
 use std::io::Read;
 
@@ -15,7 +17,7 @@ use sunset_embassy::{SSHClient, SunsetMutex};
 
 use sunset_async::{CmdlineClient, AgentClient};
 
-use embedded_io_adapters::tokio_1::FromTokio;
+use embedded_io_adapters::futures_03::FromFutures;
 
 use zeroize::Zeroizing;
 
@@ -105,10 +107,10 @@ async fn run(args: Args) -> Result<()> {
         }
 
         // Connect to a peer
-        let mut stream = TcpStream::connect((args.host.as_str(), args.port)).await?;
+        let stream = TcpStream::connect((args.host.as_str(), args.port)).await?;
         let (rsock, wsock) = stream.split();
-        let mut rsock = FromTokio::new(rsock);
-        let mut wsock = FromTokio::new(wsock);
+        let mut rsock = FromFutures::new(rsock);
+        let mut wsock = FromFutures::new(wsock);
 
         let (hooks, mut cmdrun) = app.split();
 
