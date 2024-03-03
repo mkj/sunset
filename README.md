@@ -5,7 +5,8 @@ embed pretty much anywhere, I'm collecting possible use cases in
 [discussions](https://github.com/mkj/sunset/discussions/1). Don't hesitate to
 suggest something!
 
-** This software is incomplete but nearly ready to be used **
+**This software is in an early stage. It is suitable for some applications
+but will certainly have API changes**
 
 - `sunset` (this toplevel) is the core SSH implementation. It provides a
   non-async API, runs with `no_std` and no alloc.
@@ -23,9 +24,10 @@ suggest something!
   using about 15kB RAM per concurrent SSH session (max stack size not confirmed).
 
 - [`sunset-async`](async/) adds functionality to use Sunset as a normal SSH client or
-  server async library in normal Rust (not `no_std`). The
-  [examples](async/examples) include a Linux commandline SSH client.
-  This uses Tokio or async-std.
+  server async library in normal Rust (not `no_std`). This uses Tokio or async-std.
+
+  The [examples](async/examples) include a Linux commandline SSH client `sunsetc`.
+  It works as a day-to-day SSH client.
 
 ## SSH Features
 
@@ -69,4 +71,4 @@ will not be cleared.
 Matt Johnston <matt@ucc.asn.au>
 
 It's built on top of lots of other work, particularly Embassy, the rust-crypto crates,
-Virtue, and Salty.
+Virtue, smoltcp, and Salty.

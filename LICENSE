@@ -1,5 +1,10 @@
-Sunset SSH is (c) 2022,2023 Matt Johnston and contributors
+Sunset SSH is (c) 2022-2024 Matt Johnston and contributors
 licensed under BSD Zero Clause (0BSD) license below.
+
+--
+
+Dependencies have permissive licenses. Install and run `cargo license` to
+get a summary.
 
 --
 
