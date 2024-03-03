@@ -18,11 +18,9 @@ pub const SSH_NAME_EXT_INFO_C: &str = "ext-info-c";
 /// Implemented by Dropbear to improve first_kex_packet_follows, described
 /// [https://mailarchive.ietf.org/arch/msg/secsh/3n6lNzDHmsGsIQSqhmHHwigIbuo/](https://mailarchive.ietf.org/arch/msg/secsh/3n6lNzDHmsGsIQSqhmHHwigIbuo/)
 pub const SSH_NAME_KEXGUESS2: &str = "kexguess2@matt.ucc.asn.au";
-/// Strict Kex
-/// TODO
+/// OpenSSH [PROTOCOL](https://cvsweb.openbsd.org/src/usr.bin/ssh/PROTOCOL?annotate=HEAD).
 pub const SSH_NAME_STRICT_KEX_S: &str = "kex-strict-s-v00@openssh.com";
-/// Strict Kex
-/// TODO
+/// OpenSSH [PROTOCOL](https://cvsweb.openbsd.org/src/usr.bin/ssh/PROTOCOL?annotate=HEAD).
 pub const SSH_NAME_STRICT_KEX_C: &str = "kex-strict-c-v00@openssh.com";
 
 /// [RFC8709](https://tools.ietf.org/html/rfc8709)
@@ -80,7 +78,7 @@ pub enum ChanFail {
 
 /// SSH agent message numbers
 ///
-/// [draft-miller-ssh-agent](https://datatracker.ietf.org/doc/html/draft-miller-ssh-agent-11#section-5.1)
+/// [draft-miller-ssh-agent](https://datatracker.ietf.org/doc/html/draft-miller-ssh-agent-13#name-message-numbers)
 #[allow(non_camel_case_types)]
 #[derive(Debug, Copy, Clone)]
 pub enum AgentMessageNum {
@@ -93,5 +91,5 @@ pub enum AgentMessageNum {
 
 }
 
-/// [draft-miller-ssh-agent](https://datatracker.ietf.org/doc/html/draft-miller-ssh-agent-11#section-5.3)
+/// [draft-miller-ssh-agent](https://datatracker.ietf.org/doc/html/draft-miller-ssh-agent-13#name-signature-flags-2)
 pub const SSH_AGENT_FLAG_RSA_SHA2_256: u32 = 0x02;
