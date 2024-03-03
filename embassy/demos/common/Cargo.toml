@@ -7,7 +7,7 @@ edition = "2021"
 [dependencies]
 sunset-embassy = { path = "../../" }
 sunset = { path = "../../.." }
-sunset-sshwire-derive = { version = "0.1", path = "../../../sshwire-derive" }
+sunset-sshwire-derive = { path = "../../../sshwire-derive" }
 
 embassy-sync = { version = "0.5" }
 embassy-net = { version = "0.4", features = ["tcp", "dhcpv4", "medium-ethernet"] }

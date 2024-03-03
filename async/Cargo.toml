@@ -1,15 +1,15 @@
 [package]
 name = "sunset-async"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 repository = "https://github.com/mkj/sunset"
 license = "0BSD"
-description = "Async wrapper for Sunset SSH"
+description = "Std async wrapper for Sunset SSH"
 
 [dependencies]
-sunset = { path = "..", features = ["std", "rsa", "openssh-key"] }
-sunset-sshwire-derive = { version = "0.1", path = "../sshwire-derive" }
-sunset-embassy = { path = "../embassy" }
+sunset = { version = "0.2", path = "..", features = ["std", "rsa", "openssh-key"] }
+sunset-sshwire-derive = { version = "0.2", path = "../sshwire-derive" }
+sunset-embassy = { version = "0.2", path = "../embassy" }
 log = { version = "0.4", features = ["release_max_level_trace"] }
 rpassword = "7.2"
 argh = "0.1"

@@ -1,6 +1,6 @@
 [package]
 name = "sunset"
-version = "0.2.0-alpha"
+version = "0.2.0"
 edition = "2021"
 description = "A SSH library suitable for embedded and larger programs"
 repository = "https://github.com/mkj/sunset"
@@ -19,7 +19,7 @@ members = [
 ]
 
 [dependencies]
-sunset-sshwire-derive = { version = "0.1", path = "sshwire-derive" }
+sunset-sshwire-derive = { version = "0.2", path = "sshwire-derive" }
 
 snafu = { version = "0.8", default-features = false, features = ["rust_1_61"] }
 # TODO: check that log macro calls disappear in no_std builds

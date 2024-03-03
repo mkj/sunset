@@ -1,10 +1,11 @@
 [package]
 name = "sunset-embassy"
-version = "0.2.0-alpha"
+version = "0.2.0"
 edition = "2021"
 repository = "https://github.com/mkj/sunset"
 categories = ["network-programming", "embedded", "no-std"]
 license = "0BSD"
+description = "async wrapper for Sunset SSH"
 
 [dependencies]
 embassy-sync = { version = "0.5" }
@@ -13,7 +14,7 @@ embedded-io-async = "0.6"
 atomic-polyfill = "1.0"
 pin-utils = { version = "0.1" }
 
-sunset = { path = "../", features = ["embedded-io"] }
+sunset = { version = "0.2.0", path = "../", features = ["embedded-io"] }
 
 log = { version = "0.4" }
 

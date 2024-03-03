@@ -2682,7 +2682,7 @@ checksum = "81cdd64d312baedb58e21336b31bc043b77e01cc99033ce76ef539f78e965ebc"
 
 [[package]]
 name = "sunset"
-version = "0.2.0-alpha"
+version = "0.2.0"
 dependencies = [
  "aes",
  "anyhow",
@@ -2717,7 +2717,7 @@ dependencies = [
 
 [[package]]
 name = "sunset-async"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "argh",
@@ -2840,7 +2840,7 @@ dependencies = [
 
 [[package]]
 name = "sunset-embassy"
-version = "0.2.0-alpha"
+version = "0.2.0"
 dependencies = [
  "atomic-polyfill",
  "defmt",
@@ -2854,7 +2854,7 @@ dependencies = [
 
 [[package]]
 name = "sunset-sshwire-derive"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "virtue",
 ]
