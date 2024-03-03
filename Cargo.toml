@@ -79,14 +79,10 @@ anyhow = { version = "1.0" }
 pretty-hex = "0.4"
 simplelog = { version = "0.12", features = ["test"] }
 
-
-[patch.crates-io]
-curve25519-dalek = { git = "https://github.com/mkj/curve25519-dalek", branch = "sunset" }
-ed25519-dalek = { git = "https://github.com/mkj/curve25519-dalek", branch = "sunset" }
-x25519-dalek = { git = "https://github.com/mkj/curve25519-dalek", branch = "sunset" }
-# curve25519-dalek = { path = "/home/matt/3rd/rs/crypto/curve25519-dalek/curve25519-dalek" }
-# ed25519-dalek = { path = "/home/matt/3rd/rs/crypto/curve25519-dalek/ed25519-dalek" }
-# x25519-dalek = { path = "/home/matt/3rd/rs/crypto/curve25519-dalek/x25519-dalek" }
+#[patch.crates-io]
+#curve25519-dalek = { git = "https://github.com/mkj/curve25519-dalek", branch = "sunset" }
+#ed25519-dalek = { git = "https://github.com/mkj/curve25519-dalek", branch = "sunset" }
+#x25519-dalek = { git = "https://github.com/mkj/curve25519-dalek", branch = "sunset" }
 
 # these are mostly applicable to picow, but can't hurt generally
 [profile.dev]

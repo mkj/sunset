@@ -21,6 +21,11 @@ use core::mem::discriminant;
 
 use digest::Digest;
 
+// TODO remove once we use byupdate.
+// signatures are for hostkey (32 byte sessiid) or pubkey (auth packet || sessid).
+// we assume a max 40 character username here.
+const MAX_SIG_MSG: usize = 1+4+40+4+14+4+9+1+4+SSH_NAME_CURVE25519_LIBSSH.len()+4+32+32;
+
 // RSA requires alloc.
 #[cfg(feature = "rsa")]
 use packets::RSAPubKey;
@@ -108,14 +113,20 @@ impl SigType {
 
         let s: &[u8; 64] = s.sig.0.try_into().map_err(|_| Error::BadSig)?;
         let s: dalek::Signature = s.into();
-        dalek::hazmat::raw_verify_byupdate(
-            &k,
-            |h: &mut sha2::Sha512| {
-                sshwire::hash_ser(h, msg).map_err(|_| dalek::SignatureError::new())
-            },
-            &s,
-        )
-        .map_err(|_| Error::BadSig)
+        // TODO: pending merge of https://github.com/dalek-cryptography/curve25519-dalek/pull/556
+        // In the interim we use a fixed buffer.
+        // dalek::hazmat::raw_verify_byupdate(
+        //     &k,
+        //     |h: &mut sha2::Sha512| {
+        //         sshwire::hash_ser(h, msg).map_err(|_| dalek::SignatureError::new())
+        //     },
+        //     &s,
+        // )
+        // .map_err(|_| Error::BadSig)
+        let mut buf = [0; MAX_SIG_MSG];
+        let l = sshwire::write_ssh(&mut buf, msg)?;
+        let buf = &buf[..l];
+        k.verify(buf, &s).map_err(|_| Error::BadSig)
     }
 
     #[cfg(feature = "rsa")]
@@ -300,16 +311,22 @@ impl SignKey {
     pub(crate) fn sign(&self, msg: &impl SSHEncode) -> Result<OwnedSig> {
         let sig: OwnedSig = match self {
             SignKey::Ed25519(k) => {
-                let exk: dalek::hazmat::ExpandedSecretKey = (&k.to_bytes()).into();
-                let sig = dalek::hazmat::raw_sign_byupdate(
-                    &exk,
-                    |h: &mut sha2::Sha512| {
-                        sshwire::hash_ser(h, msg)
-                            .map_err(|_| dalek::SignatureError::new())
-                    },
-                    &k.verifying_key(),
-                )
-                .trap()?;
+                // TODO: pending merge of https://github.com/dalek-cryptography/curve25519-dalek/pull/556
+                // let exk: dalek::hazmat::ExpandedSecretKey = (&k.to_bytes()).into();
+                // let sig = dalek::hazmat::raw_sign_byupdate(
+                //     &exk,
+                //     |h: &mut sha2::Sha512| {
+                //         sshwire::hash_ser(h, msg)
+                //             .map_err(|_| dalek::SignatureError::new())
+                //     },
+                //     &k.verifying_key(),
+                // )
+                // .trap()?;
+                let mut buf = [0; MAX_SIG_MSG];
+                let l = sshwire::write_ssh(&mut buf, msg)?;
+                let buf = &buf[..l];
+                let sig = k.sign(buf);
+
                 OwnedSig::Ed25519(sig.to_bytes())
             }
 
