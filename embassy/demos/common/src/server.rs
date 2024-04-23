@@ -15,7 +15,6 @@ use embassy_net::tcp::TcpSocket;
 use embassy_net::Stack;
 use embassy_net_driver::Driver;
 use embassy_futures::select::{select, Either};
-use embassy_time::{Duration, Timer};
 
 use embedded_io_async::Write;
 
@@ -50,16 +49,16 @@ pub async fn listener<D: Driver, S: DemoServer>(stack: &'static Stack<D>,
 
         let r = session::<S>(&mut socket, &config, &init).await;
         if let Err(_e) = r {
-            // warn!("Ended with error: {:?}", e);
+            // TODO defmt errors
             warn!("Ended with error");
         }
 
         // Make sure a TCP socket reset is sent to the remote host
         socket.abort();
 
-        // TODO: Replace this with something proper like
-        // https://github.com/embassy-rs/embassy/pull/1471
-        Timer::after(Duration::from_millis(200)).await;
+        if let Err(_e) = socket.flush().await {
+            warn!("Ended with error");
+        }
     }
 }
 
