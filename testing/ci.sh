@@ -18,7 +18,6 @@ export RUSTDOCFLAGS='-D warnings'
 # dependencies
 which cargo-bloat > /dev/null || cargo install cargo-bloat
 if [ -z "$OFFLINE" ]; then
-    rustup toolchain add nightly
     (
     cd embassy/demos/picow
     rustup target add thumbv6m-none-eabi
@@ -31,10 +30,6 @@ cargo test
 cargo build
 cargo doc
 cargo test --doc
-
-# nightly
-cargo +nightly build
-cargo +nightly test
 
 (
 cd async
