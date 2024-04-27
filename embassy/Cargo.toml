@@ -22,3 +22,7 @@ defmt = { version = "0.3", optional = true }
 
 [features]
 defmt = ["dep:defmt"]
+
+# Remove any use of `unsafe`. This currently requires
+# nightly and -Zpolonius (not ready yet)
+try-polonius = []

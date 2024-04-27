@@ -1,21 +1,23 @@
+use self::{channel::CliSessionOpener, event::Event};
+
 #[allow(unused_imports)]
 use {
     crate::error::{Error, Result, TrapBug},
     log::{debug, error, info, log, trace, warn},
 };
 
-use core::task::{Poll, Waker};
+use core::{hash::Hash, mem::discriminant, task::{Poll, Waker}};
 
 use pretty_hex::PrettyHex;
 
-use crate::{*, packets::Subsystem};
+use crate::{event::ChanRequest, packets::{Packet, Subsystem}, *};
 use packets::{ChannelDataExt, ChannelData};
 use crate::channel::{ChanNum, ChanData};
 use encrypt::KeyState;
-use traffic::{TrafIn, TrafOut, TrafSend};
-use behaviour::Behaviour;
+use traffic::{TrafIn, TrafOut};
+use event::{CliEvent, ServEvent, ServEventId, CliEventId};
 
-use conn::{Conn, Dispatched};
+use conn::{Conn, Dispatched, DispatchEvent};
 
 // Runner public methods take a `ChanHandle` which cannot be cloned. This prevents
 // confusion if an application were to continue using a channel after the channel
@@ -43,6 +45,8 @@ pub struct Runner<'a> {
     input_waker: Option<Waker>,
 
     closed: bool,
+
+    resume_event: DispatchEvent,
 }
 
 impl core::fmt::Debug for Runner<'_> {
@@ -55,11 +59,10 @@ impl core::fmt::Debug for Runner<'_> {
     }
 }
 
-#[derive(Default, Debug)]
-pub struct Progress {
-    pub progressed: bool,
-    pub disconnected: bool,
-}
+// #[derive(Default, Debug, Clone)]
+// pub struct Progress<'g, 'a> {
+//     pub event: Event<'g, 'a>,
+// }
 
 impl<'a> Runner<'a> {
     /// `inbuf` and `outbuf` must be sized to fit the largest SSH packet allowed.
@@ -92,6 +95,7 @@ impl<'a> Runner<'a> {
             output_waker: None,
             input_waker: None,
             closed: false,
+            resume_event: Default::default(),
         };
 
         Ok(runner)
@@ -103,46 +107,83 @@ impl<'a> Runner<'a> {
 
     /// Drives connection progress, handling received payload and queueing
     /// packets to send as required.
-    ///
-    /// This must be polled/awaited regularly, passing in `behaviour`.
-    ///
-    /// This method is async but will not await unless the `Behaviour` implementation
-    /// does so. Note that some computationally intensive operations may be performed
-    /// during key exchange.
-    ///
-    /// Non-async callers can wrap this with the [`non_async`] helper function.
-    ///
-    /// Returns `Ok(true)` if an input packet was handled, `Ok(false)` if no packet was ready
-    /// (Can also return various errors)
-    pub async fn progress<C: CliBehaviour, S: ServBehaviour>(&mut self, behaviour: &mut Behaviour<'_, C, S>)
-        -> Result<Progress>
-    {
-        let mut prog = Progress::default();
+    pub fn progress(&mut self) -> Result<Event<'_, 'a>> {
+        // Any previous Event must have been dropped to be able to call progress()
+        // again, since it borrows from Runner. We can check if it was dropped
+        // without a required response, or complete the payload handling otherwise.
+        let prev = self.resume_event.take();
+        if prev.needs_resume() {
+            // Events that need a response would have cleared runner.resume_event in their
+            // resume handler.
+            debug!("No response provided to {:?} event", self.resume_event);
+            return error::BadUsage.fail()
+        }
+        if prev.is_some() {
+            self.traf_in.done_payload();
+        }
 
+        let mut disp = Dispatched::default();
         let mut s = self.traf_out.sender(&mut self.keys);
+
         // Handle incoming packets
         if let Some((payload, seq)) = self.traf_in.payload() {
-            prog.progressed = true;
-            let d = self.conn.handle_payload(payload, seq, &mut s, behaviour).await?;
-            prog.disconnected = d.disconnect;
+            disp = self.conn.handle_payload(payload, seq, &mut s)?;
 
-            if let Some(data_in) = d.data_in {
-                // incoming channel data, we haven't finished with payload
-                trace!("handle_payload chan input {data_in:?}");
-                self.traf_in.set_channel_input(data_in)?;
-            } else {
-                // other packets have been completed
-                trace!("handle_payload done");
-                self.traf_in.done_payload(d.zeroize_payload);
+            match disp.event {
+                DispatchEvent::Data(data_in) => {
+                    // incoming channel data, we haven't finished with payload
+                    self.traf_in.set_channel_input(data_in)?;
+                    disp.event = DispatchEvent::Progressed
+                },
+                | DispatchEvent::CliEvent(_) 
+                | DispatchEvent::ServEvent(_)
+                 => {
+                    // will return as an event
+                }
+                | DispatchEvent::None => {
+                    // packets have been completed
+                    self.traf_in.done_payload()
+                },
+                // TODO, may get used later?
+                | DispatchEvent::Progressed
+                => return Err(Error::bug()),
             }
         }
 
-        self.conn.progress(&mut s, behaviour).await?;
+        // If there isn't any pending event for the application, run conn.progress()
+        // (which may return other events).
+        if disp.event.is_none() {
+            disp = self.conn.progress(&mut s)?;
+            trace!("prog disp {disp:?}");
+            match disp.event {
+                | DispatchEvent::CliEvent(_) 
+                | DispatchEvent::ServEvent(_)
+                | DispatchEvent::None
+                | DispatchEvent::Progressed
+                => (),
+                // Don't expect data from conn.progress()
+                DispatchEvent::Data(_) => return Err(Error::bug()),
+            }
+        }
+
         self.wake();
 
-        Ok(prog)
+        // Record the event for later checks
+        self.resume_event = disp.event.clone();
+
+        // Create an Event that borrows from Runner
+        Event::from_dispatch(disp.event, self)
     }
 
+    pub(crate) fn packet(&self) -> Result<Option<packets::Packet>> {
+        if let Some((payload, _seq)) = self.traf_in.payload() {
+            self.conn.packet(payload).map(|p| Some(p))
+        } else {
+            Ok(None)
+        }
+    }
+
+    // Accept bytes from the wire, returning the size consumed
     pub fn input(&mut self, buf: &[u8]) -> Result<usize, Error> {
         if self.closed {
             return error::ChannelEOF.fail()
@@ -153,6 +194,24 @@ impl<'a> Runner<'a> {
             buf,
         )
     }
+
+    // Whether [`input()`](input) is ready
+    pub fn is_input_ready(&self) -> bool {
+        (self.conn.initial_sent() && self.traf_in.is_input_ready()) || self.closed
+    }
+
+    /// Set a waker to be notified when [`input()`](Self::input) is ready to be called.
+    pub fn set_input_waker(&mut self, waker: &Waker) {
+        if let Some(ref w) = self.input_waker {
+            if w.will_wake(waker) {
+                return
+            }
+        }
+        if let Some(w) = self.input_waker.replace(waker.clone()) {
+            w.wake()
+        }
+    }
+
 
     /// Write any pending output to the wire, returning the size written
     pub fn output(&mut self, buf: &mut [u8]) -> Result<usize, Error> {
@@ -167,31 +226,14 @@ impl<'a> Runner<'a> {
         Ok(r)
     }
 
-    pub fn is_input_ready(&self) -> bool {
-        (self.conn.initial_sent() && self.traf_in.is_input_ready()) || self.closed
-    }
-
+    // Whether [`output()`](output) is ready
     pub fn is_output_pending(&self) -> bool {
         self.traf_out.is_output_pending() || self.closed
     }
 
-    /// Set a waker to be notified when the `Runner` is ready
-    /// to accept input from the main SSH socket.
-    pub fn set_input_waker(&mut self, waker: &Waker) {
-        if let Some(ref w) = self.input_waker {
-            if w.will_wake(waker) {
-                return
-            }
-        }
-        if let Some(w) = self.input_waker.replace(waker.clone()) {
-            w.wake()
-        }
-    }
-
-    /// Set a waker to be notified when SSH socket output is ready
+    /// Set a waker to be notified when [`output()`](Self::output) will have pending data
     pub fn set_output_waker(&mut self, waker: &Waker) {
         if let Some(ref w) = self.output_waker {
-            debug!("current {:?} new {:?}", self.output_waker, w);
             if w.will_wake(waker) {
                 return
             }
@@ -202,7 +244,6 @@ impl<'a> Runner<'a> {
     }
 
     pub fn close(&mut self) {
-        trace!("runner close");
         self.closed = true;
         if let Some(w) = self.output_waker.take() {
             w.wake()
@@ -273,15 +314,9 @@ impl<'a> Runner<'a> {
             return error::ChannelEOF.fail()
         }
 
-        trace!("runner chan in");
         let (len, complete) = self.traf_in.channel_input(chan.0, dt, buf);
-        trace!("runner chan in, len {len} complete {complete:?} dt {dt:?}");
-        if let Some(len) = complete {
-            let wind_adjust = self.conn.channels.finished_input(chan.0, len)?;
-            if let Some(wind_adjust) = wind_adjust {
-                self.traf_out.send_packet(wind_adjust, &mut self.keys)?;
-            }
-            self.wake();
+        if let Some(x) = complete {
+            self.finished_input(chan, x)?;
         }
         Ok(len)
     }
@@ -292,15 +327,9 @@ impl<'a> Runner<'a> {
         chan: &ChanHandle,
         buf: &mut [u8],
     ) -> Result<(usize, ChanData)> {
-        trace!("runner chan in");
         let (len, complete, dt) = self.traf_in.channel_input_either(chan.0, buf);
-        trace!("runner chan in, len {len} complete {complete:?} dt {dt:?}");
-        if let Some(len) = complete {
-            let wind_adjust = self.conn.channels.finished_input(chan.0, len)?;
-            if let Some(wind_adjust) = wind_adjust {
-                self.traf_out.send_packet(wind_adjust, &mut self.keys)?;
-            }
-            self.wake();
+        if let Some(x) = complete {
+            self.finished_input(chan, x)?;
         }
         Ok((len, dt))
     }
@@ -309,11 +338,14 @@ impl<'a> Runner<'a> {
     /// Discards any channel input data pending for `chan`, regardless of whether
     /// normal or extended.
     pub fn discard_channel_input(&mut self, chan: &ChanHandle) -> Result<()> {
-        let len = self.traf_in.discard_channel_input(chan.0);
-        let wind_adjust = self.conn.channels.finished_input(chan.0, len)?;
-        if let Some(wind_adjust) = wind_adjust {
-            self.traf_out.send_packet(wind_adjust, &mut self.keys)?;
-        }
+        let x = self.traf_in.discard_channel_input(chan.0);
+        self.finished_input(chan, x)?;
+        Ok(())
+    }
+
+    fn finished_input(&mut self, chan: &ChanHandle, len: usize) -> Result<()> {
+        let mut s = self.traf_out.sender(&mut self.keys);
+        self.conn.channels.finished_input(chan.0, len, &mut s)?;
         self.wake();
         Ok(())
     }
@@ -389,6 +421,16 @@ impl<'a> Runner<'a> {
         }
     }
 
+    pub(crate) fn cli_session_opener(&mut self, ch: ChanNum) -> Result<CliSessionOpener<'_, 'a>> {
+        let ch = self.conn.channels.get(ch)?;
+        let s = self.traf_out.sender(&mut self.keys);
+
+        Ok(CliSessionOpener {
+            ch,
+            s,
+        })
+    }
+
     fn wake(&mut self) {
         if self.is_input_ready() {
             trace!("wake ready_input, waker {:?}", self.input_waker);
@@ -407,6 +449,150 @@ impl<'a> Runner<'a> {
             }
         }
     }
+
+
+    fn check_resume_inner(&self, expect: &DispatchEvent,
+        compare: &DispatchEvent) {
+        match (expect, compare) {
+            (DispatchEvent::CliEvent(e), DispatchEvent::CliEvent(c)) => 
+                debug_assert_eq!(discriminant(c), discriminant(e),
+                    "Expected response to pending {expect:?} event"),
+            (DispatchEvent::ServEvent(e), DispatchEvent::ServEvent(c)) => 
+                debug_assert_eq!(discriminant(c), discriminant(e),
+                    "Expected response to pending {expect:?} event"),
+            _ => debug_assert!(false),
+        }
+    }
+
+    fn resume(&mut self, expect: &DispatchEvent) {
+        let prev_event = self.resume_event.take();
+        self.check_resume_inner(expect, &prev_event)
+    }
+
+    fn check_resume(&self, expect: &DispatchEvent) {
+        self.check_resume_inner(expect, &self.resume_event)
+    }
+
+    pub(crate) fn resume_cliusername(&mut self, username: &str) -> Result<()> {
+        self.resume(&DispatchEvent::CliEvent(CliEventId::Username));
+        let mut s = self.traf_out.sender(&mut self.keys);
+        self.conn.resume_username(&mut s, username)?;
+        self.traf_in.done_payload();
+        Ok(())
+    }
+
+    pub(crate) fn resume_clipassword(&mut self, password: &str) -> Result<()> {
+        self.resume(&DispatchEvent::CliEvent(CliEventId::Password));
+        self.traf_in.done_payload();
+        let mut s = self.traf_out.sender(&mut self.keys);
+        self.conn.resume_password(&mut s, password)?;
+        Ok(())
+    }
+
+    pub(crate) fn resume_checkhostkey(&mut self, accept: bool) -> Result<()> {
+        self.resume(&DispatchEvent::CliEvent(CliEventId::Hostkey));
+
+        let (payload, _seq) = self.traf_in.payload().trap()?;
+        let mut s = self.traf_out.sender(&mut self.keys);
+
+        self.conn.resume_checkhostkey(payload, &mut s, accept)?;
+        self.traf_in.done_payload();
+        Ok(())
+    }
+
+    pub(crate) fn fetch_checkhostkey(&self) -> Result<PubKey<'_>> {
+        self.check_resume(&DispatchEvent::CliEvent(CliEventId::Hostkey));
+
+        let (payload, _seq) = self.traf_in.payload().trap()?;
+
+        self.conn.fetch_checkhostkey(payload)
+    }
+
+    pub(crate) fn resume_servhostkeys(&mut self, keys: &[&SignKey]) -> Result<()> {
+        self.resume(&DispatchEvent::ServEvent(ServEventId::Hostkeys));
+        let (payload, _seq) = self.traf_in.payload().trap()?;
+        let mut s = self.traf_out.sender(&mut self.keys);
+        self.conn.resume_servhostkeys(payload, &mut s, keys)?;
+        self.traf_in.done_payload();
+        Ok(())
+    }
+
+    pub(crate) fn fetch_servusername(&self) -> Result<TextString> {
+        let u = self.conn.server()?.auth.username.as_ref().trap()?;
+        Ok(TextString(u.as_slice()))
+    }
+
+    pub(crate) fn fetch_servpassword(&self) -> Result<TextString> {
+        self.check_resume(&DispatchEvent::ServEvent(ServEventId::PasswordAuth));
+        let (payload, _seq) = self.traf_in.payload().trap()?;
+        self.conn.fetch_servpassword(payload)
+    }
+
+    pub(crate) fn fetch_servpubkey(&self) -> Result<PubKey> {
+        self.check_resume(&DispatchEvent::ServEvent(ServEventId::PubkeyAuth { real_sig: false }));
+        let (payload, _seq) = self.traf_in.payload().trap()?;
+        self.conn.fetch_servpubkey(payload)
+    }
+
+
+    pub(crate) fn resume_servauth(&mut self, allow: bool) -> Result<()> {
+        let prev_event = self.resume_event.take();
+        // auth packets have passwords
+        self.traf_in.zeroize_payload();
+        debug_assert!(
+            matches!(prev_event, DispatchEvent::ServEvent(ServEventId::PasswordAuth))
+            || matches!(prev_event, DispatchEvent::ServEvent(ServEventId::PubkeyAuth {..})));
+
+        let mut s = self.traf_out.sender(&mut self.keys);
+        self.conn.resume_servauth(allow, &mut s)
+    }
+
+    pub(crate) fn resume_servauth_pkok(&mut self) -> Result<()> {
+        self.resume(&DispatchEvent::ServEvent(ServEventId::PubkeyAuth{real_sig: false}));
+
+        let (payload, _seq) = self.traf_in.payload().trap()?;
+        let mut s = self.traf_out.sender(&mut self.keys);
+        let r = self.conn.resume_servauth_pkok(payload, &mut s);
+        self.traf_in.done_payload();
+        r
+    }
+
+    pub(crate) fn resume_chanopen(&mut self, ch: ChanNum, failure: Option<ChanFail>) -> Result<()> {
+        self.resume(&DispatchEvent::ServEvent(ServEventId::OpenSession { ch }));
+        self.traf_in.done_payload();
+        let mut s = self.traf_out.sender(&mut self.keys);
+        self.conn.channels.resume_open(ch, failure, &mut s)
+    }
+
+    fn check_chanreq(prev_event: &DispatchEvent) {
+        debug_assert!(
+            matches!(prev_event, DispatchEvent::ServEvent(ServEventId::SessionShell))
+            || matches!(prev_event, DispatchEvent::ServEvent(ServEventId::SessionExec))
+            || matches!(prev_event, DispatchEvent::ServEvent(ServEventId::SessionPty))
+            );
+    }
+
+    pub(crate) fn resume_chanreq(&mut self, success: bool) -> Result<()> {
+        let prev_event = self.resume_event.take();
+        trace!("resume chanreq {prev_event:?} {success}");
+        Self::check_chanreq(&prev_event);
+
+        let mut s = self.traf_out.sender(&mut self.keys);
+        let (payload, _seq) = self.traf_in.payload().trap()?;
+        let p = self.conn.packet(payload)?;
+        let r = self.conn.channels.resume_chanreq(&p, success, &mut s);
+        self.traf_in.done_payload();
+        r
+    }
+
+    // Returns the channel of a currently pending request
+    pub(crate) fn fetch_reqchannel(&self) -> Result<ChanNum> {
+        Self::check_chanreq(&self.resume_event);
+        let (payload, _seq) = self.traf_in.payload().trap()?;
+
+        let p = self.conn.packet(payload)?;
+        self.conn.channels.fetch_reqchannel(&p)
+    }
 }
 
 /// Represents an open channel, owned by the application.
@@ -415,6 +601,8 @@ impl<'a> Runner<'a> {
 
 // Inner contents are crate-private to ensure that arbitrary
 // channel numbers cannot be used after closing/reuse.
+//
+// This must not be `Clone`
 pub struct ChanHandle(pub(crate) ChanNum);
 
 impl ChanHandle {

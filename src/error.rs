@@ -9,7 +9,6 @@ use snafu::{prelude::*, Location};
 
 use heapless::String;
 
-use crate::behaviour::BhError;
 use crate::channel::ChanNum;
 
 // TODO: can we make Snafu not require Debug?
@@ -48,6 +47,14 @@ pub enum Error {
     /// Error in received SSH protocol. Will disconnect.
     SSHProtoError,
 
+    /// Peer sent something we don't handle. Will disconnect.
+    ///
+    /// This differs to `SSHProtoError`. In this case the peer may be
+    /// behaved within the SSH specifications, but Sunset doesn't
+    /// support it.
+    // TODO: 'static disconnect message to return?
+    SSHProtoUnsupported,
+
     /// Received a key with invalid structure, or too large.
     BadKeyFormat,
 
@@ -76,7 +83,13 @@ pub enum Error {
     /// Examples could include:
     /// - A `ChanHandle` is used incorrectly, for example being cloned
     ///   (millions of times) and not released.
-    BadUsage,
+    // TODO: /// #[snafu(display("Failure from application: {msg}"))]
+    BadUsage {
+        #[snafu(implicit)]
+        backtrace: snafu::Backtrace,
+        // TODO
+        // msg: &'static str,
+    },
 
     /// SSH packet contents doesn't match length
     WrongPacketLength,
@@ -98,6 +111,8 @@ pub enum Error {
     /// Received packet at a disallowed time.
     // TODO: this is kind of a subset of SSHProtoError, maybe not needed
     PacketWrong,
+    // #[snafu(display("Program bug {location}"))]
+    // Bug { location: snafu::Location },
 
     #[snafu(display("No matching {algo} algorithm"))]
     AlgoNoMatch { algo: &'static str },
@@ -109,12 +124,6 @@ pub enum Error {
     /// channel name etc.
     #[snafu(display("Unknown {kind} method"))]
     UnknownMethod { kind: &'static str},
-
-    /// Implementation behaviour error
-    #[snafu(display("Failure from application: {msg}"))]
-    // XXX bleh
-    #[snafu(context(suffix(Error)))]
-    BehaviourError { msg: &'static str },
 
     #[snafu(display("{msg}"))]
     // TODO: these could eventually get categorised
@@ -262,14 +271,6 @@ impl<T> TrapBug<T> for Option<T> {
 impl From<Utf8Error> for Error {
     fn from(_e: Utf8Error) -> Error {
         Error::BadString
-    }
-}
-
-impl From<BhError> for Error {
-    fn from(e: BhError) -> Error {
-        match e {
-            BhError::Fail => Error::BehaviourError { msg: "Unknown" }
-        }
     }
 }
 

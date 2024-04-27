@@ -1,22 +1,22 @@
+
 use embedded_io_async::{Read, Write};
 
-use sunset::*;
+use sunset::{*};
 
 use crate::*;
 use sunset::ChanData;
-use embassy_sunset::EmbassySunset;
+use embassy_sunset::{EmbassySunset, ProgressHolder};
 use embassy_channel::{ChanInOut, ChanIn};
 
 /// An async SSH client instance 
 ///
-/// The [`run()`][Self::run] method runs the session to completion, with application behaviour
-/// defined by the [`CliBehaviour`] instance.
+/// The [`run()`][Self::run] method runs the session to completion. [`progress()`][Self::progress]
+/// must be polled, and responses given to the events provided.
 ///
-/// Once authentication has completed ([`authenticated()`][CliBehaviour] is called), the application
+/// Once authentication has completed (`progress()` returns [`CliEvent::Authenticated`]), the application
 /// may open remote channels with [`open_session_pty()`][Self::open_session_pty] etc.
 ///
-/// This is async executor agnostic, though requires the `CliBehaviour` instance
-/// to be wrapped in a [`SunsetMutex`].
+/// This is async executor agnostic.
 pub struct SSHClient<'a> {
     sunset: EmbassySunset<'a>,
 }
@@ -32,21 +32,24 @@ impl<'a> SSHClient<'a> {
     /// Runs the session to completion.
     ///
     /// `rsock` and `wsock` are the SSH network channel (TCP port 22 or equivalent).
-    /// `b` is an instance of [`CliBehaviour`] which defines application behaviour.
-    pub async fn run<C: CliBehaviour>(&self,
-        rsock: &mut impl Read,
-        wsock: &mut impl Write,
-        b: &SunsetMutex<C>) -> Result<()>
-    {
-        self.sunset.run(rsock, wsock, b).await
+    pub async fn run(&'a self, rsock: &mut impl Read, wsock: &mut impl Write) -> Result<()> {
+        self.sunset.run(rsock, wsock).await
     }
 
-    pub async fn exit(&self) {
-        self.sunset.exit().await
+    /// Returns an event from the SSH Session
+    ///
+    /// Note that the returned `ProgressHolder` holds a mutex over the session,
+    /// so other calls to `SSHClient` may block until it is dropped.
+    pub async fn progress<'g, 'f>(&'g self, ph: &'f mut ProgressHolder<'g, 'a>)
+        -> Result<CliEvent<'f, 'a>> {
+        match self.sunset.progress(ph).await? {
+            Event::Cli(x) => Ok(x),
+            _ => Err(Error::bug()),
+        }
     }
 
-    pub async fn open_session_nopty(&'a self)
-    -> Result<(ChanInOut<'a>, ChanIn<'a>)> {
+    pub async fn open_session_nopty(&self)
+    -> Result<(ChanInOut<'_, 'a>, ChanIn<'_, 'a>)> {
         let chan = self.sunset.with_runner(|runner| {
             runner.open_client_session()
         }).await?;
@@ -59,7 +62,7 @@ impl<'a> SSHClient<'a> {
         Ok((cstd, cerr))
     }
 
-    pub async fn open_session_pty(&'a self) -> Result<ChanInOut<'a>> {
+    pub async fn open_session_pty(&'a self) -> Result<ChanInOut<'_, 'a>> {
         let chan = self.sunset.with_runner(|runner| {
             runner.open_client_session()
         }).await?;

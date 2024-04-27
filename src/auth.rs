@@ -8,7 +8,6 @@ use core::task::{Poll, Waker};
 use heapless::{String, Vec};
 
 use crate::*;
-use behaviour::CliBehaviour;
 use client::*;
 use packets::ParseContext;
 use packets::{Packet, Signature, Userauth60};

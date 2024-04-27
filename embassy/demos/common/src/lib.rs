@@ -10,7 +10,7 @@ pub mod menu;
 pub mod demo_menu;
 pub mod takepipe;
 
-pub use server::{DemoServer, listener};
+pub use server::{DemoServer, ServerApp, listener};
 pub use config::SSHConfig;
 pub use demo_menu::BufOutput;
 

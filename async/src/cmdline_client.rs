@@ -1,12 +1,12 @@
 use futures::pin_mut;
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
+use sunset::event::CliEvent;
 
 use core::str::FromStr;
 use core::fmt::Debug;
 
 use sunset::{AuthSigMsg, SignKey, OwnedSig, Pty, sshnames};
-use sunset::{BhError, BhResult};
 use sunset::{Error, Result, Runner, SessionCommand};
 use sunset_embassy::*;
 
@@ -27,26 +27,6 @@ use crate::AgentClient;
 use crate::{raw_pty, RawPtyGuard};
 use crate::pty::win_size;
 
-#[derive(Debug)]
-enum CmdlineState<'a> {
-    PreAuth,
-    Authed,
-    Opening {
-        io: ChanInOut<'a>,
-        extin: Option<ChanIn<'a>>,
-    },
-    Ready {
-        io: ChanInOut<'a>,
-    },
-}
-
-enum Msg {
-    Authed,
-    Opened,
-    /// The SSH session exited
-    Exited,
-}
-
 /// A commandline client session
 ///
 /// This opens a single channel and presents it to the stdin/stdout terminal.
@@ -54,35 +34,16 @@ pub struct CmdlineClient {
     cmd: SessionCommand<String>,
     want_pty: bool,
 
-    // to be passed to hooks
+    // parameters
     authkeys: VecDeque<SignKey>,
     username: String,
     host: String,
     port: u16,
     agent: Option<AgentClient>,
 
-    notify: Channel<SunsetRawMutex, Msg, 1>,
-}
-
-pub struct CmdlineRunner<'a> {
-    state: CmdlineState<'a>,
-
-    want_pty: bool,
     pty_guard: Option<RawPtyGuard>,
 
-    notify: Receiver<'a, SunsetRawMutex, Msg, 1>,
-}
-
-pub struct CmdlineHooks<'a> {
-    authkeys: VecDeque<SignKey>,
-    username: &'a str,
-    host: &'a str,
-    port: u16,
-    agent: Option<AgentClient>,
-    cmd: &'a SessionCommand<String>,
     pty: Option<Pty>,
-
-    notify: Sender<'a, SunsetRawMutex, Msg, 1>,
 }
 
 impl CmdlineClient {
@@ -92,40 +53,13 @@ impl CmdlineClient {
             want_pty: false,
             agent: None,
 
-            notify: Channel::new(),
-
             username: username.as_ref().into(),
             host: host.as_ref().into(),
             port: sshnames::SSH_PORT,
             authkeys: Default::default(),
+            pty: None,
+            pty_guard: None,
         }
-    }
-
-    /// Splits a `CmdlineClient` into hooks and the runner.
-    ///
-    /// `CmdlineRunner` should be awaited until the session completes.
-    /// `CmdlineHooks` can be used to exit early (and may in future provide
-    /// other functionality).
-    pub fn split(&mut self) -> (CmdlineHooks, CmdlineRunner) {
-
-        let pty = self.make_pty();
-
-        let authkeys = core::mem::replace(&mut self.authkeys, Default::default());
-
-        let runner = CmdlineRunner::new(pty.is_some(), self.notify.receiver());
-
-        let hooks = CmdlineHooks {
-            username: &self.username,
-            host: &self.host,
-            port: self.port,
-            authkeys,
-            agent: self.agent.take(),
-            cmd: &self.cmd,
-            pty,
-            notify: self.notify.sender(),
-        };
-
-        (hooks, runner)
     }
 
     pub fn port(&mut self, port: u16) -> &mut Self {
@@ -134,7 +68,13 @@ impl CmdlineClient {
     }
 
     pub fn pty(&mut self) -> &mut Self {
-        self.want_pty = true;
+        match pty::current_pty() {
+            Ok(p) => {
+                self.pty = Some(p);
+                self.want_pty = true;
+            },
+            Err(e) => warn!("Failed getting current pty: {e:?}"),
+        };
         self
     }
 
@@ -156,33 +96,8 @@ impl CmdlineClient {
         self.agent = Some(agent)
     }
 
-    fn make_pty(&mut self) -> Option<Pty> {
-        let mut pty = None;
-        if self.want_pty {
-            match pty::current_pty() {
-                Ok(p) => pty = Some(p),
-                Err(e) => warn!("Failed getting current pty: {e:?}"),
-            }
-
-        }
-        pty
-    }
-
-}
-
-
-impl<'a> CmdlineRunner<'a> {
-    fn new(want_pty: bool, notify: Receiver<'a, SunsetRawMutex, Msg, 1>) -> Self {
-        Self {
-            state: CmdlineState::PreAuth,
-            want_pty,
-            notify,
-            pty_guard: None,
-        }
-    }
-
-    async fn chan_run(io: ChanInOut<'a>,
-        io_err: Option<ChanIn<'a>>,
+    async fn chan_run(io: ChanInOut<'_, '_>,
+        io_err: Option<ChanIn<'_, '_>>,
         pty_guard: Option<RawPtyGuard>) -> Result<()> {
         // out
         let fo = async {
@@ -314,10 +229,7 @@ impl<'a> CmdlineRunner<'a> {
     ///
     /// Performs authentication, requests a shell or command, performs channel IO.
     /// Will return `Ok` after the session ends normally, or an error.
-    pub async fn run(&mut self, cli: &'a SSHClient<'a>) -> Result<()> {
-        // chanio is only set once a channel is opened below
-        let chanio = Fuse::terminated();
-        pin_mut!(chanio);
+    pub async fn run<'g: 'a, 'a>(&mut self, cli: &'g SSHClient<'a>) -> Result<()> {
 
         let mut winch_signal = self.want_pty
             .then(|| signal(SignalKind::window_change()))
@@ -327,63 +239,85 @@ impl<'a> CmdlineRunner<'a> {
                 None
             });
 
-        loop {
-            let winch_fut = Fuse::terminated();
-            pin_mut!(winch_fut);
-            if let Some(w) = winch_signal.as_mut() {
-                winch_fut.set(w.recv().fuse());
-            }
+        let mut io = None;
+        let mut extin = None;
 
-            select_biased! {
-                msg = self.notify.receive().fuse() => {
-                    match msg {
-                        Msg::Authed => {
-                            if !matches!(self.state, CmdlineState::PreAuth) {
-                                warn!("Unexpected auth success, state {:?}", self.state);
-                                return Ok(())
-                            }
-                            self.state = CmdlineState::Authed;
-                            debug!("Opening a new session channel");
-                            self.open_session(cli).await?;
-                        }
-                        Msg::Opened => {
-                            let st = core::mem::replace(&mut self.state, CmdlineState::Authed);
-                            if let CmdlineState::Opening { io, extin } = st {
-                                let r = Self::chan_run(io.clone(), extin.clone(), self.pty_guard.take())
-                                    .fuse();
-                                chanio.set(r);
-                                self.state = CmdlineState::Ready { io };
-                            } else {
-                                warn!("Unexpected Msg::Opened")
-                            }
-                        }
-                        Msg::Exited => {
-                            trace!("SSH exited, finishing cli loop");
-                            break;
-                        }
+        let launch_chan: Channel::<SunsetRawMutex, (ChanInOut, Option<ChanIn>, Option<RawPtyGuard>), 1>
+            = Channel::new();
+
+        let prog_loop = async {
+            loop {
+                let winch_fut = Fuse::terminated();
+                pin_mut!(winch_fut);
+                if let Some(w) = winch_signal.as_mut() {
+                    winch_fut.set(w.recv().fuse());
+                }
+
+                let mut ph = ProgressHolder::new();
+                let ev = cli.progress(&mut ph).await?;
+                // Note that while ph is held, calls to cli will block.
+                match ev {
+                    CliEvent::Username(u) => {
+                        u.respond(&self.username)?;
                     }
-                    Ok::<_, sunset::Error>(())
-                },
-
-                e = chanio => {
-                    trace!("chanio finished: {e:?}");
-                    cli.exit().await;
-                    break;
+                    CliEvent::Password(p) => {
+                        let pw = rpassword::prompt_password(format!(
+                            "password for {}: ", self.username))?;
+                        p.password(pw)?;
+                    }
+                    CliEvent::Hostkey(h) => {
+                        let key = h.hostkey()?;
+                        match knownhosts::check_known_hosts(&self.host, self.port, &key) {
+                            Ok(()) => h.accept(),
+                            Err(_e) => h.reject(),
+                        }?;
+                    }
+                    CliEvent::Authenticated => {
+                        debug!("Authentication succeeded");
+                        // drop it so we can use cli
+                        drop(ph);
+                        let (i, e) = self.open_session(cli).await?;
+                        io = Some(i);
+                        extin = e;
+                    }
+                    CliEvent::SessionOpened(mut opener) => {
+                        if let Some(p) = self.pty.take() {
+                            opener.pty(p)?;
+                        }
+                        opener.cmd(&self.cmd)?;
+                        // Start the IO loop
+                        // TODO is there a better way
+                        launch_chan.send((io.clone().unwrap(), extin.clone(), self.pty_guard.take())).await;
+                    }
+                    CliEvent::Defunct => {
+                        break Ok::<_, Error>(())
+                    }
                 }
+            }
+        };
 
-                _ = winch_fut => {
-                    self.window_change_signal().await;
-                    Ok::<_, sunset::Error>(())
-                }
-            }?
-        }
+        let prog_loop = async {
+            let e = prog_loop.await;
+            debug!("loop done, {e:?}");
+            e
+        };
+
+        let chanio = async {
+            let (io, extin, pty) = launch_chan.receive().await;
+            Self::chan_run(io, extin, pty).await
+        };
+
+        embassy_futures::select::select(prog_loop, chanio).await;
 
         Ok(())
     }
 
-    async fn open_session(&mut self, cli: &'a SSHClient<'a>) -> Result<()> {
-        debug_assert!(matches!(self.state, CmdlineState::Authed));
-
+    /// Requests a PTY or non-PTY session
+    ///
+    /// Sets up the PTY if required.
+    async fn open_session<'g: 'a, 'a>(&mut self, cli: &'g SSHClient<'a>) ->
+        Result<(ChanInOut<'g, 'a>, Option<ChanIn<'g, 'a>>)> {
+            trace!("opens s");
         let (io, extin) = if self.want_pty {
             set_pty_guard(&mut self.pty_guard);
             let io = cli.open_session_pty().await?;
@@ -392,28 +326,7 @@ impl<'a> CmdlineRunner<'a> {
             let (io, extin) = cli.open_session_nopty().await?;
             (io, Some(extin))
         };
-        self.state = CmdlineState::Opening { io, extin };
-        Ok(())
-    }
-
-    async fn window_change_signal(&mut self) {
-        let io = match &self.state {
-            CmdlineState::Opening { io, ..} => io,
-            CmdlineState::Ready { io, ..} => io,
-            _ => return,
-        };
-
-        let winch = match win_size() {
-            Ok(w) => w,
-            Err(e) => {
-                debug!("Error getting window size: {e:?}");
-                return;
-            }
-        };
-
-        if let Err(e) = io.term_window_change(winch).await {
-            debug!("window change failed: {e:?}");
-        }
+        Ok((io, extin))
     }
 }
 
@@ -501,89 +414,6 @@ impl Escaper {
         }
 
         EscapeAction::Output { extra }
-    }
-}
-
-impl<'a> CmdlineHooks<'a> {
-    /// Notify the `CmdlineClient` that the main SSH session has exited.
-    ///
-    /// This will cause the `CmdlineRunner` to finish flushing output and terminate.
-    pub async fn exited(&mut self) {
-        self.notify.send(Msg::Exited).await
-    }
-}
-
-impl sunset::CliBehaviour for CmdlineHooks<'_> {
-    fn username(&mut self) -> BhResult<sunset::ResponseString> {
-        sunset::ResponseString::from_str(&self.username).map_err(|_| BhError::Fail)
-    }
-
-    fn valid_hostkey(&mut self, key: &sunset::PubKey) -> BhResult<bool> {
-        trace!("checking hostkey for {key:?}");
-
-        match knownhosts::check_known_hosts(self.host, self.port, key) {
-            Ok(()) => Ok(true),
-            Err(e) => {
-                debug!("Error for hostkey: {e:?}");
-                Ok(false)
-            }
-        }
-    }
-
-    fn next_authkey(&mut self) -> BhResult<Option<sunset::SignKey>> {
-        Ok(self.authkeys.pop_front())
-    }
-
-    fn auth_password(
-        &mut self,
-        pwbuf: &mut sunset::ResponseString,
-    ) -> BhResult<bool> {
-        let pw =
-            rpassword::prompt_password(format!("password for {}: ", self.username))
-                .map_err(|e| {
-                    warn!("read_password failed {e:}");
-                    BhError::Fail
-                })?;
-        if pwbuf.push_str(&pw).is_err() {
-            Err(BhError::Fail)
-        } else {
-            Ok(true)
-        }
-    }
-
-    async fn agent_sign(&mut self, key: &SignKey, msg: &AuthSigMsg<'_>) -> BhResult<OwnedSig> {
-        if let Some(ref mut agent) = self.agent {
-            agent.sign_auth(key, msg).await.map_err(|_e| {
-                error!("agent signing failed");
-                BhError::Fail
-            })
-        } else {
-            error!("agent signing wrong");
-            Err(BhError::Fail)
-        }
-    }
-
-    fn authenticated(&mut self) {
-        debug!("Authentication succeeded");
-        // TODO: need better handling, what else could we do?
-        while self.notify.try_send(Msg::Authed).is_err() {
-            warn!("Full notification queue");
-        }
-    }
-
-    async fn session_opened(&mut self, _chan: sunset::ChanNum, opener: &mut sunset::SessionOpener<'_, '_, '_>) -> BhResult<()> {
-        if let Some(p) = self.pty.take() {
-            opener.pty(p)
-        }
-        opener.cmd(self.cmd);
-        self.notify.send(Msg::Opened).await;
-        Ok(())
-    }
-}
-
-impl<'a> Debug for CmdlineHooks<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("CmdlineHooks")
     }
 }
 

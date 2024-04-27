@@ -20,7 +20,7 @@ use embedded_io_async::Write;
 
 use heapless::String;
 
-use sunset::*;
+use sunset::{event::{ChanRequest, ServFirstAuth, ServOpenSession, ServPasswordAuth}, *};
 use sunset_embassy::{SSHServer, SunsetMutex};
 
 use crate::SSHConfig;
@@ -48,16 +48,16 @@ pub async fn listener<D: Driver, S: DemoServer>(stack: &'static Stack<D>,
         }
 
         let r = session::<S>(&mut socket, &config, &init).await;
-        if let Err(_e) = r {
+        if let Err(e) = r {
             // TODO defmt errors
-            warn!("Ended with error");
+            warn!("Ended with error {e:?}");
         }
 
         // Make sure a TCP socket reset is sent to the remote host
         socket.abort();
 
-        if let Err(_e) = socket.flush().await {
-            warn!("Ended with error");
+        if let Err(e) = socket.flush().await {
+            warn!("Ended with error {e:?}");
         }
     }
 }
@@ -72,19 +72,18 @@ async fn session<S: DemoServer>(socket: &mut TcpSocket<'_>, config: &SunsetMutex
     let demo = S::new(init);
 
     let conf = config.lock().await.clone();
-    let app = ServerApp::new(&demo, conf)?;
-    let app = Mutex::<NoopRawMutex, _>::new(app);
+    let app = ServerApp::new(conf)?;
 
     let mut ssh_rxbuf = [0; 2000];
     let mut ssh_txbuf = [0; 2000];
     let serv = SSHServer::new(&mut ssh_rxbuf, &mut ssh_txbuf)?;
     let serv = &serv;
 
-    let session = demo.run(serv);
+    let session = demo.run(serv, app);
 
     let (mut rsock, mut wsock) = socket.split();
 
-    let run = serv.run(&mut rsock, &mut wsock, &app);
+    let run = serv.run(&mut rsock, &mut wsock);
 
     let f = select(run, session).await;
     match f {
@@ -98,116 +97,170 @@ async fn session<S: DemoServer>(socket: &mut TcpSocket<'_>, config: &SunsetMutex
 /// Provides `ServBehaviour` for the server
 ///
 /// Further customisations are provided by `DemoServer` generic
-struct ServerApp<'a, S: DemoServer> {
+pub struct ServerApp {
     config: SSHConfig,
 
-    handle: Option<ChanHandle>,
-    sess: Option<ChanNum>,
-
-    shell: &'a S,
+    pub sess: Option<ChanHandle>,
 }
 
-impl<'a, S: DemoServer> ServerApp<'a, S> {
+impl ServerApp {
     const ADMIN_USER: &'static str = "config";
 
-    fn new(shell: &'a S, config: SSHConfig) -> Result<Self> {
+    fn new(config: SSHConfig) -> Result<Self> {
 
         Ok(Self {
-            handle: None,
             sess: None,
             config,
-            shell,
         })
     }
 
-    fn is_admin(&self, username: TextString) -> bool {
-        username.as_str().unwrap_or_default() == Self::ADMIN_USER
-    }
-}
-
-impl<'a, S: DemoServer> ServBehaviour for ServerApp<'a, S> {
-
-    fn hostkeys(&mut self) -> BhResult<heapless::Vec<&SignKey, 2>> {
-        // OK unwrap: only one element
-        Ok(heapless::Vec::from_slice(&[&self.config.hostkey]).unwrap())
-    }
-
-    async fn auth_unchallenged(&mut self, username: TextString<'_>) -> bool {
-        if !self.is_admin(username) && self.config.console_noauth {
-            info!("Allowing auth for user {}", username.as_str().unwrap_or("bad"));
-            self.shell.authed(username.as_str().unwrap_or("")).await;
-            true
-        } else {
-            false
+    // Handles most events except for shell and Defunct
+    pub fn handle_event(&mut self, event: ServEvent) -> Result<()> {
+        trace!("ev {event:?}");
+        match event {
+            ServEvent::Hostkeys(h) => h.hostkeys(&[&self.config.hostkey]),
+            ServEvent::FirstAuth(a) => {
+                self.handle_firstauth(a)
+            }
+            ServEvent::PasswordAuth(a) => {
+                self.handle_password(a)
+            }
+            ServEvent::OpenSession(a) => {
+                self.open_session(a)
+            }
+            ServEvent::SessionPty(a) => {
+                a.succeed()
+            }
+            ServEvent::SessionExec(a) => {
+                a.fail()
+            }
+            | ServEvent::PubkeyAuth(a) => {
+                a.deny()
+            }
+            | ServEvent::Defunct
+            | ServEvent::SessionShell(_) => {
+                error!("Expected caller to handle {event:?}");
+                error::BadUsage.fail()
+            }
         }
     }
 
-    async fn auth_password(&mut self, username: TextString<'_>, password: TextString<'_>) -> bool {
+    fn handle_password(&mut self, a: ServPasswordAuth) -> Result<()> {
+        let username = match a.username() {
+            Ok(u) => u,
+            Err(_) => return Ok(()),
+        };
+        let password = match a.password() {
+            Ok(u) => u,
+            Err(_) => return Ok(()),
+        };
+
         let p = if self.is_admin(username) {
             &self.config.admin_pw
         } else {
             &self.config.console_pw
         };
+        let p = match p {
+            Some(u) => u,
+            None => return Ok(()),
+        };
 
-        if let Some(ref p) = p {
-            if let (Ok(user), Ok(pw)) = (username.as_str(), password.as_str()) {
-                if p.check(pw) {
-                    self.shell.authed(user).await;
-                    return true
-                }
-            }
+        if p.check(password) {
+            a.allow()?
         }
-        false
+        Ok(())
     }
 
-    fn have_auth_password(&self, username: TextString) -> bool {
-        if self.is_admin(username) {
-            self.config.admin_pw.is_some()
-        } else {
-            self.config.console_pw.is_some()
-        }
+    fn handle_pubkey(&mut self, a: ServPasswordAuth) -> Result<()> {
+        todo!();
     }
 
-    fn have_auth_pubkey(&self, username: TextString) -> bool {
-        if self.is_admin(username) {
-            self.config.admin_keys.iter().any(|k| k.is_some())
-        } else {
-            self.config.console_keys.iter().any(|k| k.is_some())
-        }
+    fn handle_firstauth(&self, a: ServFirstAuth) -> Result<()> {
+        let username = a.username()?;
+        if !self.is_admin(username) && self.config.console_noauth {
+            info!("Allowing auth for user {username}");
+            // self.shell.authed(username.as_str().unwrap_or("")).await;
+            return a.allow()
+        };
+
+        // a.pubkey().password()
+        Ok(())
     }
 
-    fn open_session(&mut self, chan: ChanHandle) -> ChanOpened {
+    fn open_session(&mut self, a: ServOpenSession) -> Result<()> {
         if self.sess.is_some() {
-            ChanOpened::Failure((ChanFail::SSH_OPEN_ADMINISTRATIVELY_PROHIBITED, chan))
+            // Already have one
+            a.reject(ChanFail::SSH_OPEN_ADMINISTRATIVELY_PROHIBITED)
         } else {
-            self.sess = Some(chan.num());
-            self.handle = Some(chan);
-            ChanOpened::Success
+            self.sess = Some(a.accept()?);
+            Ok(())
         }
     }
 
-    fn sess_shell(&mut self, chan: ChanNum) -> bool {
-        if self.sess != Some(chan) {
-            return false
-        }
-
-        if let Some(handle) = self.handle.take() {
-            debug_assert_eq!(self.sess, Some(handle.num()));
-            self.shell.open_shell(handle);
-            true
-        } else {
-            false
-        }
-    }
-
-    fn sess_pty(&mut self, chan: ChanNum, _pty: &Pty) -> bool {
-        self.sess == Some(chan)
-    }
-
-    fn disconnected(&mut self, desc: TextString) {
-        info!("Disconnect by client: {}", desc.as_str().unwrap_or("bad"));
+    fn is_admin(&self, username: &str) -> bool {
+        username == Self::ADMIN_USER
     }
 }
+
+// impl ServBehaviour for ServerApp {
+
+//     fn hostkeys(&mut self) -> BhResult<heapless::Vec<&SignKey, 2>> {
+//         // OK unwrap: only one element
+//         Ok(heapless::Vec::from_slice(&[&self.config.hostkey]).unwrap())
+//     }
+
+//     async fn auth_unchallenged(&mut self, username: TextString<'_>) -> bool {
+//     }
+
+//     fn have_auth_password(&self, username: TextString) -> bool {
+//         if self.is_admin(username) {
+//             self.config.admin_pw.is_some()
+//         } else {
+//             self.config.console_pw.is_some()
+//         }
+//     }
+
+//     fn have_auth_pubkey(&self, username: TextString) -> bool {
+//         todo!();
+//         // if self.is_admin(username) {
+//         //     self.config.admin_keys.iter().any(|k| k.is_some())
+//         // } else {
+//         //     self.config.console_keys.iter().any(|k| k.is_some())
+//         // }
+//     }
+
+//     fn open_session(&mut self, chan: ChanHandle) -> ChanOpened {
+//         if self.sess.is_some() {
+//             ChanOpened::Failure((ChanFail::SSH_OPEN_ADMINISTRATIVELY_PROHIBITED, chan))
+//         } else {
+//             self.sess = Some(chan.num());
+//             self.handle = Some(chan);
+//             ChanOpened::Success
+//         }
+//     }
+
+//     fn sess_shell(&mut self, chan: ChanNum) -> bool {
+//         if self.sess != Some(chan) {
+//             return false
+//         }
+
+//         if let Some(handle) = self.handle.take() {
+//             debug_assert_eq!(self.sess, Some(handle.num()));
+//             // self.shell.open_shell(handle);
+//             true
+//         } else {
+//             false
+//         }
+//     }
+
+//     fn sess_pty(&mut self, chan: ChanNum, _pty: &Pty) -> bool {
+//         self.sess == Some(chan)
+//     }
+
+//     fn disconnected(&mut self, desc: TextString) {
+//         info!("Disconnect by client: {}", desc.as_str().unwrap_or("bad"));
+//     }
+// }
 
 pub trait DemoServer {
     /// State to be passed to each new connection by the server
@@ -227,7 +280,7 @@ pub trait DemoServer {
     /// A task to run for each incoming connection.
     // TODO: eventually the compiler should add must_use automatically?
     #[must_use]
-    async fn run<'f>(&self, serv: &'f SSHServer<'f>) -> Result<()>;
+    async fn run(&self, serv: &SSHServer<'_>, common: ServerApp) -> Result<()>;
 }
 
 

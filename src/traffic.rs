@@ -33,7 +33,9 @@ pub(crate) struct TrafOut<'a> {
     state: TxState,
 }
 
-pub(crate) struct TrafIn<'a> {
+// TODO only pub for testing
+// pub(crate) struct TrafIn<'a> {
+pub struct TrafIn<'a> {
     // TODO: decompression will need another buffer
 
     /// Accumulated input buffer.
@@ -80,7 +82,7 @@ enum RxState {
     InChannelData {
         /// channel number
         chan: ChanNum,
-        /// extended flag. usually None, or `Some(1)` for `SSH_EXTENDED_DATA_STDERR`
+        /// Normal or Stderr
         dt: ChanData,
         /// read index of channel data. should transition to Idle once `idx==len`
         idx: usize,
@@ -124,28 +126,29 @@ impl<'a> TrafIn<'a> {
         Ok(inlen)
     }
 
-    /// Called when `payload()` and `payload_reborrow()` are complete.
-    pub(crate) fn done_payload(&mut self, zeroize: bool) {
-        match self.state {
-            RxState::InPayload { len, .. } => {
-                if zeroize {
-                    self.buf[SSH_PAYLOAD_START..SSH_PAYLOAD_START + len].zeroize();
-                }
-                self.state = RxState::Idle;
-            }
-            _ => {
-                // Just ignore it
-                // warn!("done_payload called without payload, st {:?}", self.state);
-            }
+    /// Called when `payload()` is complete.
+    pub(crate) fn done_payload(&mut self) {
+        if let RxState::InPayload { .. } = self.state {
+            self.state = RxState::Idle
+        }
+    }
+
+    /// Called when `payload()` is complete, zeroizes the payload
+    /// Also calls `done_payload()`.
+    pub(crate) fn zeroize_payload(&mut self) {
+        if let RxState::InPayload { len, .. } = self.state {
+            self.buf[SSH_PAYLOAD_START..SSH_PAYLOAD_START + len].zeroize();
+            self.done_payload()
         }
     }
 
     /// Returns a reference to the decrypted payload buffer if ready,
     /// and the `seq` of that packet.
-    pub(crate) fn payload(&mut self) -> Option<(&[u8], u32)> {
+    // TODO: only pub for testing
+    // pub(crate) fn payload(&mut self) -> Option<(&[u8], u32)> {
+    pub fn payload(&self) -> Option<(&[u8], u32)> {
         match self.state {
-            | RxState::InPayload { len, seq }
-            => {
+            RxState::InPayload { len, seq } => {
                 let payload = &self.buf[SSH_PAYLOAD_START..SSH_PAYLOAD_START + len];
                 Some((payload, seq))
             }

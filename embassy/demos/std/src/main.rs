@@ -13,18 +13,20 @@ use rand::RngCore;
 use demo_common::menu::Runner as MenuRunner;
 use embedded_io_async::Read;
 use embassy_sync::signal::Signal;
+use embassy_sync::channel::Channel;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
+use embassy_futures::select::select;
 use embassy_net_tuntap::TunTapDevice;
 
 use sunset::*;
-use sunset_embassy::{SSHServer, SunsetMutex};
+use sunset_embassy::{SSHServer, SunsetMutex, SunsetRawMutex, ProgressHolder};
 
 mod setupmenu;
 pub(crate) use sunset_demo_embassy_common as demo_common;
 
-use demo_common::{SSHConfig, demo_menu, DemoServer};
+use demo_common::{SSHConfig, demo_menu, DemoServer, ServerApp};
 
-const NUM_LISTENERS: usize = 2;
+const NUM_LISTENERS: usize = 4;
 // +1 for dhcp
 const NUM_SOCKETS: usize = NUM_LISTENERS+1;
 
@@ -40,7 +42,8 @@ async fn main_task(spawner: Spawner) {
 
     let config = Box::leak(Box::new({
         let mut config = SSHConfig::new().unwrap();
-        config.set_console_pw(Some("pw")).unwrap();
+        config.set_admin_pw(Some("pw")).unwrap();
+        config.console_noauth = true;
         SunsetMutex::new(config)
     }));
 
@@ -88,14 +91,40 @@ impl DemoServer for StdDemo {
         self.notify.signal(handle);
     }
 
-    async fn run<'f>(&self, serv: &'f SSHServer<'f>) -> Result<()>
+    async fn run(&self, serv: &SSHServer<'_>, mut common: ServerApp) -> Result<()>
     {
-        let session = async {
-            // wait for a shell to start
-            let chan_handle = self.notify.wait().await;
-            trace!("got handle");
+        let chan_pipe = Channel::<SunsetRawMutex, ChanHandle, 1>::new();
 
-            let mut stdio = serv.stdio(chan_handle).await?;
+        let prog_loop = async {
+            loop {
+                let mut ph = ProgressHolder::new();
+                let ev = serv.progress(&mut ph).await?;
+                trace!("ev {ev:?}");
+                match ev {
+                    ServEvent::SessionShell(a) => 
+                    {
+                        if let Some(ch) = common.sess.take() {
+                            debug_assert!(ch.num() == a.channel()?);
+                            a.succeed()?;
+                            chan_pipe.try_send(ch);
+                        } else {
+                            a.fail()?;
+                        }
+                    }
+                    other => common.handle_event(other)?,
+                };
+            };
+            #[allow(unreachable_code)]
+            Ok::<_, Error>(())
+        };
+
+        let shell_loop = async {
+
+            let ch = chan_pipe.receive().await;
+
+            debug!("got handle");
+
+            let mut stdio = serv.stdio(ch).await?;
 
             // input buffer, large enough for a ssh-ed25519 key
             let mut menu_buf = [0u8; 150];
@@ -121,10 +150,11 @@ impl DemoServer for StdDemo {
                 }
                 menu.context.flush(&mut stdio).await?;
             }
-            Ok(())
+            Ok::<_, Error>(())
         };
 
-        session.await
+        select(prog_loop, shell_loop).await;
+        todo!()
     }
 }
 
@@ -140,11 +170,11 @@ async fn listener(stack: &'static Stack<TunTapDevice>,
 async fn main(spawner: Spawner) {
     env_logger::builder()
         .filter_level(log::LevelFilter::Trace)
-        .filter_module("sunset::runner", log::LevelFilter::Info)
+        // .filter_module("sunset::runner", log::LevelFilter::Info)
         .filter_module("sunset::traffic", log::LevelFilter::Info)
         .filter_module("sunset::encrypt", log::LevelFilter::Info)
-        .filter_module("sunset::conn", log::LevelFilter::Info)
-        .filter_module("sunset_embassy::embassy_sunset", log::LevelFilter::Info)
+        // .filter_module("sunset::conn", log::LevelFilter::Info)
+        // .filter_module("sunset_embassy::embassy_sunset", log::LevelFilter::Info)
         .filter_module("async_io", log::LevelFilter::Info)
         .filter_module("polling", log::LevelFilter::Info)
         .format_timestamp_nanos()

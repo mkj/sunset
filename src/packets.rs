@@ -550,7 +550,7 @@ pub struct RequestFailure {}
 pub struct ChannelOpen<'a> {
     // channel_type is implicit in ty below
     #[sshwire(variant_name = ty)]
-    pub num: u32,
+    pub sender_num: u32,
     pub initial_window: u32,
     pub max_packet: u32,
     pub ty: ChannelOpenType<'a>,
@@ -1040,7 +1040,7 @@ mod tests {
     fn roundtrip_channel_open() {
         init_test_log();
         let p = Packet::ChannelOpen(ChannelOpen {
-            num: 111,
+            sender_num: 111,
             initial_window: 50000,
             max_packet: 20000,
             ty: ChannelOpenType::DirectTcpip(DirectTcpip {
@@ -1053,7 +1053,7 @@ mod tests {
         test_roundtrip(&p);
 
         let p = Packet::ChannelOpen(ChannelOpen {
-            num: 0,
+            sender_num: 0,
             initial_window: 899,
             max_packet: 14,
             ty: ChannelOpenType::Session,
@@ -1065,7 +1065,7 @@ mod tests {
     fn unknown_method() {
         init_test_log();
         let p = Packet::ChannelOpen(ChannelOpen {
-            num: 0,
+            sender_num: 0,
             initial_window: 899,
             max_packet: 14,
             ty: ChannelOpenType::Session,
@@ -1127,7 +1127,7 @@ mod tests {
     fn unknown_method_ser() {
         init_test_log();
         let p = Packet::ChannelOpen(ChannelOpen {
-            num: 0,
+            sender_num: 0,
             initial_window: 200000,
             max_packet: 88200,
             ty: ChannelOpenType::Unknown(Unknown(b"audio-stream"))

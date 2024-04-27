@@ -30,9 +30,8 @@ async fn real_main(tz: UtcOffset) -> Result<()> {
     // TODO: currently we just run it all on a single thread.
     // Running with tokio's normal multiple threads works fine
     // if we change SunsetRawMutex to a CriticalSectionMutex
-    // (or something wrapping std::sync::Mutex) and make
-    // `CliBehaviour : Send`. But then embedded platforms won't work,
-    // need to figure how to make it configurable.
+    // (or something wrapping std::sync::Mutex).
+    // Need to figure how to make it configurable.
     let local = tokio::task::LocalSet::new();
     local.run_until(run(args)).await
 }
@@ -109,23 +108,19 @@ async fn run(args: Args) -> Result<()> {
         let mut rsock = FromTokio::new(rsock);
         let mut wsock = FromTokio::new(wsock);
 
-        let (hooks, mut cmdrun) = app.split();
-
-        let hooks = SunsetMutex::new(hooks);
-
         // SSH connection future
         let ssh_fut = async {
-            let r = ssh.run(&mut rsock, &mut wsock, &hooks).await;
+            let r = ssh.run(&mut rsock, &mut wsock).await;
             trace!("ssh run finished {r:?}");
-            hooks.lock().await.exited().await;
+            // TODO split
+            // hooks.lock().await.exited().await;
             r
         };
 
         // Client session future
         let session = async {
-            let r = cmdrun.run(&ssh).await;
-            trace!("client session run finished");
-            ssh.exit().await;
+            let r = app.run(&ssh).await;
+            trace!("client session run finished {r:?}");
             r
         };
 
@@ -137,10 +132,7 @@ async fn run(args: Args) -> Result<()> {
         Ok::<_, anyhow::Error>(())
     });
 
-    match ssh_task.await {
-        Err(_) => Err(anyhow!("Sunset task panicked")),
-        Ok(r) => r,
-    }
+    ssh_task.await.context("Sunset task panicked")?
 }
 
 #[derive(argh::FromArgs, Debug)]

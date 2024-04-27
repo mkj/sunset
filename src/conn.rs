@@ -1,5 +1,7 @@
 //! Represents the state of a SSH connection.
 
+use self::packets::{AuthMethod, UserauthRequest};
+
 #[allow(unused_imports)]
 use {
     crate::error::{*, Error, Result, TrapBug},
@@ -21,7 +23,7 @@ use traffic::TrafSend;
 use channel::Channels;
 use config::MAX_CHANNELS;
 use kex::{Kex, SessId, AlgoConfig};
-use behaviour::Behaviour;
+use event::{CliEvent, ServEvent};
 
 /// The core state of a SSH instance.
 pub(crate) struct Conn {
@@ -74,14 +76,61 @@ enum ConnState {
     // Cleanup ??
 }
 
-#[derive(Default)]
-/// Returned state from `handle_payload()` for `Runner` to use.
+#[derive(Debug, Clone)]
+pub(crate) enum DispatchEvent
+{
+    /// Incoming channel data
+    Data(channel::DataIn),
+    CliEvent(event::CliEventId),
+    ServEvent(event::ServEventId),
+    /// Connection state has changed, should poll again
+    Progressed,
+    /// No event
+    None,
+}
+
+impl Default for DispatchEvent {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
+impl DispatchEvent {
+    pub fn take(&mut self) -> Self {
+        core::mem::replace(self, DispatchEvent::None)
+    }
+
+    pub fn is_some(&self) -> bool {
+        !self.is_none()
+    }
+
+    pub fn is_none(&self) -> bool {
+        matches!(self, Self::None)
+    }
+
+    /// Used by Runner to determine whether an event requires a resume call before
+    /// continuing. Informational events don't.
+    /// Some events don't need calling manually, but their Drop impl will
+    /// call the appropriate resume method.
+    pub(crate) fn needs_resume(&self) -> bool {
+        match self {
+            | Self::None
+            | Self::Data(_)
+            | Self::Progressed
+            => false,
+            Self::CliEvent(x) => x.needs_resume(),
+            Self::ServEvent(x) => x.needs_resume(),
+        }
+    }
+}
+
+#[derive(Default, Debug)]
+/// Returned state from `handle_payload()` or `progress()` for `Runner` to use.
 pub(crate) struct Dispatched {
-    pub data_in: Option<channel::DataIn>,
-    /// set for sensitive payloads such as password auth
-    // TODO is this really worthwhile? channel data can be just as sensitive.
-    pub zeroize_payload: bool,
+    pub event: DispatchEvent,
+
     /// packet was Disconnect
+    // TODO replace with an event
     pub disconnect: bool,
 }
 
@@ -100,9 +149,9 @@ impl Conn {
             remote_version: ident::RemoteVersion::new(cliserv.is_client()),
             state: ConnState::SendIdent,
             algo_conf,
-            cliserv,
-            channels: Channels::new(),
+            channels: Channels::new(cliserv.is_client()),
             parse_ctx: ParseContext::new(),
+            cliserv,
         })
     }
 
@@ -110,29 +159,58 @@ impl Conn {
         self.cliserv.is_client()
     }
 
+    pub fn server(&self) -> Result<&server::Server> {
+        match &self.cliserv {
+            ClientServer::Server(s) => Ok(s),
+            _ => Err(Error::bug())
+        }
+    }
+
+    pub fn mut_server(&mut self) -> Result<&mut server::Server> {
+        match &mut self.cliserv {
+            ClientServer::Server(s) => Ok(s),
+            _ => Err(Error::bug())
+        }
+    }
+
+    pub fn client(&self) -> Result<&client::Client> {
+        match &self.cliserv {
+            ClientServer::Client(x) => Ok(x),
+            _ => Err(Error::bug())
+        }
+    }
+
+    pub fn mut_client(&mut self) -> Result<&mut client::Client> {
+        match &mut self.cliserv {
+            ClientServer::Client(x) => Ok(x),
+            _ => Err(Error::bug())
+        }
+    }
+
     /// Updates `ConnState` and sends any packets required to progress the connection state.
     // TODO can this just move to the bottom of handle_payload(), and make module-private?
-    pub(crate) async fn progress<C: CliBehaviour, S: ServBehaviour>(
-        &mut self,
-        s: &mut TrafSend<'_, '_>,
-        b: &mut Behaviour<'_, C, S>,
-    ) -> Result<(), Error> {
+    pub(crate) fn progress(&mut self, s: &mut TrafSend) -> Result<Dispatched, Error> {
+        trace!("prog state {:?}", self.state);
+        let mut disp = Dispatched::default();
         match self.state {
             ConnState::SendIdent => {
                 s.send_version()?;
                 // send early to avoid round trip latency
                 // TODO: first_follows would have a second packet here
                 self.kex.send_kexinit(&self.algo_conf, s)?;
+                disp.event = DispatchEvent::Progressed;
                 self.state = ConnState::ReceiveIdent
             }
             ConnState::ReceiveIdent => {
                 if self.remote_version.version().is_some() {
                     // Ready to start binary packets. We've already send our KexInit with SendIdent.
+                    disp.event = DispatchEvent::Progressed;
                     self.state = ConnState::FirstKex
                 }
             }
             ConnState::FirstKex => {
                 if self.sess_id.is_some() {
+                    disp.event = DispatchEvent::Progressed;
                     self.state = ConnState::PreAuth
                 }
             }
@@ -141,42 +219,42 @@ impl Conn {
                 // and backpressure. can_output() should have a size check?
                 if s.can_output() {
                     if let ClientServer::Client(cli) = &mut self.cliserv {
-                        cli.auth.progress(s, b.client()?).await?;
+                        disp.event = cli.auth.progress();
                     }
                 }
                 // send userauth request
             }
-
-            _ => {
-                // TODO
+            ConnState::Authed => {
+                // no events needed
             }
         }
+        trace!("-> {:?}, {disp:?}", self.state);
 
         // TODO: if keys.seq > MAX_REKEY then we must rekey for security.
 
-        Ok(())
+        Ok(disp)
     }
 
     pub(crate) fn initial_sent(&self) -> bool {
         !matches!(self.state, ConnState::SendIdent)
     }
 
+    pub(crate) fn packet<'p>(&self, payload: &'p[u8]) -> Result<Packet<'p>> {
+        sshwire::packet_from_bytes(payload, &self.parse_ctx)
+    }
+
     /// Consumes an input payload which is a view into [`traffic::Traffic::rxbuf`].
     /// We queue response packets that can be sent (written into the same buffer)
     /// after `handle_payload()` runs.
-    pub(crate) async fn handle_payload<C: CliBehaviour, S: ServBehaviour>(
-        &mut self, payload: &[u8], seq: u32,
-        s: &mut TrafSend<'_, '_>,
-        b: &mut Behaviour<'_, C, S>,
-    ) -> Result<Dispatched, Error> {
+    pub(crate) fn handle_payload(&mut self, payload: &[u8], seq: u32, 
+        s: &mut TrafSend) -> Result<Dispatched, Error> {
         // Parse the packet
         trace!("Received\n{:#?}", payload.hex_dump());
-        let r = sshwire::packet_from_bytes(payload, &self.parse_ctx);
 
-        match r {
+        match self.packet(payload) {
             Ok(p) => {
                 let num = p.message_num() as u8;
-                let a = self.dispatch_packet(p, s, b).await;
+                let a = self.dispatch_packet(p, s);
                 match a {
                     | Err(Error::SSHProtoError)
                     | Err(Error::PacketWrong)
@@ -253,8 +331,7 @@ impl Conn {
         self.sess_id.is_none()
     }
 
-    async fn dispatch_packet<C: CliBehaviour, S: ServBehaviour>(
-        &mut self, packet: Packet<'_>, s: &mut TrafSend<'_, '_>, b: &mut Behaviour<'_, C, S>,
+    pub fn dispatch_packet(&mut self, packet: Packet, s: &mut TrafSend,
     ) -> Result<Dispatched, Error> {
         // TODO: perhaps could consolidate packet client vs server checks
         trace!("Incoming {packet:#?}");
@@ -280,7 +357,7 @@ impl Conn {
                     return Err(Error::SSHProtoError);
                 }
 
-                self.kex.handle_kexdhinit(&p, s, b.server()?)?;
+                disp.event = self.kex.handle_kexdhinit()?;
             }
             Packet::KexDHReply(p) => {
                 if !self.cliserv.is_client() {
@@ -289,7 +366,7 @@ impl Conn {
                     return Err(Error::SSHProtoError);
                 }
 
-                self.kex.handle_kexdhreply(&p, s, b.client()?, self.is_first_kex()).await?;
+                disp.event = self.kex.handle_kexdhreply();
             }
             Packet::NewKeys(_) => {
                 self.kex.handle_newkeys(&mut self.sess_id, s)?;
@@ -328,17 +405,12 @@ impl Conn {
             Packet::Disconnect(p) => {
                 // We ignore p.reason.
                 // SSH2_DISCONNECT_BY_APPLICATION is normal, sent by openssh client.
-                b.disconnected(p.desc);
                 disp.disconnect = true;
             }
             Packet::UserauthRequest(p) => {
                 if let ClientServer::Server(serv) = &mut self.cliserv {
-                    disp.zeroize_payload = true;
                     let sess_id = self.sess_id.as_ref().trap()?;
-                    let success = serv.auth.request(p, sess_id, s, b.server()?).await?;
-                    if success {
-                        self.state = ConnState::Authed;
-                    }
+                    disp.event = serv.auth.request(sess_id, s, p)?;
                 } else {
                     debug!("Server sent an auth request");
                     return Err(Error::SSHProtoError)
@@ -346,7 +418,7 @@ impl Conn {
             }
             Packet::UserauthFailure(p) => {
                 if let ClientServer::Client(cli) = &mut self.cliserv {
-                    cli.auth.failure(&p, &mut self.parse_ctx, s, b.client()?).await?;
+                    disp.event = cli.auth.failure(&p, &mut self.parse_ctx, s)?;
                 } else {
                     debug!("Received UserauthFailure as a server");
                     return Err(Error::SSHProtoError)
@@ -356,7 +428,7 @@ impl Conn {
                 if let ClientServer::Client(cli) = &mut self.cliserv {
                     if matches!(self.state, ConnState::PreAuth) {
                         self.state = ConnState::Authed;
-                        cli.auth_success(&mut self.parse_ctx, b.client()?)?;
+                        disp.event = cli.auth_success(&mut self.parse_ctx);
                     } else {
                         debug!("Received UserauthSuccess unrequested")
                     }
@@ -367,7 +439,7 @@ impl Conn {
             }
             Packet::UserauthBanner(p) => {
                 if let ClientServer::Client(cli) = &mut self.cliserv {
-                    cli.banner(&p, b.client()?);
+                    cli.banner(&p);
                 } else {
                     debug!("Received banner as a server");
                     return Err(Error::SSHProtoError)
@@ -377,7 +449,7 @@ impl Conn {
                 // TODO: client only
                 if let ClientServer::Client(cli) = &mut self.cliserv {
                     let sess_id = self.sess_id.as_ref().trap()?;
-                    cli.auth.auth60(&p, sess_id, &mut self.parse_ctx, s, b.client()?).await?;
+                    cli.auth.auth60(&p, sess_id, &mut self.parse_ctx, s)?;
                 } else {
                     debug!("Received userauth60 as a server");
                     return Err(Error::SSHProtoError)
@@ -396,7 +468,7 @@ impl Conn {
             | Packet::ChannelFailure(_)
 
             => {
-                disp.data_in = self.channels.dispatch(packet, self.cliserv.is_client(), s, b).await?;
+                disp.event = self.channels.dispatch(packet, s)?;
             }
             Packet::GlobalRequest(p) => {
                 trace!("Got global request {p:?}");
@@ -412,6 +484,101 @@ impl Conn {
             }
         };
         Ok(disp)
+    }
+
+    pub(crate) fn resume_username(&mut self, s: &mut TrafSend, username: &str) -> Result<()> {
+        if let ClientServer::Client(cli) = &mut self.cliserv {
+            cli.auth.resume_username(s, username)
+        } else {
+            Err(Error::bug())
+        }
+    }
+
+    pub(crate) fn resume_password(&mut self, s: &mut TrafSend, password: &str) -> Result<()> {
+        if let ClientServer::Client(cli) = &mut self.cliserv {
+            cli.auth.resume_password(s, password, &mut self.parse_ctx)
+        } else {
+            Err(Error::bug())
+        }
+    }
+
+    pub(crate) fn resume_checkhostkey(&mut self, 
+        payload: &[u8],
+        s: &mut TrafSend,
+        accept: bool) -> Result<()> {
+        self.client()?;
+
+        let packet = self.packet(payload)?;
+        if let Packet::KexDHReply(p) = packet {
+            if !accept {
+                // TODO set state to closing?
+                info!("Host key rejected");
+                return error::BadUsage.fail()
+            }
+
+            self.kex.resume_kexdhreply(&p, self.is_first_kex(), s)
+        } else {
+            Err(Error::bug())
+        }
+    }
+
+    pub(crate) fn fetch_checkhostkey<'f>(&self, payload: &'f [u8]) -> Result<PubKey<'f>> {
+        self.client()?;
+
+        let packet = self.packet(payload)?;
+        if let Packet::KexDHReply(p) = packet {
+            Ok(p.k_s.0)
+        } else {
+            Err(Error::bug())
+        }
+    }
+
+    pub(crate) fn resume_servhostkeys(&mut self,
+        payload: &[u8], s: &mut TrafSend, keys: &[&SignKey]) -> Result<()> {
+        self.server()?;
+
+        let packet = self.packet(payload)?;
+        if let Packet::KexDHInit(p) = packet {
+            self.kex.resume_kexdhinit(&p, keys, s)
+        } else {
+            Err(Error::bug())
+        }
+    }
+
+    pub(crate) fn fetch_servpassword<'f>(&self, payload: &'f [u8]) -> Result<TextString<'f>> {
+        self.server()?;
+
+        let packet = self.packet(payload)?;
+        if let Packet::UserauthRequest(UserauthRequest {method: AuthMethod::Password(m), ..}) = packet {
+            Ok(m.password)
+        } else {
+            Err(Error::bug())
+        }
+    }
+
+    pub(crate) fn fetch_servpubkey<'f>(&self, payload: &'f [u8]) -> Result<PubKey<'f>> {
+        self.server()?;
+
+        let packet = self.packet(payload)?;
+        if let Packet::UserauthRequest(UserauthRequest {method: AuthMethod::PubKey(m), ..}) = packet {
+            Ok(m.pubkey.0)
+        } else {
+            Err(Error::bug())
+        }
+    }
+
+    pub(crate) fn resume_servauth(&mut self, allow: bool, s: &mut TrafSend) -> Result<()> {
+        let auth = &mut self.mut_server()?.auth;
+        auth.resume_request(allow, s)?;
+        if auth.authed && matches!(self.state, ConnState::PreAuth) {
+            self.state = ConnState::Authed;
+        }
+        return Ok(())
+    }
+
+    pub(crate) fn resume_servauth_pkok(&mut self, payload: &[u8], s: &mut TrafSend) -> Result<()> {
+        let p = self.packet(payload)?;
+        self.server()?.auth.resume_pkok(p, s)
     }
 }
 

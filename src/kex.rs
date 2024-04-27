@@ -23,7 +23,7 @@ use sign::SigType;
 use sshnames::*;
 use sshwire::{hash_mpint, BinString, Blob};
 use sshwire::{hash_ser, hash_ser_length};
-use behaviour::{CliBehaviour, Behaviour, ServBehaviour};
+use event::{CliEventId, ServEventId};
 
 // at present we only have curve25519 with sha256
 const MAX_SESSID: usize = 32;
@@ -321,10 +321,8 @@ impl Kex {
         }.into()
     }
 
-    pub fn handle_kexdhinit(
-        &mut self, p: &packets::KexDHInit,
-        s: &mut TrafSend, b: &mut impl ServBehaviour,
-    ) -> Result<()> {
+    pub fn handle_kexdhinit(&mut self) 
+    -> Result<DispatchEvent> {
         if let Kex::KexDH { algos, ..} = self {
             if algos.is_client {
                 return Err(Error::bug());
@@ -333,12 +331,18 @@ impl Kex {
             if algos.discard_next {
                 algos.discard_next = false;
                 // Ignore this packet
-                return Ok(())
+                return Ok(DispatchEvent::None)
             }
         }
 
+        Ok(DispatchEvent::ServEvent(ServEventId::Hostkeys))
+    }
+
+    pub fn resume_kexdhinit(&mut self, p: &packets::KexDHInit, 
+        keys: &[&SignKey], s: &mut TrafSend,) -> Result<()> {
+
         if let Kex::KexDH { mut algos, kex_hash } = self.take() {
-            let output = SharedSecret::handle_kexdhinit(&mut algos, kex_hash, p, s, b)?;
+            let output = SharedSecret::handle_kexdhinit(&mut algos, kex_hash, keys, p, s)?;
             *self = Kex::NewKeys { output, algos };
             s.send(packets::NewKeys {})?;
             Ok(())
@@ -347,12 +351,17 @@ impl Kex {
         }
     }
 
-    pub async fn handle_kexdhreply<'f>(
-        &mut self, p: &packets::KexDHReply<'f>,
-        s: &mut TrafSend<'_, '_>,
-        b: &mut impl CliBehaviour,
+    // client only
+    pub fn handle_kexdhreply(&self) -> DispatchEvent {
+        DispatchEvent::CliEvent(event::CliEventId::Hostkey)
+    }
+
+    pub fn resume_kexdhreply(
+        &mut self, p: &packets::KexDHReply,
         first_kex: bool,
+        s: &mut TrafSend,
     ) -> Result<()> {
+        trace!("resume");
         if let Kex::KexDH { algos, ..} = self {
             if !algos.is_client {
                 return Err(Error::bug());
@@ -366,7 +375,7 @@ impl Kex {
         }
 
         if let Kex::KexDH { mut algos, kex_hash } = self.take() {
-            let output = SharedSecret::handle_kexdhreply(&mut algos, kex_hash, p, b).await?;
+            let output = SharedSecret::handle_kexdhreply(&mut algos, kex_hash, p)?;
             s.send(packets::NewKeys {})?;
 
             if first_kex && algos.send_ext_info {
@@ -392,7 +401,7 @@ impl Kex {
         Ok(())
     }
 
-    pub fn handle_newkeys(&mut self, sess_id: &mut Option<SessId>, s: &mut TrafSend<'_, '_>) -> Result<()> {
+    pub fn handle_newkeys(&mut self, sess_id: &mut Option<SessId>, s: &mut TrafSend) -> Result<()> {
         if let Kex::NewKeys { output, algos } = self.take() {
             // We will have already sent our own NewKeys message if we reach thi
             // state.
@@ -575,10 +584,9 @@ impl SharedSecret {
     }
 
     // client only
-    async fn handle_kexdhreply<'f>(
+    fn handle_kexdhreply(
         algos: &mut Algos, mut kex_hash: KexHash,
-        p: &packets::KexDHReply<'f>,
-        b: &mut impl CliBehaviour
+        p: &packets::KexDHReply,
     ) -> Result<KexOutput> {
         kex_hash.prefinish(&p.k_s.0, algos.kex.pubkey(), p.q_s.0)?;
         // consumes the sharedsecret private key in algos
@@ -593,23 +601,24 @@ impl SharedSecret {
         trace!("verify  h {}", h.hex_dump());
         algos.hostsig.verify(&p.k_s.0, &h, &p.sig.0)?;
         debug!("Hostkey signature is valid");
-        if matches!(b.valid_hostkey(&p.k_s.0), Ok(true)) {
-            Ok(kex_out)
-        } else {
-            Err(Error::BehaviourError { msg: "Host key rejected" })
-        }
+        Ok(kex_out)
     }
 
     // server only. consumes algos and kex_hash
     fn handle_kexdhinit(
         algos: &mut Algos, mut kex_hash: KexHash,
+        keys: &[&SignKey],
         p: &packets::KexDHInit,
-        s: &mut TrafSend, b: &mut impl ServBehaviour,
-    ) -> Result<KexOutput> {
-        // hostkeys list must contain the signature type
-        trace!("hostkeys {:?}", b.hostkeys());
-        let hk = b.hostkeys()?;
-        let hostkey = hk.as_slice().iter().find(|k| k.can_sign(algos.hostsig)).trap()?;
+        s: &mut TrafSend ) -> Result<KexOutput> {
+        
+        let hostkey = keys.iter().find(|k| k.can_sign(algos.hostsig));
+        let hostkey = hostkey.ok_or_else(|| {
+            // TODO: hostkeys should be requested
+            // earlier and used for kexinit algorithm negotiation too,
+            // so then this shouldn't fail here.
+            debug!("No suitable hostkey provided");
+            error::BadUsage.build()
+        })?;
 
         kex_hash.prefinish(&hostkey.pubkey(), p.q_c.0, algos.kex.pubkey())?;
         let (kex_out, kex_pub) = match algos.kex {
@@ -838,45 +847,6 @@ mod tests {
         sshwire::packet_from_bytes(&out_buf[..l], &ctx).unwrap()
     }
 
-    struct TestServBehaviour<'a> {
-        keys: Vec<&'a SignKey>,
-    }
-
-    impl<'a> ServBehaviour for TestServBehaviour<'a> {
-        fn hostkeys(&mut self) -> BhResult<heapless::Vec<&SignKey, 2>> {
-            Ok(heapless::Vec::from_slice(self.keys.as_slice()).unwrap())
-        }
-
-        fn have_auth_pubkey(&self, _username: TextString) -> bool {
-            false
-        }
-
-        fn have_auth_password(&self, _username: TextString) -> bool {
-            false
-        }
-
-        fn open_session(&mut self, _chan: ChanHandle) -> ChanOpened {
-            ChanOpened::Success
-        }
-    }
-
-    struct TestCliBehaviour {
-        allow_key: bool,
-    }
-
-    impl CliBehaviour for TestCliBehaviour {
-        fn username(&mut self) -> BhResult<ResponseString> {
-            Ok("matt".try_into().unwrap())
-        }
-
-        fn valid_hostkey(&mut self, _key: &PubKey) -> BhResult<bool> {
-            Ok(self.allow_key)
-        }
-
-        fn authenticated(&mut self) {
-        }
-    }
-
     /// A debug fixture to capture output then deserialize it.
     /// Leaks lots.
     struct TrafCatcher {
@@ -922,7 +892,7 @@ mod tests {
             self.buf.extend(b.iter());
             let b = self.buf.make_contiguous();
 
-            self.traf_in.done_payload(false);
+            self.traf_in.done_payload();
             let l = self.traf_in.input(&mut self.keys, &mut self.rv, b).unwrap();
             self.buf.drain(..l);
 
@@ -933,21 +903,12 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_agree_kex_allow_key() {
-        test_agree_kex(true)
-    }
-
-    #[test]
-    #[should_panic(expected = "Host key rejected")]
-    fn test_agree_kex_disallow_key() {
-        test_agree_kex(false)
-    }
-
     // other things to test:
     // - first_follows, and kexguess2
+    // - kex rejection. is in conn though.
 
-    fn test_agree_kex(allow_key: bool) {
+    #[test]
+    fn test_agree_kex_allow_key() {
         #![allow(unused)]
         init_test_log();
         let cli_conf = kex::AlgoConfig::new(true);
@@ -962,16 +923,6 @@ mod tests {
         let mut keys = vec![];
         keys.push(crate::SignKey::generate(crate::KeyType::Ed25519, None).unwrap());
         let keys: Vec<&SignKey> = keys.iter().collect();
-        let mut sb = TestServBehaviour {
-            keys,
-        };
-        let mut sb = Behaviour::<behaviour::UnusedCli, _>::new_server(&mut sb);
-        let sb = sb.server().unwrap();
-        let mut cb = TestCliBehaviour {
-            allow_key
-        };
-        let mut cb = Behaviour::<_, behaviour::UnusedServ>::new_client(&mut cb);
-        let cb = cb.client().unwrap();
 
         let mut ts = TrafCatcher::new();
         let mut tc = TrafCatcher::new();
@@ -998,15 +949,17 @@ mod tests {
 
         assert!(ts.next().is_none());
 
-        serv.handle_kexdhinit(&cli_dhinit, &mut ts.sender(), sb).unwrap();
+        let ev = serv.handle_kexdhinit().unwrap();
+        assert!(matches!(ev, DispatchEvent::ServEvent(ServEventId::Hostkeys)));
+        let e = serv.resume_kexdhinit(&cli_dhinit, keys.as_slice(), &mut ts.sender()).unwrap();
         let serv_dhrep = ts.next().unwrap();
         let serv_dhrep = if let Packet::KexDHReply(k) = serv_dhrep { k } else { panic!() };
         assert!(matches!(ts.next().unwrap(), Packet::NewKeys(_)));
 
         let s = &mut tc.sender();
-        let f = cli.handle_kexdhreply(&serv_dhrep, s, cb, true);
-        let f = crate::non_async(f).unwrap();
-        f.unwrap();
+        let ev = cli.handle_kexdhreply();
+        assert!(matches!(ev, DispatchEvent::CliEvent(CliEventId::Hostkey)));
+        let f = cli.resume_kexdhreply(&serv_dhrep, true, s);
         assert!(matches!(tc.next().unwrap(), Packet::NewKeys(_)));
         assert!(matches!(tc.next(), None));
 

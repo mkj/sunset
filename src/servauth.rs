@@ -6,144 +6,181 @@ use {
 
 use crate::sshnames::*;
 use crate::*;
-use packets::{AuthMethod, Userauth60, UserauthPkOk};
+use packets::{AuthMethod, Userauth60, UserauthPkOk, Packet, UserauthRequest};
 use sshwire::{BinString, Blob};
 use traffic::TrafSend;
 use kex::SessId;
+use event::{CliEvent, ServEventId};
 
+use heapless::{String, Vec};
+
+/// Server authentication context
+///
+/// `methods_` can be during runtime, though if they
+/// are changed after the auth process starts it's unknown
+/// if client implementations will handle varying auth methods correctly.
 pub(crate) struct ServAuth {
     pub authed: bool,
+
+    /// Used so that `AuthFirst` is only presented once to the application,
+    /// when `method_immediate=true`
+    tried_first: bool,
+
+    /// Username previously used, as an array of bytes
+    pub username: Option<Vec<u8, {config::MAX_USERNAME}>>,
+
+    // TODO Add setters for methods in Runner/SSHServer creation.
+    /// Whether to advertise password authentication and present it to the application
+    ///
+    /// Enabled by default
+    pub method_password: bool,
+    /// Whether to advertise pubkey authentication and present it to the application.
+    ///
+    /// Enabled by default
+    pub method_pubkey: bool,
+    /// Whether to present immediate authentication to the application, disabled by default.
+    pub method_immediate: bool,
 }
 
 impl ServAuth {
     pub fn new() -> Self {
-        Self { authed: false }
+        Self { 
+            authed: false,
+            tried_first: false,
+            username: None,
+            method_password: true,
+            method_pubkey: true,
+            method_immediate: false,
+        }
     }
 
-    /// Returns `true` if auth succeeds
-    pub async fn request(
+    /// Returns an event for the app, or `DispatchEvent::None` if auth failure
+    /// has been returned immediately.
+    pub fn request(
         &mut self,
-        mut p: packets::UserauthRequest<'_>,
         sess_id: &SessId,
-        s: &mut TrafSend<'_, '_>,
-        b: &mut impl ServBehaviour,
-    ) -> Result<bool> {
+        s: &mut TrafSend,
+        p: packets::UserauthRequest,
+    ) -> Result<DispatchEvent> {
+        // TODO: what to do if they've already authed? we have to be careful in case
+        // app event handlers don't expect it?
 
-        enum AuthResp {
-            Success,
-            Failure,
-            // failure, a response has already been send
-            FailNoReply,
-        }
-
-        // TODO: what to do they've already authed? we have to be careful in case
-        // behaviours don't handle it well.
-
-        let username = p.username;
-
-        let inner = async {
-            // even allows "none" auth
-            if b.auth_unchallenged(p.username).await {
-                return Ok(AuthResp::Success) as Result<_>
+        if let Some(prev) = &self.username {
+            // Compare with an existing username
+            if prev != p.username.0 {
+                warn!("Client tried varying usernames");
+                return error::SSHProtoUnsupported.fail()
             }
+        } else {
+            // Set new username and query app for auth methods
+            match Vec::from_slice(p.username.0) {
+                Result::Ok(u) => self.username = Some(u),
+                Result::Err(_) => {
+                    warn!("Client tried too long username");
+                    return error::SSHProtoUnsupported.fail()
+                }
+            }
+        }
+        debug_assert!(self.username.is_some());
 
-            let success = match p.method {
-                AuthMethod::Password(m) => {
-                    if b.have_auth_password(p.username) {
-                        b.auth_password(p.username, m.password).await
-                    } else {
-                        false
-                    }
-                }
-                AuthMethod::PubKey(ref m) => {
-                    if b.have_auth_pubkey(p.username) {
-                        let allowed_key = b.auth_pubkey(p.username, &m.pubkey.0).await;
-                        if allowed_key {
-                            if m.sig.is_some() {
-                                self.verify_sig(&mut p, sess_id)
-                            } else {
-                                s.send(Userauth60::PkOk(UserauthPkOk {
-                                    algo: m.sig_algo,
-                                    key: m.pubkey.clone(),
-                                }))?;
-                                return Ok(AuthResp::FailNoReply);
-                            }
-                        } else {
-                            false
-                        }
-                    } else {
-                        false
-                    }
-                }
-                AuthMethod::None => {
-                    // nothing to do
-                    false
-                }
-                AuthMethod::Unknown(u) => {
-                    debug!("Request for unknown auth method {}", u);
-                    false
-                }
-            };
-
-            if success {
-                Ok(AuthResp::Success)
+        let ev = match p.method {
+            AuthMethod::Password(_) if self.method_password => {
+                DispatchEvent::ServEvent(ServEventId::PasswordAuth)
+            }
+            AuthMethod::PubKey(_) if self.method_pubkey => {
+                self.request_pubkey(p, sess_id)?
+            }
+            _ => if self.method_immediate && !self.tried_first {
+                DispatchEvent::ServEvent(ServEventId::FirstAuth)
             } else {
-                Ok(AuthResp::Failure)
+                DispatchEvent::None
             }
         };
 
-        // failure sends a list of available methods
-        match inner.await? {
-            AuthResp::Success => {
-                self.authed = true;
-                s.send(packets::UserauthSuccess {})?;
-                Ok(true)
-            }
-            AuthResp::Failure => {
-                let methods = self.avail_methods(username, b);
-                let methods = (&methods).into();
+        // FirstAuth would have been returned by now.
+        self.tried_first = true;
 
-                s.send(packets::UserauthFailure { methods, partial: false })?;
-                Ok(false)
-            }
-            AuthResp::FailNoReply => Ok(false),
+        // Auth method isn't supported, send failure straight away.
+        // No concerns about timing leaks since it is independent of the username.
+        if ev.is_none() {
+            self.send_failure(s)?;
         }
+
+        Ok(ev)
     }
 
-    /// Must be passed a MethodPubkey packet with a signature part
-    fn verify_sig(&self, p: &mut packets::UserauthRequest, sess_id: &SessId) -> bool {
-        // Remove the signature from the packet - the signature message includes
-        // packet without that signature part.
+    fn send_failure(&self, s: &mut TrafSend) -> Result<()> {
+        let methods = self.avail_methods();
+        let methods = (&methods).into();
+        s.send(packets::UserauthFailure { methods, partial: false })
+    }
 
+    fn request_pubkey(&mut self, mut p: packets::UserauthRequest,
+        sess_id: &SessId) -> Result<DispatchEvent> {
+        // Extract the signature separately. The message for the signature
+        // includes the auth packet without the signature part.
         let sig = match &mut p.method {
             AuthMethod::PubKey(m) => m.sig.take(),
-            _ => {
-                debug_assert!(false, "must be passed MethodPubkey");
-                return false;
-            }
+            _ => return Err(Error::bug())
         };
 
-        // clumsy splitting m and p
-        let m = match &p.method {
-            AuthMethod::PubKey(m) => m,
-            _ => return false,
-        };
-
-        let sig = match sig.as_ref() {
-            Some(s) => &s.0,
-            None => {
-                debug_assert!(false, "missing signature");
-                return false;
+        if let Some(ref sig) = sig {
+            // Real signature, validate it.
+            if !self.verify_sig(&p, &sig.0, sess_id) {
+                // Auth failure. OK to return early here since
+                // this doesn't rely on any particular username, no concerns
+                // about timing leaks.
+                return Ok(DispatchEvent::None)
             }
-        };
+        }
+
+        // Proceed to query the app whether login is allowed
+        let real_sig = sig.is_some();
+        Ok(DispatchEvent::ServEvent(ServEventId::PubkeyAuth { real_sig }))
+    }
+
+    pub fn resume_request(&mut self, allow: bool, s: &mut TrafSend) -> Result<()> {
+        if allow {
+            self.authed = true;
+            s.send(packets::UserauthSuccess {})
+        } else {
+            self.send_failure(s)
+        }
+    }
+
+    pub fn resume_pkok(&self, p: Packet, s: &mut TrafSend)
+    -> Result<()> {
+        if let Packet::UserauthRequest(
+            UserauthRequest { method: AuthMethod::PubKey(m), .. }) = p {
+            s.send(Userauth60::PkOk(UserauthPkOk {
+                algo: m.sig_algo,
+                key: m.pubkey,
+            }))
+        } else {
+            Err(Error::bug())
+        }
+    }
+
+    /// Must be passed a MethodPubkey packet with a signature part None
+    fn verify_sig(&self, p: &packets::UserauthRequest, sig: &Signature, sess_id: &SessId) -> bool {
+        // Remove the signature from the packet - the signature message includes
+        // packet without that signature part.
 
         let sig_type = match sig.sig_type() {
             Ok(t) => t,
             Err(_) => return false,
         };
 
+        let key = match &p.method {
+            AuthMethod::PubKey(m) => &m.pubkey.0,
+            _ => {
+                debug_assert!(false, "Wrong method");
+                return false
+            }
+        };
+
         let msg = auth::AuthSigMsg::new(p, sess_id);
-        match sig_type.verify(&m.pubkey.0, &&msg, sig) {
+        match sig_type.verify(key, &&msg, &sig) {
             Ok(()) => true,
             Err(e) => { trace!("sig failed  {e}"); false},
         }
@@ -151,18 +188,27 @@ impl ServAuth {
 
     fn avail_methods(
         &self,
-        user: TextString,
-        b: &mut impl ServBehaviour,
     ) -> namelist::LocalNames {
         let mut l = namelist::LocalNames::new();
 
         // OK unwrap: buf is large enough
-        if b.have_auth_password(user) {
+        if self.method_password {
             l.0.push(SSH_AUTHMETHOD_PASSWORD).unwrap()
         }
-        if b.have_auth_pubkey(user) {
+        if self.method_pubkey {
             l.0.push(SSH_AUTHMETHOD_PUBLICKEY).unwrap()
         }
         l
     }
+}
+
+pub enum ServAuthMethod<'a> {
+    None,
+    Password(TextString<'a>),
+    PubKey(&'a PubKey<'a>),
+}
+
+pub struct ServAuthReq<'a> {
+    pub user: TextString<'a>,
+    pub auth: ServAuthMethod<'a>,
 }

@@ -8,13 +8,12 @@ pub use defmt::{debug, error, info, panic, trace, warn};
 
 use core::future::{poll_fn, Future};
 use core::task::{Poll, Context};
-use core::ops::{ControlFlow, DerefMut};
 use core::sync::atomic::AtomicBool;
 use core::sync::atomic::Ordering::{Relaxed, SeqCst};
 
 use embassy_sync::waitqueue::WakerRegistration;
-use embassy_sync::blocking_mutex::raw::{NoopRawMutex, RawMutex};
-use embassy_sync::mutex::Mutex;
+use embassy_sync::blocking_mutex::raw::NoopRawMutex;
+use embassy_sync::mutex::{Mutex, MutexGuard};
 use embassy_sync::signal::Signal;
 use embassy_futures::select::select;
 use embassy_futures::join;
@@ -25,14 +24,15 @@ use atomic_polyfill::AtomicUsize;
 
 use pin_utils::pin_mut;
 
-use sunset::{Runner, Result, Error, error, Behaviour, ChanData, ChanHandle, ChanNum, CliBehaviour, ServBehaviour};
+use sunset::{error, ChanData, ChanHandle, ChanNum, Error, Result, Runner};
 use sunset::config::MAX_CHANNELS;
+use sunset::event::{Event, CliEvent, ServEvent};
 
 // For now we only support single-threaded executors.
 // In future this could be behind a cfg to allow different
 // RawMutex for std executors or other situations.
-// Also requires making CliBehaviour : Send, etc.
 pub type SunsetRawMutex = NoopRawMutex;
+// pub type SunsetRawMutex = CriticalSectionRawMutex;
 
 pub type SunsetMutex<T> = Mutex<SunsetRawMutex, T>;
 
@@ -64,10 +64,30 @@ impl<'a> Inner<'a> {
     ///
     /// Returns split references that will be required by many callers
     fn fetch(&mut self, num: ChanNum) -> Result<(&mut Runner<'a>, &ChanHandle, &mut Wakers)> {
-        self.chan_handles[num.0 as usize].as_ref().map(|ch| {
+        let h = self.chan_handles.get(num.0 as usize).ok_or(Error::BadChannel { num })?;
+        h.as_ref().map(|ch| {
             (&mut self.runner, ch, &mut self.wakers)
         })
         .ok_or_else(Error::bug)
+    }
+}
+
+/// A handle used for storage from a [`SSHClient::progress()`](crate::SSHClient::progress)
+/// or [`SSHServer::progress()`](crate::SSHServer::progress) call.
+#[derive(Default)]
+pub struct ProgressHolder<'g, 'a> {
+    g: Option<MutexGuard<'g, SunsetRawMutex, Inner<'a>>>,
+}
+
+impl<'g, 'a> ProgressHolder<'g, 'a> {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl Drop for ProgressHolder<'_, '_> {
+    fn drop(&mut self) {
+        trace!("drop ph {}", self.g.is_some());
     }
 }
 
@@ -85,8 +105,8 @@ pub(crate) struct EmbassySunset<'a> {
     // wake_progress() should be called after modifying these atomics, to
     // trigger the progress loop to handle state changes
 
-    exit: AtomicBool,
-    flushing: AtomicBool,
+    // When draining the last events
+    moribund: AtomicBool,
 
     // Refcount for `Inner::chan_handles`. Must be non-async so it can be
     // decremented on `ChanIn::drop()` etc.
@@ -113,24 +133,14 @@ impl<'a> EmbassySunset<'a> {
 
         Self {
             inner,
-            exit: AtomicBool::new(false),
-            flushing: AtomicBool::new(false),
+            moribund: AtomicBool::new(false),
             progress_notify,
             chan_refcounts: Default::default(),
          }
     }
 
     /// Runs the session to completion
-    ///
-    /// `b` is a bit tricky, it allows passing either a Mutex<CliBehaviour> or
-    /// Mutex<ServBehaviour> (to be converted into a Behaviour in progress() after 
-    /// the mutex is locked).
-    pub async fn run<B: ?Sized, M: RawMutex, C: CliBehaviour, S: ServBehaviour>(&self,
-        rsock: &mut impl Read,
-        wsock: &mut impl Write,
-        b: &Mutex<M, B>) -> Result<()>
-        where
-            for<'f> Behaviour<'f, C, S>: From<&'f mut B>
+    pub async fn run(&'a self, rsock: &mut impl Read, wsock: &mut impl Write) -> Result<()>
     {
         // Some loops need to terminate other loops on completion.
         // prog finish -> stop rx
@@ -149,6 +159,7 @@ impl<'a> EmbassySunset<'a> {
                     info!("socket write error");
                     Error::ChannelEOF
                 })?;
+                trace!("wrote {l}");
             }
             #[allow(unreachable_code)]
             Ok::<_, sunset::Error>(())
@@ -164,15 +175,18 @@ impl<'a> EmbassySunset<'a> {
                     info!("socket read error");
                     Error::ChannelEOF
                 })?;
+                trace!("read {l}");
                 if l == 0 {
                     debug!("net EOF");
-                    self.flushing.store(true, Relaxed);
+                    self.moribund.store(true, Relaxed);
                     self.wake_progress();
                     break
                 }
                 let mut buf = &buf[..l];
                 while !buf.is_empty() {
                     let n = self.input(buf).await?;
+                    trace!("wake {n}");
+                    self.wake_progress();
                     buf = &buf[n..];
                 }
             }
@@ -187,28 +201,12 @@ impl<'a> EmbassySunset<'a> {
             r
         };
 
-        let prog = async {
-            loop {
-                if self.progress(b).await?.is_break() {
-                    break Ok(())
-                }
-            }
-        };
-
-        let prog = async {
-            let r = prog.await;
-            self.with_runner(|runner| runner.close()).await;
-            rx_stop.signal(());
-            r
-        };
-
         // TODO: we might want to let `prog` run until buffers are drained
         // in case a disconnect message was received.
         // TODO Is there a nice way than this?
-        let f = join::join3(prog, rx, tx).await;
-        let (fp, _frx, _ftx) = f;
+        let f = join::join(rx, tx).await;
+        let (_frx, _ftx) = f;
 
-        // debug!("fp {fp:?}");
         // debug!("frx {_frx:?}");
         // debug!("ftx {_ftx:?}");
 
@@ -217,16 +215,11 @@ impl<'a> EmbassySunset<'a> {
         // // Wake any channels that were awoken after the runner closed
         // let mut inner = self.inner.lock().await;
         // self.wake_channels(&mut inner)?;
-        fp
+        Ok(())
     }
 
     fn wake_progress(&self) {
         self.progress_notify.signal(())
-    }
-
-    pub async fn exit(&self) {
-        self.exit.store(true, Relaxed);
-        self.wake_progress()
     }
 
     fn wake_channels(&self, inner: &mut Inner) -> Result<()> {
@@ -307,58 +300,77 @@ impl<'a> EmbassySunset<'a> {
         Ok(())
     }
 
-    /// Returns ControlFlow::Break on session exit.
+    /// Returns an `Event` once one is ready.
     ///
-    /// B will be either a CliBehaviour or ServBehaviour
-    async fn progress<B: ?Sized, M: RawMutex, C: CliBehaviour, S: ServBehaviour>(&self,
-        b: &Mutex<M, B>)
-        -> Result<ControlFlow<()>>
-        where
-            for<'f> Behaviour<'f, C, S>: From<&'f mut B>
-        {
-            let ret;
+    /// The returned `Event` borrows from the mutex locked in `ph`.
+    pub(crate) async fn progress<'g, 'f>(&'g self, ph: &'f mut ProgressHolder<'g, 'a>) 
+        -> Result<Event<'f, 'a>>
+    {
+        let guard = &mut ph.g;
+        *guard = None;
 
-        {
-            if self.exit.load(Relaxed) {
-                return Ok(ControlFlow::Break(()))
-            }
+        #[cfg(not(feature = "try-polonius"))]
+        let guardptr = guard as *mut Option<MutexGuard<'g, SunsetRawMutex, Inner<'a>>>;
 
-            let mut inner = self.inner.lock().await;
-            {
-                {
-                    // lock the Mutex around the CliBehaviour or ServBehaviour
-                    let mut b = b.lock().await;
-                    // dereference the MutexGuard
-                    let b = b.deref_mut();
-                    // create either Behaviour<C, UnusedServ> or Behaviour<UnusedCli, S>
-                    // to pass to the runner.
-                    let mut b: Behaviour<C, S> = b.into();
-                    ret = inner.runner.progress(&mut b).await?;
-                    // b is dropped, allowing other users
+        // poll progress until we get an actual event to return
+        loop {
+            trace!("progress top");
+            debug_assert!(guard.is_none());
+
+            // Safety: At the start of the loop iteration nothing is borrowing from
+            // guard, it is set to None. We dereference through a pointer to lose the 'f
+            // bound which applies to the Event::Cli/Event::Serv returned variants,
+            // but not other match arms.
+            //
+            // Once polonius is implemented this is unnecessary. polonius-the-crab
+            // can't be used since it would require an async closure.
+            #[cfg(not(feature = "try-polonius"))]
+            let guard = unsafe { &mut *guardptr };
+
+            let idle = {
+                let inner = guard.insert(self.inner.lock().await);
+                trace!("progress lock");
+
+                // Drop any finished channels now we have the lock
+                self.clear_refcounts(inner)?;
+
+                self.wake_channels(inner)?;
+                let ev = inner.runner.progress()?;
+                trace!("ev {ev:?}");
+
+                match ev {
+                    // Return borrowed Cli/Serv directly, with a Event<'f, 'a> bound.
+                    Event::Cli(_) => return Ok(ev),
+                    Event::Serv(_) => return Ok(ev),
+                    Event::Progressed => false,
+                    Event::None => true,
                 }
+            };
 
-                self.wake_channels(&mut inner)?;
+            // Safety: No borrows of guard remain, can lose the inferred 'f lifetime.
+            // Not required after polonius.
+            #[cfg(not(feature = "try-polonius"))]
+            let guard = unsafe { &mut *guardptr };
 
-                self.clear_refcounts(&mut inner)?;
-            }
-            // inner dropped
-        }
+            // Drop the Mutex
+            *guard = None;
+            trace!("progress dropped");
 
-        if ret.disconnected {
-            return Ok(ControlFlow::Break(()))
-        }
-
-        if !ret.progressed {
-            if self.flushing.load(Relaxed) {
+            if self.moribund.load(Relaxed) {
                 // if we're flushing, we exit once there is no progress
-                return Ok(ControlFlow::Break(()))
+                debug!("All data flushed")
             }
+
+            if !idle {
+                // Run runner.progress() again if we made forward progress.
+                continue;
+            }
+
             // Idle until input is received
             // TODO do we also want to wake in other situations?
+            trace!("progress notify");
             self.progress_notify.wait().await;
         }
-
-        Ok(ControlFlow::Continue(()))
     }
 
     pub(crate) async fn with_runner<F, R>(&self, f: F) -> R
@@ -389,7 +401,7 @@ impl<'a> EmbassySunset<'a> {
 
     pub async fn output(&self, buf: &mut [u8]) -> Result<usize> {
         self.poll_inner(|inner, cx| {
-            match inner.runner.output(buf) {
+            let r = match inner.runner.output(buf) {
                 // no output ready
                 Ok(0) => {
                     inner.runner.set_output_waker(cx.waker());
@@ -397,7 +409,11 @@ impl<'a> EmbassySunset<'a> {
                 }
                 Ok(n) => Poll::Ready(Ok(n)),
                 Err(e) => Poll::Ready(Err(e)),
+            };
+            if r.is_ready() {
+                self.wake_progress()
             }
+            r
         }).await
     }
 
@@ -425,9 +441,7 @@ impl<'a> EmbassySunset<'a> {
 
     /// Reads channel data.
     pub(crate) async fn read_channel(&self, num: ChanNum, dt: ChanData, buf: &mut [u8]) -> Result<usize> {
-        if num.0 as usize > MAX_CHANNELS {
-            return sunset::error::BadChannel { num }.fail()
-        }
+        trace!("readch {dt:?}");
         self.poll_inner(|inner, cx| {
             let (runner, h, wakers) = inner.fetch(num)?;
             let i = match runner.channel_input(h, dt, buf) {
@@ -456,9 +470,6 @@ impl<'a> EmbassySunset<'a> {
     }
 
     pub(crate) async fn write_channel(&self, num: ChanNum, dt: ChanData, buf: &[u8]) -> Result<usize> {
-        if num.0 as usize > MAX_CHANNELS {
-            return sunset::error::BadChannel { num }.fail()
-        }
         self.poll_inner(|inner, cx| {
             let (runner, h, wakers) = inner.fetch(num)?;
             let l = runner.channel_send(h, dt, buf);

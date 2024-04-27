@@ -7,7 +7,6 @@ use {
 use snafu::prelude::*;
 
 use crate::{packets::ChannelOpen, *};
-use behaviour::CliBehaviour;
 use cliauth::CliAuth;
 use heapless::String;
 use packets::{Packet, ParseContext, PubKey};
@@ -27,18 +26,16 @@ impl Client {
     pub(crate) fn auth_success(
         &mut self,
         parse_ctx: &mut ParseContext,
-        b: &mut impl CliBehaviour,
-    ) -> Result<()> {
+    ) -> DispatchEvent {
         parse_ctx.cli_auth_type = None;
-
-        self.auth.success(b)
+        self.auth.success()
     }
 
     pub(crate) fn banner(
         &mut self,
         banner: &packets::UserauthBanner<'_>,
-        b: &mut impl CliBehaviour,
     ) {
-        b.show_banner(banner.message, banner.lang)
+        // TODO event banner
+        // b.show_banner(banner.message, banner.lang)
     }
 }

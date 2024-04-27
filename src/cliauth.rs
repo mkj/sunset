@@ -1,3 +1,5 @@
+use self::{conn::DispatchEvent, event::{CliEvent, CliEventId}};
+
 #[allow(unused_imports)]
 use {
     crate::error::{Error, Result, TrapBug},
@@ -10,7 +12,6 @@ use pretty_hex::PrettyHex;
 
 
 use crate::{packets::UserauthPkOk, *};
-use behaviour::CliBehaviour;
 use traffic::TrafSend;
 use client::*;
 use packets::{MessageNumber, AuthMethod, MethodPubKey, ParseContext, UserauthRequest};
@@ -23,7 +24,8 @@ use auth::AuthType;
 
 // pub for packets::ParseContext
 enum Req {
-    Password(ResponseString),
+    // TODO replace Req with something else
+    Password(String<30>),
     PubKey { key: SignKey },
 }
 
@@ -76,7 +78,7 @@ impl Req {
 pub(crate) struct CliAuth {
     state: AuthState,
 
-    username: ResponseString,
+    username: String<{config::MAX_USERNAME}>,
 
     /// Starts as true, set to false if hook.auth_password() returns None.
     /// Not set false if the server rejects auth.
@@ -94,7 +96,7 @@ impl CliAuth {
     pub fn new() -> Self {
         CliAuth {
             state: AuthState::Unstarted,
-            username: ResponseString::new(),
+            username: String::new(),
             try_password: true,
             try_pubkey: true,
             allow_rsa_sha2: false,
@@ -102,53 +104,46 @@ impl CliAuth {
     }
 
     // May be called multiple times
-    pub async fn progress<'b>(
-        &'b mut self,
-        s: &mut TrafSend<'_, '_>,
-        b: &mut impl CliBehaviour,
-    ) -> Result<()> {
+    pub fn progress(&mut self) -> DispatchEvent {
         if let AuthState::Unstarted = self.state {
             self.state = AuthState::MethodQuery;
-            self.username = b.username()?;
-
-            s.send(packets::ServiceRequest {
-                name: SSH_SERVICE_USERAUTH,
-            })?;
-
-            s.send(packets::UserauthRequest {
-                username: self.username.as_str().into(),
-                service: SSH_SERVICE_CONNECTION,
-                method: packets::AuthMethod::None,
-            })?;
+            DispatchEvent::CliEvent(event::CliEventId::Username)
+            // continued in resume_username()
+        } else {
+            Default::default()
         }
+    }
+
+    pub fn resume_username(&mut self, s: &mut TrafSend, username: &str) -> Result<()> {
+        // TODO; error handling
+        self.username = username.try_into().map_err(|_| Error::msg("Username too long"))?;
+        s.send(packets::ServiceRequest {
+            name: SSH_SERVICE_USERAUTH,
+        })?;
+
+        s.send(packets::UserauthRequest {
+            username: self.username.as_str().into(),
+            service: SSH_SERVICE_CONNECTION,
+            method: packets::AuthMethod::None,
+        })?;
         Ok(())
+
     }
 
-    async fn make_password_req(
-        &mut self,
-        b: &mut impl CliBehaviour,
-    ) -> Result<Option<Req>> {
-        let mut pw = ResponseString::new();
-        match b.auth_password(&mut pw) {
-            Err(_) => Err(Error::BehaviourError { msg: "No password returned" }),
-            Ok(r) if r => Ok(Some(Req::Password(pw))),
-            Ok(_) => Ok(None),
-        }
-    }
-
-    /// Retrieves the next pubkey to try from Behaviour, and returns the request.
+    /// Retrieves the next pubkey to try, and returns the request.
     /// Returns None if none are available. `self.try_pubkey` will be set false
     /// when no more will be available.
-    async fn make_pubkey_req(
+    fn make_pubkey_req(
         &mut self,
-        b: &mut impl CliBehaviour,
     ) -> Option<Req> {
         #[allow(clippy::never_loop)]
         loop {
-            let k = b.next_authkey().unwrap_or_else(|_| {
-                warn!("Error getting pubkey for auth");
-                None
-            });
+            todo!("event req");
+            let k = None;
+            // let k = b.next_authkey().unwrap_or_else(|_| {
+            //     warn!("Error getting pubkey for auth");
+            //     None
+            // });
 
             match k {
                 Some(key) => {
@@ -174,11 +169,10 @@ impl CliAuth {
         }
     }
 
-    pub async fn auth_sig_msg(
+    pub fn auth_sig_msg(
         key: &SignKey,
         sess_id: &SessId,
         p: &Packet<'_>,
-        b: &mut impl CliBehaviour,
     ) -> Result<OwnedSig> {
         if let Packet::UserauthRequest(UserauthRequest {
             username,
@@ -198,39 +192,40 @@ impl CliAuth {
             };
 
             let msg = auth::AuthSigMsg::new(&sig_packet, sess_id);
-            if key.is_agent() {
-                Ok(b.agent_sign(key, &msg).await?)
-            } else {
-                key.sign(&&msg)
-            }
+            key.sign(&&msg)
+            // todo event
+            // NO ASYNC
+            // if key.is_agent() {
+            //     Ok(b.agent_sign(key, &msg).await?)
+            // } else {
+            //     key.sign(&&msg)
+            // }
         } else {
             Err(Error::bug())
         }
     }
 
-    pub async fn auth60(
+    pub fn auth60(
         &mut self,
-        auth60: &packets::Userauth60<'_>,
+        auth60: &packets::Userauth60,
         sess_id: &SessId,
         parse_ctx: &mut ParseContext,
-        s: &mut TrafSend<'_, '_>,
-        b: &mut impl CliBehaviour,
+        s: &mut TrafSend,
     ) -> Result<()> {
         parse_ctx.cli_auth_type = None;
 
         match auth60 {
-            Userauth60::PkOk(pkok) => self.auth_pkok(pkok, sess_id, parse_ctx, s, b).await,
+            Userauth60::PkOk(pkok) => self.auth_pkok(pkok, sess_id, parse_ctx, s),
             Userauth60::PwChangeReq(_req) => self.change_password(),
         }
     }
 
-    async fn auth_pkok(
+    fn auth_pkok(
         &mut self,
-        pkok: &UserauthPkOk<'_>,
+        pkok: &UserauthPkOk,
         sess_id: &SessId,
         parse_ctx: &mut ParseContext,
-        s: &mut TrafSend<'_, '_>,
-        b: &mut impl CliBehaviour,
+        s: &mut TrafSend,
     ) -> Result<()> {
         match &mut self.state {
             AuthState::Request { last_req } => {
@@ -242,10 +237,11 @@ impl CliAuth {
 
                     // Sign the packet without the signature
                     let p = last_req.req_packet(&self.username, parse_ctx, None)?;
-                    let new_sig = Self::auth_sig_msg(key, sess_id, &p, b).await?;
-                    let p = last_req.req_packet(&self.username, parse_ctx, Some(&new_sig))?;
+                    todo!("event sig");
+                    // let new_sig = Self::auth_sig_msg(key, sess_id, &p, b)?;
+                    // let p = last_req.req_packet(&self.username, parse_ctx, Some(&new_sig))?;
 
-                    s.send(p)?;
+                    // s.send(p)?;
                     return Ok(());
                 }
             }
@@ -260,20 +256,22 @@ impl CliAuth {
         Err(Error::msg("Password has expired"))
     }
 
-    pub async fn failure(
+    pub fn failure(
         &mut self,
-        failure: &packets::UserauthFailure<'_>,
+        failure: &packets::UserauthFailure,
         parse_ctx: &mut ParseContext,
-        s: &mut TrafSend<'_, '_>,
-        b: &mut impl CliBehaviour,
-    ) -> Result<()> {
+        s: &mut TrafSend,
+    ) -> Result<DispatchEvent> {
         parse_ctx.cli_auth_type = None;
         // TODO: look at existing self.state, handle the failure.
         self.state = AuthState::Idle;
 
         if failure.methods.has_algo(SSH_AUTHMETHOD_PUBLICKEY)? {
             while self.try_pubkey {
-                let req = self.make_pubkey_req(b).await;
+                // TODO event
+                self.try_pubkey = false;
+                let req = None; // TODO
+                // let req = self.make_pubkey_req(b);
                 if let Some(req) = req {
                     self.state = AuthState::Request { last_req: req };
                     break;
@@ -285,34 +283,38 @@ impl CliAuth {
             && self.try_password
             && failure.methods.has_algo(SSH_AUTHMETHOD_PASSWORD)?
         {
-            let req = self.make_password_req(b).await?;
-            if let Some(req) = req {
-                self.state = AuthState::Request { last_req: req };
-            } else {
-                self.try_password = false;
-            }
+            return Ok(DispatchEvent::CliEvent(event::CliEventId::Password))
         }
 
         if let AuthState::Request { last_req, .. } = &self.state {
             let p = last_req.req_packet(&self.username, parse_ctx, None)?;
             s.send(p)?;
         } else {
-            return Err(Error::BehaviourError {
-                msg: "No authentication methods left",
-            });
+            todo!("no more auth methods left");
         }
+        Ok(DispatchEvent::None)
+    }
+
+    pub fn resume_password(&mut self, s: &mut TrafSend, password: &str,
+        parse_ctx: &mut ParseContext) -> Result<()> {
+        // TODO; error handling
+        let req = match password.try_into() {
+            Ok(p) => Req::Password(p),
+            Err(_) => return error::BadUsage.fail(),
+        };
+        let p = req.req_packet(&self.username, parse_ctx, None)?;
+        s.send(p)?;
+        self.state = AuthState::Request { last_req: req };
         Ok(())
     }
 
-    pub fn success(&mut self, b: &mut impl CliBehaviour) -> Result<()> {
+    pub fn success(&mut self) -> DispatchEvent {
         // TODO: check current state? Probably just informational
         self.state = AuthState::Idle;
-        b.authenticated();
-        // TODO errors
-        Ok(())
+        DispatchEvent::CliEvent(CliEventId::Authenticated)
     }
 
-    pub fn handle_ext_info(&mut self, p: &packets::ExtInfo<'_>) {
+    pub fn handle_ext_info(&mut self, p: &packets::ExtInfo) {
         if let Some(ref algs) = p.server_sig_algs {
             // we only worry about rsa-sha256, assuming other older key types are fine
 

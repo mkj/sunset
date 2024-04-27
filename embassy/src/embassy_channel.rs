@@ -12,13 +12,13 @@ use embassy_sunset::EmbassySunset;
 use sunset::{Result, ChanData, ChanNum};
 
 /// Common implementation
-struct ChanIO<'a> {
+struct ChanIO<'g, 'a> {
     num: ChanNum,
     dt: ChanData,
-    sunset: &'a EmbassySunset<'a>,
+    sunset: &'g EmbassySunset<'a>,
 }
 
-impl core::fmt::Debug for ChanIO<'_> {
+impl core::fmt::Debug for ChanIO<'_, '_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("ChanIO")
             .field("num", &self.num)
@@ -27,19 +27,19 @@ impl core::fmt::Debug for ChanIO<'_> {
     }
 }
 
-impl ChanIO<'_> {
+impl ChanIO<'_, '_> {
     pub async fn until_closed(&self) -> Result<()> {
         self.sunset.until_channel_closed(self.num).await
     }
 }
 
-impl Drop for ChanIO<'_> {
+impl Drop for ChanIO<'_, '_> {
     fn drop(&mut self) {
         self.sunset.dec_chan(self.num)
     }
 }
 
-impl Clone for ChanIO<'_> {
+impl Clone for ChanIO<'_, '_> {
     fn clone(&self) -> Self {
         self.sunset.inc_chan(self.num);
         Self {
@@ -50,17 +50,17 @@ impl Clone for ChanIO<'_> {
     }
 }
 
-impl ErrorType for ChanIO<'_> {
+impl ErrorType for ChanIO<'_, '_> {
     type Error = sunset::Error;
 }
 
-impl<'a> Read for ChanIO<'a> {
+impl Read for ChanIO<'_, '_> {
     async fn read(&mut self, buf: &mut [u8]) -> Result<usize, sunset::Error> {
         self.sunset.read_channel(self.num, self.dt, buf).await
     }
 }
 
-impl<'a> Write for ChanIO<'a> {
+impl Write for ChanIO<'_, '_> {
     async fn write(&mut self, buf: &[u8]) -> Result<usize, sunset::Error> {
         self.sunset.write_channel(self.num, self.dt, buf).await
     }
@@ -73,38 +73,20 @@ impl<'a> Write for ChanIO<'a> {
 // Public wrappers for In only
 
 /// A standard bidirectional SSH channel
-#[derive(Debug)]
-pub struct ChanInOut<'a>(ChanIO<'a>);
+#[derive(Debug, Clone)]
+pub struct ChanInOut<'g, 'a>(ChanIO<'g, 'a>);
 
 /// An input-only SSH channel, such as stderr for a client
-#[derive(Debug)]
-pub struct ChanIn<'a>(ChanIO<'a>);
+#[derive(Debug, Clone)]
+pub struct ChanIn<'g, 'a>(ChanIO<'g, 'a>);
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 /// An output-only SSH channel, such as stderr for a server
-pub struct ChanOut<'a>(ChanIO<'a>);
+pub struct ChanOut<'g, 'a>(ChanIO<'g, 'a>);
 
-// derive(Clone) adds unwanted `: Clone` bounds on C and S, so we implement manually
-// https://github.com/rust-lang/rust/issues/26925
-impl<'a> Clone for ChanInOut<'a> {
-    fn clone(&self) -> Self {
-        Self(self.0.clone())
-    }
-}
-impl<'a> Clone for ChanIn<'a> {
-    fn clone(&self) -> Self {
-        Self(self.0.clone())
-    }
-}
-impl<'a> Clone for ChanOut<'a> {
-    fn clone(&self) -> Self {
-        Self(self.0.clone())
-    }
-}
-
-impl<'a> ChanInOut<'a> {
+impl<'g, 'a> ChanInOut<'g, 'a> {
     // caller must have already incremented the refcount
-    pub(crate) fn new(num: ChanNum, dt: ChanData, sunset: &'a EmbassySunset<'a>) -> Self {
+    pub(crate) fn new(num: ChanNum, dt: ChanData, sunset: &'g EmbassySunset<'a>) -> Self {
         Self(ChanIO {
             num, dt, sunset,
         })
@@ -123,18 +105,18 @@ impl<'a> ChanInOut<'a> {
     }
 }
 
-impl<'a> ChanIn<'a> {
+impl<'g, 'a> ChanIn<'g, 'a> {
     // caller must have already incremented the refcount
-    pub(crate) fn new(num: ChanNum, dt: ChanData, sunset: &'a EmbassySunset<'a>) -> Self {
+    pub(crate) fn new(num: ChanNum, dt: ChanData, sunset: &'g EmbassySunset<'a>) -> Self {
         Self(ChanIO {
             num, dt, sunset,
         })
     }
 }
 
-impl<'a> ChanOut<'a> {
+impl<'g, 'a> ChanOut<'g, 'a> {
     // caller must have already incremented the refcount
-    pub(crate) fn new(num: ChanNum, dt: ChanData, sunset: &'a EmbassySunset<'a>) -> Self {
+    pub(crate) fn new(num: ChanNum, dt: ChanData, sunset: &'g EmbassySunset<'a>) -> Self {
         Self(ChanIO {
             num, dt, sunset,
         })
@@ -146,37 +128,37 @@ impl<'a> ChanOut<'a> {
     }
 }
 
-impl ErrorType for ChanInOut<'_> {
+impl ErrorType for ChanInOut<'_, '_> {
     type Error = sunset::Error;
 }
 
-impl ErrorType for ChanIn<'_> {
+impl ErrorType for ChanIn<'_, '_> {
     type Error = sunset::Error;
 }
 
-impl ErrorType for ChanOut<'_> {
+impl ErrorType for ChanOut<'_, '_> {
     type Error = sunset::Error;
 }
 
-impl<'a> Read for ChanInOut<'a> {
+impl Read for ChanInOut<'_, '_> {
     async fn read(&mut self, buf: &mut [u8]) -> Result<usize, sunset::Error> {
         self.0.read(buf).await
     }
 }
 
-impl<'a> Write for ChanInOut<'a> {
+impl Write for ChanInOut<'_, '_> {
     async fn write(&mut self, buf: &[u8]) -> Result<usize, sunset::Error> {
         self.0.write(buf).await
     }
 }
 
-impl<'a> Read for ChanIn<'a> {
+impl Read for ChanIn<'_, '_> {
     async fn read(&mut self, buf: &mut [u8]) -> Result<usize, sunset::Error> {
         self.0.read(buf).await
     }
 }
 
-impl<'a> Write for ChanOut<'a> {
+impl Write for ChanOut<'_, '_> {
     async fn write(&mut self, buf: &[u8]) -> Result<usize, sunset::Error> {
         self.0.write(buf).await
     }

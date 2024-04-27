@@ -8,7 +8,7 @@ use std::os::fd::AsRawFd;
 use libc::{ioctl, winsize};
 use nix::sys::termios::Termios;
 
-use sunset::{Behaviour, Runner, Result, Pty};
+use sunset::{Runner, Result, Pty};
 use sunset::config::*;
 use sunset::packets::WinChange;
 

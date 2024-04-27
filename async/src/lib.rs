@@ -15,7 +15,7 @@ use fdio::{stdin, stdout, stderr_out};
 
 use pty::{raw_pty, RawPtyGuard};
 
-pub use cmdline_client::{CmdlineClient, CmdlineRunner, CmdlineHooks};
+pub use cmdline_client::CmdlineClient;
 
 pub use agent::AgentClient;
 

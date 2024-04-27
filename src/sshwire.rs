@@ -116,10 +116,10 @@ pub type WireResult<T> = core::result::Result<T, WireError>;
 /// Parses a [`Packet`] from a borrowed `&[u8]` byte buffer.
 pub fn packet_from_bytes<'a>(b: &'a [u8], ctx: &ParseContext) -> Result<Packet<'a>> {
     let ctx = ParseContext { seen_unknown: false, .. ctx.clone()};
-    let mut s = DecodeBytes { input: b, pos: 0, parse_ctx: ctx };
+    let mut s = DecodeBytes { input: b, parse_ctx: ctx };
     let p = Packet::dec(&mut s)?;
 
-    if s.pos() != b.len() && !s.ctx().seen_unknown {
+    if s.input.len() != 0 && !s.ctx().seen_unknown {
         // No length check if the packet had an unknown variant
         // - it skipped parsing the remainder of the packet.
         Err(Error::WrongPacketLength)
@@ -129,15 +129,16 @@ pub fn packet_from_bytes<'a>(b: &'a [u8], ctx: &ParseContext) -> Result<Packet<'
 }
 
 pub fn read_ssh<'a, T: SSHDecode<'a>>(b: &'a [u8], ctx: Option<ParseContext>) -> Result<T> {
-    let mut s = DecodeBytes { input: b, pos: 0, parse_ctx: ctx.unwrap_or_default() };
+    let mut s = DecodeBytes { input: b, parse_ctx: ctx.unwrap_or_default() };
     Ok(T::dec(&mut s)?)
 }
 
-pub fn write_ssh(target: &mut [u8], value: &dyn SSHEncode) -> Result<usize>
-{
-    let mut s = EncodeBytes { target, pos: 0 };
+pub fn write_ssh(target: &mut [u8], value: &dyn SSHEncode) -> Result<usize> {
+    let mut s = EncodeBytes { target };
     value.enc(&mut s)?;
-    Ok(s.pos)
+    let end_len = s.target.len();
+    debug_assert!(target.len() >= end_len);
+    Ok(target.len() - end_len)
 }
 
 #[cfg(feature = "std")]
@@ -180,17 +181,19 @@ fn length_enc(value: &dyn SSHEncode) -> WireResult<u32>
 
 struct EncodeBytes<'a> {
     target: &'a mut [u8],
-    pos: usize,
 }
 
-impl SSHSink for EncodeBytes<'_> {
+impl<'a> SSHSink for EncodeBytes<'a> {
+    #[inline]
     fn push(&mut self, v: &[u8]) -> WireResult<()> {
-        let end = self.pos.checked_add(v.len()).ok_or(WireError::NoRoom)?;
-        if end > self.target.len() {
+        if v.len() > self.target.len() {
             return Err(WireError::NoRoom);
         }
-        self.target[self.pos..end].copy_from_slice(v);
-        self.pos = end;
+        // keep the borrow checker happy
+        let tmp = core::mem::replace(&mut self.target, &mut []);
+        let t;
+        (t, self.target) = tmp.split_at_mut(v.len());
+        t.copy_from_slice(v);
         Ok(())
     }
 }
@@ -219,7 +222,6 @@ impl SSHSink for EncodeHash<'_> {
 
 struct DecodeBytes<'a> {
     input: &'a [u8],
-    pos: usize,
     parse_ctx: ParseContext,
 }
 
@@ -230,12 +232,11 @@ impl<'de> SSHSource<'de> for DecodeBytes<'de> {
         }
         let t;
         (t, self.input) = self.input.split_at(len);
-        self.pos += len;
         Ok(t)
     }
 
     fn pos(&self) -> usize {
-        self.pos
+        usize::MAX - self.input.len()
     }
 
     fn ctx(&mut self) -> &mut ParseContext {
@@ -302,7 +303,7 @@ impl<const N: usize> SSHEncode for heapless::String<N> {
 /// The SSH protocol defines it to be UTF-8, though
 /// in some applications it could be treated as ASCII-only.
 /// Sunset treats it as an opaque `&[u8]`, leaving
-/// interpretation to the [`Behaviour`].
+/// interpretation to the application.
 ///
 /// Note that SSH protocol identifiers in [`Packet`]
 /// are `&str` rather than `TextString`, and always defined as ASCII. For
@@ -312,22 +313,22 @@ impl<const N: usize> SSHEncode for heapless::String<N> {
 #[derive(Clone,PartialEq,Copy,Default)]
 pub struct TextString<'a>(pub &'a [u8]);
 
-impl TextString<'_> {
+impl<'a> TextString<'a> {
     /// Returns the UTF-8 decoded string, using [`core::str::from_utf8`]
     ///
     /// Don't call this if you are avoiding including UTF-8 routines in
     /// the binary.
-    pub fn as_str(&self) -> Result<&str> {
+    pub fn as_str(&self) -> Result<&'a str> {
         core::str::from_utf8(self.0).map_err(|_| Error::BadString)
     }
 
-    pub fn as_ascii(&self) -> Result<&str> {
+    pub fn as_ascii(&self) -> Result<&'a str> {
         self.0.as_ascii_str().map_err(|_| Error::BadString).map(|s| s.as_str())
     }
 }
 
-impl AsRef<[u8]> for TextString<'_> {
-    fn as_ref(&self) -> &[u8] {
+impl<'a> AsRef<[u8]> for TextString<'a> {
+    fn as_ref(&self) -> &'a [u8] {
         self.0
     }
 }
@@ -414,17 +415,16 @@ impl<'de, B: SSHDecode<'de>> SSHDecode<'de> for Blob<B> {
         // Sanity check the length matched
         let used_len = pos2 - pos1;
         if used_len != len {
-            trace!("SSH blob length differs. \
-                Expected {} bytes, got {} bytes {}..{}",
-                len, used_len, pos1, pos2);
             let extra = len.checked_sub(used_len).ok_or(WireError::SSHProtoError)?;
 
             if s.ctx().seen_unknown {
                 // Skip over unconsumed bytes in the blob.
                 // This can occur with Unknown variants
-                trace!("Difference is OK, seen_unknown");
                 s.take(extra)?;
             } else {
+                trace!("SSH blob length differs. \
+                    Expected {} bytes, got {} bytes {}..{}",
+                    len, used_len, pos1, pos2);
                 return Err(WireError::SSHProtoError)
             }
         }
@@ -740,8 +740,6 @@ pub(crate) mod tests {
             prompt: "change the password".into(),
             lang: "".into(),
         }).into();
-        let mut pw = ResponseString::new();
-        pw.push_str("123").unwrap();
         ctx.cli_auth_type = Some(auth::AuthType::Password);
         test_roundtrip_context(&p, &ctx);
 
@@ -815,6 +813,6 @@ pub(crate) mod tests {
         assert_eq!(write_ssh(&mut buf1, &"a").unwrap(), 5);
         assert_eq!(write_ssh(&mut buf1, &"aa").unwrap(), 6);
         assert_eq!(write_ssh(&mut buf1, &"aaa").unwrap(), 7);
-        assert!(matches!(write_ssh(&mut buf1, &"aaaa").unwrap_err(), Error::NoRoom));
+        assert!(matches!(write_ssh(&mut buf1, &"aaaa").unwrap_err(), Error::NoRoom { .. }));
     }
 }
