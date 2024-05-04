@@ -86,17 +86,14 @@ pub(crate) struct Dispatched {
 }
 
 impl Conn {
-    pub fn new_client() -> Result<Self> {
-        let algo_conf = AlgoConfig::new(true);
-        Self::new(ClientServer::Client(client::Client::new()), algo_conf)
-    }
+    pub fn new(is_client: bool) -> Result<Self> {
+        let algo_conf = AlgoConfig::new(is_client);
+        let cliserv = if is_client {
+            ClientServer::Client(client::Client::new())
+        } else {
+            ClientServer::Server(server::Server::new())
+        };
 
-    pub fn new_server() -> Result<Self> {
-        let algo_conf = AlgoConfig::new(false);
-        Self::new(ClientServer::Server(server::Server::new()), algo_conf)
-    }
-
-    fn new(cliserv: ClientServer, algo_conf: AlgoConfig) -> Result<Self, Error> {
         Ok(Conn {
             sess_id: None,
             kex: Kex::new(),

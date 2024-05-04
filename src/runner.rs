@@ -67,18 +67,7 @@ impl<'a> Runner<'a> {
         inbuf: &'a mut [u8],
         outbuf: &'a mut [u8],
     ) -> Result<Runner<'a>, Error> {
-        let conn = Conn::new_client()?;
-        let runner = Runner {
-            conn,
-            traf_in: TrafIn::new(inbuf),
-            traf_out: TrafOut::new(outbuf),
-            keys: KeyState::new_cleartext(),
-            output_waker: None,
-            input_waker: None,
-            closed: false,
-        };
-
-        Ok(runner)
+        Self::new(inbuf, outbuf, true)
     }
 
     /// `inbuf` and `outbuf` must be sized to fit the largest SSH packet allowed.
@@ -86,7 +75,15 @@ impl<'a> Runner<'a> {
         inbuf: &'a mut [u8],
         outbuf: &'a mut [u8],
     ) -> Result<Runner<'a>, Error> {
-        let conn = Conn::new_server()?;
+        Self::new(inbuf, outbuf, false)
+    }
+
+    pub fn new(
+        inbuf: &'a mut [u8],
+        outbuf: &'a mut [u8],
+        is_client: bool,
+    ) -> Result<Runner<'a>, Error> {
+        let conn = Conn::new(is_client)?;
         let runner = Runner {
             conn,
             traf_in: TrafIn::new(inbuf),
@@ -99,6 +96,7 @@ impl<'a> Runner<'a> {
 
         Ok(runner)
     }
+
     pub fn is_client(&self) -> bool {
         self.conn.is_client()
     }
