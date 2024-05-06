@@ -3,6 +3,8 @@
 set -v
 set -e
 
+export CARGO_TARGET_DIR=testing/target
+
 # Set OFFLINE=1 to avoid rustup. cargo might still run offline.
 
 if ! grep -sq '^name = "sunset"' Cargo.toml; then
