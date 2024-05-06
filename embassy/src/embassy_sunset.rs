@@ -233,10 +233,21 @@ impl<'a> EmbassySunset<'a> {
         // Read wakers
         let w = &mut inner.wakers;
         if let Some((num, dt, _len)) = inner.runner.ready_channel_input() {
-            // TODO: if there isn't any waker waiting, could we just drop the packet?
-            match dt {
-                ChanData::Normal => w.chan_read[num.0 as usize].wake(),
-                ChanData::Stderr => w.chan_ext[num.0 as usize].wake(),
+            let waker = match dt {
+                ChanData::Normal => &mut w.chan_read[num.0 as usize],
+                ChanData::Stderr => &mut w.chan_ext[num.0 as usize],
+            };
+            if waker.occupied() {
+                waker.wake();
+            } else {
+                // No waker waiting for this packet, so drop it.
+                // This avoids the case where for example a client application
+                // is only reading from a Stdin ChanIn, but some data arrives
+                // over the write fore Stderr. Something needs to mark it done,
+                // since the session can't proceed until it's consumed.
+                if let Some(h) = &inner.chan_handles[num.0 as usize] {
+                    inner.runner.discard_channel_input(&h)?
+                }
             }
         }
 
