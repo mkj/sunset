@@ -547,9 +547,9 @@ pub enum SessionCommand<S: AsRef<str>> {
     Subsystem(S),
 }
 
-impl<'a, S: AsRef<str> + 'a> Into<Req<'a>> for &'a SessionCommand<S> {
-    fn into(self) -> Req<'a> {
-        match self  {
+impl<'a, S: AsRef<str> + 'a> From<&'a SessionCommand<S>> for Req<'a> {
+    fn from(val: &'a SessionCommand<S>) -> Self {
+        match val  {
             SessionCommand::Shell => Req::Shell,
             SessionCommand::Exec(s) => Req::Exec(s.as_ref()),
             SessionCommand::Subsystem(s) => Req::Subsystem(s.as_ref()),

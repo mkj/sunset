@@ -36,7 +36,7 @@ pub struct StringNames<'a>(pub &'a AsciiStr);
 ///
 /// Deliberately `'static` since it should only come from hardcoded local strings
 /// `SSH_NAME_*` in [`crate::sshnames`]. We don't validate string contents.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct LocalNames(pub Vec<&'static str, MAX_LOCAL_NAMES>);
 
 /// The general form that can store either representation

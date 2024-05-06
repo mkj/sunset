@@ -246,7 +246,7 @@ impl<'a> EmbassySunset<'a> {
                 // over the write fore Stderr. Something needs to mark it done,
                 // since the session can't proceed until it's consumed.
                 if let Some(h) = &inner.chan_handles[num.0 as usize] {
-                    inner.runner.discard_channel_input(&h)?
+                    inner.runner.discard_channel_input(h)?
                 }
             }
         }
@@ -267,10 +267,8 @@ impl<'a> EmbassySunset<'a> {
                 w.chan_write[idx].wake()
             }
 
-            if !inner.runner.is_client() {
-                if inner.runner.ready_channel_send(ch, ChanData::Stderr)?.unwrap_or(0) > 0 {
-                    w.chan_ext[idx].wake()
-                }
+            if !inner.runner.is_client() && inner.runner.ready_channel_send(ch, ChanData::Stderr)?.unwrap_or(0) > 0 {
+                w.chan_ext[idx].wake()
             }
 
             // TODO: do we want to keep waking it?

@@ -36,7 +36,7 @@ where
     }
 }
 
-const USER_KNOWN_HOSTS: &str = &".ssh/known_hosts";
+const USER_KNOWN_HOSTS: &str = ".ssh/known_hosts";
 
 fn user_known_hosts() -> Result<PathBuf, KnownHostsError> {
     // home_dir() works fine on linux.

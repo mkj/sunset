@@ -268,7 +268,6 @@ impl<'a> CmdlineRunner<'a> {
                             // perhaps a bad interaction with dup_async(),
                             // maybe the new guard needs to be on the dup-ed
                             // FDs?
-                            ()
 
                             // pty_guard = None;
                             // nix::sys::signal::raise(nix::sys::signal::Signal::SIGTSTP)

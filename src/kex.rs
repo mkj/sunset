@@ -287,11 +287,9 @@ impl Kex {
         let algos = Self::algo_negotiation(is_client, &remote_kexinit, algo_conf)?;
         debug!("{algos}");
 
-        if first_kex && algos.strict_kex {
-            if s.recv_seq() != 1 {
-                debug!("kexinit has strict kex but wasn't first packet");
-                return error::PacketWrong.fail();
-            }
+        if first_kex && algos.strict_kex && s.recv_seq() != 1 {
+            debug!("kexinit has strict kex but wasn't first packet");
+            return error::PacketWrong.fail();
         }
         if is_client {
             let p = algos.kex.make_kexdhinit()?;
