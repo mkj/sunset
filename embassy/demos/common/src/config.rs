@@ -2,12 +2,7 @@
 use sunset::error::{Error, Result, TrapBug};
 
 #[allow(unused_imports)]
-#[cfg(not(feature = "defmt"))]
 use log::{debug, error, info, log, trace, warn};
-
-#[allow(unused)]
-#[cfg(feature = "defmt")]
-use defmt::{debug, error, info, panic, trace, warn};
 
 use hmac::{Hmac, Mac};
 use sha2::Sha256;

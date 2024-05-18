@@ -3,12 +3,7 @@
 // MIT or Apache-2.0 license
 
 #[allow(unused_imports)]
-#[cfg(not(feature = "defmt"))]
 pub use log::{debug, error, info, log, trace, warn};
-
-#[allow(unused_imports)]
-#[cfg(feature = "defmt")]
-pub use defmt::{debug, error, info, panic, trace, warn};
 
 use embassy_executor::Spawner;
 use embassy_net::{Stack, StackResources};

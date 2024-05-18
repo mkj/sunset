@@ -61,8 +61,6 @@ pretty-hex = { version = "0.4", default-features = false }
 # for non_async
 futures = { version = "0.3", default-features = false }
 
-defmt = { version  = "0.3", optional = true }
-
 [features]
 std = ["snafu/std", "snafu/backtrace", "ssh-key/alloc", "larger"]
 rsa = ["dep:rsa", "ssh-key/rsa"]
@@ -70,7 +68,6 @@ rsa = ["dep:rsa", "ssh-key/rsa"]
 openssh-key = ["ssh-key"]
 # implements embedded_io::Error for sunset::Error
 embedded-io = ["dep:embedded-io"]
-defmt = ["dep:defmt"]
 
 # Allocate larger buffers for things such as usernames.
 # See config.rs for details

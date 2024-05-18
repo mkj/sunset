@@ -1,12 +1,7 @@
 //! Serial on rp2040 pins with a `BufferedUart`.
 
 #[allow(unused_imports)]
-#[cfg(not(feature = "defmt"))]
 pub use log::{debug, error, info, log, trace, warn};
-
-#[allow(unused_imports)]
-#[cfg(feature = "defmt")]
-pub use defmt::{debug, error, info, panic, trace, warn};
 
 use embassy_rp::peripherals::*;
 use embassy_rp::bind_interrupts;

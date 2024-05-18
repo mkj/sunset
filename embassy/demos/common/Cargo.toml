@@ -10,7 +10,7 @@ sunset = { path = "../../.." }
 sunset-sshwire-derive = { path = "../../../sshwire-derive" }
 
 embassy-sync = { version = "0.5" }
-embassy-net = { version = "0.4", features = ["tcp", "dhcpv4", "medium-ethernet"] }
+embassy-net = { version = "0.4", features = ["tcp", "dhcpv4", "medium-ethernet", "log"] }
 embassy-net-driver = { version = "0.2" }
 embassy-futures = { version = "0.1" }
 embassy-time = { version = "0.3" }
@@ -24,7 +24,6 @@ hmac = { version = "0.12", default-features = false }
 bcrypt = { version = "0.15", default-features = false }
 ed25519-dalek = { version = "2.0.0-rc.2", default-features = false }
 
-defmt = { version = "0.3", optional = true }
 log = "0.4"
 pretty-hex = { version = "0.4", default-features = false }
 
@@ -32,7 +31,3 @@ pretty-hex = { version = "0.4", default-features = false }
 anyhow = { version = "1.0" }
 sunset = { path = "../../..", features = ["std"] }
 tokio = { version = "1.25", features = ["full"] }
-
-[features]
-defmt = ["dep:defmt", "embedded-io-async/defmt-03", "embassy-net/defmt"]
-log = ["embassy-net/log"]

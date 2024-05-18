@@ -30,7 +30,7 @@ async-io = "1.6.0"
 
 sunset-embassy = { path = "../../" }
 sunset = { path = "../../..", features = ["rsa", "std"] }
-sunset-demo-embassy-common= { path = "../common", features = ["log"] }
+sunset-demo-embassy-common= { path = "../common" }
 
 critical-section = "1.1"
 rand = { version = "0.8", default-features = false, features = ["getrandom"] }

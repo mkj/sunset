@@ -3,14 +3,8 @@ use {
     sunset::error::{Error, Result, TrapBug},
 };
 
-#[cfg(not(feature = "defmt"))]
-pub use {
-    log::{debug, error, info, log, trace, warn},
-};
-
 #[allow(unused_imports)]
-#[cfg(feature = "defmt")]
-pub use defmt::{debug, info, warn, panic, error, trace};
+use log::{debug, error, info, log, trace, warn};
 
 use embassy_rp::flash::{Flash, Async, ERASE_SIZE};
 use embassy_rp::peripherals::FLASH;

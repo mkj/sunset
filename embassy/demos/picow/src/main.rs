@@ -2,16 +2,11 @@
 #![no_main]
 
 #[allow(unused_imports)]
-#[cfg(not(feature = "defmt"))]
 pub use log::{debug, error, info, log, trace, warn};
-
-#[allow(unused_imports)]
-#[cfg(feature = "defmt")]
-pub use defmt::{debug, error, info, panic, trace, warn};
 
 use core::ops::ControlFlow;
 
-use {defmt_rtt as _, panic_probe as _};
+use {panic_probe as _};
 
 use embassy_executor::Spawner;
 use embassy_futures::select::select;

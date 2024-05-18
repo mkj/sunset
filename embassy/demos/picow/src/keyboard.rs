@@ -1,10 +1,5 @@
 #[allow(unused_imports)]
-#[cfg(not(feature = "defmt"))]
 pub use log::{debug, error, info, log, trace, warn};
-
-#[allow(unused_imports)]
-#[cfg(feature = "defmt")]
-pub use defmt::{debug, error, info, panic, trace, warn};
 
 use embassy_futures::join::join;
 use embassy_usb::class::hid::{HidReaderWriter, ReportId, RequestHandler};

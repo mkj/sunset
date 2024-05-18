@@ -1,13 +1,6 @@
 //! Shared between `picow` and `std` Embassy demos
 #[allow(unused_imports)]
-#[cfg(not(feature = "defmt"))]
-use {
-    log::{debug, error, info, log, trace, warn},
-};
-
-#[allow(unused)]
-#[cfg(feature = "defmt")]
-use defmt::{debug, info, warn, panic, error, trace};
+use log::{debug, error, info, log, trace, warn};
 
 use embassy_sync::mutex::Mutex;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
@@ -49,8 +42,7 @@ pub async fn listener<D: Driver, S: DemoServer>(stack: &'static Stack<D>,
 
         let r = session::<S>(&mut socket, &config, &init).await;
         if let Err(e) = r {
-            // TODO defmt errors
-            warn!("Ended with error {e:?}");
+            warn!("Ended with error {e:#?}");
         }
 
         // Make sure a TCP socket reset is sent to the remote host
