@@ -232,7 +232,7 @@ impl CliAuth {
                 if let Req::PubKey { ref key } = last_req {
                     if key.pubkey() != pkok.key.0 {
                         trace!("Received pkok for a different key");
-                        return Err(Error::SSHProtoError);
+                        return error::SSHProto.fail()
                     }
 
                     // Sign the packet without the signature
@@ -248,7 +248,7 @@ impl CliAuth {
             _ => (),
         }
         trace!("Unexpected userauth60");
-        Err(Error::SSHProtoError)
+        error::SSHProto.fail()
     }
 
     fn change_password(&self) -> Result<()> {

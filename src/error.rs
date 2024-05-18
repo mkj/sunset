@@ -5,7 +5,7 @@ use log::{debug, error, info, log, trace, warn};
 use core::fmt::Arguments;
 use core::fmt;
 
-use snafu::{prelude::*, Location};
+use snafu::{prelude::*, Backtrace, Location};
 
 use heapless::String;
 
@@ -21,10 +21,14 @@ use crate::channel::ChanNum;
 #[snafu(visibility(pub))]
 pub enum Error {
     /// Output buffer ran out of room
-    NoRoom,
+    NoRoom {
+        backtrace: Backtrace,
+    },
 
     /// Input buffer ran out
-    RanOut,
+    RanOut {
+        backtrace: Backtrace,
+    },
 
     /// Not a UTF-8 string
     BadString,
@@ -45,7 +49,9 @@ pub enum Error {
     BadNumber,
 
     /// Error in received SSH protocol. Will disconnect.
-    SSHProtoError,
+    SSHProto {
+        backtrace: Backtrace,
+    },
 
     /// Peer sent something we don't handle. Will disconnect.
     ///
@@ -85,7 +91,6 @@ pub enum Error {
     ///   (millions of times) and not released.
     // TODO: /// #[snafu(display("Failure from application: {msg}"))]
     BadUsage {
-        #[snafu(implicit)]
         backtrace: snafu::Backtrace,
         // TODO
         // msg: &'static str,

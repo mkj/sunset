@@ -256,7 +256,7 @@ impl Conn {
                 let num = p.message_num() as u8;
                 let a = self.dispatch_packet(p, s);
                 match a {
-                    | Err(Error::SSHProtoError)
+                    | Err(Error::SSHProto { .. })
                     | Err(Error::PacketWrong)
                     => debug!("Error handling {num} packet"),
                     _ => (),
@@ -283,7 +283,7 @@ impl Conn {
                 packets::Category::Kex => Ok(()),
                 _ => {
                     debug!("Non-kex packet during strict kex");
-                    Err(Error::SSHProtoError)
+                    error::SSHProto.fail()
                 },
             }
         } else if !matches!(self.kex, Kex::Idle) {
@@ -293,7 +293,7 @@ impl Conn {
                 packets::Category::Kex => Ok(()),
                 _ => {
                     debug!("Invalid packet during kex");
-                    Err(Error::SSHProtoError)
+                    error::SSHProto.fail()
                 },
             }
         } else {
@@ -306,14 +306,14 @@ impl Conn {
                         | ConnState::PreAuth
                         | ConnState::Authed
                         => Ok(()),
-                        _ => Err(Error::SSHProtoError),
+                        _ => error::SSHProto.fail(),
                     }
                 }
                 packets::Category::Sess => {
                     match self.state {
                         ConnState::Authed
                         => Ok(()),
-                        _ => Err(Error::SSHProtoError),
+                        _ => error::SSHProto.fail(),
                     }
                 }
             }
@@ -354,7 +354,7 @@ impl Conn {
                 if self.cliserv.is_client() {
                     // TODO: client/server validity checks should move somewhere more general
                     trace!("kexdhinit not server");
-                    return Err(Error::SSHProtoError);
+                    return error::SSHProto.fail();
                 }
 
                 disp.event = self.kex.handle_kexdhinit()?;
@@ -363,7 +363,7 @@ impl Conn {
                 if !self.cliserv.is_client() {
                     // TODO: client/server validity checks should move somewhere more general
                     trace!("kexdhreply not server");
-                    return Err(Error::SSHProtoError);
+                    return error::SSHProto.fail();
                 }
 
                 disp.event = self.kex.handle_kexdhreply();
@@ -382,7 +382,7 @@ impl Conn {
                     serv.service_request(&p, s)?;
                 } else {
                     debug!("Server sent a service request");
-                    return Err(Error::SSHProtoError)
+                    return error::SSHProto.fail()
                 }
             }
             Packet::ServiceAccept(p) => {
@@ -413,7 +413,7 @@ impl Conn {
                     disp.event = serv.auth.request(sess_id, s, p)?;
                 } else {
                     debug!("Server sent an auth request");
-                    return Err(Error::SSHProtoError)
+                    return error::SSHProto.fail()
                 }
             }
             Packet::UserauthFailure(p) => {
@@ -421,7 +421,7 @@ impl Conn {
                     disp.event = cli.auth.failure(&p, &mut self.parse_ctx, s)?;
                 } else {
                     debug!("Received UserauthFailure as a server");
-                    return Err(Error::SSHProtoError)
+                    return error::SSHProto.fail()
                 }
             }
             Packet::UserauthSuccess(_) => {
@@ -434,7 +434,7 @@ impl Conn {
                     }
                 } else {
                     debug!("Received UserauthSuccess as a server");
-                    return Err(Error::SSHProtoError)
+                    return error::SSHProto.fail()
                 }
             }
             Packet::UserauthBanner(p) => {
@@ -442,7 +442,7 @@ impl Conn {
                     cli.banner(&p);
                 } else {
                     debug!("Received banner as a server");
-                    return Err(Error::SSHProtoError)
+                    return error::SSHProto.fail()
                 }
             }
             Packet::Userauth60(p) => {
@@ -452,7 +452,7 @@ impl Conn {
                     cli.auth.auth60(&p, sess_id, &mut self.parse_ctx, s)?;
                 } else {
                     debug!("Received userauth60 as a server");
-                    return Err(Error::SSHProtoError)
+                    return error::SSHProto.fail()
                 }
             }
             | Packet::ChannelOpen(_)

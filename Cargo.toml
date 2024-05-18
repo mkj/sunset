@@ -21,7 +21,7 @@ members = [
 [dependencies]
 sunset-sshwire-derive = { version = "0.2", path = "sshwire-derive" }
 
-snafu = { version = "0.8", default-features = false, features = ["rust_1_61"] }
+snafu = { version = "0.8", default-features = false, features = ["rust_1_65"] }
 # TODO: check that log macro calls disappear in no_std builds
 log = { version = "0.4" }
 heapless = "0.8"

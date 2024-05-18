@@ -283,7 +283,7 @@ impl Keys {
 
         if buf.len() < size_block + size_integ {
             debug!("Bad packet, {} smaller than block size", buf.len());
-            return Err(Error::SSHProtoError);
+            return error::SSHProto.fail();
         }
         // "MUST be a multiple of the cipher block size".
         // encrypted length for aead ciphers doesn't include the length prefix.
@@ -292,7 +292,7 @@ impl Keys {
 
         if len % size_block != 0 {
             debug!("Bad packet, not multiple of block size");
-            return Err(Error::SSHProtoError);
+            return error::SSHProto.fail();
         }
 
         let (data, mac) = buf.split_at_mut(buf.len() - size_integ);
@@ -327,7 +327,7 @@ impl Keys {
         let padlen = data[SSH_LENGTH_SIZE] as usize;
         if padlen < SSH_MIN_PADLEN {
             debug!("Packet padding too short");
-            return Err(Error::SSHProtoError);
+            return error::SSHProto.fail();
         }
 
         let payload_len = buf
@@ -335,7 +335,7 @@ impl Keys {
             .checked_sub(SSH_LENGTH_SIZE + 1 + size_integ + padlen)
             .ok_or_else(|| {
                 debug!("Bad padding length");
-                Error::SSHProtoError
+                error::SSHProto.build()
             })?;
 
         Ok(payload_len)
@@ -385,7 +385,7 @@ impl Keys {
 
         if len + size_integ > buf.len() {
             error!("Output buffer {} is too small for packet", buf.len());
-            return Err(Error::NoRoom);
+            return error::NoRoom.fail();
         }
 
         // write the length

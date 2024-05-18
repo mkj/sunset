@@ -332,7 +332,7 @@ impl Channels {
                     }
                     _ => {
                         trace!("Bad channel state {:?}", ch.state);
-                        return Err(Error::SSHProtoError)
+                        return error::SSHProto.fail()
                     }
                 }
             }
@@ -342,7 +342,7 @@ impl Channels {
                 if ch.send.is_some() {
                     // TODO: or just warn?
                     trace!("open failure late?");
-                    return Err(Error::SSHProtoError);
+                    return error::SSHProto.fail();
                 } else {
                     self.remove(ChanNum(p.num))?;
                     // TODO event

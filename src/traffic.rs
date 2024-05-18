@@ -345,7 +345,7 @@ impl<'a> TrafOut<'a> {
         // after the length and padding bytes which get filled by encrypt()
         let wbuf = &mut self.buf[len..];
         if wbuf.len() < SSH_PAYLOAD_START {
-            return Err(Error::NoRoom)
+            return error::NoRoom.fail()
         }
         let plen = sshwire::write_ssh(&mut wbuf[SSH_PAYLOAD_START..], &p)?;
         trace!("Sending {p:?}");

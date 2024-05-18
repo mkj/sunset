@@ -30,7 +30,7 @@ impl Server {
             s.send(ServiceAccept { name: p.name })
         } else {
             warn!("Received unexpected service request '{}'", p.name);
-            Err(Error::SSHProtoError)
+            error::SSHProto.fail()
         }
     }
 }

@@ -86,7 +86,7 @@ pub enum WireError {
 
     PacketWrong,
 
-    SSHProtoError,
+    SSHProto,
 
     BadKeyFormat,
 
@@ -96,11 +96,11 @@ pub enum WireError {
 impl From<WireError> for Error {
     fn from(w: WireError) -> Self {
         match w {
-            WireError::NoRoom => Error::NoRoom,
-            WireError::RanOut => Error::RanOut,
+            WireError::NoRoom => error::NoRoom.build(),
+            WireError::RanOut => error::RanOut.build(),
             WireError::BadString => Error::BadString,
             WireError::BadName => Error::BadName,
-            WireError::SSHProtoError => Error::SSHProtoError,
+            WireError::SSHProto => error::SSHProto.build(),
             WireError::PacketWrong => Error::PacketWrong,
             WireError::BadKeyFormat => Error::BadKeyFormat,
             WireError::UnknownVariant => Error::bug_err_msg("Can't encode Unknown"),
@@ -415,7 +415,7 @@ impl<'de, B: SSHDecode<'de>> SSHDecode<'de> for Blob<B> {
         // Sanity check the length matched
         let used_len = pos2 - pos1;
         if used_len != len {
-            let extra = len.checked_sub(used_len).ok_or(WireError::SSHProtoError)?;
+            let extra = len.checked_sub(used_len).ok_or(WireError::SSHProto)?;
 
             if s.ctx().seen_unknown {
                 // Skip over unconsumed bytes in the blob.
@@ -425,7 +425,7 @@ impl<'de, B: SSHDecode<'de>> SSHDecode<'de> for Blob<B> {
                 trace!("SSH blob length differs. \
                     Expected {} bytes, got {} bytes {}..{}",
                     len, used_len, pos1, pos2);
-                return Err(WireError::SSHProtoError)
+                return Err(WireError::SSHProto)
             }
         }
         Ok(Blob(inner))
@@ -768,7 +768,7 @@ pub(crate) mod tests {
         // make the length one extra
         buf1[3] += 1;
         let r: Result<Blob<BinString>, _> = read_ssh(&buf1, None);
-        assert!(matches!(r.unwrap_err(), Error::SSHProtoError));
+        assert!(matches!(r.unwrap_err(), Error::SSHProto { .. }));
 
         let mut buf1 = vec![88; 1000];
         let l = write_ssh(&mut buf1, &p1).unwrap();
@@ -777,7 +777,7 @@ pub(crate) mod tests {
         // make the length one short
         buf1[3] -= 1;
         let r: Result<Blob<BinString>, _> = read_ssh(&buf1, None);
-        assert!(matches!(r.unwrap_err(), Error::SSHProtoError));
+        assert!(matches!(r.unwrap_err(), Error::SSHProto { .. }));
     }
 
     #[test]
@@ -801,7 +801,7 @@ pub(crate) mod tests {
         // short
         buf1.truncate(l-1);
         let r = packet_from_bytes(&buf1, &ctx);
-        assert!(matches!(r.unwrap_err(), Error::RanOut));
+        assert!(matches!(r.unwrap_err(), Error::RanOut { .. }));
 
     }
 
