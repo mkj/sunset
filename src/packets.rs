@@ -778,7 +778,7 @@ impl Display for Unknown<'_> {
 
 impl Debug for Unknown<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{self}")
+        Display::fmt(self, f)
     }
 }
 
