@@ -15,7 +15,8 @@ embassy-futures = { version = "0.1" }
 atomic-polyfill = "1.0"
 
 log = { version = "0.4" }
-env_logger = "0.9.0"
+# default regex feature is huge
+env_logger = { version = "0.11", default-features=false, features = ["auto-color", "humantime"] }
 
 embedded-io-async = "0.6"
 heapless = "0.8"
