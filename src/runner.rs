@@ -193,11 +193,12 @@ impl<'a> Runner<'a> {
     /// Set a waker to be notified when SSH socket output is ready
     pub fn set_output_waker(&mut self, waker: &Waker) {
         if let Some(ref w) = self.output_waker {
+            debug!("current {:?} new {:?}", self.output_waker, w);
             if w.will_wake(waker) {
                 return
             }
         }
-        if let Some(w) = self.input_waker.replace(waker.clone()) {
+        if let Some(w) = self.output_waker.replace(waker.clone()) {
             w.wake()
         }
     }
