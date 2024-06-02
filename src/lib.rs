@@ -46,7 +46,6 @@ mod runner;
 mod termmodes;
 mod ssh_chapoly;
 mod traffic;
-mod noasync;
 
 use conn::DispatchEvent;
 
