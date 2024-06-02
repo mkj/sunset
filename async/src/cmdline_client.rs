@@ -307,7 +307,8 @@ impl CmdlineClient {
             Self::chan_run(io, extin, pty).await
         };
 
-        embassy_futures::select::select(prog_loop, chanio).await;
+        // embassy_futures::select::select(prog_loop, chanio).await;
+        let _ = embassy_futures::join::join(prog_loop, chanio).await;
 
         Ok(())
     }

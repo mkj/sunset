@@ -230,7 +230,6 @@ impl<'a> TrafIn<'a> {
     }
 
     pub fn set_channel_input(&mut self, di: channel::DataIn) -> Result<()> {
-        trace!("traf chan input state {:?}", self.state);
         match self.state {
             RxState::InPayload { .. } => {
                 let idx = SSH_PAYLOAD_START + di.dt.packet_offset();
@@ -249,7 +248,6 @@ impl<'a> TrafIn<'a> {
         dt: ChanData,
         buf: &mut [u8],
     ) -> (usize, Option<usize>) {
-        trace!("channel input {chan} dt arg {dt:?} state {:?}", self.state);
 
         match self.state {
             RxState::InChannelData { chan: c, dt: e, ref mut idx, len }
@@ -261,7 +259,6 @@ impl<'a> TrafIn<'a> {
 
                 if *idx == len {
                     // all done.
-                    trace!("channel_input idle was {:?} all done", self.state);
                     self.state = RxState::Idle;
                     (wlen, Some(len))
                 } else {
@@ -278,7 +275,6 @@ impl<'a> TrafIn<'a> {
         chan: ChanNum,
         buf: &mut [u8],
     ) -> (usize, Option<usize>, ChanData) {
-        trace!("channel input {chan} state {:?}", self.state);
 
         match self.state {
             RxState::InChannelData { chan: c, dt, ref mut idx, len }
@@ -291,7 +287,6 @@ impl<'a> TrafIn<'a> {
 
                 if *idx == len {
                     // all done.
-                    trace!("channel_input idle was {:?} all done", self.state);
                     self.state = RxState::Idle;
                     (wlen, Some(len), dt)
                 } else {
@@ -307,7 +302,6 @@ impl<'a> TrafIn<'a> {
         match self.state {
             RxState::InChannelData { chan: c, len, .. }
             if c == chan => {
-                trace!("channel_input idle was {:?} discard", self.state);
                 self.state = RxState::Idle;
                 len
             }
@@ -323,7 +317,6 @@ impl<'a> TrafOut<'a> {
 
     /// Serializes and and encrypts a packet to send
     pub(crate) fn send_packet(&mut self, p: packets::Packet, keys: &mut KeyState) -> Result<()> {
-        trace!("send_packet seq {} {:?}", keys.seq_encrypt, p.message_num());
 
         // Either a fresh buffer or appending to write
         let (idx, len) = match self.state {
@@ -349,7 +342,6 @@ impl<'a> TrafOut<'a> {
         }
         let plen = sshwire::write_ssh(&mut wbuf[SSH_PAYLOAD_START..], &p)?;
         trace!("Sending {p:?}");
-        trace!("new {plen} {:?}", (wbuf[SSH_PAYLOAD_START..SSH_PAYLOAD_START+plen]).hex_dump());
 
         // Encrypt in place
         let elen = keys.encrypt(plen, wbuf)?;
@@ -396,12 +388,11 @@ impl<'a> TrafOut<'a> {
 
     /// Write any pending output, returning the size written
     pub fn output(&mut self, buf: &mut [u8]) -> usize {
-        let r = match self.state {
+        match self.state {
             TxState::Write { ref mut idx, len } => {
                 let wlen = (len - *idx).min(buf.len());
                 buf[..wlen].copy_from_slice(&self.buf[*idx..*idx + wlen]);
                 *idx += wlen;
-                trace!("output wrote {wlen}");
 
                 if *idx == len {
                     // all done, read the next packet
@@ -410,9 +401,7 @@ impl<'a> TrafOut<'a> {
                 wlen
             }
             _ => 0,
-        };
-        trace!("output state now {:?}", self.state);
-        r
+        }
     }
 
 

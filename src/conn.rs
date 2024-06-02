@@ -190,7 +190,6 @@ impl Conn {
     /// Updates `ConnState` and sends any packets required to progress the connection state.
     // TODO can this just move to the bottom of handle_payload(), and make module-private?
     pub(crate) fn progress(&mut self, s: &mut TrafSend) -> Result<Dispatched, Error> {
-        trace!("prog state {:?}", self.state);
         let mut disp = Dispatched::default();
         match self.state {
             ConnState::SendIdent => {

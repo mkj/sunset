@@ -267,7 +267,6 @@ impl Keys {
         let total_len = len
             .checked_add((SSH_LENGTH_SIZE + self.integ_dec.size_out()) as u32)
             .ok_or(Error::BadDecrypt)?;
-        trace!("len {len:?} total {total_len:?}");
 
         Ok(total_len as usize)
     }

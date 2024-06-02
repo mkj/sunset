@@ -80,12 +80,6 @@ impl<'g, 'a> ProgressHolder<'g, 'a> {
     }
 }
 
-impl Drop for ProgressHolder<'_, '_> {
-    fn drop(&mut self) {
-        trace!("drop ph {}", self.g.is_some());
-    }
-}
-
 /// Provides an async wrapper for Sunset core
 ///
 /// A [`ChanHandle`] provided by sunset core must be added with [`add_channel()`] before
@@ -309,7 +303,6 @@ impl<'a> EmbassySunset<'a> {
 
         // poll progress until we get an actual event to return
         loop {
-            trace!("progress top");
             debug_assert!(guard.is_none());
 
             // Safety: At the start of the loop iteration nothing is borrowing from
@@ -324,14 +317,12 @@ impl<'a> EmbassySunset<'a> {
 
             let idle = {
                 let inner = guard.insert(self.inner.lock().await);
-                trace!("progress lock");
 
                 // Drop any finished channels now we have the lock
                 self.clear_refcounts(inner)?;
 
                 self.wake_channels(inner)?;
                 let ev = inner.runner.progress()?;
-                trace!("ev {ev:?}");
 
                 match ev {
                     // Return borrowed Cli/Serv directly, with a Event<'f, 'a> bound.
@@ -349,7 +340,6 @@ impl<'a> EmbassySunset<'a> {
 
             // Drop the Mutex
             *guard = None;
-            trace!("progress dropped");
 
             if self.moribund.load(Relaxed) {
                 // if we're flushing, we exit once there is no progress
@@ -363,7 +353,6 @@ impl<'a> EmbassySunset<'a> {
 
             // Idle until input is received
             // TODO do we also want to wake in other situations?
-            trace!("progress notify");
             self.progress_notify.wait().await;
         }
     }

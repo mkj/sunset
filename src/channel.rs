@@ -273,10 +273,10 @@ impl Channels {
             }
             // ChannelOpenType::ForwardedTcpip(t) => b.open_tcp_forwarded(handle, t),
             // ChannelOpenType::DirectTcpip(t) => b.open_tcp_direct(handle, t),
-            _ => todo!(),
             ChannelOpenType::Unknown(_) => {
                 unreachable!()
             }
+            _ => todo!(),
         }
     }
 
@@ -678,10 +678,8 @@ impl Channel {
             self.dispatch_server_request(p, s)
         };
 
-        if let Ok(ev) = r {
-            ev
-        } else {
-            // All errors just return a message
+        r.unwrap_or_else(|_| {
+            // All errors just send an error response, no failure.
             if p.want_reply {
                 let num = self.send_num();
                 debug_assert!(num.is_ok());
@@ -690,7 +688,7 @@ impl Channel {
                 }
             }
             DispatchEvent::None
-        }
+        })
     }
 
     fn dispatch_server_request(&self, 
@@ -734,14 +732,13 @@ impl Channel {
             ChannelReqType::ExitStatus(_st) => {
                 // TODO
                 self.handle_close(s)?;
-                return Err(Error::SSHProtoUnsupported)
-                // Ok(true)
+                // Ok(DispatchEvent::CliEvent(Exit(st)
+                Err(Error::SSHProtoUnsupported)
             }
             ChannelReqType::ExitSignal(_sig) => {
                 // TODO
                 self.handle_close(s)?;
-                return Err(Error::SSHProtoUnsupported)
-                // Ok(true)
+                Err(Error::SSHProtoUnsupported)
             }
             _ => {
                 if let ChannelReqType::Unknown(u) = &p.req {
@@ -753,8 +750,7 @@ impl Channel {
                         p.req.variant_name().unwrap()
                     )
                 };
-                return Err(Error::SSHProtoUnsupported)
-                // Ok(false)
+                Err(Error::SSHProtoUnsupported)
             }
         }
     }
