@@ -170,7 +170,7 @@ impl AgentClient {
             SignKey::AgentRSA(_) => SSH_AGENT_FLAG_RSA_SHA2_256,
             _ => 0,
         };
-        trace!("flags {key:?}");
+        trace!("flags {flags:?}");
         let r = AgentRequest::SignRequest(AgentSignRequest {
             key_blob: Blob(key.pubkey()),
             msg: Blob(msg),

@@ -7,7 +7,7 @@ license = "0BSD"
 description = "Std async wrapper for Sunset SSH"
 
 [dependencies]
-sunset = { version = "0.2", path = "..", features = ["std", "rsa", "openssh-key"] }
+sunset = { version = "0.2", path = "..", features = ["std", "openssh-key"] }
 sunset-sshwire-derive = { version = "0.2", path = "../sshwire-derive" }
 sunset-embassy = { version = "0.2", path = "../embassy" }
 log = { version = "0.4", features = ["release_max_level_trace"] }
@@ -34,8 +34,7 @@ heapless = "0.8"
 pretty-hex = "0.4"
 
 [features]
-# rsa is implied by sunset/std
-# rsa = ["sunset/rsa"]
+rsa = ["sunset/rsa"]
 
 [dev-dependencies]
 anyhow = { version = "1.0" }
