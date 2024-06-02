@@ -1,6 +1,6 @@
 //! Represents the state of a SSH connection.
 
-use self::packets::{AuthMethod, UserauthRequest};
+use self::{cliauth::CliAuth, packets::{AuthMethod, UserauthRequest}};
 
 #[allow(unused_imports)]
 use {
@@ -76,6 +76,7 @@ enum ConnState {
     // Cleanup ??
 }
 
+#[must_use]
 #[derive(Debug, Clone)]
 pub(crate) enum DispatchEvent
 {
@@ -417,7 +418,7 @@ impl Conn {
             }
             Packet::UserauthFailure(p) => {
                 if let ClientServer::Client(cli) = &mut self.cliserv {
-                    disp.event = cli.auth.failure(&p, &mut self.parse_ctx, s)?;
+                    disp.event = cli.auth.failure(&p, &mut self.parse_ctx)?;
                 } else {
                     debug!("Received UserauthFailure as a server");
                     return error::SSHProto.fail()
@@ -448,7 +449,7 @@ impl Conn {
                 // TODO: client only
                 if let ClientServer::Client(cli) = &mut self.cliserv {
                     let sess_id = self.sess_id.as_ref().trap()?;
-                    cli.auth.auth60(&p, sess_id, &mut self.parse_ctx, s)?;
+                    disp.event = cli.auth.auth60(&p, sess_id, &mut self.parse_ctx, s)?;
                 } else {
                     debug!("Received userauth60 as a server");
                     return error::SSHProto.fail()
@@ -485,20 +486,28 @@ impl Conn {
         Ok(disp)
     }
 
-    pub(crate) fn resume_username(&mut self, s: &mut TrafSend, username: &str) -> Result<()> {
-        if let ClientServer::Client(cli) = &mut self.cliserv {
-            cli.auth.resume_username(s, username)
-        } else {
-            Err(Error::bug())
-        }
+    pub(crate) fn cliauth(&self) -> Result<&CliAuth> {
+        let ClientServer::Client(cli) = &self.cliserv else {
+            return Err(Error::bug())
+        };
+        Ok(&cli.auth)
     }
 
-    pub(crate) fn resume_password(&mut self, s: &mut TrafSend, password: &str) -> Result<()> {
-        if let ClientServer::Client(cli) = &mut self.cliserv {
-            cli.auth.resume_password(s, password, &mut self.parse_ctx)
-        } else {
-            Err(Error::bug())
-        }
+    pub(crate) fn mut_cliauth(&mut self) -> Result<(&mut CliAuth, &mut ParseContext)> {
+        let ClientServer::Client(cli) = &mut self.cliserv else {
+            return Err(Error::bug())
+        };
+        Ok((&mut cli.auth, &mut self.parse_ctx))
+    }
+
+
+    pub(crate) fn fetch_agentsign_msg(&self) -> Result<AuthSigMsg> {
+        let ClientServer::Client(cli) = &self.cliserv else {
+            return Err(Error::bug())
+        };
+
+        let sess_id = self.sess_id.as_ref().trap()?;
+        cli.auth.fetch_agentsign_msg(sess_id)
     }
 
     pub(crate) fn resume_checkhostkey(&mut self, 

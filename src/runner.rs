@@ -47,6 +47,11 @@ pub struct Runner<'a> {
     closed_input: bool,
 
     resume_event: DispatchEvent,
+    // Some incoming packets will produce multiple Events from a single packet.
+    // (such as Userauth, where we query application for a pubkey or password).
+    // The Event handler can set extra_resume_event which will cause that
+    // event to be emitted on the next .progress() call.
+    extra_resume_event: DispatchEvent,
 }
 
 impl core::fmt::Debug for Runner<'_> {
@@ -95,7 +100,8 @@ impl<'a> Runner<'a> {
             output_waker: None,
             input_waker: None,
             closed_input: false,
-            resume_event: Default::default(),
+            resume_event: DispatchEvent::None,
+            extra_resume_event: DispatchEvent::None,
         };
 
         Ok(runner)
@@ -115,9 +121,18 @@ impl<'a> Runner<'a> {
         if prev.needs_resume() {
             // Events that need a response would have cleared runner.resume_event in their
             // resume handler.
-            debug!("No response provided to {:?} event", self.resume_event);
+            debug!("No response provided to {:?} event", prev);
             return error::BadUsage.fail()
         }
+
+        // Another event may be pending from the same payload, emit it.
+        let ex = self.extra_resume_event.take();
+        if ex.is_some() {
+            self.resume_event = ex.clone();
+            return Event::from_dispatch(&ex, self);
+        }
+
+        // Previous event payload is complete
         if prev.is_some() {
             self.traf_in.done_payload();
         }
@@ -179,7 +194,7 @@ impl<'a> Runner<'a> {
         self.resume_event = disp.event.clone();
 
         // Create an Event that borrows from Runner
-        Event::from_dispatch(disp.event, self)
+        Event::from_dispatch(&disp.event, self)
     }
 
     pub(crate) fn packet(&self) -> Result<Option<packets::Packet>> {
@@ -490,16 +505,54 @@ impl<'a> Runner<'a> {
     pub(crate) fn resume_cliusername(&mut self, username: &str) -> Result<()> {
         self.resume(&DispatchEvent::CliEvent(CliEventId::Username));
         let mut s = self.traf_out.sender(&mut self.keys);
-        self.conn.resume_username(&mut s, username)?;
+        let (cliauth, _) = self.conn.mut_cliauth()?;
+        cliauth.resume_username(&mut s, username)?;
         self.traf_in.done_payload();
         Ok(())
     }
 
-    pub(crate) fn resume_clipassword(&mut self, password: &str) -> Result<()> {
+    pub(crate) fn resume_clipassword(&mut self, password: Option<&str>) -> Result<()> {
         self.resume(&DispatchEvent::CliEvent(CliEventId::Password));
         self.traf_in.done_payload();
         let mut s = self.traf_out.sender(&mut self.keys);
-        self.conn.resume_password(&mut s, password)?;
+        let (cliauth, ctx) = self.conn.mut_cliauth()?;
+        cliauth.resume_password(&mut s, password, ctx)?;
+        // assert that resume_password() returns error with none password.
+        // otherwise we might need to handle other events like with clipubkey
+        debug_assert!(password.is_some(), "no password");
+        Ok(())
+    }
+
+    pub(crate) fn resume_clipubkey(&mut self, key: Option<SignKey>) -> Result<()> {
+        self.resume(&DispatchEvent::CliEvent(CliEventId::Pubkey));
+        let mut s = self.traf_out.sender(&mut self.keys);
+        let (cliauth, ctx) = self.conn.mut_cliauth()?;
+        self.extra_resume_event = cliauth.resume_pubkey(&mut s, key, ctx)?;
+        if self.extra_resume_event.is_none() {
+            self.traf_in.done_payload();
+        }
+        Ok(())
+    }
+
+    pub(crate) fn fetch_agentsign_key(&self) -> Result<&SignKey> {
+        self.check_resume(&DispatchEvent::CliEvent(CliEventId::AgentSign));
+        let cliauth = self.conn.cliauth()?;
+        cliauth.fetch_agentsign_key()
+    }
+
+    pub(crate) fn fetch_agentsign_msg(&self) -> Result<AuthSigMsg> {
+        self.check_resume(&DispatchEvent::CliEvent(CliEventId::AgentSign));
+        self.conn.fetch_agentsign_msg()
+    }
+
+    pub(crate) fn resume_agentsign(&mut self, sig: Option<&OwnedSig>) -> Result<()> {
+        self.resume(&DispatchEvent::CliEvent(CliEventId::AgentSign));
+        let (cliauth, ctx) = self.conn.mut_cliauth()?;
+        let mut s = self.traf_out.sender(&mut self.keys);
+        self.extra_resume_event = cliauth.resume_agentsign(sig, ctx, &mut s)?;
+        if self.extra_resume_event.is_none() {
+            self.traf_in.done_payload();
+        }
         Ok(())
     }
 

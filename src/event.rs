@@ -35,7 +35,7 @@ pub enum Event<'g, 'a> {
 }
 
 impl<'g, 'a> Event<'g, 'a> {
-    pub(crate) fn from_dispatch(disp: DispatchEvent, runner: &'g mut Runner<'a>) -> Result<Self> {
+    pub(crate) fn from_dispatch(disp: &DispatchEvent, runner: &'g mut Runner<'a>) -> Result<Self> {
         match disp {
             DispatchEvent::CliEvent(x) => Ok(Self::Cli(x.event(runner)?)),
             DispatchEvent::ServEvent(x) => Ok(Self::Serv(x.event(runner)?)),
@@ -53,6 +53,8 @@ pub enum CliEvent<'g, 'a>
     Hostkey(CheckHostkey<'g, 'a>),
     Username(RequestUsername<'g, 'a>),
     Password(RequestPassword<'g, 'a>),
+    Pubkey(RequestPubkey<'g, 'a>),
+    AgentSign(RequestSign<'g, 'a>),
     Authenticated,
     SessionOpened(CliSessionOpener<'g, 'a>),
     /// Remote process exited
@@ -71,9 +73,11 @@ impl Debug for CliEvent<'_, '_> {
             Self::Hostkey(_) => "Hostkey",
             Self::Username(_) => "Username",
             Self::Password(_) => "Password",
+            Self::Pubkey(_) => "Pubkey",
             Self::Authenticated => "Authenticated",
             Self::SessionOpened(_) => "SessionOpened",
             Self::SessionExit(_) => "SessionExit",
+            Self::AgentSign(_) => "AgentSign",
             Self::Defunct => "Defunct",
         };
         write!(f, "CliEvent({e})")
@@ -85,7 +89,7 @@ pub struct RequestUsername<'g, 'a> {
 }
 
 impl RequestUsername<'_, '_> {
-    pub fn respond(self, username: impl AsRef<str>) -> Result<()> {
+    pub fn username(self, username: impl AsRef<str>) -> Result<()> {
         self.runner.resume_cliusername(username.as_ref())
     }
 }
@@ -95,8 +99,53 @@ pub struct RequestPassword<'g, 'a> {
 }
 
 impl RequestPassword<'_, '_> {
+    /// Provide a password to try
     pub fn password(self, password: impl AsRef<str>) -> Result<()> {
-        self.runner.resume_clipassword(password.as_ref())
+        self.runner.resume_clipassword(Some(password.as_ref()))
+    }
+
+    /// Don't provide a password
+    ///
+    /// `RequestPassword` will not be returned again.
+    pub fn skip(self) -> Result<()> {
+        self.runner.resume_clipassword(None)
+    }
+}
+
+pub struct RequestPubkey<'g, 'a> {
+    runner: &'g mut Runner<'a>,
+}
+
+impl<'g, 'a> RequestPubkey<'g, 'a> {
+    /// Provide a public key to try
+    pub fn pubkey(self, signkey: SignKey) -> Result<()> {
+        self.runner.resume_clipubkey(Some(signkey))
+    }
+
+    /// Don't provide a public key
+    ///
+    /// `RequestPubkey` will not be returned again.
+    pub fn skip(self) -> Result<()> {
+        self.runner.resume_clipubkey(None)
+    }
+}
+
+pub struct RequestSign<'g, 'a> {
+    runner: &'g mut Runner<'a>,
+}
+
+impl RequestSign<'_, '_> {
+    pub fn key(&self) -> Result<&SignKey> {
+        self.runner.fetch_agentsign_key()
+    }
+    pub fn message(&self) -> Result<AuthSigMsg> {
+        self.runner.fetch_agentsign_msg()
+    }
+    pub fn signed(self, sig: &OwnedSig) -> Result<()> {
+        self.runner.resume_agentsign(Some(sig))
+    }
+    pub fn skip(self) -> Result<()> {
+        self.runner.resume_agentsign(None)
     }
 }
 
@@ -128,6 +177,8 @@ pub(crate) enum CliEventId {
     Hostkey,
     Username,
     Password,
+    Pubkey,
+    AgentSign,
     Authenticated,
     SessionOpened(ChanNum),
     SessionExit,
@@ -136,8 +187,6 @@ pub(crate) enum CliEventId {
     // TODO:
     // Disconnected
     // Banner,
-    // AuthPubkey
-    // AgentSign
     // OpenTCPForwarded (new session)
     // TCPDirectOpened (response)
 }
@@ -152,6 +201,12 @@ impl CliEventId {
             }
             Self::Password => {
                 Ok(CliEvent::Password(RequestPassword { runner }))
+            }
+            Self::Pubkey => {
+                Ok(CliEvent::Pubkey(RequestPubkey { runner }))
+            }
+            Self::AgentSign => {
+                Ok(CliEvent::AgentSign(RequestSign { runner }))
             }
             Self::Hostkey => {
                 debug_assert!(matches!(pk, Some(Packet::KexDHReply(_))));
@@ -183,6 +238,8 @@ impl CliEventId {
             | Self::Hostkey
             | Self::Username
             | Self::Password
+            | Self::Pubkey
+            | Self::AgentSign
             => true,
         }
     }

@@ -257,20 +257,34 @@ impl CmdlineClient {
                 let ev = cli.progress(&mut ph).await?;
                 // Note that while ph is held, calls to cli will block.
                 match ev {
-                    CliEvent::Username(u) => {
-                        u.respond(&self.username)?;
-                    }
-                    CliEvent::Password(p) => {
-                        let pw = rpassword::prompt_password(format!(
-                            "password for {}: ", self.username))?;
-                        p.password(pw)?;
-                    }
                     CliEvent::Hostkey(h) => {
                         let key = h.hostkey()?;
                         match knownhosts::check_known_hosts(&self.host, self.port, &key) {
                             Ok(()) => h.accept(),
                             Err(_e) => h.reject(),
                         }?;
+                    }
+                    CliEvent::Username(u) => {
+                        u.username(&self.username)?;
+                    }
+                    CliEvent::Password(p) => {
+                        let pw = rpassword::prompt_password(format!(
+                            "password for {}: ", self.username))?;
+                        p.password(pw)?;
+                    }
+                    CliEvent::Pubkey(p) => {
+                        if let Some(k) = self.authkeys.pop_front() {
+                            p.pubkey(k)
+                        } else {
+                            p.skip()
+                        }?;
+                    }
+                    CliEvent::AgentSign(k) => {
+                        let agent = self.agent.as_mut().expect("agent keys without agent?");
+                        let key = k.key()?;
+                        let msg = k.message()?;
+                        let sig = agent.sign_auth(key, &msg).await?;
+                        k.signed(&sig)?;
                     }
                     CliEvent::Authenticated => {
                         debug!("Authentication succeeded");
@@ -302,7 +316,7 @@ impl CmdlineClient {
 
         let prog_loop = async {
             let e = prog_loop.await;
-            debug!("loop done, {e:?}");
+            debug!("loop done, {e:#?}");
             e
         };
 

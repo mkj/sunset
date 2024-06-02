@@ -125,6 +125,9 @@ pub enum Error {
     #[snafu(display("Packet size {size} too large (or bad decrypt)"))]
     BigPacket { size: usize },
 
+    /// Ran out of authentication methods to try (as a client)
+    NoAuthMethods,
+
     /// An unknown SSH name is provided, for a key type, signature type,
     /// channel name etc.
     #[snafu(display("Unknown {kind} method"))]

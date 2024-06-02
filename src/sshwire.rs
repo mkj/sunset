@@ -386,6 +386,12 @@ impl<B> AsRef<B> for Blob<B> {
     }
 }
 
+impl<T: SSHEncode> SSHEncode for &T {
+    fn enc(&self, s: &mut dyn SSHSink) -> WireResult<()> {
+        (*self).enc(s)
+    }
+}
+
 impl<B: SSHEncode + Debug> Debug for Blob<B> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         if let Ok(len) = sshwire::length_enc(&self.0) {
@@ -461,12 +467,6 @@ impl SSHEncode for &[u8] {
 }
 
 // no length prefix
-impl<const N: usize> SSHEncode for &[u8; N] {
-    fn enc(&self, s: &mut dyn SSHSink) -> WireResult<()> {
-        s.push(self.as_slice())
-    }
-}
-
 impl<const N: usize> SSHEncode for [u8; N] {
     fn enc(&self, s: &mut dyn SSHSink) -> WireResult<()> {
         s.push(self.as_slice())

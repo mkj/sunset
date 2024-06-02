@@ -179,8 +179,8 @@ impl ServAuth {
             }
         };
 
-        let msg = auth::AuthSigMsg::new(p, sess_id);
-        match sig_type.verify(key, &&msg, &sig) {
+        let msg = auth::AuthSigMsg::new(p.clone(), sess_id);
+        match sig_type.verify(key, &msg, &sig) {
             Ok(()) => true,
             Err(e) => { trace!("sig failed  {e}"); false},
         }

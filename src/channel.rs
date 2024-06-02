@@ -913,6 +913,15 @@ pub struct CliSessionOpener<'g, 'a> {
 }
 
 impl<'g, 'a> CliSessionOpener<'g, 'a> {
+
+    /// Returns the channel associated with this session.
+    ///
+    /// This will match that previously returned from [`Runner::cli_session_opener`]
+    /// or `SSHClient::open_session_pty()` (or `_nopty()`)
+    pub fn channel(&self) -> ChanNum {
+        self.ch.num()
+    }
+
     /// Requests a Pseudo-TTY for the channel.
     ///
     /// This must be sent prior to requesting a shell or command.

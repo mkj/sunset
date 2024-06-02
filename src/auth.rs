@@ -21,23 +21,23 @@ use kex::SessId;
 #[derive(Debug)]
 pub struct AuthSigMsg<'a> {
     pub(crate) sess_id: BinString<'a>,
-    pub(crate) u: &'a packets::UserauthRequest<'a>,
+    pub(crate) u: packets::UserauthRequest<'a>,
 }
 
-impl SSHEncode for &AuthSigMsg<'_> {
+impl SSHEncode for AuthSigMsg<'_> {
     fn enc(&self, s: &mut dyn sshwire::SSHSink) -> WireResult<()> {
         self.sess_id.enc(s)?;
 
         let m = packets::MessageNumber::SSH_MSG_USERAUTH_REQUEST as u8;
         m.enc(s)?;
 
-        (*self.u).enc(s)?;
+        self.u.enc(s)?;
         Ok(())
     }
 }
 
 impl<'a> AuthSigMsg<'a> {
-    pub(crate) fn new(u: &'a packets::UserauthRequest<'a>, sess_id: &'a SessId) -> Self {
+    pub(crate) fn new(u: packets::UserauthRequest<'a>, sess_id: &'a SessId) -> Self {
         auth::AuthSigMsg {
             sess_id: BinString(sess_id.as_ref()),
             u,

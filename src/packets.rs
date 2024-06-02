@@ -152,7 +152,7 @@ impl SSHEncode for ExtInfo<'_> {
     }
 }
 
-#[derive(Debug, SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode, Clone)]
 pub struct UserauthRequest<'a> {
     pub username: TextString<'a>,
     pub service: &'a str,
@@ -160,7 +160,7 @@ pub struct UserauthRequest<'a> {
 }
 
 /// The method-specific part of a [`UserauthRequest`].
-#[derive(Debug, SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode, Clone)]
 #[sshwire(variant_prefix)]
 pub enum AuthMethod<'a> {
     #[sshwire(variant = SSH_AUTHMETHOD_PASSWORD)]
@@ -207,7 +207,7 @@ pub struct UserauthPwChangeReq<'a> {
     pub lang: TextString<'a>,
 }
 
-#[derive(SSHEncode, SSHDecode)]
+#[derive(SSHEncode, SSHDecode, Clone)]
 pub struct MethodPassword<'a> {
     pub change: bool,
     pub password: TextString<'a>,
@@ -222,7 +222,7 @@ impl Debug for MethodPassword<'_>{
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MethodPubKey<'a> {
     /// A signature algorithm name (not key algorithm name).
     pub sig_algo: &'a str,
@@ -414,7 +414,7 @@ impl Debug for RSAPubKey {
     }
 }
 
-#[derive(Debug, SSHEncode,  SSHDecode)]
+#[derive(Debug, SSHEncode,  SSHDecode, Clone)]
 #[sshwire(variant_prefix)]
 pub enum Signature<'a> {
     #[sshwire(variant = SSH_NAME_ED25519)]
@@ -481,13 +481,13 @@ impl <'a> From<&'a OwnedSig> for Signature<'a> {
 }
 
 
-#[derive(Debug, SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode, Clone)]
 pub struct Ed25519Sig<'a> {
     pub sig: BinString<'a>,
 }
 
 #[cfg(feature = "rsa")]
-#[derive(Debug, SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode, Clone)]
 pub struct RSASig<'a> {
     pub sig: BinString<'a>,
 }

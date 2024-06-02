@@ -22,57 +22,13 @@ use sshwire::{BinString, Blob};
 use kex::SessId;
 use auth::AuthType;
 
-// pub for packets::ParseContext
-enum Req {
-    // TODO replace Req with something else
-    Password(String<30>),
-    PubKey { key: SignKey },
-}
-
 enum AuthState {
     Unstarted,
     MethodQuery,
-    Request { last_req: Req },
+    // other request types
+    Request,
+    RequestKey { key: SignKey },
     Idle,
-}
-
-impl Req {
-    // Creates a packet from the current request
-    // parse_ctx.cli_auth_type will be updated
-    // sig is an optional signature for pubkey auth
-    fn req_packet<'b>(
-        &'b self,
-        username: &'b str,
-        parse_ctx: &mut ParseContext,
-        sig: Option<&'b OwnedSig>,
-    ) -> Result<Packet<'b>> {
-
-        let username = username.into();
-        let p = match self {
-            Req::PubKey { key, .. } => {
-                // already checked by make_pubkey_req()
-                parse_ctx.cli_auth_type = Some(AuthType::PubKey);
-                let method = AuthMethod::PubKey(MethodPubKey::new(key.pubkey(), sig)?);
-                packets::UserauthRequest {
-                    username,
-                    service: SSH_SERVICE_CONNECTION,
-                    method,
-                }.into()
-            }
-            Req::Password(pw) => {
-                parse_ctx.cli_auth_type = Some(AuthType::Password);
-                packets::UserauthRequest {
-                    username,
-                    service: SSH_SERVICE_CONNECTION,
-                    method: packets::AuthMethod::Password(packets::MethodPassword {
-                        change: false,
-                        password: pw.as_str().into(),
-                    }),
-                }.into()
-            }
-        };
-        Ok(p)
-    }
 }
 
 pub(crate) struct CliAuth {
@@ -92,7 +48,6 @@ pub(crate) struct CliAuth {
 }
 
 impl CliAuth {
-    // TODO: take preferred/ordered authmethods
     pub fn new() -> Self {
         CliAuth {
             state: AuthState::Unstarted,
@@ -130,94 +85,32 @@ impl CliAuth {
 
     }
 
-    /// Retrieves the next pubkey to try, and returns the request.
-    /// Returns None if none are available. `self.try_pubkey` will be set false
-    /// when no more will be available.
-    fn make_pubkey_req(
-        &mut self,
-    ) -> Option<Req> {
-        #[allow(clippy::never_loop)]
-        loop {
-            todo!("event req");
-            let k = None;
-            // let k = b.next_authkey().unwrap_or_else(|_| {
-            //     warn!("Error getting pubkey for auth");
-            //     None
-            // });
-
-            match k {
-                Some(key) => {
-                    #[cfg(feature = "rsa")]
-                    match key {
-                        SignKey::RSA(_) | SignKey::AgentRSA(_) => {
-                            if !self.allow_rsa_sha2 {
-                                trace!("Skipping rsa key, no ext-info");
-                                continue
-                            }
-                        }
-                        _ => (),
-                    }
-
-                    break Some(Req::PubKey { key })
-                }
-                None => {
-                    trace!("stop iterating pubkeys");
-                    self.try_pubkey = false;
-                    break None
-                }
-            }
-        }
-    }
-
-    pub fn auth_sig_msg(
-        key: &SignKey,
-        sess_id: &SessId,
-        p: &Packet<'_>,
-    ) -> Result<OwnedSig> {
-        if let Packet::UserauthRequest(UserauthRequest {
-            username,
-            service,
-            method: AuthMethod::PubKey(MethodPubKey { sig_algo, pubkey, .. }),
-        }) = p
-        {
-            let sig_packet = UserauthRequest {
-                username: *username,
-                service,
-                method: AuthMethod::PubKey(MethodPubKey {
-                    sig_algo,
-                    pubkey: pubkey.clone(),
-                    sig: None,
-                    force_sig: true,
-                }),
-            };
-
-            let msg = auth::AuthSigMsg::new(&sig_packet, sess_id);
-            key.sign(&&msg)
-            // todo event
-            // NO ASYNC
-            // if key.is_agent() {
-            //     Ok(b.agent_sign(key, &msg).await?)
-            // } else {
-            //     key.sign(&&msg)
-            // }
-        } else {
-            Err(Error::bug())
-        }
-    }
-
     pub fn auth60(
         &mut self,
         auth60: &packets::Userauth60,
         sess_id: &SessId,
         parse_ctx: &mut ParseContext,
         s: &mut TrafSend,
-    ) -> Result<()> {
-        parse_ctx.cli_auth_type = None;
+    ) -> Result<DispatchEvent> {
 
         match auth60 {
             Userauth60::PkOk(pkok) => self.auth_pkok(pkok, sess_id, parse_ctx, s),
-            Userauth60::PwChangeReq(_req) => self.change_password(),
+            Userauth60::PwChangeReq(_req) => {
+                self.change_password()?;
+                parse_ctx.cli_auth_type = None;
+                Ok(DispatchEvent::None)
+            }
         }
+    }
+
+    fn auth_sig_msg<'b>(
+        &'b self,
+        key: &'b SignKey,
+        sess_id: &'b SessId,
+    ) -> Result<AuthSigMsg<'b>> {
+
+        let p = req_packet_pubkey(&self.username, &key, None, true)?;
+        Ok(auth::AuthSigMsg::new(p, sess_id))
     }
 
     fn auth_pkok(
@@ -226,29 +119,50 @@ impl CliAuth {
         sess_id: &SessId,
         parse_ctx: &mut ParseContext,
         s: &mut TrafSend,
-    ) -> Result<()> {
-        match &mut self.state {
-            AuthState::Request { last_req } => {
-                if let Req::PubKey { ref key } = last_req {
-                    if key.pubkey() != pkok.key.0 {
-                        trace!("Received pkok for a different key");
-                        return error::SSHProto.fail()
-                    }
+    ) -> Result<DispatchEvent> {
+        let AuthState::RequestKey { key } = &self.state else {
+            trace!("Unexpected userauth60");
+            return error::SSHProto.fail()
+        };
 
-                    // Sign the packet without the signature
-                    let p = last_req.req_packet(&self.username, parse_ctx, None)?;
-                    todo!("event sig");
-                    // let new_sig = Self::auth_sig_msg(key, sess_id, &p, b)?;
-                    // let p = last_req.req_packet(&self.username, parse_ctx, Some(&new_sig))?;
-
-                    // s.send(p)?;
-                    return Ok(());
-                }
-            }
-            _ => (),
+        if key.pubkey() != pkok.key.0 {
+            trace!("Received pkok for a different key");
+            return error::SSHProto.fail()
         }
-        trace!("Unexpected userauth60");
-        error::SSHProto.fail()
+
+        if key.is_agent() {
+            return Ok(DispatchEvent::CliEvent(CliEventId::AgentSign));
+        }
+
+        // Sign the packet without the signature
+        let msg = self.auth_sig_msg(key, sess_id)?;
+        let sig = key.sign(&msg)?;
+        let p = req_packet_pubkey(&self.username, &key, Some(&sig), true)?;
+
+        s.send(p)?;
+        parse_ctx.cli_auth_type = None;
+        Ok(DispatchEvent::None)
+    }
+
+
+    pub fn resume_agentsign(&self, sig: Option<&OwnedSig>,
+        parse_ctx: &mut ParseContext,
+        s: &mut TrafSend,
+        ) -> Result<DispatchEvent> {
+        let AuthState::RequestKey { key } = &self.state else {
+            return Err(Error::bug())
+        };
+
+        parse_ctx.cli_auth_type = None;
+
+        let Some(sig) = sig else {
+            // Request the next key
+            return Ok(DispatchEvent::CliEvent(CliEventId::Pubkey));
+        };
+
+        let p = req_packet_pubkey(&self.username, &key, Some(&sig), true)?;
+        s.send(p)?;
+        Ok(DispatchEvent::None)
     }
 
     fn change_password(&self) -> Result<()> {
@@ -256,27 +170,20 @@ impl CliAuth {
         Err(Error::msg("Password has expired"))
     }
 
+    /// handles auth failure packet from the server (which also provides
+    /// the initial list of auth methods)
     pub fn failure(
         &mut self,
         failure: &packets::UserauthFailure,
         parse_ctx: &mut ParseContext,
-        s: &mut TrafSend,
     ) -> Result<DispatchEvent> {
         parse_ctx.cli_auth_type = None;
         // TODO: look at existing self.state, handle the failure.
         self.state = AuthState::Idle;
 
-        if failure.methods.has_algo(SSH_AUTHMETHOD_PUBLICKEY)? {
-            while self.try_pubkey {
-                // TODO event
-                self.try_pubkey = false;
-                let req = None; // TODO
-                // let req = self.make_pubkey_req(b);
-                if let Some(req) = req {
-                    self.state = AuthState::Request { last_req: req };
-                    break;
-                }
-            }
+        if self.try_pubkey
+            && failure.methods.has_algo(SSH_AUTHMETHOD_PUBLICKEY)? {
+            return Ok(DispatchEvent::CliEvent(event::CliEventId::Pubkey))
         }
 
         if matches!(self.state, AuthState::Idle)
@@ -286,26 +193,69 @@ impl CliAuth {
             return Ok(DispatchEvent::CliEvent(event::CliEventId::Password))
         }
 
-        if let AuthState::Request { last_req, .. } = &self.state {
-            let p = last_req.req_packet(&self.username, parse_ctx, None)?;
-            s.send(p)?;
-        } else {
-            todo!("no more auth methods left");
+        error::NoAuthMethods.fail()
+    }
+
+    pub fn resume_password(&mut self, s: &mut TrafSend, password: Option<&str>,
+        parse_ctx: &mut ParseContext) -> Result<()> {
+
+        let Some(password) = password else {
+            self.try_password = false;
+            return error::NoAuthMethods.fail()
+        };
+
+        let p = req_packet_password(&self.username, password);
+        s.send(p)?;
+        parse_ctx.cli_auth_type = Some(AuthType::Password);
+        self.state = AuthState::Request;
+        Ok(())
+    }
+
+    // May return another event to try, such as password auth
+    pub fn resume_pubkey(&mut self, s: &mut TrafSend, key: Option<SignKey>,
+        parse_ctx: &mut ParseContext) -> Result<DispatchEvent> {
+
+        let Some(key) = key else {
+            self.try_pubkey = false;
+            if self.try_password {
+                return Ok(DispatchEvent::CliEvent(CliEventId::Password))
+            }
+            return error::NoAuthMethods.fail()
+        };
+
+        #[cfg(feature = "rsa")]
+        if (matches!(key, SignKey::RSA(_)) || matches!(key, SignKey::AgentRSA(_)))
+            && !self.allow_rsa_sha2 {
+            // RSA keys are only used when the server has confirmed that rsa-sha2
+            // signatures are OK by sending ext-info.
+            trace!("Skipping rsa key, no ext-info");
+            // Ask for another public key
+            return Ok(DispatchEvent::CliEvent(CliEventId::Pubkey))
         }
+
+        let p = req_packet_pubkey(&self.username, &key, None, false)?;
+        s.send(p)?;
+        parse_ctx.cli_auth_type = Some(AuthType::PubKey);
+        trace!("authtype {:?}", parse_ctx.cli_auth_type);
+        self.state = AuthState::RequestKey { key };
         Ok(DispatchEvent::None)
     }
 
-    pub fn resume_password(&mut self, s: &mut TrafSend, password: &str,
-        parse_ctx: &mut ParseContext) -> Result<()> {
-        // TODO; error handling
-        let req = match password.try_into() {
-            Ok(p) => Req::Password(p),
-            Err(_) => return error::BadUsage.fail(),
+    pub fn fetch_agentsign_key(&self) -> Result<&SignKey> {
+        let AuthState::RequestKey { key } = &self.state else {
+            return Err(Error::bug())
         };
-        let p = req.req_packet(&self.username, parse_ctx, None)?;
-        s.send(p)?;
-        self.state = AuthState::Request { last_req: req };
-        Ok(())
+        debug_assert!(key.is_agent());
+        Ok(key)
+    }
+
+    pub fn fetch_agentsign_msg<'b>(&'b self, sess_id: &'b SessId) -> Result<AuthSigMsg<'b>> {
+        let AuthState::RequestKey { key } = &self.state else {
+            return Err(Error::bug())
+        };
+
+        // Sign the packet without the signature
+        self.auth_sig_msg(key, sess_id)
     }
 
     pub fn success(&mut self) -> DispatchEvent {
@@ -323,4 +273,28 @@ impl CliAuth {
             trace!("setting allow_rsa_sha2 = {}", self.allow_rsa_sha2);
         }
     }
+}
+
+fn req_packet_password<'b>(username: &'b str, password: &'b str)
+-> Packet<'b> {
+    packets::UserauthRequest {
+        username: username.into(),
+        service: SSH_SERVICE_CONNECTION,
+        method: packets::AuthMethod::Password(packets::MethodPassword {
+            change: false,
+            password: password.into(),
+        }),
+    }.into()
+}
+
+fn req_packet_pubkey<'b>(username: &'b str, key: &'b SignKey,
+    sig: Option<&'b OwnedSig>, force_sig: bool) -> Result<packets::UserauthRequest<'b>> {
+    let mut mp = MethodPubKey::new(key.pubkey(), sig)?;
+    mp.force_sig = force_sig;
+    let method = AuthMethod::PubKey(mp);
+    Ok(packets::UserauthRequest {
+        username: username.into(),
+        service: SSH_SERVICE_CONNECTION,
+        method,
+    })
 }
