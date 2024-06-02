@@ -1,4 +1,4 @@
-use self::{channel::CliSessionOpener, event::Event};
+use self::{channel::{CliSessionExit, CliSessionOpener}, event::Event};
 
 #[allow(unused_imports)]
 use {
@@ -438,6 +438,11 @@ impl<'a> Runner<'a> {
             ch,
             s,
         })
+    }
+
+    pub(crate) fn fetch_cli_session_exit(&mut self) -> Result<CliSessionExit> {
+        let (payload, _seq) = self.traf_in.payload().trap()?;
+        self.conn.fetch_cli_session_exit(payload)
     }
 
     fn wake(&mut self) {

@@ -16,7 +16,7 @@ use core::fmt::Debug;
 use crate::*;
 use sshwire::TextString;
 use packets::Packet;
-use channel::CliSessionOpener;
+use channel::{CliSessionOpener, CliSessionExit};
 
 #[derive(Debug)]
 pub enum Event<'g, 'a> {
@@ -55,8 +55,10 @@ pub enum CliEvent<'g, 'a>
     Password(RequestPassword<'g, 'a>),
     Authenticated,
     SessionOpened(CliSessionOpener<'g, 'a>),
+    /// Remote process exited
+    SessionExit(CliSessionExit<'g>),
 
-    /// The SSH session is no longer running
+    /// The SSH connection is no longer running
     Defunct,
 
     // ChanRequest(ChanRequest<'g, 'a>),
@@ -71,6 +73,7 @@ impl Debug for CliEvent<'_, '_> {
             Self::Password(_) => "Password",
             Self::Authenticated => "Authenticated",
             Self::SessionOpened(_) => "SessionOpened",
+            Self::SessionExit(_) => "SessionExit",
             Self::Defunct => "Defunct",
         };
         write!(f, "CliEvent({e})")
@@ -115,6 +118,11 @@ impl CheckHostkey<'_, '_> {
     }
 }
 
+// impl CliExit<''_, '_> {
+//     pub fn 
+
+// }
+
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum CliEventId {
     Hostkey,
@@ -122,6 +130,7 @@ pub(crate) enum CliEventId {
     Password,
     Authenticated,
     SessionOpened(ChanNum),
+    SessionExit,
     Defunct
 
     // TODO:
@@ -155,6 +164,9 @@ impl CliEventId {
             // (Self::Banner, Packet::UserauthBanner(p)) => {
             //     CliEvent::Banner { banner: p.message, language: p.lang }
             // }
+            Self::SessionExit => {
+                Ok(CliEvent::SessionExit(runner.fetch_cli_session_exit()?))
+            }
             Self::Defunct => error::BadUsage.fail()
         }
     }
@@ -165,6 +177,7 @@ impl CliEventId {
         match self {
             | Self::Authenticated
             | Self::SessionOpened(_)
+            | Self::SessionExit
             | Self::Defunct
             => false,
             | Self::Hostkey

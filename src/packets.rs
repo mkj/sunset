@@ -719,7 +719,7 @@ pub struct ExitStatus {
     pub status: u32,
 }
 
-#[derive(Debug, SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode, Clone)]
 pub struct ExitSignal<'a> {
     pub signal: &'a str,
     pub core: bool,

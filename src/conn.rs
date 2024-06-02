@@ -20,7 +20,7 @@ use client::Client;
 use packets::{Packet,ParseContext};
 use server::Server;
 use traffic::TrafSend;
-use channel::Channels;
+use channel::{Channels, CliSessionExit};
 use config::MAX_CHANNELS;
 use kex::{Kex, SessId, AlgoConfig};
 use event::{CliEvent, ServEvent};
@@ -530,6 +530,12 @@ impl Conn {
         } else {
             Err(Error::bug())
         }
+    }
+
+    pub(crate) fn fetch_cli_session_exit<'p>(&mut self, payload: &'p [u8]) -> Result<CliSessionExit<'p>> {
+        self.client()?;
+        let packet = self.packet(payload)?;
+        CliSessionExit::new(&packet)
     }
 
     pub(crate) fn resume_servhostkeys(&mut self,

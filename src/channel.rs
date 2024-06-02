@@ -1,3 +1,5 @@
+use self::{event::ChanRequest, packets::ExitSignal};
+
 #[allow(unused_imports)]
 use {
     crate::error::{Error, Result, TrapBug},
@@ -722,23 +724,18 @@ impl Channel {
     fn dispatch_client_request(
         &mut self,
         p: &packets::ChannelRequest,
-        s: &mut TrafSend,
+        _s: &mut TrafSend,
     ) -> Result<DispatchEvent> {
         if !matches!(self.ty, ChanType::Session) {
             return Err(Error::SSHProtoUnsupported)
         }
 
         match &p.req {
-            ChannelReqType::ExitStatus(_st) => {
-                // TODO
-                self.handle_close(s)?;
-                // Ok(DispatchEvent::CliEvent(Exit(st)
-                Err(Error::SSHProtoUnsupported)
+            ChannelReqType::ExitStatus(_) => {
+                Ok(DispatchEvent::CliEvent(CliEventId::SessionExit))
             }
             ChannelReqType::ExitSignal(_sig) => {
-                // TODO
-                self.handle_close(s)?;
-                Err(Error::SSHProtoUnsupported)
+                Ok(DispatchEvent::CliEvent(CliEventId::SessionExit))
             }
             _ => {
                 if let ChannelReqType::Unknown(u) = &p.req {
@@ -952,5 +949,27 @@ impl<'g, 'a> CliSessionOpener<'g, 'a> {
 impl core::fmt::Debug for CliSessionOpener<'_, '_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("CliSessionOpener").finish()
+    }
+}
+
+#[derive(Debug)]
+pub enum CliSessionExit<'g> {
+    /// Remote process exited with an exit status code
+    Status(u32),
+    /// Remote process exited by signal
+    Signal(ExitSignal<'g>)
+}
+
+impl<'g> CliSessionExit<'g> {
+    pub fn new(p: &Packet<'g>) -> Result<Self> {
+        match p {
+            Packet::ChannelRequest(ChannelRequest { req: ChannelReqType::ExitStatus(e), .. }) => {
+                Ok(Self::Status(e.status))
+            }
+            Packet::ChannelRequest(ChannelRequest { req: ChannelReqType::ExitSignal(e), .. }) => {
+                Ok(Self::Signal(e.clone()))
+            }
+            _ => Err(Error::bug())
+        }
     }
 }

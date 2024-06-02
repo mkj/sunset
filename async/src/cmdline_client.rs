@@ -289,7 +289,11 @@ impl CmdlineClient {
                         // TODO is there a better way
                         launch_chan.send((io.clone().unwrap(), extin.clone(), self.pty_guard.take())).await;
                     }
+                    CliEvent::SessionExit(ex) => {
+                        debug!("TODO handle session exit {ex:?}")
+                    }
                     CliEvent::Defunct => {
+                        trace!("break defunct");
                         break Ok::<_, Error>(())
                     }
                 }
