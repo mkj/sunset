@@ -260,15 +260,6 @@ pub trait DemoServer {
 
     fn new(init: &Self::Init) -> Self;
 
-    /// Called when auth succeeds
-    #[allow(unused_variables)]
-    async fn authed(&self, username: &str) {
-        info!("Authenticated")
-    }
-
-    /// Called when a shell is opened after auth succeeds
-    fn open_shell(&self, handle: ChanHandle);
-
     /// A task to run for each incoming connection.
     // TODO: eventually the compiler should add must_use automatically?
     #[must_use]

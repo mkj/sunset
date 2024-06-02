@@ -20,11 +20,13 @@ use static_cell::StaticCell;
 use demo_common::menu::Runner as MenuRunner;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::signal::Signal;
+use embassy_sync::channel::Channel;
 
 use sunset::*;
-use sunset_embassy::{SSHServer, SunsetMutex};
-
-pub(crate) use sunset_demo_embassy_common as demo_common;
+use sunset_embassy::{SSHServer, SunsetMutex, SunsetRawMutex, ProgressHolder};
+use sunset_demo_embassy_common as demo_common;
+use demo_common::{SSHConfig, DemoServer, takepipe, ServerApp};
+use takepipe::TakePipe;
 
 mod flashconfig;
 mod picowmenu;
@@ -41,10 +43,6 @@ compile_error!("No network device selected. Use cyw43 or w5500 feature");
 
 #[cfg(all(feature = "cyw43", feature = "w5500"))]
 compile_error!("Select only one of cyw43 or w5500");
-
-use demo_common::{SSHConfig, DemoServer, takepipe};
-
-use takepipe::TakePipe;
 
 const NUM_LISTENERS: usize = 4;
 // +1 for dhcp. referenced directly by wifi_stack() function
@@ -183,11 +181,7 @@ pub(crate) struct GlobalState {
 }
 
 struct PicoServer {
-    notify: Signal<NoopRawMutex, ChanHandle>,
     global: &'static GlobalState,
-
-    // Mutex is a bit of a bodge
-    username: SunsetMutex<String<20>>,
 }
 
 // Presents a menu, either on serial or incoming SSH
@@ -304,39 +298,59 @@ impl DemoServer for PicoServer {
 
     fn new(global: &Self::Init) -> Self {
         Self {
-            notify: Default::default(),
             global,
-            username: SunsetMutex::new(String::new()),
         }
     }
 
-    fn open_shell(&self, handle: ChanHandle) {
-        self.notify.signal(handle);
-    }
-
-    async fn authed(&self, username: &str) {
-        info!("authed for {}", username);
-        let mut u = self.username.lock().await;
-        *u = username.try_into().unwrap_or(String::new());
-    }
-
-    async fn run<'f>(
+    async fn run(
         &self,
-        serv: &'f SSHServer<'f>,
+        serv: &SSHServer<'_>,
+        mut common: ServerApp
     ) -> Result<()> {
+
+        let username = SunsetMutex::new(String::<20>::new());
+        let chan_pipe = Channel::<SunsetRawMutex, ChanHandle, 1>::new();
+
+        let prog_loop = async {
+            loop {
+                let mut ph = ProgressHolder::new();
+                let ev = serv.progress(&mut ph).await?;
+                trace!("ev {ev:?}");
+                match ev {
+                    ServEvent::SessionShell(a) => 
+                    {
+                        if let Some(ch) = common.sess.take() {
+                            debug_assert!(ch.num() == a.channel()?);
+                            a.succeed()?;
+                            chan_pipe.try_send(ch);
+                        } else {
+                            a.fail()?;
+                        }
+                    }
+                    ServEvent::FirstAuth(a) => {
+                        username.lock().await.push_str(a.username()?);
+                        common.handle_event(ServEvent::FirstAuth(a))?;
+                    }
+                    other => common.handle_event(other)?,
+                };
+            };
+            #[allow(unreachable_code)]
+            Ok::<_, Error>(())
+        };
+
+
         let session = async {
             // wait for a shell to start
-            let chan_handle = self.notify.wait().await;
-            let mut stdio = serv.stdio(chan_handle).await?;
+            let ch = chan_pipe.receive().await;
+            let mut stdio = serv.stdio(ch).await?;
 
             #[cfg(feature = "serial1")]
             let default_pipe = self.global.serial1_pipe;
             #[cfg(not(feature = "serial1"))]
             let default_pipe = self.global.usb_pipe;
 
-            let username = self.username.lock().await;
             let mut stdio2 = stdio.clone();
-            match username.as_str() {
+            match username.lock().await.as_str() {
                 // Open the config menu
                 "config" => menu(&mut stdio, &mut stdio2, false, self.global).await,
                 // Open the usb serial directly
