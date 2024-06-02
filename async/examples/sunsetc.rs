@@ -253,7 +253,7 @@ fn setup_log(args: &Args, tz: UtcOffset) -> Result<()> {
     .add_filter_allow_str("sunset")
     .add_filter_allow_str("sshclient")
     // not debugging these bits of the stack at present
-    .add_filter_ignore_str("sunset::traffic")
+    // .add_filter_ignore_str("sunset::traffic")
     .add_filter_ignore_str("sunset::runner")
     // .add_filter_ignore_str("sunset_embassy")
     .set_time_offset(tz)

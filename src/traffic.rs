@@ -63,6 +63,9 @@ enum TxState {
         /// Buffer available to write
         len: usize,
     },
+
+    /// No more output will be produced
+    Closed,
 }
 
 #[derive(Debug)]
@@ -317,13 +320,6 @@ impl<'a> TrafOut<'a> {
 
     /// Serializes and and encrypts a packet to send
     pub(crate) fn send_packet(&mut self, p: packets::Packet, keys: &mut KeyState) -> Result<()> {
-
-        // Either a fresh buffer or appending to write
-        let (idx, len) = match self.state {
-            TxState::Idle => (0, 0),
-            TxState::Write { idx, len } => (idx, len),
-        };
-
         // Sanity check
         match p.category() {
             packets::Category::All | packets::Category::Kex => (), // OK cleartext
@@ -333,6 +329,16 @@ impl<'a> TrafOut<'a> {
                 }
             }
         }
+
+        // Either a fresh buffer or appending to write
+        let (idx, len) = match self.state {
+            TxState::Idle => (0, 0),
+            TxState::Write { idx, len } => (idx, len),
+            TxState::Closed => {
+                trace!("Dropped output after close {p:?}");
+                return Ok(());
+            },
+        };
 
         // Use the remainder of our buffer to write the packet. Payload starts
         // after the length and padding bytes which get filled by encrypt()
@@ -364,16 +370,27 @@ impl<'a> TrafOut<'a> {
     /// Returns payload space available to send a packet. Returns 0 if not ready or full
     pub fn send_allowed(&self, keys: &KeyState) -> usize {
         // TODO: test for full output buffer
-        let r = match self.state {
+        match self.state {
             TxState::Write { len, .. } => {
                 keys.max_enc_payload(self.buf.len() - len)
             }
             TxState::Idle => {
                 keys.max_enc_payload(self.buf.len())
             }
-        };
-        trace!("traf send_allowed -> {}", r);
-        r
+            // ouput will just be dropped in closed state.
+            TxState::Closed => self.buf.len(),
+        }
+    }
+
+    /// Move to Closed state. Current output is lost, future output
+    /// is discarded. This is called when the output tcp pipe
+    /// has closed so there's nowhere to send output anyway.
+    pub fn close(&mut self) {
+        self.state = TxState::Closed
+    }
+
+    pub fn closed(&self) -> bool {
+        matches!(self.state, TxState::Closed)
     }
 
     pub fn send_version(&mut self) -> Result<(), Error> {

@@ -143,15 +143,12 @@ impl<'a> EmbassySunset<'a> {
                 // Perhaps not possible async, might deadlock.
                 let mut buf = [0; 1024];
                 let l = self.output(&mut buf).await?;
-                wsock.write_all(&buf[..l]).await
-                .map_err(|_| {
+                if wsock.write_all(&buf[..l]).await.is_err() {
                     info!("socket write error");
-                    Error::ChannelEOF
-                })?;
-                trace!("wrote {l}");
+                    self.with_runner(|r| r.close_output()).await;
+                    break Err::<(), sunset::Error>(Error::ChannelEOF)
+                }
             }
-            #[allow(unreachable_code)]
-            Ok::<_, sunset::Error>(())
         };
         let tx = select(tx, tx_stop.wait());
 
@@ -159,27 +156,28 @@ impl<'a> EmbassySunset<'a> {
             loop {
                 // TODO: make sunset read directly from socket, no intermediate buffer.
                 let mut buf = [0; 1024];
-                let l = rsock.read(&mut buf).await
-                .map_err(|_| {
-                    info!("socket read error");
-                    Error::ChannelEOF
-                })?;
-                trace!("read {l}");
-                if l == 0 {
-                    debug!("net EOF");
-                    self.moribund.store(true, Relaxed);
-                    self.wake_progress();
-                    break
-                }
+                let l = match rsock.read(&mut buf).await {
+                    Ok(0) => {
+                        debug!("net EOF");
+                        self.with_runner(|r| r.close_input()).await;
+                        self.moribund.store(true, Relaxed);
+                        self.wake_progress();
+                        break Ok(())
+                    }
+                    Ok(l) => l,
+                    Err(_) => {
+                        info!("socket read error");
+                        self.with_runner(|r| r.close_input()).await;
+                        break Err(Error::ChannelEOF)
+                    }
+                };
                 let mut buf = &buf[..l];
                 while !buf.is_empty() {
                     let n = self.input(buf).await?;
-                    trace!("wake {n}");
                     self.wake_progress();
                     buf = &buf[n..];
                 }
             }
-            Ok::<_, sunset::Error>(())
         };
 
         // TODO: if RX fails (bad decrypt etc) it doesn't cancel prog, so gets stuck

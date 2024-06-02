@@ -44,7 +44,7 @@ pub struct Runner<'a> {
     /// Waker when ready to consume input.
     input_waker: Option<Waker>,
 
-    closed: bool,
+    closed_input: bool,
 
     resume_event: DispatchEvent,
 }
@@ -94,7 +94,7 @@ impl<'a> Runner<'a> {
             keys: KeyState::new_cleartext(),
             output_waker: None,
             input_waker: None,
-            closed: false,
+            closed_input: false,
             resume_event: Default::default(),
         };
 
@@ -148,6 +148,13 @@ impl<'a> Runner<'a> {
                 | DispatchEvent::Progressed
                 => return Err(Error::bug()),
             }
+        } else if self.closed_input {
+            // all incoming packets have been consumed, and we're closed for input,
+            if self.conn.is_client() {
+                return Ok(Event::Cli(CliEvent::Defunct))
+            } else {
+                return Ok(Event::Serv(ServEvent::Defunct))
+            }
         }
 
         // If there isn't any pending event for the application, run conn.progress()
@@ -185,7 +192,7 @@ impl<'a> Runner<'a> {
 
     // Accept bytes from the wire, returning the size consumed
     pub fn input(&mut self, buf: &[u8]) -> Result<usize, Error> {
-        if self.closed {
+        if self.closed_input {
             return error::ChannelEOF.fail()
         }
         self.traf_in.input(
@@ -197,7 +204,7 @@ impl<'a> Runner<'a> {
 
     // Whether [`input()`](input) is ready
     pub fn is_input_ready(&self) -> bool {
-        (self.conn.initial_sent() && self.traf_in.is_input_ready()) || self.closed
+        (self.conn.initial_sent() && self.traf_in.is_input_ready()) || self.closed_input
     }
 
     /// Set a waker to be notified when [`input()`](Self::input) is ready to be called.
@@ -212,12 +219,14 @@ impl<'a> Runner<'a> {
         }
     }
 
+    /// Indicate that the input SSH tcp socket has closed
+    pub fn close_input(&mut self) {
+        trace!("close_input");
+        self.closed_input = true;
+    }
 
     /// Write any pending output to the wire, returning the size written
     pub fn output(&mut self, buf: &mut [u8]) -> Result<usize, Error> {
-        if self.closed {
-            return error::ChannelEOF.fail()
-        }
         let r = self.traf_out.output(buf);
         if r > 0 {
             trace!("output() wake");
@@ -228,7 +237,7 @@ impl<'a> Runner<'a> {
 
     // Whether [`output()`](output) is ready
     pub fn is_output_pending(&self) -> bool {
-        self.traf_out.is_output_pending() || self.closed
+        self.traf_out.is_output_pending()
     }
 
     /// Set a waker to be notified when [`output()`](Self::output) will have pending data
@@ -243,11 +252,10 @@ impl<'a> Runner<'a> {
         }
     }
 
-    pub fn close(&mut self) {
-        self.closed = true;
-        if let Some(w) = self.output_waker.take() {
-            w.wake()
-        }
+    /// Indicate that the output SSH tcp socket has closed
+    pub fn close_output(&mut self) {
+        trace!("close_input");
+        self.traf_out.close()
     }
 
     // TODO: move somewhere client specific?
@@ -270,7 +278,8 @@ impl<'a> Runner<'a> {
         dt: ChanData,
         buf: &[u8],
     ) -> Result<usize> {
-        if self.closed {
+        if self.traf_out.closed() {
+            // TODO: unsure if we need this
             return error::ChannelEOF.fail()
         }
 
@@ -304,7 +313,7 @@ impl<'a> Runner<'a> {
         dt: ChanData,
         buf: &mut [u8],
     ) -> Result<usize> {
-        if self.closed {
+        if self.closed_input {
             return error::ChannelEOF.fail()
         }
 
@@ -364,11 +373,11 @@ impl<'a> Runner<'a> {
     }
 
     pub fn is_channel_eof(&self, chan: &ChanHandle) -> bool {
-        self.conn.channels.have_recv_eof(chan.0) || self.closed
+        self.conn.channels.have_recv_eof(chan.0) || self.closed_input
     }
 
     pub fn is_channel_closed(&self, chan: &ChanHandle) -> bool {
-        self.conn.channels.is_closed(chan.0) || self.closed
+        self.conn.channels.is_closed(chan.0) || self.closed_input
     }
 
     /// Returns the maximum data that may be sent to a channel
@@ -377,7 +386,7 @@ impl<'a> Runner<'a> {
     ///
     /// May fail with `BadChannelData` if dt is invalid for this session.
     pub fn ready_channel_send(&self, chan: &ChanHandle, dt: ChanData) -> Result<Option<usize>> {
-        if self.closed {
+        if self.traf_out.closed() {
             return Ok(None)
         }
         // TODO: return 0 if InKex means we can't transmit packets.
