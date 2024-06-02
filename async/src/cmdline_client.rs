@@ -229,7 +229,7 @@ impl CmdlineClient {
     ///
     /// Performs authentication, requests a shell or command, performs channel IO.
     /// Will return `Ok` after the session ends normally, or an error.
-    pub async fn run<'g: 'a, 'a>(&mut self, cli: &'g SSHClient<'a>) -> Result<()> {
+    pub async fn run<'g: 'a, 'a>(&mut self, cli: &'g SSHClient<'a>) -> Result<i32> {
 
         let mut winch_signal = self.want_pty
             .then(|| signal(SignalKind::window_change()))
@@ -244,6 +244,8 @@ impl CmdlineClient {
 
         let launch_chan: Channel::<SunsetRawMutex, (ChanInOut, Option<ChanIn>, Option<RawPtyGuard>), 1>
             = Channel::new();
+
+        let mut exit_code = 1i32;
 
         let prog_loop = async {
             loop {
@@ -304,7 +306,14 @@ impl CmdlineClient {
                         launch_chan.send((io.clone().unwrap(), extin.clone(), self.pty_guard.take())).await;
                     }
                     CliEvent::SessionExit(ex) => {
-                        debug!("TODO handle session exit {ex:?}")
+                        trace!("session exit {ex:?}");
+                        if let sunset::CliSessionExit::Status(u) = ex {
+                            if u <= 255 {
+                                exit_code = i8::from_be_bytes([(u & 0xff) as u8]) as i32;
+                            } else {
+                                exit_code = 1;
+                            }
+                        }
                     }
                     CliEvent::Defunct => {
                         trace!("break defunct");
@@ -314,21 +323,14 @@ impl CmdlineClient {
             }
         };
 
-        let prog_loop = async {
-            let e = prog_loop.await;
-            debug!("loop done, {e:#?}");
-            e
-        };
-
         let chanio = async {
             let (io, extin, pty) = launch_chan.receive().await;
             Self::chan_run(io, extin, pty).await
         };
 
-        // embassy_futures::select::select(prog_loop, chanio).await;
-        let _ = embassy_futures::join::join(prog_loop, chanio).await;
+        embassy_futures::select::select(prog_loop, chanio).await;
 
-        Ok(())
+        Ok(exit_code)
     }
 
     /// Requests a PTY or non-PTY session

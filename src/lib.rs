@@ -58,7 +58,7 @@ pub use packets::{PubKey, Signature};
 pub use error::{Error,Result};
 pub use channel::{Pty, ChanOpened, SessionCommand};
 pub use sshnames::ChanFail;
-pub use channel::{ChanData, ChanNum};
+pub use channel::{ChanData, ChanNum, CliSessionExit};
 pub use auth::AuthSigMsg;
 
 pub use runner::Runner;

@@ -33,7 +33,8 @@ async fn real_main(tz: UtcOffset) -> Result<()> {
     // (or something wrapping std::sync::Mutex).
     // Need to figure how to make it configurable.
     let local = tokio::task::LocalSet::new();
-    local.run_until(run(args)).await
+    let exit_code = local.run_until(run(args)).await?;
+    std::process::exit(exit_code)
 }
 
 fn main() {
@@ -47,7 +48,7 @@ fn main() {
     }
 }
 
-async fn run(args: Args) -> Result<()> {
+async fn run(args: Args) -> Result<i32> {
 
     trace!("tracing sunsetc. args {:?}", args);
     debug!("verbose sunsetc");
@@ -109,27 +110,20 @@ async fn run(args: Args) -> Result<()> {
         let mut wsock = FromTokio::new(wsock);
 
         // SSH connection future
-        let ssh_fut = async {
-            let r = ssh.run(&mut rsock, &mut wsock).await;
-            trace!("ssh run finished {r:?}");
-            // TODO split
-            // hooks.lock().await.exited().await;
-            r
-        };
+        let ssh_fut = ssh.run(&mut rsock, &mut wsock);
 
         // Client session future
-        let session = async {
-            let r = app.run(&ssh).await;
-            trace!("client session run finished {r:?}");
-            r
-        };
+        let session = app.run(&ssh);
 
-        let (res_ssh, res_session) = futures::future::join(ssh_fut, session).await;
-        debug!("res_ssh {res_ssh:?}");
-        debug!("res_session {res_session:?}");
-        res_ssh?;
-        res_session?;
-        Ok::<_, anyhow::Error>(())
+        let exit_code = tokio::select! {
+            a = ssh_fut => {
+                a.map(|_| 1).context("SSH connection exited")?
+            }
+            a = session => {
+                a.context("client session exited")?
+            }
+        };
+        Ok(exit_code)
     });
 
     ssh_task.await.context("Sunset task panicked")?
