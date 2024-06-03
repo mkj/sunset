@@ -1,4 +1,3 @@
-use self::{channel::{CliSessionExit, CliSessionOpener}, event::Event};
 
 #[allow(unused_imports)]
 use {

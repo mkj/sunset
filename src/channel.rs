@@ -227,12 +227,23 @@ impl Channels {
         }
     }
 
+    pub(crate) fn term_break(&self, num: ChanNum, length: u32, s: &mut TrafSend) -> Result<()> {
+        let ch = self.get(num)?;
+        let br = packets::Break {
+            length: if length == 0 { 0 } else { length.clamp(500, 3000) }
+        };
+        match ch.ty {
+            ChanType::Session => Req::Break(br).send(ch, s),
+            _ => error::BadChannelData.fail(),
+        }
+    }
+
     fn dispatch_open(
         &mut self,
         p: &ChannelOpen<'_>,
         s: &mut TrafSend,
     ) -> Result<DispatchEvent> {
-        match self.dispatch_open_inner(p, s) {
+        match self.dispatch_open_inner(p) {
             Err(DispatchOpenError::Failure(f)) => {
                 s.send(packets::ChannelOpenFailure {
                     num: p.sender_num,
@@ -248,7 +259,7 @@ impl Channels {
     }
 
     // the caller will send failure messages if required
-    fn dispatch_open_inner(&mut self, p: &ChannelOpen, s: &mut TrafSend)
+    fn dispatch_open_inner(&mut self, p: &ChannelOpen)
         -> Result<DispatchEvent, DispatchOpenError> {
 
         // Check validity before reserving a channel

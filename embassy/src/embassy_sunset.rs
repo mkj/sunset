@@ -21,7 +21,7 @@ use pin_utils::pin_mut;
 
 use sunset::{error, ChanData, ChanHandle, ChanNum, Error, Result, Runner};
 use sunset::config::MAX_CHANNELS;
-use sunset::event::{Event, CliEvent, ServEvent};
+use sunset::event::Event;
 
 // For now we only support single-threaded executors.
 // In future this could be behind a cfg to allow different
@@ -149,6 +149,7 @@ impl<'a> EmbassySunset<'a> {
                     break Err::<(), sunset::Error>(Error::ChannelEOF)
                 }
             }
+            .inspect(|r| warn!("tx complete {r:?}"))
         };
         let tx = select(tx, tx_stop.wait());
 
@@ -178,6 +179,7 @@ impl<'a> EmbassySunset<'a> {
                     buf = &buf[n..];
                 }
             }
+            .inspect(|r| warn!("rx complete {r:?}"))
         };
 
         // TODO: if RX fails (bad decrypt etc) it doesn't cancel prog, so gets stuck

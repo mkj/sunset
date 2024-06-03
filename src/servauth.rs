@@ -201,14 +201,3 @@ impl ServAuth {
         l
     }
 }
-
-pub enum ServAuthMethod<'a> {
-    None,
-    Password(TextString<'a>),
-    PubKey(&'a PubKey<'a>),
-}
-
-pub struct ServAuthReq<'a> {
-    pub user: TextString<'a>,
-    pub auth: ServAuthMethod<'a>,
-}

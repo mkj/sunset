@@ -1,6 +1,6 @@
 //! Represents the state of a SSH connection.
 
-use self::{cliauth::CliAuth, packets::{AuthMethod, UserauthRequest}};
+use self::{cliauth::CliAuth, event::Banner, packets::{AuthMethod, UserauthRequest}};
 
 #[allow(unused_imports)]
 use {
@@ -76,6 +76,7 @@ enum ConnState {
     // Cleanup ??
 }
 
+// must_use so return values can't be forgotten in Conn::dispatch_packet
 #[must_use]
 #[derive(Debug, Clone)]
 pub(crate) enum DispatchEvent
@@ -180,13 +181,6 @@ impl Conn {
 
     pub fn client(&self) -> Result<&client::Client> {
         match &self.cliserv {
-            ClientServer::Client(x) => Ok(x),
-            _ => Err(Error::bug())
-        }
-    }
-
-    pub fn mut_client(&mut self) -> Result<&mut client::Client> {
-        match &mut self.cliserv {
             ClientServer::Client(x) => Ok(x),
             _ => Err(Error::bug())
         }
@@ -354,7 +348,7 @@ impl Conn {
                     s,
                 )?;
             }
-            Packet::KexDHInit(p) => {
+            Packet::KexDHInit(_p) => {
                 if self.cliserv.is_client() {
                     // TODO: client/server validity checks should move somewhere more general
                     trace!("kexdhinit not server");
@@ -363,7 +357,7 @@ impl Conn {
 
                 disp.event = self.kex.handle_kexdhinit()?;
             }
-            Packet::KexDHReply(p) => {
+            Packet::KexDHReply(_p) => {
                 if !self.cliserv.is_client() {
                     // TODO: client/server validity checks should move somewhere more general
                     trace!("kexdhreply not server");
@@ -406,7 +400,7 @@ impl Conn {
                 };
                 log!(level, "SSH debug message from remote host: {}", p.message);
             }
-            Packet::Disconnect(p) => {
+            Packet::Disconnect(_p) => {
                 // We ignore p.reason.
                 // SSH2_DISCONNECT_BY_APPLICATION is normal, sent by openssh client.
                 disp.disconnect = true;

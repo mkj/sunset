@@ -79,7 +79,7 @@ pub enum ChanFail {
 
 /// SSH agent message numbers
 ///
-/// [draft-miller-ssh-agent](https://datatracker.ietf.org/doc/html/draft-miller-ssh-agent-13#name-message-numbers)
+/// [draft-miller-ssh-agent](https://datatracker.ietf.org/doc/html/draft-miller-ssh-agent-14#section-5.1)
 #[allow(non_camel_case_types)]
 #[derive(Debug, Copy, Clone)]
 pub enum AgentMessageNum {

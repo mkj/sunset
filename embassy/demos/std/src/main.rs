@@ -12,9 +12,7 @@ use rand::RngCore;
 
 use demo_common::menu::Runner as MenuRunner;
 use embedded_io_async::Read;
-use embassy_sync::signal::Signal;
 use embassy_sync::channel::Channel;
-use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_futures::select::select;
 use embassy_net_tuntap::TunTapDevice;
 
@@ -76,19 +74,13 @@ async fn main_task(spawner: Spawner) {
 }
 
 #[derive(Default)]
-struct StdDemo {
-    notify: Signal<NoopRawMutex, ChanHandle>,
-}
+struct StdDemo;
 
 impl DemoServer for StdDemo {
     type Init = ();
 
     fn new(_init: &Self::Init) -> Self {
         Default::default()
-    }
-
-    fn open_shell(&self, handle: ChanHandle) {
-        self.notify.signal(handle);
     }
 
     async fn run(&self, serv: &SSHServer<'_>, mut common: ServerApp) -> Result<()>
@@ -106,7 +98,7 @@ impl DemoServer for StdDemo {
                         if let Some(ch) = common.sess.take() {
                             debug_assert!(ch.num() == a.channel()?);
                             a.succeed()?;
-                            chan_pipe.try_send(ch);
+                            let _ = chan_pipe.try_send(ch);
                         } else {
                             a.fail()?;
                         }

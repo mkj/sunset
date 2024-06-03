@@ -9,7 +9,7 @@ use core::ops::ControlFlow;
 use {panic_probe as _};
 
 use embassy_executor::Spawner;
-use embassy_futures::select::select;
+use embassy_futures::select::{select, Either};
 use embassy_net::{Stack, HardwareAddress, EthernetAddress};
 use embedded_io_async::{Write, Read};
 
@@ -18,8 +18,6 @@ use heapless::{String, Vec};
 use static_cell::StaticCell;
 
 use demo_common::menu::Runner as MenuRunner;
-use embassy_sync::blocking_mutex::raw::NoopRawMutex;
-use embassy_sync::signal::Signal;
 use embassy_sync::channel::Channel;
 
 use sunset::*;
@@ -322,16 +320,20 @@ impl DemoServer for PicoServer {
                         if let Some(ch) = common.sess.take() {
                             debug_assert!(ch.num() == a.channel()?);
                             a.succeed()?;
-                            chan_pipe.try_send(ch);
+                            let _ = chan_pipe.try_send(ch);
                         } else {
                             a.fail()?;
                         }
                     }
-                    ServEvent::FirstAuth(a) => {
-                        username.lock().await.push_str(a.username()?);
-                        common.handle_event(ServEvent::FirstAuth(a))?;
+                    ServEvent::FirstAuth(ref a) => {
+                        // record the username
+                        if username.lock().await.push_str(a.username()?).is_err() {
+                            warn!("Too long username")
+                        }
+                        // handle the rest
+                        common.handle_event(ev)?;
                     }
-                    other => common.handle_event(other)?,
+                    _ => common.handle_event(ev)?,
                 };
             };
             #[allow(unreachable_code)]
@@ -360,6 +362,9 @@ impl DemoServer for PicoServer {
             }
         };
 
-        session.await
+        match select(prog_loop, session).await {
+            Either::First(r) => r,
+            Either::Second(r) => r,
+        }
     }
 }

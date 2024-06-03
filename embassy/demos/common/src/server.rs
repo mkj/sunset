@@ -2,8 +2,6 @@
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
 
-use embassy_sync::mutex::Mutex;
-use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_net::tcp::TcpSocket;
 use embassy_net::Stack;
 use embassy_net_driver::Driver;
@@ -13,7 +11,7 @@ use embedded_io_async::Write;
 
 use heapless::String;
 
-use sunset::{event::{ChanRequest, ServFirstAuth, ServOpenSession, ServPasswordAuth}, *};
+use sunset::{event::{ServFirstAuth, ServOpenSession, ServPasswordAuth, ServPubkeyAuth}, *};
 use sunset_embassy::{SSHServer, SunsetMutex};
 
 use crate::SSHConfig;
@@ -28,7 +26,7 @@ pub async fn listener<D: Driver, S: DemoServer>(stack: &'static Stack<D>,
     // frames more efficiently, RX doesn't matter so much?
     // How does this interact with the channel copy buffer sizes?
     let mut rx_buffer = [0; 1550];
-    let mut tx_buffer = [0; 4500];
+    let mut tx_buffer = [0; 1550];
 
     loop {
         let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
@@ -45,9 +43,8 @@ pub async fn listener<D: Driver, S: DemoServer>(stack: &'static Stack<D>,
             warn!("Ended with error {e:#?}");
         }
 
-        // Make sure a TCP socket reset is sent to the remote host
+        // Make sure a TCP socket reset is sent on exit to the remote host
         socket.abort();
-
         if let Err(e) = socket.flush().await {
             warn!("Ended with error {e:?}");
         }
@@ -61,29 +58,30 @@ async fn session<S: DemoServer>(socket: &mut TcpSocket<'_>, config: &SunsetMutex
     let src = socket.remote_endpoint().unwrap();
     info!("Connection from {}:{}", src.addr, src.port);
 
-    let demo = S::new(init);
+    // Create the SSH instance. These buffers are for decoding/encoding
+    // SSH packets.
+    let mut ssh_rxbuf = [0; 2000];
+    let mut ssh_txbuf = [0; 1000];
+    let serv = SSHServer::new(&mut ssh_rxbuf, &mut ssh_txbuf)?;
 
+    // Create the handler. ServerApp is common handling (this file),
+    // demo is the specific demo (std or picow).
+    let demo = S::new(init);
     let conf = config.lock().await.clone();
     let app = ServerApp::new(conf)?;
+    // .run returns a future that runs for the life of the session
+    let session = demo.run(&serv, app);
 
-    let mut ssh_rxbuf = [0; 2000];
-    let mut ssh_txbuf = [0; 2000];
-    let serv = SSHServer::new(&mut ssh_rxbuf, &mut ssh_txbuf)?;
-    let serv = &serv;
-
-    let session = demo.run(serv, app);
-
+    // Connect the SSH instance to the sockets, .run is a future
+    // that reads and writes sockets.
     let (mut rsock, mut wsock) = socket.split();
-
     let run = serv.run(&mut rsock, &mut wsock);
 
-    let f = select(run, session).await;
-    match f {
-        Either::First(r) => r?,
-        Either::Second(r) => r?,
+    // Run until completion
+    match select(run, session).await {
+        Either::First(r) => r,
+        Either::Second(r) => r,
     }
-
-    Ok(())
 }
 
 /// Provides `ServBehaviour` for the server
@@ -92,6 +90,8 @@ async fn session<S: DemoServer>(socket: &mut TcpSocket<'_>, config: &SunsetMutex
 pub struct ServerApp {
     config: SSHConfig,
 
+    opened: bool,
+    // Can be taken by the demoserver to run an interactive session.
     pub sess: Option<ChanHandle>,
 }
 
@@ -102,6 +102,7 @@ impl ServerApp {
 
         Ok(Self {
             sess: None,
+            opened: false,
             config,
         })
     }
@@ -117,6 +118,9 @@ impl ServerApp {
             ServEvent::PasswordAuth(a) => {
                 self.handle_password(a)
             }
+            | ServEvent::PubkeyAuth(a) => {
+                self.handle_pubkey(a)
+            }
             ServEvent::OpenSession(a) => {
                 self.open_session(a)
             }
@@ -125,9 +129,6 @@ impl ServerApp {
             }
             ServEvent::SessionExec(a) => {
                 a.fail()
-            }
-            | ServEvent::PubkeyAuth(a) => {
-                a.deny()
             }
             | ServEvent::Defunct
             | ServEvent::SessionShell(_) => {
@@ -163,15 +164,14 @@ impl ServerApp {
         Ok(())
     }
 
-    fn handle_pubkey(&mut self, a: ServPasswordAuth) -> Result<()> {
-        todo!();
+    fn handle_pubkey(&mut self, a: ServPubkeyAuth) -> Result<()> {
+        a.deny()
     }
 
     fn handle_firstauth(&self, a: ServFirstAuth) -> Result<()> {
         let username = a.username()?;
         if !self.is_admin(username) && self.config.console_noauth {
             info!("Allowing auth for user {username}");
-            // self.shell.authed(username.as_str().unwrap_or("")).await;
             return a.allow()
         };
 
@@ -180,10 +180,12 @@ impl ServerApp {
     }
 
     fn open_session(&mut self, a: ServOpenSession) -> Result<()> {
-        if self.sess.is_some() {
-            // Already have one
+        if self.opened {
+            // only allow one session
             a.reject(ChanFail::SSH_OPEN_ADMINISTRATIVELY_PROHIBITED)
         } else {
+            self.opened = true;
+            // store the ChanHandle for the DemoServer to use
             self.sess = Some(a.accept()?);
             Ok(())
         }
@@ -194,66 +196,6 @@ impl ServerApp {
     }
 }
 
-// impl ServBehaviour for ServerApp {
-
-//     fn hostkeys(&mut self) -> BhResult<heapless::Vec<&SignKey, 2>> {
-//         // OK unwrap: only one element
-//         Ok(heapless::Vec::from_slice(&[&self.config.hostkey]).unwrap())
-//     }
-
-//     async fn auth_unchallenged(&mut self, username: TextString<'_>) -> bool {
-//     }
-
-//     fn have_auth_password(&self, username: TextString) -> bool {
-//         if self.is_admin(username) {
-//             self.config.admin_pw.is_some()
-//         } else {
-//             self.config.console_pw.is_some()
-//         }
-//     }
-
-//     fn have_auth_pubkey(&self, username: TextString) -> bool {
-//         todo!();
-//         // if self.is_admin(username) {
-//         //     self.config.admin_keys.iter().any(|k| k.is_some())
-//         // } else {
-//         //     self.config.console_keys.iter().any(|k| k.is_some())
-//         // }
-//     }
-
-//     fn open_session(&mut self, chan: ChanHandle) -> ChanOpened {
-//         if self.sess.is_some() {
-//             ChanOpened::Failure((ChanFail::SSH_OPEN_ADMINISTRATIVELY_PROHIBITED, chan))
-//         } else {
-//             self.sess = Some(chan.num());
-//             self.handle = Some(chan);
-//             ChanOpened::Success
-//         }
-//     }
-
-//     fn sess_shell(&mut self, chan: ChanNum) -> bool {
-//         if self.sess != Some(chan) {
-//             return false
-//         }
-
-//         if let Some(handle) = self.handle.take() {
-//             debug_assert_eq!(self.sess, Some(handle.num()));
-//             // self.shell.open_shell(handle);
-//             true
-//         } else {
-//             false
-//         }
-//     }
-
-//     fn sess_pty(&mut self, chan: ChanNum, _pty: &Pty) -> bool {
-//         self.sess == Some(chan)
-//     }
-
-//     fn disconnected(&mut self, desc: TextString) {
-//         info!("Disconnect by client: {}", desc.as_str().unwrap_or("bad"));
-//     }
-// }
-
 pub trait DemoServer {
     /// State to be passed to each new connection by the server
     type Init;
@@ -261,8 +203,6 @@ pub trait DemoServer {
     fn new(init: &Self::Init) -> Self;
 
     /// A task to run for each incoming connection.
-    // TODO: eventually the compiler should add must_use automatically?
-    #[must_use]
     async fn run(&self, serv: &SSHServer<'_>, common: ServerApp) -> Result<()>;
 }
 
@@ -274,7 +214,7 @@ pub struct BufOutput {
     /// Sufficient to hold output produced from a single keystroke input. Further output will be discarded
     // pub s: String<300>,
     // todo size
-    pub s: String<3000>,
+    pub s: String<500>,
 }
 
 impl BufOutput {
