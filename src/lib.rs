@@ -48,6 +48,7 @@ mod ssh_chapoly;
 mod traffic;
 
 use conn::DispatchEvent;
+use event::{CliEventId, ServEventId};
 
 // Application API
 pub use sshwire::TextString;

@@ -30,12 +30,4 @@ impl Client {
         parse_ctx.cli_auth_type = None;
         self.auth.success()
     }
-
-    pub(crate) fn banner(
-        &mut self,
-        banner: &packets::UserauthBanner<'_>,
-    ) {
-        // TODO event banner
-        // b.show_banner(banner.message, banner.lang)
-    }
 }

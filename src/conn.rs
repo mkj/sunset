@@ -160,6 +160,10 @@ impl Conn {
         self.cliserv.is_client()
     }
 
+    pub fn is_server(&self) -> bool {
+        !self.is_client()
+    }
+
     pub fn server(&self) -> Result<&server::Server> {
         match &self.cliserv {
             ClientServer::Server(s) => Ok(s),
@@ -437,13 +441,12 @@ impl Conn {
                     return error::SSHProto.fail()
                 }
             }
-            Packet::UserauthBanner(p) => {
-                if let ClientServer::Client(cli) = &mut self.cliserv {
-                    cli.banner(&p);
-                } else {
+            Packet::UserauthBanner(_) => {
+                if self.is_server() {
                     debug!("Received banner as a server");
                     return error::SSHProto.fail()
                 }
+                disp.event = DispatchEvent::CliEvent(CliEventId::Banner);
             }
             Packet::Userauth60(p) => {
                 // TODO: client only
@@ -545,6 +548,15 @@ impl Conn {
         self.client()?;
         let packet = self.packet(payload)?;
         CliSessionExit::new(&packet)
+    }
+
+    pub(crate) fn fetch_cli_banner<'p>(&mut self, payload: &'p [u8]) -> Result<Banner<'p>> {
+        self.client()?;
+        if let Packet::UserauthBanner(b) = self.packet(payload)? {
+            Ok(Banner(b))
+        } else {
+            Err(Error::bug())
+        }
     }
 
     pub(crate) fn resume_servhostkeys(&mut self,

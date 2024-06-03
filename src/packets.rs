@@ -648,6 +648,9 @@ pub struct ChannelRequest<'a> {
     pub req: ChannelReqType<'a>,
 }
 
+/// Channel Requests
+///
+/// Most are specified in [RFC4335](https://datatracker.ietf.org/doc/html/rfc4335)
 #[derive(Debug, SSHEncode, SSHDecode)]
 pub enum ChannelReqType<'a> {
     #[sshwire(variant = "shell")]
@@ -666,6 +669,9 @@ pub enum ChannelReqType<'a> {
     ExitStatus(ExitStatus),
     #[sshwire(variant = "exit-signal")]
     ExitSignal(ExitSignal<'a>),
+    /// Channel Break Request
+    ///
+    /// [RFC4335](https://datatracker.ietf.org/doc/html/rfc4335)
     #[sshwire(variant = "break")]
     Break(Break),
     // Other requests that aren't implemented at present:
@@ -729,6 +735,7 @@ pub struct ExitSignal<'a> {
 
 #[derive(Debug, Clone, SSHEncode, SSHDecode)]
 pub struct Break {
+    /// Break length in milliseconds
     pub length: u32,
 }
 

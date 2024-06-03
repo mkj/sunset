@@ -315,6 +315,9 @@ impl CmdlineClient {
                             }
                         }
                     }
+                    CliEvent::Banner(b) => {
+                        println!("Banner from server:\n{}", b.banner()?)
+                    }
                     CliEvent::Defunct => {
                         trace!("break defunct");
                         break Ok::<_, Error>(())

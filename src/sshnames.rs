@@ -1,6 +1,7 @@
 //! Named SSH algorithms, methods, and extensions.
 //!
-//! Some identifiers are also listed directly in `packet.rs` derive attributes.
+//! Some identifiers are also listed directly in `packet.rs` derive attributes,
+//! for example [channel request identifiers](packets::ChannelReqType).
 //! Packet numbers are listed in `packets.rs`.
 //!
 //! This module also serves as an index of SSH specifications.

@@ -12,10 +12,11 @@ use pretty_hex::PrettyHex;
 
 use crate::{event::ChanRequest, packets::{Packet, Subsystem}, *};
 use packets::{ChannelDataExt, ChannelData};
-use crate::channel::{ChanNum, ChanData};
+use channel::{ChanNum, ChanData};
+use channel::{CliSessionExit, CliSessionOpener};
 use encrypt::KeyState;
 use traffic::{TrafIn, TrafOut};
-use event::{CliEvent, ServEvent, ServEventId, CliEventId};
+use event::{Event, CliEvent, ServEvent, ServEventId, CliEventId};
 
 use conn::{Conn, Dispatched, DispatchEvent};
 
@@ -445,6 +446,21 @@ impl<'a> Runner<'a> {
         }
     }
 
+    /// Send a break to a session channel
+    ///
+    /// `length` is in milliseconds, or
+    /// pass 0 as a default (to be interpreted by the remote implementation). 
+    /// Otherwise length will be clamped to the range [500, 3000] ms.
+    /// Only call on a client session. 
+    pub fn term_break(&mut self, chan: &ChanHandle, length: u32) -> Result<()> {
+        if self.is_client() {
+            let mut s = self.traf_out.sender(&mut self.keys);
+            self.conn.channels.term_break(chan.0, length, &mut s)
+        } else {
+            error::BadChannelData.fail()
+        }
+    }
+
     pub(crate) fn cli_session_opener(&mut self, ch: ChanNum) -> Result<CliSessionOpener<'_, 'a>> {
         let ch = self.conn.channels.get(ch)?;
         let s = self.traf_out.sender(&mut self.keys);
@@ -458,6 +474,11 @@ impl<'a> Runner<'a> {
     pub(crate) fn fetch_cli_session_exit(&mut self) -> Result<CliSessionExit> {
         let (payload, _seq) = self.traf_in.payload().trap()?;
         self.conn.fetch_cli_session_exit(payload)
+    }
+
+    pub(crate) fn fetch_cli_banner(&mut self) -> Result<event::Banner> {
+        let (payload, _seq) = self.traf_in.payload().trap()?;
+        self.conn.fetch_cli_banner(payload)
     }
 
     fn wake(&mut self) {

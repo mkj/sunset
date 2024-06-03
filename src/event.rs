@@ -51,6 +51,7 @@ impl<'g, 'a> Event<'g, 'a> {
 pub enum CliEvent<'g, 'a>
 {
     Hostkey(CheckHostkey<'g, 'a>),
+    Banner(Banner<'g>),
     Username(RequestUsername<'g, 'a>),
     Password(RequestPassword<'g, 'a>),
     Pubkey(RequestPubkey<'g, 'a>),
@@ -78,6 +79,7 @@ impl Debug for CliEvent<'_, '_> {
             Self::SessionOpened(_) => "SessionOpened",
             Self::SessionExit(_) => "SessionExit",
             Self::AgentSign(_) => "AgentSign",
+            Self::Banner(_) => "Banner",
             Self::Defunct => "Defunct",
         };
         write!(f, "CliEvent({e})")
@@ -167,6 +169,19 @@ impl CheckHostkey<'_, '_> {
     }
 }
 
+pub struct Banner<'a>(pub(crate) packets::UserauthBanner<'a>);
+
+impl Banner<'_> {
+    pub fn banner(&self) -> Result<&str> {
+        self.0.message.as_str()
+    }
+
+    pub fn raw_banner(&self) -> TextString {
+        self.0.message
+    }
+}
+
+
 // impl CliExit<''_, '_> {
 //     pub fn 
 
@@ -182,11 +197,11 @@ pub(crate) enum CliEventId {
     Authenticated,
     SessionOpened(ChanNum),
     SessionExit,
+    Banner,
     Defunct
 
     // TODO:
     // Disconnected
-    // Banner,
     // OpenTCPForwarded (new session)
     // TCPDirectOpened (response)
 }
@@ -222,6 +237,9 @@ impl CliEventId {
             Self::SessionExit => {
                 Ok(CliEvent::SessionExit(runner.fetch_cli_session_exit()?))
             }
+            Self::Banner => {
+                Ok(CliEvent::Banner(runner.fetch_cli_banner()?))
+            }
             Self::Defunct => error::BadUsage.fail()
         }
     }
@@ -233,6 +251,7 @@ impl CliEventId {
             | Self::Authenticated
             | Self::SessionOpened(_)
             | Self::SessionExit
+            | Self::Banner
             | Self::Defunct
             => false,
             | Self::Hostkey
