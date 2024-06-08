@@ -48,14 +48,13 @@ fn config_hash(config: &SSHConfig) -> Result<[u8; 32]> {
 
 /// Loads a SSHConfig at startup. Good for persisting hostkeys.
 pub async fn load_or_create(flash: &mut Fl<'_>) -> Result<SSHConfig> {
-    use snafu::Error;
     match load(flash).await {
         Ok(c) => {
             info!("Good existing config");
             return Ok(c)
         }
         // Err(sunset::Error::Custom(msg: msg)) => info!("Existing config bad, making new. {}", msg),
-        Err(e) => info!("Existing config bad, making new. {}", e.description()),
+        Err(e) => info!("Existing config bad, making new. {e}"),
     }
 
     create(flash).await
