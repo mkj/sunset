@@ -854,15 +854,13 @@ impl core::fmt::Display for ChanNum {
     }
 }
 
-/// Channel data packet type.
-///
-/// The SSH specification allows other `u32` types, though Sunset doesn't
-/// currently implement it, they are not widely used.
+/// Channel data type, normal or stderr
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum ChanData {
     /// `SSH_MSG_CHANNEL_DATA`
     Normal,
-    /// `SSH_MSG_CHANNEL_EXTENDED_DATA`
+    /// `SSH_MSG_CHANNEL_EXTENDED_DATA`. Only `Stderr` is implemented by Sunset,
+    /// other types are not widely used.
     Stderr,
     // Future API:
     // Other(u32),

@@ -28,9 +28,9 @@ pub async fn listener<D: Driver, S: DemoServer>(stack: &'static Stack<D>,
     let mut rx_buffer = [0; 1550];
     let mut tx_buffer = [0; 1550];
 
+    let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
+    // socket.set_nagle_enabled(false);
     loop {
-        let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
-        // socket.set_nagle_enabled(false);
 
         info!("Listening on TCP:22...");
         if let Err(_) = socket.accept(22).await {
@@ -159,6 +159,7 @@ impl ServerApp {
         };
 
         if p.check(password) {
+            info!("Password login for {username}");
             a.allow()?
         }
         Ok(())

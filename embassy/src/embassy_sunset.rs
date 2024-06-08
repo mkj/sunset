@@ -138,10 +138,10 @@ impl<'a> EmbassySunset<'a> {
         let rx_stop = Signal::<SunsetRawMutex, ()>::new();
 
         let tx = async {
+            let mut buf = [0; 1024];
             loop {
                 // TODO: make sunset read directly from socket, no intermediate buffer?
                 // Perhaps not possible async, might deadlock.
-                let mut buf = [0; 1024];
                 let l = self.output(&mut buf).await?;
                 if wsock.write_all(&buf[..l]).await.is_err() {
                     info!("socket write error");
@@ -154,9 +154,9 @@ impl<'a> EmbassySunset<'a> {
         let tx = select(tx, tx_stop.wait());
 
         let rx = async {
+            let mut buf = [0; 1024];
             loop {
                 // TODO: make sunset read directly from socket, no intermediate buffer.
-                let mut buf = [0; 1024];
                 let l = match rsock.read(&mut buf).await {
                     Ok(0) => {
                         debug!("net EOF");
@@ -299,7 +299,7 @@ impl<'a> EmbassySunset<'a> {
         *guard = None;
 
         #[cfg(not(feature = "try-polonius"))]
-        let guardptr = guard as *mut Option<MutexGuard<'g, SunsetRawMutex, Inner<'a>>>;
+        let guardptr = guard as *mut Option<_>;
 
         // poll progress until we get an actual event to return
         loop {

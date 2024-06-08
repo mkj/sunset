@@ -9,27 +9,33 @@ sunset = { path = "../../.." }
 sunset-sshwire-derive = { path = "../../../sshwire-derive" }
 sunset-demo-embassy-common= { path = "../common" }
 
-cyw43 = { version = "0.1.0", optional = true}
+cyw43 = { version = "0.1.0", optional = true, features = ["log", "firmware-logs"]}
 cyw43-pio = { version = "0.1.0", optional = true }
 
 embassy-net-wiznet = { version = "0.1.0", optional = true }
 
-embassy-executor = { version = "0.5",  features = ["integrated-timers", "executor-thread", "arch-cortex-m"] }
+embassy-executor = { version = "0.5", features = [
+    "integrated-timers", "executor-thread", "arch-cortex-m", "log",
+    # Larger than around 120kB causes unknown failures. using "nightly" feature
+    # instead works OK. Needs investigation. 96kB is sufficient for NUM_LISTENERS=2
+    # https://github.com/embassy-rs/embassy/issues/3061
+    "task-arena-size-98304"] }
 embassy-time = { version = "0.3",  features = [] }
 embassy-rp = { version = "0.1",  features = ["unstable-pac", "time-driver"] }
-embassy-net = { version = "0.4", features = ["tcp", "dhcpv4", "medium-ethernet"] }
+embassy-net = { version = "0.4", features = ["tcp", "dhcpv4", "medium-ethernet", "log"] }
 embassy-net-driver = { version = "0.2" }
 embassy-usb-driver = { version = "0.1" }
 embassy-sync = { version = "0.5" }
 embassy-futures = { version = "0.1" }
-embassy-usb = { version = "0.1" }
+embassy-usb = { version = "0.1", features = ["log"] }
 atomic-polyfill = "1.0"
 static_cell = { version = "1.0", features = [ "nightly" ] }
 
-panic-probe = { version = "0.3", features = [] }
-pretty-hex = { version = "0.4", default-features = false }
 log = { version = "0.4" }
-futures = { version = "0.3", default-features = false }
+rtt-target = "0.3"
+rtt-logger = "0.2"
+
+pretty-hex = { version = "0.4", default-features = false }
 
 snafu = { version = "0.8", default-features = false, features = ["rust_1_65"] }
 
@@ -61,8 +67,8 @@ cyw43 = ["dep:cyw43", "dep:cyw43-pio"]
 w5500 = ["dep:embassy-net-wiznet", "dep:embedded-hal-bus"]
 
 # Use cyw43 firmware already on flash. This saves time when developing.
-# probe-rs-cli download firmware/43439A0.bin --format bin --chip RP2040 --base-address 0x10100000
-# probe-rs-cli download firmware/43439A0_clm.bin --format bin --chip RP2040 --base-address 0x10140000
+# probe-rs download firmware/43439A0.bin --binary-format bin  --chip RP2040 --base-address 0x10100000
+# probe-rs download firmware/43439A0_clm.bin --binary-format bin  --chip RP2040 --base-address 0x10140000
 romfw = []
 
 # Set default console to serial

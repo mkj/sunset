@@ -733,7 +733,6 @@ fn do_net_info(_item: &Item<MenuCtx>, _args: &[&str], context: &mut MenuCtx) {
     let _ = writeln!(context.out, "w5500 wired ethernet");
     #[cfg(feature = "cyw43")]
     let _ = writeln!(context.out, "cyw43 wifi");
-    let _ = writeln!(context.out, "mac address {}", Mac(context.state.net_mac));
 
     context.with_config(|c, out| {
         if let Some(ref stat) = c.ip4_static {

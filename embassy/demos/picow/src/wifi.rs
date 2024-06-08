@@ -43,9 +43,8 @@ pub(crate) async fn wifi_stack(spawner: &Spawner,
     config: &'static SunsetMutex<SSHConfig>,
     ) -> &'static embassy_net::Stack<cyw43::NetDriver<'static>>
     {
-    // TODO: return `control` once it can do something useful
 
-    let (fw, clm) = get_fw();
+    let (fw, _clm) = get_fw();
 
     let pwr = Output::new(p23, Level::Low);
     let cs = Output::new(p25, Level::High);
@@ -54,21 +53,50 @@ pub(crate) async fn wifi_stack(spawner: &Spawner,
 
     static STATE: StaticCell<cyw43::State> = StaticCell::new();
     let state = STATE.init_with(|| cyw43::State::new());
-    let (net_device, mut control, runner) = cyw43::new(state, pwr, spi, fw).await;
+    let (net_device, control, runner) = cyw43::new(state, pwr, spi, fw).await;
     spawner.spawn(wifi_task(runner)).unwrap();
 
+    let seed = OsRng.next_u64();
+    let net_cf = if let Some(ref s) = config.lock().await.ip4_static {
+        embassy_net::Config::ipv4_static(s.clone())
+    } else {
+        embassy_net::Config::dhcpv4(Default::default())
+    };
+
+    static SR: StaticCell<StackResources::<{crate::NUM_SOCKETS}>> = StaticCell::new();
+
+    // Init network stack
+    static STACK: StaticCell<Stack<cyw43::NetDriver>> = StaticCell::new();
+    let stack = STACK.init_with(|| Stack::new(
+        net_device,
+        net_cf,
+        SR.init_with(|| StackResources::new()),
+        seed)
+    );
+
+    spawner.spawn(net_task(stack, control, config)).unwrap();
+
+    stack
+}
+
+#[embassy_executor::task]
+async fn net_task(stack: &'static Stack<cyw43::NetDriver<'static>>,
+    mut control: cyw43::Control<'static>,
+    config: &'static SunsetMutex<SSHConfig>,
+    ) -> ! {
+    let (_fw, clm) = get_fw();
+    // control init() must occur before the net stack tries to access cyw43, otherwise
+    // it seems to get stuck. await it here before spawning the net task.
     control.init(clm).await;
+
     // the default is PowerSave. None is fastest.
-    // control.set_power_management(cyw43::PowerManagementMode::None).await;
-    // control.set_power_management(cyw43::PowerManagementMode::Performance).await;
+    control.set_power_management(cyw43::PowerManagementMode::None).await;
 
     let (wifi_net, wifi_pw) = {
         let c = config.lock().await;
         (c.wifi_net.clone(), c.wifi_pw.clone())
     };
 
-    // TODO: this should move out of the critical path, run in the bg.
-    // just return control before joining.
     for _ in 0..2 {
         let status = if let Some(ref pw) = wifi_pw {
             info!("wifi net {} wpa2", wifi_net);
@@ -77,39 +105,15 @@ pub(crate) async fn wifi_stack(spawner: &Spawner,
             info!("wifi net {} open", wifi_net);
             control.join_open(&wifi_net).await
         };
+
         if let Err(ref e) = status {
             info!("wifi join failed, code {}", e.status);
         } else {
+            info!("wifi joined");
             break;
         }
     }
 
-    let config = if let Some(ref s) = config.lock().await.ip4_static {
-        embassy_net::Config::ipv4_static(s.clone())
-    } else {
-        embassy_net::Config::dhcpv4(Default::default())
-    };
-
-    let seed = OsRng.next_u64();
-
-    static SR: StaticCell<StackResources::<{crate::NUM_SOCKETS}>> = StaticCell::new();
-
-    // Init network stack
-    static STACK: StaticCell<Stack<cyw43::NetDriver>> = StaticCell::new();
-    let stack = STACK.init_with(|| Stack::new(
-        net_device,
-        config,
-        SR.init_with(|| StackResources::new()),
-        seed)
-    );
-
-    spawner.spawn(net_task(stack)).unwrap();
-
-    stack
-}
-
-#[embassy_executor::task]
-async fn net_task(stack: &'static Stack<cyw43::NetDriver<'static>>) -> ! {
     stack.run().await
 }
 
@@ -122,8 +126,10 @@ fn get_fw() -> (&'static [u8], &'static [u8]) {
 
     // To make flashing faster for development, you may want to flash the firmwares independently
     // at hardcoded addresses, instead of baking them into the program with `include_bytes!`:
-    //     probe-rs-cli download 43439A0.bin --format bin --chip RP2040 --base-address 0x10100000
-    //     probe-rs-cli download 43439A0_clm.bin --format bin --chip RP2040 --base-address 0x10140000
+    /*
+       probe-rs download firmware/43439A0.bin --binary-format bin  --chip RP2040 --base-address 0x10100000
+       probe-rs download firmware/43439A0_clm.bin --binary-format bin  --chip RP2040 --base-address 0x10140000
+    */
     #[cfg(feature = "romfw")]
     let (fw, clm) = (
         unsafe { core::slice::from_raw_parts(0x10100000 as *const u8, fw.len()) },

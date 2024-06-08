@@ -1,15 +1,15 @@
 #[allow(unused_imports)]
 pub use log::{debug, error, info, log, trace, warn};
 
-use embassy_futures::join::{join, join4};
+use embassy_futures::join::{join, join3};
 use embassy_rp::bind_interrupts;
 use embassy_rp::peripherals::USB;
 use embassy_rp::usb::InterruptHandler;
 use embassy_usb::class::cdc_acm::{self, CdcAcmClass};
-use embassy_usb::class::hid::{self, HidReaderWriter};
+// use embassy_usb::class::hid::{self, HidReaderWriter};
 use embassy_usb::Builder;
 use embassy_usb_driver::Driver;
-use usbd_hid::descriptor::{KeyboardReport, SerializedDescriptor};
+// use usbd_hid::descriptor::{KeyboardReport, SerializedDescriptor};
 
 use embedded_io_async::{Read, Write, BufRead, ErrorType};
 
@@ -54,7 +54,7 @@ pub(crate) async fn task(
     // lives longer than builder
     let mut usb_state0 = cdc_acm::State::new();
     let mut usb_state2 = cdc_acm::State::new();
-    let mut usb_state4 = hid::State::new();
+    // let mut usb_state4 = hid::State::new();
 
     let mut builder = Builder::new(
         driver,
@@ -71,14 +71,14 @@ pub(crate) async fn task(
     // if02
     let cdc2 = CdcAcmClass::new(&mut builder, &mut usb_state2, 64);
 
-    let hid_config = embassy_usb::class::hid::Config {
-        report_descriptor: KeyboardReport::desc(),
-        request_handler: None,
-        poll_ms: 20,
-        max_packet_size: 64,
-    };
-    let hid =
-        HidReaderWriter::<_, 1, 8>::new(&mut builder, &mut usb_state4, hid_config);
+    // let hid_config = embassy_usb::class::hid::Config {
+    //     report_descriptor: KeyboardReport::desc(),
+    //     request_handler: None,
+    //     poll_ms: 20,
+    //     max_packet_size: 64,
+    // };
+    // let hid =
+    //     HidReaderWriter::<_, 1, 8>::new(&mut builder, &mut usb_state4, hid_config);
 
     let mut usb = builder.build();
 
@@ -92,9 +92,10 @@ pub(crate) async fn task(
     let io2_run = menu_if02_run(&global, cdc2);
 
     // keyboard
-    let hid_run = keyboard::run(&global, hid);
+    // let hid_run = keyboard::run(&global, hid);
 
-    join4(usb_fut, io0_run, io2_run, hid_run).await;
+    // join4(usb_fut, io0_run, io2_run, hid_run).await;
+    join3(usb_fut, io0_run, io2_run).await;
     unreachable!()
 }
 
@@ -127,13 +128,17 @@ async fn menu_if02_run<'a, D: Driver<'a>>(
 ) -> ! {
     let (mut cdc_tx, mut cdc_rx) = cdc.split();
     'usb: loop {
+        debug!("wait menu if02 conn");
         cdc_rx.wait_connection().await;
+        debug!("got menu if02 conn");
         let mut cdc_tx = CDCWrite::new(&mut cdc_tx);
         let mut cdc_rx = CDCRead::new(&mut cdc_rx);
+
 
         // wait for a keystroke before writing anything.
         let mut c = [0u8];
         let _ = cdc_rx.read_exact(&mut c).await;
+        debug!("read {:02x}", c[0]);
 
         let p = {
             let c = global.config.lock().await;

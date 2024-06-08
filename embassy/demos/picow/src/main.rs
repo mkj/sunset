@@ -6,8 +6,6 @@ pub use log::{debug, error, info, log, trace, warn};
 
 use core::ops::ControlFlow;
 
-use {panic_probe as _};
-
 use embassy_executor::Spawner;
 use embassy_futures::select::{select, Either};
 use embassy_net::{Stack, HardwareAddress, EthernetAddress};
@@ -30,7 +28,7 @@ mod flashconfig;
 mod picowmenu;
 mod serial;
 mod usb;
-mod keyboard;
+// mod keyboard;
 #[cfg(feature = "w5500")]
 mod w5500;
 #[cfg(feature = "cyw43")]
@@ -42,13 +40,25 @@ compile_error!("No network device selected. Use cyw43 or w5500 feature");
 #[cfg(all(feature = "cyw43", feature = "w5500"))]
 compile_error!("Select only one of cyw43 or w5500");
 
-const NUM_LISTENERS: usize = 4;
+const NUM_LISTENERS: usize = 2;
 // +1 for dhcp. referenced directly by wifi_stack() function
 pub(crate) const NUM_SOCKETS: usize = NUM_LISTENERS + 1;
 
+const LOG_LEVEL: log::LevelFilter = log::LevelFilter::Debug;
+static LOGGER: rtt_logger::RTTLogger = rtt_logger::RTTLogger::new(LOG_LEVEL);
+
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
+    // Some logs are better than fully dropped. Use a larger buffer.
+    rtt_target::rtt_init_print!(NoBlockTrim, 4000);
+    // rtt_target::rtt_init_print!(BlockIfFull);
+    unsafe {
+        log::set_logger_racy(&LOGGER).unwrap();
+        log::set_max_level_racy(LOG_LEVEL);
+    }
     info!("Welcome to Sunset SSH");
+    debug!("Debug");
+    trace!("Trace");
 
     let mut p = embassy_rp::init(Default::default());
 
@@ -84,16 +94,6 @@ async fn main(spawner: Spawner) {
         let p = SERS.init(Default::default());
         SERP.init_with(|| p.build())
     };
-    spawner
-        .spawn(serial::task(
-            p.UART0,
-            p.PIN_0,
-            p.PIN_1,
-            p.PIN_2,
-            p.PIN_3,
-            serial1_pipe,
-        ))
-        .unwrap();
 
     // Watchdog currently only used for triggering reset manually
     static WD: StaticCell<SunsetMutex<embassy_rp::watchdog::Watchdog>> = StaticCell::new();
@@ -101,11 +101,12 @@ async fn main(spawner: Spawner) {
         embassy_rp::watchdog::Watchdog::new(p.WATCHDOG)
     ));
 
+    // state depends on the mac for cyw43 vs w5500
+    let net_mac = SunsetMutex::new([0; 6]);
     static STATE: StaticCell<GlobalState> = StaticCell::new();
-    let state;
+    let state = STATE.init_with(|| GlobalState { usb_pipe, serial1_pipe, config, flash, watchdog, net_mac});
 
     // Spawn network tasks to handle incoming connections with demo_common::session()
-
     #[cfg(feature = "cyw43")]
     {
         let stack = wifi::wifi_stack(
@@ -114,10 +115,8 @@ async fn main(spawner: Spawner) {
         )
         .await;
 
-        let net_mac = match stack.hardware_address() {
-            HardwareAddress::Ethernet(EthernetAddress(eth)) => eth,
-        };
-        state = STATE.init_with(|| GlobalState { usb_pipe, serial1_pipe, config, flash, watchdog, net_mac });
+        let HardwareAddress::Ethernet(EthernetAddress(eth)) = stack.hardware_address();
+        *state.net_mac.lock().await = eth;
         for _ in 0..NUM_LISTENERS {
             spawner.spawn(cyw43_listener(&stack, config, state)).unwrap();
         }
@@ -132,22 +131,29 @@ async fn main(spawner: Spawner) {
         )
         .await;
 
-        let net_mac = match stack.hardware_address() {
-            HardwareAddress::Ethernet(EthernetAddress(eth)) => eth,
-        };
-        state = STATE.init_with(|| GlobalState { usb_pipe, serial1_pipe, config, flash, watchdog, net_mac });
+        let HardwareAddress::Ethernet(EthernetAddress(eth)) = stack.hardware_address();
+        *state.net_mac.lock().await = eth;
         for _ in 0..NUM_LISTENERS {
             spawner.spawn(w5500_listener(&stack, config, state)).unwrap();
         }
     }
 
-    // USB task requires `state`
+    spawner
+        .spawn(serial::task(
+            p.UART0,
+            p.PIN_0,
+            p.PIN_1,
+            p.PIN_2,
+            p.PIN_3,
+            serial1_pipe,
+        ))
+        .unwrap();
+
     spawner.spawn(usb::task(p.USB, state)).unwrap();
 }
 
-// TODO: pool_size should be NUM_LISTENERS but needs a literal
 #[cfg(feature = "cyw43")]
-#[embassy_executor::task(pool_size = 4)]
+#[embassy_executor::task(pool_size = NUM_LISTENERS)]
 async fn cyw43_listener(
     stack: &'static Stack<cyw43::NetDriver<'static>>,
     config: &'static SunsetMutex<SSHConfig>,
@@ -157,7 +163,7 @@ async fn cyw43_listener(
 }
 
 #[cfg(feature = "w5500")]
-#[embassy_executor::task(pool_size = 4)]
+#[embassy_executor::task(pool_size = NUM_LISTENERS)]
 async fn w5500_listener(
     stack: &'static Stack<embassy_net_wiznet::Device<'static>>,
     config: &'static SunsetMutex<SSHConfig>,
@@ -167,7 +173,7 @@ async fn w5500_listener(
 }
 
 pub(crate) struct GlobalState {
-    // If locking multiple mutexes, always lock in the order below avoid inversion.
+    // If locking multiple mutexes, always lock in the order below to avoid inversion.
     pub usb_pipe: &'static TakePipe<'static>,
     pub serial1_pipe: &'static TakePipe<'static>,
 
@@ -175,7 +181,7 @@ pub(crate) struct GlobalState {
     pub flash: &'static SunsetMutex<flashconfig::Fl<'static>>,
     pub watchdog: &'static SunsetMutex<embassy_rp::watchdog::Watchdog>,
 
-    pub net_mac: [u8; 6],
+    pub net_mac: SunsetMutex<[u8; 6]>,
 }
 
 struct PicoServer {
@@ -290,7 +296,6 @@ where
     info!("serial task completed");
     Ok(())
 }
-
 impl DemoServer for PicoServer {
     type Init = &'static GlobalState;
 
@@ -366,5 +371,13 @@ impl DemoServer for PicoServer {
             Either::First(r) => r,
             Either::Second(r) => r,
         }
+    }
+}
+
+#[panic_handler]
+fn panic(info: &core::panic::PanicInfo) -> ! {
+    error!("{}", info);
+    loop {
+        cortex_m::asm::wfi();
     }
 }

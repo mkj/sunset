@@ -584,6 +584,7 @@ dependencies = [
  "embassy-time",
  "embedded-hal 1.0.0",
  "futures",
+ "log",
  "num_enum",
 ]
 
@@ -960,9 +961,9 @@ dependencies = [
 
 [[package]]
 name = "embassy-time"
-version = "0.3.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a9c844070d9f80dc66ee739299183312baee2e1cdeb6e90b4ea2af44f4676da5"
+checksum = "274c019608a9004aed3cafc871e2a3c87ce9351d537dcaab4cc5db184d4a04b1"
 dependencies = [
  "cfg-if",
  "critical-section",
@@ -1003,6 +1004,7 @@ dependencies = [
  "embassy-sync 0.5.0",
  "embassy-usb-driver",
  "heapless 0.8.0",
+ "log",
  "ssmarshal",
  "usbd-hid",
 ]
@@ -1885,15 +1887,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "panic-probe"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aa6fa5645ef5a760cd340eaa92af9c1ce131c8c09e7f8926d8a24b59d26652b9"
-dependencies = [
- "cortex-m",
-]
-
-[[package]]
 name = "parking"
 version = "2.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2302,6 +2295,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "rtt-logger"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b2f42c228caf6eab0fe8374ef3988b9db07dbe0b12b65b4a02aaacb48b03354e"
+dependencies = [
+ "log",
+ "rtt-target",
+]
+
+[[package]]
+name = "rtt-target"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "065d6058bb1204f51a562a67209e1817cf714759d5cf845aa45c75fa7b0b9d9b"
+dependencies = [
+ "cortex-m",
+ "ufmt-write",
+]
+
+[[package]]
 name = "rustc-demangle"
 version = "0.1.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2667,7 +2680,6 @@ dependencies = [
  "digest",
  "ed25519-dalek",
  "embedded-io",
- "futures",
  "getrandom",
  "heapless 0.8.0",
  "hmac",
@@ -2765,13 +2777,13 @@ dependencies = [
  "embedded-hal-bus",
  "embedded-io-async",
  "embedded-storage-async",
- "futures",
  "getrandom",
  "heapless 0.8.0",
  "log",
- "panic-probe",
  "pretty-hex",
  "rand",
+ "rtt-logger",
+ "rtt-target",
  "sha2",
  "snafu",
  "static_cell",
@@ -2964,6 +2976,12 @@ name = "typenum"
 version = "1.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "42ff0bf0c66b8238c6f3b578df37d0b7848e55df8577b3f74f92a69acceeb825"
+
+[[package]]
+name = "ufmt-write"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e87a2ed6b42ec5e28cc3b94c09982969e9227600b2e3dcbc1db927a84c06bd69"
 
 [[package]]
 name = "unicode-ident"

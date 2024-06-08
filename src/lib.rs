@@ -20,7 +20,6 @@ pub mod config;
 // exported so that some Channel error variants can be created with .fail().
 // perhaps the ones of interest should be expored separately.
 pub mod error;
-// perhaps don't need this, users could just use getrandom?
 pub mod random;
 
 pub mod event;

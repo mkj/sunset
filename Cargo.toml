@@ -58,9 +58,6 @@ embedded-io = { version = "0.6", optional = true }
 # for debug printing
 pretty-hex = { version = "0.4", default-features = false }
 
-# for non_async
-futures = { version = "0.3", default-features = false }
-
 [features]
 std = ["snafu/std", "snafu/backtrace", "ssh-key/alloc", "larger"]
 rsa = ["dep:rsa", "ssh-key/rsa"]
@@ -85,6 +82,18 @@ simplelog = { version = "0.12", features = ["test"] }
 #ed25519-dalek = { git = "https://github.com/mkj/curve25519-dalek", branch = "sunset" }
 #x25519-dalek = { git = "https://github.com/mkj/curve25519-dalek", branch = "sunset" }
 
+# [patch.crates-io]
+# cyw43 = { path = "/home/matt/3rd/rs/embassy-stable-sunset/cyw43" }
+# embassy-time = { path = "/home/matt/3rd/rs/embassy-stable-sunset/embassy-time" }
+# embassy-time-driver = { path = "/home/matt/3rd/rs/embassy-stable-sunset/embassy-time-driver" }
+# embassy-time-queue-driver = { path = "/home/matt/3rd/rs/embassy-stable-sunset/embassy-time-queue-driver" }
+# embassy-sync = { path = "/home/matt/3rd/rs/embassy-stable-sunset/embassy-sync" }
+# embassy-net = { path = "/home/matt/3rd/rs/embassy-stable-sunset/embassy-net" }
+# embassy-net-driver = { path = "/home/matt/3rd/rs/embassy-stable-sunset/embassy-net-driver" }
+# embassy-net-driver-channel = { path = "/home/matt/3rd/rs/embassy-stable-sunset/embassy-net-driver-channel" }
+# embassy-executor = { path = "/home/matt/3rd/rs/embassy-stable-sunset/embassy-executor" }
+# embassy-executor-macros = { path = "/home/matt/3rd/rs/embassy-stable-sunset/embassy-executor-macros" }
+
 # these are mostly applicable to picow, but can't hurt generally
 [profile.dev]
 debug = 2
@@ -97,9 +106,10 @@ codegen-units = 1
 debug = 2
 debug-assertions = false
 incremental = false
-lto = 'fat'
+lto = "fat"
 opt-level = 'z'
 overflow-checks = false
+panic = "abort"
 
 # do not optimize proc-macro crates = faster builds from scratch
 [profile.dev.build-override]

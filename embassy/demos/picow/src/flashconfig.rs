@@ -37,8 +37,9 @@ struct FlashConfig<'a> {
 }
 
 impl FlashConfig<'_> {
-    const BUF_SIZE: usize = 1 + SSHConfig::BUF_SIZE + 32;
+    const BUF_SIZE: usize = 4 + SSHConfig::BUF_SIZE + 32;
 }
+const _: () = assert!(FlashConfig::BUF_SIZE % 4 == 0, "flash reads must be a multiple of 4");
 
 fn config_hash(config: &SSHConfig) -> Result<[u8; 32]> {
     let mut h = sha2::Sha256::new();
@@ -71,7 +72,10 @@ pub async fn create(flash: &mut Fl<'_>) -> Result<SSHConfig> {
 pub async fn load(flash: &mut Fl<'_>) -> Result<SSHConfig> {
     // let mut buf = [0u8; ERASE_SIZE];
     let mut buf = [0u8; FlashConfig::BUF_SIZE];
-    flash.read(CONFIG_OFFSET, &mut buf).await.map_err(|_| Error::msg("flash error"))?;
+    flash.read(CONFIG_OFFSET, &mut buf).await.map_err(|e| {
+        debug!("flash read error 0x{CONFIG_OFFSET:x} {e:?}");
+        Error::msg("flash error")
+    })?;
 
     // use pretty_hex::PrettyHex;
     // use core::fmt::Write;
