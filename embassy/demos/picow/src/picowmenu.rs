@@ -303,7 +303,7 @@ const AUTH_ITEM: Item<MenuCtx> = Item {
                 help: None,
             },
             &Item {
-                command: "admin-key",
+                command: "config-key",
                 item_type: ItemType::Callback {
                     parameters: &[
                         Parameter::Mandatory { parameter_name: "slot", help: None },
@@ -329,7 +329,7 @@ const AUTH_ITEM: Item<MenuCtx> = Item {
                 help: None,
             },
             &Item {
-                command: "clear-admin-key",
+                command: "clear-config-key",
                 item_type: ItemType::Callback {
                     parameters: &[Parameter::Mandatory {
                         parameter_name: "slot",
@@ -340,7 +340,7 @@ const AUTH_ITEM: Item<MenuCtx> = Item {
                 help: None,
             },
             &Item {
-                command: "admin-password",
+                command: "config-password",
                 item_type: ItemType::Callback {
                     parameters: &[Parameter::Mandatory {
                         parameter_name: "pw",
@@ -351,7 +351,7 @@ const AUTH_ITEM: Item<MenuCtx> = Item {
                 help: Some("Password for serial or config@. 'None' to clear"),
             },
             &Item {
-                command: "clear-admin-password",
+                command: "clear-config-password",
                 item_type: ItemType::Callback {
                     parameters: &[],
                     function: do_admin_clear_pw,
@@ -542,10 +542,10 @@ fn do_auth_show(_item: &Item<MenuCtx>, _args: &[&str], context: &mut MenuCtx) {
         prkey(out, "Console key1", &c.console_keys[0]);
         prkey(out, "Console key2", &c.console_keys[1]);
         prkey(out, "Console key3", &c.console_keys[2]);
-        let _ = writeln!(out, "Admin password {}", endis(c.admin_pw.is_some()));
-        prkey(out, "Admin key1", &c.admin_keys[0]);
-        prkey(out, "Admin key2", &c.admin_keys[1]);
-        prkey(out, "Admin key3", &c.admin_keys[2]);
+        let _ = writeln!(out, "Config password {}", endis(c.admin_pw.is_some()));
+        prkey(out, "Config key1", &c.admin_keys[0]);
+        prkey(out, "Config key2", &c.admin_keys[1]);
+        prkey(out, "Config key3", &c.admin_keys[2]);
     });
 }
 
@@ -618,7 +618,7 @@ fn do_admin_pw(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx) {
     }
     context.with_config(|c, out| {
         let _ = match c.set_admin_pw(Some(pw)) {
-            Ok(()) => writeln!(out, "Set admin password"),
+            Ok(()) => writeln!(out, "Set config password"),
             Err(e) => writeln!(out, "Failed setting, {}", e),
         };
     });
@@ -627,7 +627,7 @@ fn do_admin_pw(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx) {
 fn do_admin_clear_pw(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx) {
     context.with_config(|c, out| {
         let _ = c.set_admin_pw(None);
-        let _ = writeln!(out, "Disabled admin password");
+        let _ = writeln!(out, "Disabled config password");
     });
 }
 
