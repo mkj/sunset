@@ -22,8 +22,7 @@ use heapless::{String, Vec};
 pub(crate) struct ServAuth {
     pub authed: bool,
 
-    /// Used so that `AuthFirst` is only presented once to the application,
-    /// when `method_immediate=true`
+    /// Used so that `AuthFirst` is only presented once to the application.
     tried_first: bool,
 
     /// Username previously used, as an array of bytes
@@ -38,8 +37,6 @@ pub(crate) struct ServAuth {
     ///
     /// Enabled by default
     pub method_pubkey: bool,
-    /// Whether to present immediate authentication to the application, disabled by default.
-    pub method_immediate: bool,
 }
 
 impl ServAuth {
@@ -50,7 +47,6 @@ impl ServAuth {
             username: None,
             method_password: true,
             method_pubkey: true,
-            method_immediate: false,
         }
     }
 
@@ -90,7 +86,7 @@ impl ServAuth {
             AuthMethod::PubKey(_) if self.method_pubkey => {
                 self.request_pubkey(p, sess_id)?
             }
-            _ => if self.method_immediate && !self.tried_first {
+            _ => if !self.tried_first {
                 DispatchEvent::ServEvent(ServEventId::FirstAuth)
             } else {
                 DispatchEvent::None
