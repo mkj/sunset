@@ -26,14 +26,7 @@ use time::UtcOffset;
 #[tokio::main]
 async fn real_main(tz: UtcOffset) -> Result<()> {
     let args = parse_args(tz)?;
-
-    // TODO: currently we just run it all on a single thread.
-    // Running with tokio's normal multiple threads works fine
-    // if we change SunsetRawMutex to a CriticalSectionMutex
-    // (or something wrapping std::sync::Mutex).
-    // Need to figure how to make it configurable.
-    let local = tokio::task::LocalSet::new();
-    let exit_code = local.run_until(run(args)).await?;
+    let exit_code = run(args).await?;
     std::process::exit(exit_code)
 }
 
@@ -73,11 +66,16 @@ async fn run(args: Args) -> Result<i32> {
         want_pty = false
     }
 
-    let ssh_task = spawn_local(async move {
+    // Sunset will work fine on a non-threaded executor (such as Tokio LocalSet).
+    // sunset-embassy's "multi-thread" feature is not required in that case.
+    // sunsetc example here uses the normal threaded scheduler in order to test the
+    // "multi-thread" feature (and as a more "default" example).
+    let ssh_task = tokio::task::spawn(async move {
         let mut rxbuf = Zeroizing::new(vec![0; 3000]);
         let mut txbuf = Zeroizing::new(vec![0; 3000]);
         let ssh = SSHClient::new(&mut rxbuf, &mut txbuf)?;
 
+        // CmdlineClient implements the session logic for a commandline SSH client.
         let mut app = CmdlineClient::new(
             args.username.as_ref().unwrap(),
             &args.host,

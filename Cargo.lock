@@ -2705,6 +2705,7 @@ version = "0.2.0"
 dependencies = [
  "anyhow",
  "argh",
+ "critical-section",
  "embassy-futures",
  "embassy-sync 0.5.0",
  "embedded-io-adapters",

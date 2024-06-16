@@ -7,7 +7,8 @@ use core::sync::atomic::AtomicBool;
 use core::sync::atomic::Ordering::{Relaxed, SeqCst};
 
 use embassy_sync::waitqueue::WakerRegistration;
-use embassy_sync::blocking_mutex::raw::NoopRawMutex;
+#[allow(unused_imports)]
+use embassy_sync::blocking_mutex::raw::{NoopRawMutex,CriticalSectionRawMutex};
 use embassy_sync::mutex::{Mutex, MutexGuard};
 use embassy_sync::signal::Signal;
 use embassy_futures::select::select;
@@ -23,11 +24,10 @@ use sunset::{error, ChanData, ChanHandle, ChanNum, Error, Result, Runner};
 use sunset::config::MAX_CHANNELS;
 use sunset::event::Event;
 
-// For now we only support single-threaded executors.
-// In future this could be behind a cfg to allow different
-// RawMutex for std executors or other situations.
+#[cfg(feature = "multi-thread")]
+pub type SunsetRawMutex = CriticalSectionRawMutex;
+#[cfg(not(feature = "multi-thread"))]
 pub type SunsetRawMutex = NoopRawMutex;
-// pub type SunsetRawMutex = CriticalSectionRawMutex;
 
 pub type SunsetMutex<T> = Mutex<SunsetRawMutex, T>;
 

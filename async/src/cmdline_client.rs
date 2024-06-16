@@ -372,6 +372,7 @@ enum EscapeAction {
     Suspend,
 }
 
+/// Handles ~. escape sequences in an interactive shell.
 #[derive(Debug)]
 enum Escaper {
     Idle,

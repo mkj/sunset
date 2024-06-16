@@ -19,6 +19,12 @@ sunset = { version = "0.2.0", path = "../", features = ["embedded-io"] }
 log = { version = "0.4" }
 
 [features]
+# Use a critical-section mutex to lock state. This feature must be enabled
+# to run on executors that require futures to be Send (such as default Tokio).
+# The application should depend on critical-section "std" feature.
+# When multi-thread is disabled locking overhead is avoided.
+multi-thread = []
+
 # Remove any use of `unsafe`. This currently requires
 # nightly and -Zpolonius (not ready yet)
 try-polonius = []

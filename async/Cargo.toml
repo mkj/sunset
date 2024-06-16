@@ -50,3 +50,6 @@ embedded-io-adapters = { version = "0.6", features = ["tokio-1"] }
 simplelog = "0.12"
 # for simplelog
 time = { version = "0.3", features = ["local-offset"] }
+
+sunset-embassy = { version = "0.2", path = "../embassy", features = ["multi-thread"] }
+critical-section = { version = "1.1", features = ["std"] }
