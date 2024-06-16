@@ -63,12 +63,13 @@ pub fn raw_pty() -> Result<RawPtyGuard, IoError> {
 }
 
 pub struct RawPtyGuard {
-    saved: Termios,
+    // nix Termios isn't Sync, pending https://github.com/nix-rust/nix/pull/1324
+    saved: libc::termios,
 }
 
 impl RawPtyGuard {
     fn new() -> Result<Self, IoError> {
-        let saved = Self::set_raw()?;
+        let saved = Self::set_raw()?.into();
 
         Ok(Self {
             saved,
@@ -111,7 +112,7 @@ impl Drop for RawPtyGuard {
     fn drop(&mut self) {
         use nix::sys::termios::*;
         let fd = std::io::stdin().as_raw_fd();
-        let r = tcsetattr(fd, SetArg::TCSADRAIN, &self.saved);
+        let r = tcsetattr(fd, SetArg::TCSADRAIN, &self.saved.into());
         if let Err(e) = r {
             warn!("Failed restoring TTY: {e}");
         }
