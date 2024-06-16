@@ -295,15 +295,12 @@ impl<'a> EmbassySunset<'a> {
     pub(crate) async fn progress<'g, 'f>(&'g self, ph: &'f mut ProgressHolder<'g, 'a>) 
         -> Result<Event<'f, 'a>>
     {
+        ph.g = None;
+        #[cfg(feature = "try-polonius")]
         let guard = &mut ph.g;
-        *guard = None;
-
-        #[cfg(not(feature = "try-polonius"))]
-        let guardptr = guard as *mut Option<_>;
 
         // poll progress until we get an actual event to return
         loop {
-            debug_assert!(guard.is_none());
 
             // Safety: At the start of the loop iteration nothing is borrowing from
             // guard, it is set to None. We dereference through a pointer to lose the 'f
@@ -313,7 +310,8 @@ impl<'a> EmbassySunset<'a> {
             // Once polonius is implemented this is unnecessary. polonius-the-crab
             // can't be used since it would require an async closure.
             #[cfg(not(feature = "try-polonius"))]
-            let guard = unsafe { &mut *guardptr };
+            let guard = unsafe { &mut *(&mut ph.g as *mut Option<_>) };
+            debug_assert!(guard.is_none());
 
             let idle = {
                 let inner = guard.insert(self.inner.lock().await);
@@ -336,7 +334,7 @@ impl<'a> EmbassySunset<'a> {
             // Safety: No borrows of guard remain, can lose the inferred 'f lifetime.
             // Not required after polonius.
             #[cfg(not(feature = "try-polonius"))]
-            let guard = unsafe { &mut *guardptr };
+            let guard = unsafe { &mut *(&mut ph.g as *mut Option<_>) };
 
             // Drop the Mutex
             *guard = None;
