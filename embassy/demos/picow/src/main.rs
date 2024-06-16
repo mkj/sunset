@@ -17,6 +17,8 @@ use static_cell::StaticCell;
 
 use demo_common::menu::Runner as MenuRunner;
 use embassy_sync::channel::Channel;
+use embassy_sync::mutex::Mutex;
+use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 
 use sunset::*;
 use sunset_embassy::{SSHServer, SunsetMutex, SunsetRawMutex, ProgressHolder};
@@ -311,8 +313,8 @@ impl DemoServer for PicoServer {
         mut common: ServerApp
     ) -> Result<()> {
 
-        let username = SunsetMutex::new(String::<20>::new());
-        let chan_pipe = Channel::<SunsetRawMutex, ChanHandle, 1>::new();
+        let username = Mutex::<NoopRawMutex, _>::new(String::<20>::new());
+        let chan_pipe = Channel::<NoopRawMutex, ChanHandle, 1>::new();
 
         let prog_loop = async {
             loop {

@@ -85,7 +85,7 @@ impl DemoServer for StdDemo {
 
     async fn run(&self, serv: &SSHServer<'_>, mut common: ServerApp) -> Result<()>
     {
-        let chan_pipe = Channel::<SunsetRawMutex, ChanHandle, 1>::new();
+        let chan_pipe = Channel::<NoopRawMutex, ChanHandle, 1>::new();
 
         let prog_loop = async {
             loop {
