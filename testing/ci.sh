@@ -27,7 +27,8 @@ if [ -z "$OFFLINE" ]; then
 fi
 
 # stable
-cargo test
+# only test lib since some examples are broken
+cargo test --lib
 # build non-testing, will be no_std
 cargo build
 cargo doc
@@ -36,7 +37,6 @@ cargo test --doc
 (
 cd async
 # only test lib since some examples are broken
-cargo test --lib
 cargo test --lib
 cargo build --example sunsetc
 # with/without release to test debug_assertions

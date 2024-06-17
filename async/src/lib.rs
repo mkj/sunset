@@ -5,7 +5,7 @@
 
 mod pty;
 mod cmdline_client;
-mod knownhosts;
+pub mod knownhosts;
 mod agent;
 
 #[cfg(unix)]

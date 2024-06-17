@@ -62,6 +62,7 @@ pub enum CliEvent<'g, 'a>
     SessionExit(CliSessionExit<'g>),
 
     /// The SSH connection is no longer running
+    #[allow(unused)]
     Defunct,
 
     // ChanRequest(ChanRequest<'g, 'a>),
@@ -198,6 +199,7 @@ pub(crate) enum CliEventId {
     SessionOpened(ChanNum),
     SessionExit,
     Banner,
+    #[allow(unused)]
     Defunct
 
     // TODO:
@@ -274,6 +276,7 @@ pub enum ServEvent<'g, 'a> {
     SessionExec(ChanRequest<'g, 'a>),
     SessionPty(ChanRequest<'g, 'a>),
     /// The SSH session is no longer running
+    #[allow(unused)]
     Defunct,
 }
 
@@ -504,6 +507,7 @@ pub(crate) enum ServEventId {
     SessionShell,
     SessionExec,
     SessionPty,
+    #[allow(unused)]
     Defunct,
 
     // TODO:

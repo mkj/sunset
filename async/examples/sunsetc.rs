@@ -3,16 +3,16 @@ use {
     // crate::error::Error,
     log::{debug, error, info, log, trace, warn},
 };
+#[allow(unused_imports)]
 use anyhow::{Context, Result, anyhow, bail};
 use argh::FromArgs;
 
 use tokio::net::TcpStream;
-use tokio::task::spawn_local;
 
 use std::io::Read;
 
 use sunset::*;
-use sunset_embassy::{SSHClient, SunsetMutex};
+use sunset_embassy::SSHClient;
 
 use sunset_async::{CmdlineClient, AgentClient};
 
