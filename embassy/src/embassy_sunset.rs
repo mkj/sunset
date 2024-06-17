@@ -138,10 +138,10 @@ impl<'a> EmbassySunset<'a> {
         let rx_stop = Signal::<SunsetRawMutex, ()>::new();
 
         let tx = async {
-            let mut buf = [0; 1024];
             loop {
                 // TODO: make sunset read directly from socket, no intermediate buffer?
                 // Perhaps not possible async, might deadlock.
+                let mut buf = [0; 1024];
                 let l = self.output(&mut buf).await?;
                 if wsock.write_all(&buf[..l]).await.is_err() {
                     info!("socket write error");
@@ -153,11 +153,12 @@ impl<'a> EmbassySunset<'a> {
         };
         let tx = select(tx, tx_stop.wait());
 
+        // rxbuf outside the async block avoids an extraneous copy somehow
+        let mut rxbuf = [0; 1024];
         let rx = async {
-            let mut buf = [0; 1024];
             loop {
                 // TODO: make sunset read directly from socket, no intermediate buffer.
-                let l = match rsock.read(&mut buf).await {
+                let l = match rsock.read(&mut rxbuf).await {
                     Ok(0) => {
                         debug!("net EOF");
                         self.with_runner(|r| r.close_input()).await;
@@ -172,20 +173,19 @@ impl<'a> EmbassySunset<'a> {
                         break Err(Error::ChannelEOF)
                     }
                 };
-                let mut buf = &buf[..l];
-                while !buf.is_empty() {
-                    let n = self.input(buf).await?;
+                let mut rxbuf = &rxbuf[..l];
+                while !rxbuf.is_empty() {
+                    let n = self.input(rxbuf).await?;
                     self.wake_progress();
-                    buf = &buf[n..];
+                    rxbuf = &rxbuf[n..];
                 }
             }
             .inspect(|r| warn!("rx complete {r:?}"))
         };
 
         // TODO: if RX fails (bad decrypt etc) it doesn't cancel prog, so gets stuck
-        let rx = select(rx, rx_stop.wait());
         let rx = async {
-            let r = rx.await;
+            let r = select(rx, rx_stop.wait()).await;
             tx_stop.signal(());
             r
         };

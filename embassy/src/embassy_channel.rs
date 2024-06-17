@@ -1,7 +1,4 @@
 //! Presents SSH channels as async
-//!
-//! Most code in this module is a convenience wrapper for methods in
-//! [embassy_sunset].
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
 

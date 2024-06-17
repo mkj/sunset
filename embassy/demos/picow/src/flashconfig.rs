@@ -25,7 +25,21 @@ use demo_common::SSHConfig;
 const CONFIG_OFFSET: u32 = 0x150000;
 pub const FLASH_SIZE: usize = 2*1024*1024;
 
-pub(crate) type Fl<'a> = Flash<'a, FLASH, Async, FLASH_SIZE>;
+pub(crate) struct Fl<'a> {
+    flash: Flash<'a, FLASH, Async, FLASH_SIZE>,
+    // Only a single task can write to flash at a time,
+    // keeping a buffer here saves duplicated buffer space in each task.
+    buf: [u8; FlashConfig::BUF_SIZE],
+}
+
+impl<'a> Fl<'a> {
+    pub fn new(flash: Flash<'a, FLASH, Async, FLASH_SIZE>) -> Self {
+        Self {
+            flash,
+            buf: [0u8; FlashConfig::BUF_SIZE],
+        }
+    }
+}
 
 // SSHConfig::CURRENT_VERSION must be bumped if any of this struct changes
 #[derive(SSHEncode, SSHDecode)]
@@ -69,10 +83,8 @@ pub async fn create(flash: &mut Fl<'_>) -> Result<SSHConfig> {
     Ok(c)
 }
 
-pub async fn load(flash: &mut Fl<'_>) -> Result<SSHConfig> {
-    // let mut buf = [0u8; ERASE_SIZE];
-    let mut buf = [0u8; FlashConfig::BUF_SIZE];
-    flash.read(CONFIG_OFFSET, &mut buf).await.map_err(|e| {
+pub async fn load(fl: &mut Fl<'_>) -> Result<SSHConfig> {
+    fl.flash.read(CONFIG_OFFSET, &mut fl.buf).await.map_err(|e| {
         debug!("flash read error 0x{CONFIG_OFFSET:x} {e:?}");
         Error::msg("flash error")
     })?;
@@ -83,7 +95,7 @@ pub async fn load(flash: &mut Fl<'_>) -> Result<SSHConfig> {
     // writeln!(b, "load {:?}", buf.hex_dump());
     // info!("{}", &b.s);
 
-    let s: FlashConfig = sshwire::read_ssh(&buf, None)?;
+    let s: FlashConfig = sshwire::read_ssh(&fl.buf, None)?;
 
     if s.version != SSHConfig::CURRENT_VERSION {
         return Err(Error::msg("wrong config version"))
@@ -102,15 +114,14 @@ pub async fn load(flash: &mut Fl<'_>) -> Result<SSHConfig> {
     }
 }
 
-pub async fn save(flash: &mut Fl<'_>, config: &SSHConfig) -> Result<()> {
-    let mut buf = [0u8; ERASE_SIZE];
+pub async fn save(fl: &mut Fl<'_>, config: &SSHConfig) -> Result<()> {
     let sc = FlashConfig {
         version: SSHConfig::CURRENT_VERSION,
         config: OwnOrBorrow::Borrow(&config),
         hash: config_hash(&config)?,
     };
-    let l = sshwire::write_ssh(&mut buf, &sc)?;
-    let buf = &buf[..l];
+    let l = sshwire::write_ssh(&mut fl.buf, &sc)?;
+    let buf = &fl.buf[..l];
 
     // use pretty_hex::PrettyHex;
     // use core::fmt::Write;
@@ -119,12 +130,12 @@ pub async fn save(flash: &mut Fl<'_>, config: &SSHConfig) -> Result<()> {
     // info!("{}", &b.s);
 
     trace!("flash erase");
-    flash.erase(CONFIG_OFFSET, CONFIG_OFFSET + ERASE_SIZE as u32)
+    fl.flash.erase(CONFIG_OFFSET, CONFIG_OFFSET + ERASE_SIZE as u32)
     .await
     .map_err(|_| Error::msg("flash erase error"))?;
 
     trace!("flash write");
-    flash.write(CONFIG_OFFSET, &buf).await
+    fl.flash.write(CONFIG_OFFSET, &buf).await
     .map_err(|_| Error::msg("flash write error"))?;
 
     info!("flash save done");

@@ -11,7 +11,7 @@ use embassy_futures::select::{select, Either};
 
 use sunset_embassy::{SunsetRawMutex, SunsetMutex};
 
-pub const READ_SIZE: usize = 4000;
+pub const READ_SIZE: usize = 200;
 pub const WRITE_SIZE: usize = 64;
 
 // TODO: this is fairly ugly, the mutex and counter could perhaps be abstracted

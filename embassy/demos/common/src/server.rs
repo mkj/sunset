@@ -25,10 +25,10 @@ pub async fn listener<D: Driver, S: DemoServer>(stack: &'static Stack<D>,
     // Should TX and RX be symmetrical? Or larger TX might fill ethernet
     // frames more efficiently, RX doesn't matter so much?
     // How does this interact with the channel copy buffer sizes?
-    let mut rx_buffer = [0; 1550];
-    let mut tx_buffer = [0; 1550];
+    let mut rx_tcp = [0; 1550];
+    let mut tx_tcp = [0; 1550];
 
-    let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
+    let mut socket = TcpSocket::new(stack, &mut rx_tcp, &mut tx_tcp);
     // socket.set_nagle_enabled(false);
     loop {
 

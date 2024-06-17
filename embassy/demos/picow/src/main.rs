@@ -10,6 +10,7 @@ use embassy_executor::Spawner;
 use embassy_futures::select::{select, Either};
 use embassy_net::{Stack, HardwareAddress, EthernetAddress};
 use embedded_io_async::{Write, Read};
+use embassy_rp::flash::Flash;
 
 use heapless::{String, Vec};
 
@@ -21,7 +22,7 @@ use embassy_sync::mutex::Mutex;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 
 use sunset::*;
-use sunset_embassy::{SSHServer, SunsetMutex, SunsetRawMutex, ProgressHolder};
+use sunset_embassy::{SSHServer, SunsetMutex, ProgressHolder};
 use sunset_demo_embassy_common as demo_common;
 use demo_common::{SSHConfig, DemoServer, takepipe, ServerApp};
 use takepipe::TakePipe;
@@ -42,7 +43,7 @@ compile_error!("No network device selected. Use cyw43 or w5500 feature");
 #[cfg(all(feature = "cyw43", feature = "w5500"))]
 compile_error!("Select only one of cyw43 or w5500");
 
-const NUM_LISTENERS: usize = 2;
+const NUM_LISTENERS: usize = 4;
 // +1 for dhcp. referenced directly by wifi_stack() function
 pub(crate) const NUM_SOCKETS: usize = NUM_LISTENERS + 1;
 
@@ -55,6 +56,7 @@ async fn main(spawner: Spawner) {
     rtt_target::rtt_init_print!(NoBlockTrim, 4000);
     // rtt_target::rtt_init_print!(BlockIfFull);
     unsafe {
+        // thumbv6 doesn't have atomics normally needed by log
         log::set_logger_racy(&LOGGER).unwrap();
         log::set_max_level_racy(LOG_LEVEL);
     }
@@ -69,7 +71,7 @@ async fn main(spawner: Spawner) {
     getrandom::register_custom_getrandom!(caprand::getrandom);
 
     // Configuration loaded from flash
-    let mut flash = flashconfig::Fl::new(p.FLASH, p.DMA_CH2);
+    let mut flash = flashconfig::Fl::new(Flash::new(p.FLASH, p.DMA_CH2));
 
     let config = if option_env!("RESET_CONFIG").is_some() {
         flashconfig::create(&mut flash).await.unwrap()
@@ -85,7 +87,7 @@ async fn main(spawner: Spawner) {
     static USBS: StaticCell<takepipe::TakePipeStorage> = StaticCell::new();
     static USBP: StaticCell<takepipe::TakePipe> = StaticCell::new();
     let usb_pipe = {
-        let p = USBS.init(Default::default());
+        let p = USBS.init_with(Default::default);
         USBP.init_with(|| p.build())
     };
 
@@ -93,7 +95,7 @@ async fn main(spawner: Spawner) {
     static SERS: StaticCell<takepipe::TakePipeStorage> = StaticCell::new();
     static SERP: StaticCell<takepipe::TakePipe> = StaticCell::new();
     let serial1_pipe = {
-        let p = SERS.init(Default::default());
+        let p = SERS.init_with(Default::default);
         SERP.init_with(|| p.build())
     };
 
@@ -120,6 +122,7 @@ async fn main(spawner: Spawner) {
         let HardwareAddress::Ethernet(EthernetAddress(eth)) = stack.hardware_address();
         *state.net_mac.lock().await = eth;
         for _ in 0..NUM_LISTENERS {
+            debug!("spawn listen");
             spawner.spawn(cyw43_listener(&stack, config, state)).unwrap();
         }
     }
@@ -256,12 +259,11 @@ where
     let r = async {
         // TODO: could have a single buffer to translate in-place.
         const DOUBLE: usize = 2 * takepipe::READ_SIZE;
-        let mut b = [0u8; takepipe::READ_SIZE];
-        let mut btrans = Vec::<u8, DOUBLE>::new();
         loop {
+            let mut b = [0u8; takepipe::READ_SIZE];
             let n = rx.read(&mut b).await?;
             let b = &mut b[..n];
-            btrans.clear();
+            let mut btrans = Vec::<u8, DOUBLE>::new();
             for c in b {
                 if *c == b'\n' {
                     // OK unwrap: btrans.len() = 2*b.len()
