@@ -140,7 +140,7 @@ impl<'a> Runner<'a> {
         }
 
         // Previous event payload is complete
-        if prev.is_some() {
+        if prev.is_event() {
             self.traf_in.done_payload();
         }
 
