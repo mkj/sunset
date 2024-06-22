@@ -100,6 +100,11 @@ pub enum Error {
     /// will fail similarly.
     ChannelEOF,
 
+    /// Session EOF
+    ///
+    /// This is an expected error when the SSH session has finished.
+    SessionEOF,
+
     // Used for unknown key types etc.
     #[snafu(display("{what} is not available"))]
     NotAvailable { what: &'static str },

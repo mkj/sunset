@@ -211,7 +211,7 @@ impl<'a> Runner<'a> {
     // Accept bytes from the wire, returning the size consumed
     pub fn input(&mut self, buf: &[u8]) -> Result<usize, Error> {
         if self.closed_input {
-            return error::ChannelEOF.fail();
+            return error::SessionEOF.fail();
         }
         self.traf_in.input(&mut self.keys, &mut self.conn.remote_version, buf)
     }
