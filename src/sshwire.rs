@@ -105,7 +105,7 @@ impl From<WireError> for Error {
             WireError::BadString => Error::BadString,
             WireError::BadName => Error::BadName,
             WireError::SSHProto => error::SSHProto.build(),
-            WireError::PacketWrong => Error::PacketWrong,
+            WireError::PacketWrong => error::PacketWrong.build(),
             WireError::BadKeyFormat => Error::BadKeyFormat,
             WireError::UnknownVariant => Error::bug_err_msg("Can't encode Unknown"),
             WireError::UnknownPacket { number } => Error::UnknownPacket { number },
