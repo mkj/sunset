@@ -268,7 +268,7 @@ impl Conn {
                 let num = p.message_num() as u8;
                 let a = self.dispatch_packet(p, s);
                 match a {
-                    Err(Error::SSHProto { .. }) | Err(Error::PacketWrong) => {
+                    Err(Error::SSHProto { .. }) | Err(Error::PacketWrong { .. }) => {
                         debug!("Error handling {num} packet")
                     }
                     _ => (),

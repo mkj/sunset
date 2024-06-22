@@ -114,7 +114,7 @@ pub enum Error {
 
     /// Received packet at a disallowed time.
     // TODO: this is kind of a subset of SSHProtoError, maybe not needed
-    PacketWrong,
+    PacketWrong { backtrace: Backtrace },
     // #[snafu(display("Program bug {location}"))]
     // Bug { location: snafu::Location },
     #[snafu(display("No matching {algo} algorithm"))]
