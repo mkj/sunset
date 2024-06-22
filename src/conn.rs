@@ -124,6 +124,13 @@ impl DispatchEvent {
             Self::ServEvent(x) => x.needs_resume(),
         }
     }
+
+    pub(crate) fn is_event(&self) -> bool {
+        match self {
+            Self::CliEvent(_) | Self::ServEvent(_) => true,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Default, Debug)]
