@@ -146,7 +146,7 @@ impl<'a> EmbassySunset<'a> {
                 // TODO: make sunset read directly from socket, no intermediate buffer?
                 // Perhaps not possible async, might deadlock.
                 let mut buf = [0; 1024];
-                let l = self.output(&mut buf).await?;
+                let l = self.output(&mut buf).await;
                 if wsock.write_all(&buf[..l]).await.is_err() {
                     info!("socket write error");
                     self.with_runner(|r| r.close_output()).await;
@@ -392,46 +392,43 @@ impl<'a> EmbassySunset<'a> {
         .await
     }
 
-    pub async fn output(&self, buf: &mut [u8]) -> Result<usize> {
-        self.poll_inner(|inner, cx| {
-            let r = match inner.runner.output(buf) {
-                // no output ready
-                Ok(0) => {
+    pub async fn output(&self, buf: &mut [u8]) -> usize {
+        let len = self
+            .poll_inner(|inner, cx| {
+                let l = inner.runner.output(buf);
+                if l == 0 {
+                    // no output ready
                     inner.runner.set_output_waker(cx.waker());
                     Poll::Pending
+                } else {
+                    Poll::Ready(l)
                 }
-                Ok(n) => Poll::Ready(Ok(n)),
-                Err(e) => Poll::Ready(Err(e)),
-            };
-            if r.is_ready() {
-                self.wake_progress()
-            }
-            r
-        })
-        .await
+            })
+            .await;
+        self.wake_progress();
+        len
     }
 
     pub async fn input(&self, buf: &[u8]) -> Result<usize> {
-        self.poll_inner(|inner, cx| {
-            if inner.runner.is_input_ready() {
-                let r = match inner.runner.input(buf) {
-                    Ok(0) => {
-                        inner.runner.set_input_waker(cx.waker());
-                        Poll::Pending
+        let res = self
+            .poll_inner(|inner, cx| {
+                if inner.runner.is_input_ready() {
+                    match inner.runner.input(buf) {
+                        Ok(0) => {
+                            inner.runner.set_input_waker(cx.waker());
+                            Poll::Pending
+                        }
+                        Ok(n) => Poll::Ready(Ok(n)),
+                        Err(e) => Poll::Ready(Err(e)),
                     }
-                    Ok(n) => Poll::Ready(Ok(n)),
-                    Err(e) => Poll::Ready(Err(e)),
-                };
-                if r.is_ready() {
-                    self.wake_progress()
+                } else {
+                    inner.runner.set_input_waker(cx.waker());
+                    Poll::Pending
                 }
-                r
-            } else {
-                inner.runner.set_input_waker(cx.waker());
-                Poll::Pending
-            }
-        })
-        .await
+            })
+            .await;
+        self.wake_progress();
+        res
     }
 
     /// Reads channel data.

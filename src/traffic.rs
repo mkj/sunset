@@ -406,19 +406,35 @@ impl<'a> TrafOut<'a> {
 
     /// Write any pending output, returning the size written
     pub fn output(&mut self, buf: &mut [u8]) -> usize {
+        let b = self.output_buf();
+        let wlen = buf.len().min(b.len());
+        buf[..wlen].copy_from_slice(&b[..wlen]);
+        self.consume_output(wlen);
+        wlen
+    }
+
+    pub fn output_buf(&mut self) -> &[u8] {
         match self.state {
             TxState::Write { ref mut idx, len } => {
-                let wlen = (len - *idx).min(buf.len());
-                buf[..wlen].copy_from_slice(&self.buf[*idx..*idx + wlen]);
+                let wlen = len - *idx;
+                &self.buf[*idx..*idx + wlen]
+            }
+            _ => &[],
+        }
+    }
+
+    pub fn consume_output(&mut self, l: usize) {
+        match self.state {
+            TxState::Write { ref mut idx, len } => {
+                let wlen = (len - *idx).min(l);
                 *idx += wlen;
 
                 if *idx == len {
                     // all done, read the next packet
                     self.state = TxState::Idle
                 }
-                wlen
             }
-            _ => 0,
+            _ => (),
         }
     }
 

@@ -241,13 +241,28 @@ impl<'a> Runner<'a> {
     }
 
     /// Write any pending output to the wire, returning the size written
-    pub fn output(&mut self, buf: &mut [u8]) -> Result<usize, Error> {
+    pub fn output(&mut self, buf: &mut [u8]) -> usize {
         let r = self.traf_out.output(buf);
         if r > 0 {
             trace!("output() wake");
             self.wake();
         }
-        Ok(r)
+        r
+    }
+
+    /// Returns a buffer of output to send over the wire.
+    ///
+    /// Call [`consume_output()`](Self::consume_output) to indicate how many bytes were used.
+    ///
+    /// This is similar to `std::io::BufRead::fill_buf(), but an empty
+    /// slice returned does not indicate EOF.
+    pub fn output_buf(&mut self) -> &[u8] {
+        self.traf_out.output_buf()
+    }
+
+    /// Indicate how many bytes were taken from `output_buf()`
+    pub fn consume_output(&mut self, l: usize) {
+        self.traf_out.consume_output(l)
     }
 
     // Whether [`output()`](output) is ready
