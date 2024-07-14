@@ -13,6 +13,7 @@ rust-version = "1.87"
 members = [
     "demo/picow",
     "demo/std", "fuzz",
+    "sftp",
     "stdasync",
     # workspace.dependencies paths are automatic
 ]
