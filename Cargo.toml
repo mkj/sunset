@@ -12,6 +12,7 @@ keywords = ["ssh"]
 members = [
     "demo/picow",
     "demo/std", "fuzz",
+    "sftp",
     "stdasync",
     # workspace.dependencies paths are automatic
 ]
