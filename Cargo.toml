@@ -16,6 +16,7 @@ members = [
     "embassy/demos/common",
     "embassy/demos/picow",
     "embassy/demos/std",
+    "sftp",
 ]
 
 [dependencies]
