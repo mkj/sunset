@@ -91,11 +91,15 @@ impl KeyState {
         self.seq_decrypt.0
     }
 
-    /// Decrypts the first block in the buffer, returning the length.
+    /// Decrypts the first block in the buffer
+    ///
+    /// Returning the length.
     pub fn decrypt_first_block(&mut self, buf: &mut [u8]) -> Result<usize, Error> {
         self.keys.decrypt_first_block(buf, self.seq_decrypt.0)
     }
 
+    /// Decrypt and validate the remainder of the buffer.
+    ///
     /// Decrypt bytes 4 onwards of the buffer and validate AEAD Tag or MAC.
     /// Ensures that the packet meets minimum length.
     pub fn decrypt(&mut self, buf: &mut [u8]) -> Result<usize, Error> {
@@ -104,6 +108,8 @@ impl KeyState {
         e
     }
 
+    /// Encrypt the output buffer
+    ///
     /// [`buf`] is the entire output buffer to encrypt in place.
     /// payload_len is the length of the payload portion
     /// This is stateful, updating the sequence number.
@@ -239,7 +245,9 @@ impl Keys {
         Ok(Keys { enc, dec, integ_enc, integ_dec })
     }
 
-    /// Decrypts the first block in the buffer, returning the length of the
+    /// Decrypts the first block in the buffer
+    ///
+    /// Returns the length of the
     /// total SSH packet (including length+mac) which is calculated
     /// from the decrypted first 4 bytes.
     /// Whether bytes `buf[4..block_size]` are decrypted depends on the cipher, they may be
@@ -272,6 +280,7 @@ impl Keys {
     }
 
     /// Decrypt the whole packet buffer and validate AEAD Tag or MAC.
+    ///
     /// Returns the payload length.
     /// Ensures that the packet meets minimum length.
     /// The first block_size bytes may have been already decrypted by
