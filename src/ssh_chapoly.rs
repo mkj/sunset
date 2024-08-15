@@ -126,7 +126,7 @@ impl SSHChaPoly {
 
         // compute tag
         let mut poly_key = [0u8; 32];
-        // set block counter to 1
+        // set block counter to 0
         c.seek(0u32);
         c.apply_keystream(&mut poly_key);
         let poly = Poly1305::new((&poly_key).into());
