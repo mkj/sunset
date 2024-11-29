@@ -156,10 +156,10 @@ where
 fn enc_ip4config(v: &Option<StaticConfigV4>, s: &mut dyn SSHSink) -> WireResult<()> {
     v.is_some().enc(s)?;
     if let Some(v) = v {
-        v.address.address().0.enc(s)?;
+        v.address.address().to_bits().enc(s)?;
         v.address.prefix_len().enc(s)?;
-        // to [u8; 4]
-        let gw = v.gateway.map(|a| a.0);
+        // to u32
+        let gw = v.gateway.map(|a| a.to_bits());
         enc_option(&gw, s)?;
     }
     Ok(())
@@ -171,15 +171,15 @@ where
 {
     let opt = bool::dec(s)?;
     opt.then(|| {
-        let ad: [u8; 4] = SSHDecode::dec(s)?;
-        let ad = Ipv4Address::from_bytes(&ad);
+        let ad: u32 = SSHDecode::dec(s)?;
+        let ad = Ipv4Address::from_bits(ad);
         let prefix = SSHDecode::dec(s)?;
         if prefix > 32 {
             // emabassy panics, so test it here
             return Err(WireError::PacketWrong)
         }
-        let gw: Option<[u8; 4]> = dec_option(s)?;
-        let gateway = gw.map(|gw| Ipv4Address::from_bytes(&gw));
+        let gw: Option<u32> = dec_option(s)?;
+        let gateway = gw.map(|gw| Ipv4Address::from_bits(gw));
         Ok(StaticConfigV4 {
             address: Ipv4Cidr::new(ad, prefix),
             gateway,
@@ -364,8 +364,8 @@ mod tests {
             ),
             mac: [6, 2, 3, 4, 5, 6],
             ip4_static: Some(embassy_net::StaticConfigV4 {
-                address: embassy_net::Ipv4Cidr::new(embassy_net::Ipv4Address([44,33,22,11]), 8),
-                gateway: Some(embassy_net::Ipv4Address([1,2,3,4])),
+                address: embassy_net::Ipv4Cidr::new(embassy_net::Ipv4Address::new(44,33,22,11), 8),
+                gateway: Some(embassy_net::Ipv4Address::new(1,2,3,4)),
                 // no dns servers. may need changing later?
                 dns_servers: heapless::Vec::new(),
             }),

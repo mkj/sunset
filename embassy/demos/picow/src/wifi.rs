@@ -11,7 +11,7 @@ use embassy_rp::pio::Pio;
 use embassy_rp::peripherals::*;
 use embassy_rp::bind_interrupts;
 use embassy_executor::Spawner;
-use embassy_net::{Stack, StackResources};
+use embassy_net::StackResources;
 
 use cyw43_pio::PioSpi;
 
@@ -41,7 +41,7 @@ pub(crate) async fn wifi_stack(spawner: &Spawner,
     p23: PIN_23, p24: PIN_24, p25: PIN_25, p29: PIN_29, dma: DMA_CH0,
     pio0: PIO0,
     config: &'static SunsetMutex<SSHConfig>,
-    ) -> &'static embassy_net::Stack<cyw43::NetDriver<'static>>
+    ) -> embassy_net::Stack<'static>
     {
 
     let (fw, _clm) = get_fw();
@@ -63,24 +63,17 @@ pub(crate) async fn wifi_stack(spawner: &Spawner,
         embassy_net::Config::dhcpv4(Default::default())
     };
 
-    static SR: StaticCell<StackResources::<{crate::NUM_SOCKETS}>> = StaticCell::new();
-
     // Init network stack
-    static STACK: StaticCell<Stack<cyw43::NetDriver>> = StaticCell::new();
-    let stack = STACK.init_with(|| Stack::new(
-        net_device,
-        net_cf,
-        SR.init_with(|| StackResources::new()),
-        seed)
-    );
+    static SR: StaticCell<StackResources::<{crate::NUM_SOCKETS}>> = StaticCell::new();
+    let (stack, runner) = embassy_net::new(net_device, net_cf, SR.init(StackResources::new()), seed);
 
-    spawner.spawn(net_task(stack, control, config)).unwrap();
+    spawner.spawn(net_task(runner, control, config)).unwrap();
 
     stack
 }
 
 #[embassy_executor::task]
-async fn net_task(stack: &'static Stack<cyw43::NetDriver<'static>>,
+async fn net_task(mut runner: embassy_net::Runner<'static, cyw43::NetDriver<'static>>,
     mut control: cyw43::Control<'static>,
     config: &'static SunsetMutex<SSHConfig>,
     ) -> ! {
@@ -114,7 +107,7 @@ async fn net_task(stack: &'static Stack<cyw43::NetDriver<'static>>,
         }
     }
 
-    stack.run().await
+    runner.run().await
 }
 
 // Get the WiFi firmware and Country Locale Matrix (CLM) blobs.

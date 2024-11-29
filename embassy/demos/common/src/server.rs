@@ -4,7 +4,6 @@ use log::{debug, error, info, log, trace, warn};
 
 use embassy_net::tcp::TcpSocket;
 use embassy_net::Stack;
-use embassy_net_driver::Driver;
 use embassy_futures::select::{select, Either};
 
 use embedded_io_async::Write;
@@ -17,7 +16,7 @@ use sunset_embassy::{SSHServer, SunsetMutex};
 use crate::SSHConfig;
 
 // common entry point
-pub async fn listener<D: Driver, S: DemoServer>(stack: &'static Stack<D>,
+pub async fn listener<S: DemoServer>(stack: Stack<'_>,
     config: &SunsetMutex<SSHConfig>,
     init: S::Init) -> ! {
     // TODO: buffer size?

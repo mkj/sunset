@@ -10,7 +10,7 @@ sunset = { path = "../../.." }
 sunset-sshwire-derive = { path = "../../../sshwire-derive" }
 
 embassy-sync = { version = "0.5" }
-embassy-net = { version = "0.4", features = ["tcp", "dhcpv4", "medium-ethernet", "log"] }
+embassy-net = { version = "0.5", features = ["tcp", "dhcpv4", "medium-ethernet", "log"] }
 embassy-net-driver = { version = "0.2" }
 embassy-futures = { version = "0.1" }
 embassy-time = { version = "0.3" }

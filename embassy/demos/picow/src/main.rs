@@ -110,37 +110,28 @@ async fn main(spawner: Spawner) {
     static STATE: StaticCell<GlobalState> = StaticCell::new();
     let state = STATE.init_with(|| GlobalState { usb_pipe, serial1_pipe, config, flash, watchdog, net_mac});
 
-    // Spawn network tasks to handle incoming connections with demo_common::session()
+    // create the network stack
     #[cfg(feature = "cyw43")]
-    {
-        let stack = wifi::wifi_stack(
-            &spawner, p.PIN_23, p.PIN_24, p.PIN_25, p.PIN_29, p.DMA_CH0, p.PIO0,
-            config,
-        )
-        .await;
-
-        let HardwareAddress::Ethernet(EthernetAddress(eth)) = stack.hardware_address();
-        *state.net_mac.lock().await = eth;
-        for _ in 0..NUM_LISTENERS {
-            debug!("spawn listen");
-            spawner.spawn(cyw43_listener(&stack, config, state)).unwrap();
-        }
-    }
-
+    let stack = wifi::wifi_stack(
+        &spawner, p.PIN_23, p.PIN_24, p.PIN_25, p.PIN_29, p.DMA_CH0, p.PIO0,
+        config,
+    )
+    .await;
 
     #[cfg(feature = "w5500")]
-    {
-        let stack = w5500::w5500_stack(
-            &spawner, p.PIN_16, p.PIN_17, p.PIN_18, p.PIN_19, p.PIN_20, p.PIN_21,
-            p.DMA_CH0, p.DMA_CH1, p.SPI0, config,
-        )
-        .await;
+    let stack = w5500::w5500_stack(
+        &spawner, p.PIN_16, p.PIN_17, p.PIN_18, p.PIN_19, p.PIN_20, p.PIN_21,
+        p.DMA_CH0, p.DMA_CH1, p.SPI0, config,
+    )
+    .await;
 
-        let HardwareAddress::Ethernet(EthernetAddress(eth)) = stack.hardware_address();
-        *state.net_mac.lock().await = eth;
-        for _ in 0..NUM_LISTENERS {
-            spawner.spawn(w5500_listener(&stack, config, state)).unwrap();
-        }
+    let HardwareAddress::Ethernet(EthernetAddress(eth)) = stack.hardware_address();
+    *state.net_mac.lock().await = eth;
+
+    // Spawn network tasks to handle incoming connections with demo_common::session()
+    for _ in 0..NUM_LISTENERS {
+        debug!("spawn listen");
+        spawner.spawn(net_listener(stack, config, state)).unwrap();
     }
 
     spawner
@@ -157,24 +148,13 @@ async fn main(spawner: Spawner) {
     spawner.spawn(usb::task(p.USB, state)).unwrap();
 }
 
-#[cfg(feature = "cyw43")]
 #[embassy_executor::task(pool_size = NUM_LISTENERS)]
-async fn cyw43_listener(
-    stack: &'static Stack<cyw43::NetDriver<'static>>,
+async fn net_listener(
+    stack: Stack<'static>,
     config: &'static SunsetMutex<SSHConfig>,
     global: &'static GlobalState,
 ) -> ! {
-    demo_common::listener::<_, PicoServer>(stack, config, global).await
-}
-
-#[cfg(feature = "w5500")]
-#[embassy_executor::task(pool_size = NUM_LISTENERS)]
-async fn w5500_listener(
-    stack: &'static Stack<embassy_net_wiznet::Device<'static>>,
-    config: &'static SunsetMutex<SSHConfig>,
-    global: &'static GlobalState,
-) -> ! {
-    demo_common::listener::<_, PicoServer>(stack, config, global).await
+    demo_common::listener::<PicoServer>(stack, config, global).await
 }
 
 pub(crate) struct GlobalState {

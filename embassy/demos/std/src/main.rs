@@ -29,8 +29,8 @@ const NUM_LISTENERS: usize = 4;
 const NUM_SOCKETS: usize = NUM_LISTENERS+1;
 
 #[embassy_executor::task]
-async fn net_task(stack: &'static Stack<TunTapDevice>) -> ! {
-    stack.run().await
+async fn net_task(mut runner: embassy_net::Runner<'static, TunTapDevice>) -> ! {
+    runner.run().await
 }
 
 #[embassy_executor::task]
@@ -45,28 +45,23 @@ async fn main_task(spawner: Spawner) {
         SunsetMutex::new(config)
     }));
 
-    let net_config = if let Some(ref s) = config.lock().await.ip4_static {
+    let net_cf = if let Some(ref s) = config.lock().await.ip4_static {
         embassy_net::Config::ipv4_static(s.clone())
     } else {
         embassy_net::Config::dhcpv4(Default::default())
     };
 
     // Init network device
-    let device = TunTapDevice::new(opt_tap0).unwrap();
+    let net_device = TunTapDevice::new(opt_tap0).unwrap();
 
     let seed = OsRng.next_u64();
 
     // Init network stack
     let res = Box::leak(Box::new(StackResources::<NUM_SOCKETS>::new()));
-    let stack = Box::leak(Box::new(Stack::new(
-        device,
-        net_config,
-        res,
-        seed
-    )));
+    let (stack, runner) = embassy_net::new(net_device, net_cf, res, seed);
 
     // Launch network task
-    spawner.spawn(net_task(stack)).unwrap();
+    spawner.spawn(net_task(runner)).unwrap();
 
     for _ in 0..NUM_LISTENERS {
         spawner.spawn(listener(stack, config)).unwrap();
@@ -152,10 +147,10 @@ impl DemoServer for StdDemo {
 
 // TODO: pool_size should be NUM_LISTENERS but needs a literal
 #[embassy_executor::task(pool_size = 4)]
-async fn listener(stack: &'static Stack<TunTapDevice>,
+async fn listener(stack: Stack<'static>,
     config: &'static SunsetMutex<SSHConfig>) -> ! {
 
-    demo_common::listener::<_, StdDemo>(stack, config, ()).await
+    demo_common::listener::<StdDemo>(stack, config, ()).await
 }
 
 #[embassy_executor::main]

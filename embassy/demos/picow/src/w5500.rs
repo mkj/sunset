@@ -6,7 +6,7 @@
 pub use log::{debug, error, info, log, trace, warn};
 
 use embassy_executor::Spawner;
-use embassy_net::{Stack, StackResources};
+use embassy_net::{StackResources};
 use embassy_rp::gpio::{Input, Level, Output, Pull};
 use embassy_rp::peripherals::*;
 use embassy_rp::spi::{Async, Config as SpiConfig, Spi};
@@ -46,7 +46,7 @@ pub(crate) async fn w5500_stack(
     dma1: DMA_CH1,
     spi0: SPI0,
     config: &'static SunsetMutex<SSHConfig>,
-) -> &'static embassy_net::Stack<embassy_net_wiznet::Device<'static>> {
+) -> embassy_net::Stack<'static> {
     let mut spi_cfg = SpiConfig::default();
     spi_cfg.frequency = 50_000_000;
     let (miso, mosi, clk) = (p16, p19, p18);
@@ -59,7 +59,7 @@ pub(crate) async fn w5500_stack(
     // 
     static STATE: StaticCell<State<8, 8>> = StaticCell::new();
     let state = STATE.init_with(|| State::new());
-    let (device, runner) = embassy_net_wiznet::new(
+    let (net_device, runner) = embassy_net_wiznet::new(
         mac_addr,
         state,
         ExclusiveDevice::new(spi, cs, Delay),
@@ -69,7 +69,7 @@ pub(crate) async fn w5500_stack(
     .await;
     spawner.spawn(ethernet_task(runner)).unwrap();
 
-    let config = if let Some(ref s) = config.lock().await.ip4_static {
+    let net_cf = if let Some(ref s) = config.lock().await.ip4_static {
         embassy_net::Config::ipv4_static(s.clone())
     } else {
         embassy_net::Config::dhcpv4(Default::default())
@@ -80,21 +80,15 @@ pub(crate) async fn w5500_stack(
 
     // Init network stack
     static SR: StaticCell<StackResources::<{crate::NUM_SOCKETS}>> = StaticCell::new();
-    static STACK: StaticCell<Stack<embassy_net_wiznet::Device>> = StaticCell::new();
-    let stack = STACK.init_with(|| Stack::new(
-        device,
-        config,
-        SR.init_with(|| StackResources::new()),
-        seed
-    ));
+    let (stack, runner) = embassy_net::new(net_device, net_cf, SR.init(StackResources::new()), seed);
 
     // Launch network task
-    spawner.spawn(net_task(stack)).unwrap();
+    spawner.spawn(net_task(runner)).unwrap();
 
     stack
 }
 
 #[embassy_executor::task]
-async fn net_task(stack: &'static Stack<Device<'static>>) -> ! {
-    stack.run().await
+async fn net_task(mut runner: embassy_net::Runner<'static, Device<'static>>) -> ! {
+    runner.run().await
 }

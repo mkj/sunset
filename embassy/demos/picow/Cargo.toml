@@ -21,7 +21,7 @@ embassy-executor = { version = "0.5", features = [
     "task-arena-size-131072"] }
 embassy-time = { version = "0.3",  features = [] }
 embassy-rp = { version = "0.1",  features = ["unstable-pac", "time-driver"] }
-embassy-net = { version = "0.4", features = ["tcp", "dhcpv4", "medium-ethernet", "log"] }
+embassy-net = { version = "0.5", features = ["tcp", "dhcpv4", "medium-ethernet", "log"] }
 embassy-net-driver = { version = "0.2" }
 embassy-usb-driver = { version = "0.1" }
 embassy-sync = { version = "0.5" }
