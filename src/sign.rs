@@ -227,7 +227,7 @@ impl SignKey {
                 if bits.unwrap_or(256) != 256 {
                     return Err(Error::msg("Bad key size"));
                 }
-                let k = dalek::SigningKey::generate(&mut rand_core::OsRng);
+                let k = crate::random::get_rng().make_signing_key()?;
                 Ok(Self::Ed25519(k))
             }
 

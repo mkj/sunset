@@ -141,6 +141,8 @@ pub enum Error {
     #[cfg(feature = "std")]
     IoError { source: std::io::Error },
 
+    MissingCryptoProvider,
+
     // This state should not be reached, previous logic should have prevented it.
     // Create this using [`Error::bug()`] or [`.trap()`](TrapBug::trap).
     // Location is currently disabled due to bloat.
@@ -296,4 +298,3 @@ pub(crate) mod tests {
     use crate::packets::Unknown;
 
 }
-

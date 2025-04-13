@@ -11,7 +11,7 @@ use core::fmt;
 use sha2::Sha256;
 use digest::Digest;
 use zeroize::{Zeroize, ZeroizeOnDrop};
-use rand_core::{RngCore, CryptoRng, OsRng};
+use rand_core::{RngCore, CryptoRng};
 
 use crate::*;
 use encrypt::{Cipher, Integ, Keys};
@@ -321,7 +321,7 @@ impl Kex {
         }.into()
     }
 
-    pub fn handle_kexdhinit(&mut self) 
+    pub fn handle_kexdhinit(&mut self)
     -> Result<DispatchEvent> {
         if let Kex::KexDH { algos, ..} = self {
             if algos.is_client {
@@ -338,7 +338,7 @@ impl Kex {
         Ok(DispatchEvent::ServEvent(ServEventId::Hostkeys))
     }
 
-    pub fn resume_kexdhinit(&mut self, p: &packets::KexDHInit, 
+    pub fn resume_kexdhinit(&mut self, p: &packets::KexDHInit,
         keys: &[&SignKey], s: &mut TrafSend,) -> Result<()> {
 
         if let Kex::KexDH { mut algos, kex_hash } = self.take() {
@@ -610,7 +610,7 @@ impl SharedSecret {
         keys: &[&SignKey],
         p: &packets::KexDHInit,
         s: &mut TrafSend ) -> Result<KexOutput> {
-        
+
         let hostkey = keys.iter().find(|k| k.can_sign(algos.hostsig));
         let hostkey = hostkey.ok_or_else(|| {
             // TODO: hostkeys should be requested
@@ -755,7 +755,7 @@ impl KexCurve25519 {
         let mut s = [0u8; 32];
         random::fill_random(s.as_mut_slice())?;
         // TODO: check that pure random bytes are OK
-        let ours = x25519_dalek::EphemeralSecret::random_from_rng(OsRng);
+        let ours = crate::random::get_rng().make_ephemeral_secret()?;
         let pubkey = x25519_dalek::PublicKey::from(&ours);
         let pubkey = pubkey.to_bytes();
         Ok(KexCurve25519 { ours: Some(ours), pubkey })

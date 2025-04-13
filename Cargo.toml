@@ -29,8 +29,8 @@ heapless = "0.8"
 # allows avoiding utf8 for SSH identifier names
 ascii = { version = "1.0", default-features = false }
 
-getrandom = "0.2"
-rand_core = { version = "0.6", default-features = false, features = ["getrandom"]}
+getrandom = {version="0.2", optional = true}
+rand_core = { version = "0.6", default-features = false }
 
 ctr = { version = "0.9", features = ["zeroize"] }
 aes = { version = "0.8", features = ["zeroize"] }
@@ -40,6 +40,7 @@ hmac = "0.12"
 poly1305 = "0.8"
 digest = "0.10"
 signature = { version = "2.0", default-features = false }
+static_cell = "2.0"
 zeroize = { version = "1", default-features = false, features = ["derive"] }
 cipher = { version = "0.4", features = ["zeroize"] }
 subtle = { version = "2.4", default-features = false }
@@ -59,7 +60,8 @@ embedded-io = { version = "0.6", optional = true }
 pretty-hex = { version = "0.4", default-features = false }
 
 [features]
-std = ["snafu/std", "snafu/backtrace", "ssh-key/alloc", "larger"]
+std = ["snafu/std", "snafu/backtrace", "ssh-key/alloc", "larger", "getrandom"]
+getrandom = ["dep:getrandom", "rand_core/getrandom"]
 rsa = ["dep:rsa", "ssh-key/rsa"]
 # allows conversion to/from OpenSSH key formats
 openssh-key = ["ssh-key"]
