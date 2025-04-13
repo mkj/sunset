@@ -8,7 +8,7 @@ use sunset::ChanData;
 use embassy_sunset::{EmbassySunset, ProgressHolder};
 use embassy_channel::{ChanInOut, ChanIn};
 
-/// An async SSH client instance 
+/// An async SSH client instance
 ///
 /// The [`run()`][Self::run] method runs the session to completion. [`progress()`][Self::progress]
 /// must be polled, and responses given to the events provided.
@@ -62,7 +62,7 @@ impl<'a> SSHClient<'a> {
         Ok((cstd, cerr))
     }
 
-    pub async fn open_session_pty(&'a self) -> Result<ChanInOut<'_, 'a>> {
+    pub async fn open_session_pty(&'a self) -> Result<ChanInOut<'a, 'a>> {
         let chan = self.sunset.with_runner(|runner| {
             runner.open_client_session()
         }).await?;
