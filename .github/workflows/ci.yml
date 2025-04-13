@@ -30,16 +30,6 @@ jobs:
             target_ci
           key: rust3-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml') }}
 
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: nightly
-
       - name: build
         run: ./testing/ci.sh
 
