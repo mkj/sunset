@@ -26,6 +26,8 @@ if [ -z "$OFFLINE" ]; then
     )
 fi
 
+cargo fmt --check
+
 # stable
 # only test lib since some examples are broken
 cargo test --lib
