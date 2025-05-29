@@ -2,8 +2,8 @@ use core::str::Utf8Error;
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
 
-use core::fmt::Arguments;
 use core::fmt;
+use core::fmt::Arguments;
 
 use snafu::{prelude::*, Backtrace, Location};
 
@@ -21,14 +21,10 @@ use crate::channel::ChanNum;
 #[snafu(visibility(pub))]
 pub enum Error {
     /// Output buffer ran out of room
-    NoRoom {
-        backtrace: Backtrace,
-    },
+    NoRoom { backtrace: Backtrace },
 
     /// Input buffer ran out
-    RanOut {
-        backtrace: Backtrace,
-    },
+    RanOut { backtrace: Backtrace },
 
     /// Not a UTF-8 string
     BadString,
@@ -49,9 +45,7 @@ pub enum Error {
     BadNumber,
 
     /// Error in received SSH protocol. Will disconnect.
-    SSHProto {
-        backtrace: Backtrace,
-    },
+    SSHProto { backtrace: Backtrace },
 
     /// Peer sent something we don't handle. Will disconnect.
     ///
@@ -118,7 +112,6 @@ pub enum Error {
     PacketWrong,
     // #[snafu(display("Program bug {location}"))]
     // Bug { location: snafu::Location },
-
     #[snafu(display("No matching {algo} algorithm"))]
     AlgoNoMatch { algo: &'static str },
 
@@ -131,7 +124,7 @@ pub enum Error {
     /// An unknown SSH name is provided, for a key type, signature type,
     /// channel name etc.
     #[snafu(display("Unknown {kind} method"))]
-    UnknownMethod { kind: &'static str},
+    UnknownMethod { kind: &'static str },
 
     #[snafu(display("{msg}"))]
     // TODO: these could eventually get categorised
@@ -212,7 +205,6 @@ impl Error {
     pub fn bug_err_msg(msg: &str) -> Error {
         Self::bug_fmt(format_args!("{}", msg))
     }
-
 }
 
 #[cfg(feature = "embedded-io")]
@@ -275,7 +267,6 @@ impl<T> TrapBug<T> for Option<T> {
     }
 }
 
-
 impl From<Utf8Error> for Error {
     fn from(_e: Utf8Error) -> Error {
         Error::BadString
@@ -292,8 +283,6 @@ impl From<std::io::Error> for Error {
 #[cfg(test)]
 pub(crate) mod tests {
     use crate::error::*;
-    use crate::sunsetlog::init_test_log;
     use crate::packets::Unknown;
-
+    use crate::sunsetlog::init_test_log;
 }
-

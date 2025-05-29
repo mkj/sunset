@@ -9,8 +9,8 @@ use std::env;
 use proc_macro::Delimiter;
 use virtue::generate::FnSelfArg;
 use virtue::parse::{Attribute, AttributeLocation, EnumBody, StructBody};
-use virtue::utils::{parse_tagged_attribute, ParsedAttribute};
 use virtue::prelude::*;
+use virtue::utils::{parse_tagged_attribute, ParsedAttribute};
 
 const ENV_SSHWIRE_DEBUG: &str = "SSHWIRE_DEBUG";
 
@@ -90,19 +90,21 @@ enum FieldAtt {
 }
 
 fn take_cont_atts(atts: &[Attribute]) -> Result<Vec<ContainerAtt>> {
-    let x = atts.iter()
-        .filter_map(|a| {
-            parse_tagged_attribute(&a.tokens, "sshwire")
-            .transpose()
-        });
+    let x = atts
+        .iter()
+        .filter_map(|a| parse_tagged_attribute(&a.tokens, "sshwire").transpose());
 
     let mut ret = vec![];
     // flatten the lists
     for a in x {
         for a in a? {
             let l = match a {
-                ParsedAttribute::Tag(l) if l.to_string() == "no_variant_names" => Ok(ContainerAtt::NoNames),
-                ParsedAttribute::Tag(l) if l.to_string() == "variant_prefix" => Ok(ContainerAtt::VariantPrefix),
+                ParsedAttribute::Tag(l) if l.to_string() == "no_variant_names" => {
+                    Ok(ContainerAtt::NoNames)
+                }
+                ParsedAttribute::Tag(l) if l.to_string() == "variant_prefix" => {
+                    Ok(ContainerAtt::VariantPrefix)
+                }
                 _ => Err(Error::Custom {
                     error: "Unknown sshwire atttribute".into(),
                     span: None,
@@ -256,7 +258,6 @@ fn encode_enum(
     atts: &[Attribute],
     body: EnumBody,
 ) -> Result<()> {
-
     let cont_atts = take_cont_atts(atts)?;
 
     gen.impl_for("crate::sshwire::SSHEncode")

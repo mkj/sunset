@@ -1,17 +1,17 @@
 //! SSH comma separated algorithm lists.
 #[allow(unused_imports)]
 use {
-    crate::error::{Error,Result},
+    crate::error::{Error, Result},
     log::{debug, error, info, log, trace, warn},
 };
 
-use ascii::{AsciiStr, AsciiChar::Comma};
+use ascii::{AsciiChar::Comma, AsciiStr};
 
-use sunset_sshwire_derive::{SSHEncode, SSHDecode};
+use sunset_sshwire_derive::{SSHDecode, SSHEncode};
 
 use crate::*;
-use sshwire::{SSHEncode, SSHDecode, SSHSource, SSHSink, BinString, WireResult};
 use heapless::Vec;
+use sshwire::{BinString, SSHDecode, SSHEncode, SSHSink, SSHSource, WireResult};
 
 // Used for lists of:
 // - algorithm names
@@ -100,7 +100,6 @@ impl<'a> From<&'a LocalNames> for NameList<'a> {
     }
 }
 
-
 impl NameList<'_> {
     /// Returns the first name in this namelist that matches, based on SSH priority.
     ///
@@ -110,7 +109,9 @@ impl NameList<'_> {
     /// order.
     /// Must only be called on [`StringNames`], will fail if called with self as [`LocalNames`].
     pub fn first_match(
-        &self, is_client: bool, our_options: &LocalNames,
+        &self,
+        is_client: bool,
+        our_options: &LocalNames,
     ) -> Result<Option<&'static str>> {
         match self {
             NameList::String(s) => Ok(if is_client {
@@ -201,9 +202,9 @@ impl LocalNames {
 #[cfg(test)]
 mod tests {
     use crate::namelist::*;
+    use crate::sunsetlog::init_test_log;
     use pretty_hex::PrettyHex;
     use std::vec::Vec;
-    use crate::sunsetlog::init_test_log;
 
     #[test]
     fn test_match() {
@@ -248,11 +249,7 @@ mod tests {
 
     #[test]
     fn test_first() {
-        let tests: Vec<&[&str]> = vec![
-            &["foo", "quux", "boo"],
-            &[],
-            &["one"],
-        ];
+        let tests: Vec<&[&str]> = vec![&["foo", "quux", "boo"], &[], &["one"]];
 
         for t in tests.iter() {
             let l = LocalNames::try_from(*t).unwrap();
@@ -260,7 +257,7 @@ mod tests {
             let x = t.join(",");
             let s: NameList = x.as_str().try_into().unwrap();
             assert_eq!(l.first(), s.first());
-            if t.len() == 0{
+            if t.len() == 0 {
                 assert_eq!(l.first(), "");
             } else {
                 assert_eq!(l.first(), t[0]);

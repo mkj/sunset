@@ -213,7 +213,8 @@ pub fn argument_finder<'a, T>(
                     if arg.starts_with("--")
                         && (arg.len() >= value_start)
                         && (arg.get(equals_start..=equals_start) == Some("="))
-                        && (arg.get(name_start..equals_start) == Some(*parameter_name))
+                        && (arg.get(name_start..equals_start)
+                            == Some(*parameter_name))
                     {
                         return Ok(Some(&arg[value_start..]));
                     }
@@ -243,7 +244,12 @@ where
     /// buffer that the `Runner` can use. Feel free to pass anything as the
     /// `context` type - the only requirement is that the `Runner` can
     /// `write!` to the context, which it will do for all text output.
-    pub fn new(menu: &'a Menu<'a, T>, buffer: &'a mut [u8], echo: bool, mut context: T) -> Runner<'a, T> {
+    pub fn new(
+        menu: &'a Menu<'a, T>,
+        buffer: &'a mut [u8],
+        echo: bool,
+        mut context: T,
+    ) -> Runner<'a, T> {
         if let Some(cb_fn) = menu.entry {
             cb_fn(&mut context);
         }
@@ -271,7 +277,8 @@ where
                 if depth > 1 {
                     write!(self.context, "/").unwrap();
                 }
-                write!(self.context, "/{}", self.menus[depth].unwrap().label).unwrap();
+                write!(self.context, "/{}", self.menus[depth].unwrap().label)
+                    .unwrap();
                 depth += 1;
             }
         }
@@ -289,17 +296,15 @@ where
         if self.used == 0 {
             None
         } else {
-            Some(self.buffer[self.used-1])
+            Some(self.buffer[self.used - 1])
         }
     }
-
 
     /// Add a byte to the menu runner's buffer. If this byte is a
     /// carriage-return, the buffer is scanned and the appropriate action
     /// performed.
     /// By default, an echo feature is enabled to display commands on the terminal.
     pub fn input_byte(&mut self, input: u8) {
-
         // Strip carriage returns
         if input == 0x0A {
             return;
@@ -334,7 +339,7 @@ where
             while self.previous() == Some(b' ') {
                 self.backspace();
             }
-            while self.used > 0 && self.buffer[self.used-1] != b' ' {
+            while self.used > 0 && self.buffer[self.used - 1] != b' ' {
                 self.backspace();
             }
             Outcome::NeedMore
@@ -383,14 +388,21 @@ where
                 let menu = self.menus[self.depth].unwrap();
                 if cmd == "help" {
                     match parts.next() {
-                        Some(arg) => match menu.items.iter().find(|i| i.command == arg) {
-                            Some(item) => {
-                                self.print_long_help(&item);
+                        Some(arg) => {
+                            match menu.items.iter().find(|i| i.command == arg) {
+                                Some(item) => {
+                                    self.print_long_help(&item);
+                                }
+                                None => {
+                                    writeln!(
+                                        self.context,
+                                        "I can't help with {:?}",
+                                        arg
+                                    )
+                                    .unwrap();
+                                }
                             }
-                            None => {
-                                writeln!(self.context, "I can't help with {:?}", arg).unwrap();
-                            }
-                        },
+                        }
                         _ => {
                             writeln!(self.context, "AVAILABLE ITEMS:").unwrap();
                             for item in menu.items {
@@ -421,16 +433,15 @@ where
                     for item in menu.items {
                         if cmd == item.command {
                             match item.item_type {
-                                ItemType::Callback {
-                                    function,
-                                    parameters,
-                                } => Self::call_function(
-                                    &mut self.context,
-                                    function,
-                                    parameters,
-                                    item,
-                                    command_line,
-                                ),
+                                ItemType::Callback { function, parameters } => {
+                                    Self::call_function(
+                                        &mut self.context,
+                                        function,
+                                        parameters,
+                                        item,
+                                        command_line,
+                                    )
+                                }
                                 ItemType::Menu(m) => {
                                     self.depth += 1;
                                     self.menus[self.depth] = Some(m);
@@ -447,7 +458,12 @@ where
                         }
                     }
                     if !found {
-                        writeln!(self.context, "Command {:?} not found. Try 'help'.", cmd).unwrap();
+                        writeln!(
+                            self.context,
+                            "Command {:?} not found. Try 'help'.",
+                            cmd
+                        )
+                        .unwrap();
                     }
                 }
             } else {
@@ -468,10 +484,12 @@ where
                     for param in parameters.iter() {
                         match param {
                             Parameter::Mandatory { parameter_name, .. } => {
-                                write!(self.context, " <{}>", parameter_name).unwrap();
+                                write!(self.context, " <{}>", parameter_name)
+                                    .unwrap();
                             }
                             Parameter::Optional { parameter_name, .. } => {
-                                write!(self.context, " [ <{}> ]", parameter_name).unwrap();
+                                write!(self.context, " [ <{}> ]", parameter_name)
+                                    .unwrap();
                             }
                             Parameter::Named { .. } => {
                                 has_options = true;
@@ -505,21 +523,28 @@ where
                     for param in parameters.iter() {
                         match param {
                             Parameter::Mandatory { parameter_name, .. } => {
-                                write!(self.context, " <{}>", parameter_name).unwrap();
+                                write!(self.context, " <{}>", parameter_name)
+                                    .unwrap();
                             }
                             Parameter::Optional { parameter_name, .. } => {
-                                write!(self.context, " [ <{}> ]", parameter_name).unwrap();
+                                write!(self.context, " [ <{}> ]", parameter_name)
+                                    .unwrap();
                             }
                             Parameter::Named { parameter_name, .. } => {
-                                write!(self.context, " [ --{} ]", parameter_name).unwrap();
+                                write!(self.context, " [ --{} ]", parameter_name)
+                                    .unwrap();
                             }
                             Parameter::NamedValue {
                                 parameter_name,
                                 argument_name,
                                 ..
                             } => {
-                                write!(self.context, " [ --{}={} ]", parameter_name, argument_name)
-                                    .unwrap();
+                                write!(
+                                    self.context,
+                                    " [ --{}={} ]",
+                                    parameter_name, argument_name
+                                )
+                                .unwrap();
                             }
                         }
                     }
@@ -527,10 +552,7 @@ where
                     let default_help = "Undocumented option";
                     for param in parameters.iter() {
                         match param {
-                            Parameter::Mandatory {
-                                parameter_name,
-                                help,
-                            } => {
+                            Parameter::Mandatory { parameter_name, help } => {
                                 writeln!(
                                     self.context,
                                     "  <{0}>\n    {1}\n",
@@ -539,10 +561,7 @@ where
                                 )
                                 .unwrap();
                             }
-                            Parameter::Optional {
-                                parameter_name,
-                                help,
-                            } => {
+                            Parameter::Optional { parameter_name, help } => {
                                 writeln!(
                                     self.context,
                                     "  <{0}>\n    {1}\n",
@@ -551,10 +570,7 @@ where
                                 )
                                 .unwrap();
                             }
-                            Parameter::Named {
-                                parameter_name,
-                                help,
-                            } => {
+                            Parameter::Named { parameter_name, help } => {
                                 writeln!(
                                     self.context,
                                     "  --{0}\n    {1}\n",
@@ -639,7 +655,9 @@ where
                             }
                             Parameter::NamedValue { parameter_name, .. } => {
                                 if arg.contains('=') {
-                                    if let Some(given_name) = arg[2..].split('=').next() {
+                                    if let Some(given_name) =
+                                        arg[2..].split('=').next()
+                                    {
                                         if given_name == *parameter_name {
                                             found = true;
                                             break;
@@ -653,7 +671,8 @@ where
                         }
                     }
                     if !found {
-                        writeln!(context, "Error: Did not understand {:?}", arg).unwrap();
+                        writeln!(context, "Error: Did not understand {:?}", arg)
+                            .unwrap();
                         return;
                     }
                 } else {
@@ -711,18 +730,9 @@ mod tests {
                 ],
             },
         };
-        assert_eq!(
-            argument_finder(&item, &["a", "b", "c"], "foo"),
-            Ok(Some("a"))
-        );
-        assert_eq!(
-            argument_finder(&item, &["a", "b", "c"], "bar"),
-            Ok(Some("b"))
-        );
-        assert_eq!(
-            argument_finder(&item, &["a", "b", "c"], "baz"),
-            Ok(Some("c"))
-        );
+        assert_eq!(argument_finder(&item, &["a", "b", "c"], "foo"), Ok(Some("a")));
+        assert_eq!(argument_finder(&item, &["a", "b", "c"], "bar"), Ok(Some("b")));
+        assert_eq!(argument_finder(&item, &["a", "b", "c"], "baz"), Ok(Some("c")));
         // Not an argument
         assert_eq!(argument_finder(&item, &["a", "b", "c"], "quux"), Err(()));
     }
@@ -750,18 +760,9 @@ mod tests {
                 ],
             },
         };
-        assert_eq!(
-            argument_finder(&item, &["a", "b", "c"], "foo"),
-            Ok(Some("a"))
-        );
-        assert_eq!(
-            argument_finder(&item, &["a", "b", "c"], "bar"),
-            Ok(Some("b"))
-        );
-        assert_eq!(
-            argument_finder(&item, &["a", "b", "c"], "baz"),
-            Ok(Some("c"))
-        );
+        assert_eq!(argument_finder(&item, &["a", "b", "c"], "foo"), Ok(Some("a")));
+        assert_eq!(argument_finder(&item, &["a", "b", "c"], "bar"), Ok(Some("b")));
+        assert_eq!(argument_finder(&item, &["a", "b", "c"], "baz"), Ok(Some("c")));
         // Not an argument
         assert_eq!(argument_finder(&item, &["a", "b", "c"], "quux"), Err(()));
         // Missing optional

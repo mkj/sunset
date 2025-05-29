@@ -1,11 +1,11 @@
 #[allow(unused_imports)]
+use anyhow::{anyhow, bail, Context, Result};
+use argh::FromArgs;
+#[allow(unused_imports)]
 use {
     // crate::error::Error,
     log::{debug, error, info, log, trace, warn},
 };
-#[allow(unused_imports)]
-use anyhow::{Context, Result, anyhow, bail};
-use argh::FromArgs;
 
 use tokio::net::TcpStream;
 
@@ -14,7 +14,7 @@ use std::io::Read;
 use sunset::*;
 use sunset_embassy::SSHClient;
 
-use sunset_async::{CmdlineClient, AgentClient};
+use sunset_async::{AgentClient, CmdlineClient};
 
 use embedded_io_adapters::tokio_1::FromTokio;
 
@@ -33,8 +33,7 @@ async fn real_main(tz: UtcOffset) -> Result<()> {
 fn main() {
     // Crates won't let us read from environment variables once
     // threading starts, so do it before tokio main.
-    let tz = UtcOffset::current_local_offset()
-    .unwrap_or(UtcOffset::UTC);
+    let tz = UtcOffset::current_local_offset().unwrap_or(UtcOffset::UTC);
 
     if let Err(e) = real_main(tz) {
         error!("Exit with error: {e}");
@@ -42,7 +41,6 @@ fn main() {
 }
 
 async fn run(args: Args) -> Result<i32> {
-
     trace!("tracing sunsetc. args {:?}", args);
     debug!("verbose sunsetc");
 
@@ -76,10 +74,8 @@ async fn run(args: Args) -> Result<i32> {
         let ssh = SSHClient::new(&mut rxbuf, &mut txbuf)?;
 
         // CmdlineClient implements the session logic for a commandline SSH client.
-        let mut app = CmdlineClient::new(
-            args.username.as_ref().unwrap(),
-            &args.host,
-        );
+        let mut app =
+            CmdlineClient::new(args.username.as_ref().unwrap(), &args.host);
 
         app.port(args.port);
 
@@ -93,7 +89,9 @@ async fn run(args: Args) -> Result<i32> {
             app.subsystem(&c);
         }
         for i in &args.identityfile {
-            app.add_authkey(read_key(&i).with_context(|| format!("loading key {i}"))?);
+            app.add_authkey(
+                read_key(&i).with_context(|| format!("loading key {i}"))?,
+            );
         }
 
         let agent = load_agent_keys(&mut app).await;
@@ -131,7 +129,7 @@ async fn run(args: Args) -> Result<i32> {
 /** Sunset SSH Client
  */
 struct Args {
-    #[argh(switch, short='v')]
+    #[argh(switch, short = 'v')]
     /// verbose debug logging
     debug: bool,
 
@@ -139,7 +137,7 @@ struct Args {
     /// more verbose
     trace: bool,
 
-    #[argh(option, short='i')]
+    #[argh(option, short = 'i')]
     /// a path to id_ed25519 or similar
     identityfile: Vec<String>,
 
@@ -147,7 +145,7 @@ struct Args {
     /// log to a file
     tracefile: Option<String>,
 
-    #[argh(option, short='l')]
+    #[argh(option, short = 'l')]
     /// username
     username: Option<String>,
 
@@ -155,15 +153,15 @@ struct Args {
     /// host
     host: String,
 
-    #[argh(option, short='p', default="22")]
+    #[argh(option, short = 'p', default = "22")]
     /// port
     port: u16,
 
-    #[argh(switch, short='T')]
+    #[argh(switch, short = 'T')]
     /// force no pty
     force_no_pty: bool,
 
-    #[argh(option, short='s')]
+    #[argh(option, short = 's')]
     /// ssh subsystem (eg "sftp")
     subsystem: Option<String>,
 
@@ -172,24 +170,23 @@ struct Args {
     cmd: Vec<String>,
 
     // options for compatibility with sshfs, are ignored
-
     #[allow(unused)]
-    #[argh(switch, short='x', hidden_help)]
+    #[argh(switch, short = 'x', hidden_help)]
     /// no X11
     no_x11: bool,
 
     #[allow(unused)]
-    #[argh(switch, short='a', hidden_help)]
+    #[argh(switch, short = 'a', hidden_help)]
     /// no agent forwarding
     no_agent: bool,
 
     #[allow(unused)]
-    #[argh(switch, short='2', hidden_help)]
+    #[argh(switch, short = '2', hidden_help)]
     /// ssh version 2
     version_2: bool,
 
     // openssh support -oThereWasNoSpace, so we preprocess that.
-    #[argh(option, short='o')]
+    #[argh(option, short = 'o')]
     /// extra options
     option: Vec<String>,
 }
@@ -214,10 +211,10 @@ fn parse_args(tz: UtcOffset) -> Result<Args> {
     let mangled_args: Vec<&str> = mangled_args.iter().map(|i| i.as_str()).collect();
 
     let mut args = Args::from_args(&[cmd.as_str()], mangled_args.as_slice())
-    .unwrap_or_else(|e| {
-        println!("{}", e.output);
-        std::process::exit(1)
-    });
+        .unwrap_or_else(|e| {
+            println!("{}", e.output);
+            std::process::exit(1)
+        });
 
     setup_log(&args, tz)?;
 
@@ -242,14 +239,14 @@ fn parse_args(tz: UtcOffset) -> Result<Args> {
 fn setup_log(args: &Args, tz: UtcOffset) -> Result<()> {
     let mut conf = simplelog::ConfigBuilder::new();
     let conf = conf
-    .add_filter_allow_str("sunset")
-    .add_filter_allow_str("sshclient")
-    // not debugging these bits of the stack at present
-    // .add_filter_ignore_str("sunset::traffic")
-    .add_filter_ignore_str("sunset::runner")
-    // .add_filter_ignore_str("sunset_embassy")
-    .set_time_offset(tz)
-    .build();
+        .add_filter_allow_str("sunset")
+        .add_filter_allow_str("sshclient")
+        // not debugging these bits of the stack at present
+        // .add_filter_ignore_str("sunset::traffic")
+        .add_filter_ignore_str("sunset::runner")
+        // .add_filter_ignore_str("sunset_embassy")
+        .set_time_offset(tz)
+        .build();
 
     let level = if args.trace {
         LevelFilter::Trace
@@ -259,12 +256,16 @@ fn setup_log(args: &Args, tz: UtcOffset) -> Result<()> {
         LevelFilter::Warn
     };
 
-    let mut logs: Vec<Box<dyn SharedLogger>> = vec![
-        TermLogger::new(level, conf.clone(), TerminalMode::Stderr, ColorChoice::Auto),
-    ];
+    let mut logs: Vec<Box<dyn SharedLogger>> = vec![TermLogger::new(
+        level,
+        conf.clone(),
+        TerminalMode::Stderr,
+        ColorChoice::Auto,
+    )];
 
     if let Some(tf) = args.tracefile.as_ref() {
-        let w = std::fs::File::create(tf).with_context(|| format!("Error opening {tf}"))?;
+        let w = std::fs::File::create(tf)
+            .with_context(|| format!("Error opening {tf}"))?;
         logs.push(WriteLogger::new(LevelFilter::Trace, conf, w));
     }
 
@@ -281,13 +282,13 @@ fn read_key(p: &str) -> Result<SignKey> {
 async fn load_agent_keys(app: &mut CmdlineClient) -> Option<AgentClient> {
     let e = match std::env::var("SSH_AUTH_SOCK") {
         Ok(e) => e,
-        _ => return None
+        _ => return None,
     };
     let mut agent = match AgentClient::new(e).await {
         Ok(a) => a,
         Err(e) => {
             warn!("Error opening agent: {e}");
-            return None
+            return None;
         }
     };
 
@@ -295,7 +296,7 @@ async fn load_agent_keys(app: &mut CmdlineClient) -> Option<AgentClient> {
         Ok(k) => k,
         Err(e) => {
             warn!("Error fetching agent keys: {e}");
-            return None
+            return None;
         }
     };
     trace!("Loaded {} agent keys", keys.len());
@@ -304,4 +305,3 @@ async fn load_agent_keys(app: &mut CmdlineClient) -> Option<AgentClient> {
     }
     Some(agent)
 }
-

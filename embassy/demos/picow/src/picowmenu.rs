@@ -4,17 +4,17 @@
 #[allow(unused_imports)]
 pub use log::{debug, error, info, log, trace, warn};
 
-use core::fmt::{Write as _, Debug, Display};
+use core::fmt::{Debug, Display, Write as _};
 use core::future::{poll_fn, Future};
-use core::ops::{DerefMut, ControlFlow};
-use core::sync::atomic::Ordering::{Relaxed, SeqCst};
+use core::ops::{ControlFlow, DerefMut};
 use core::str::FromStr;
+use core::sync::atomic::Ordering::{Relaxed, SeqCst};
 
-use embedded_io_async::{Write as AsyncWrite, Read as AsyncRead, ErrorType};
+use embedded_io_async::{ErrorType, Read as AsyncRead, Write as AsyncWrite};
 
+use embassy_net::{Ipv4Address, Ipv4Cidr};
 use embassy_sync::waitqueue::MultiWakerRegistration;
 use embassy_time::Duration;
-use embassy_net::{Ipv4Cidr, Ipv4Address};
 
 use heapless::{String, Vec};
 
@@ -723,8 +723,11 @@ struct Mac([u8; 6]);
 
 impl Display for Mac {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
-            self.0[0], self.0[1], self.0[2], self.0[3], self.0[4], self.0[5])
+        write!(
+            f,
+            "{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
+            self.0[0], self.0[1], self.0[2], self.0[3], self.0[4], self.0[5]
+        )
     }
 }
 

@@ -5,7 +5,7 @@ use sunset::*;
 use crate::*;
 use embassy_sunset::{EmbassySunset, ProgressHolder};
 
-/// An async SSH server instance 
+/// An async SSH server instance
 ///
 /// The [`run()`][Self::run] method runs the session to completion. [`progress()`][Self::progress]
 /// must be polled, and responses given to the events provided.
@@ -20,8 +20,7 @@ pub struct SSHServer<'a> {
 
 impl<'a> SSHServer<'a> {
     // May return an error if RNG fails
-    pub fn new(inbuf: &'a mut [u8], outbuf: &'a mut [u8],
-        ) -> Result<Self> {
+    pub fn new(inbuf: &'a mut [u8], outbuf: &'a mut [u8]) -> Result<Self> {
         let runner = Runner::new_server(inbuf, outbuf)?;
         let sunset = EmbassySunset::new(runner);
         Ok(Self { sunset })
@@ -30,7 +29,11 @@ impl<'a> SSHServer<'a> {
     /// Runs the session to completion.
     ///
     /// `rsock` and `wsock` are the SSH network channel (TCP port 22 or equivalent).
-    pub async fn run(&'a self, rsock: &mut impl Read, wsock: &mut impl Write) -> Result<()> {
+    pub async fn run(
+        &'a self,
+        rsock: &mut impl Read,
+        wsock: &mut impl Write,
+    ) -> Result<()> {
         self.sunset.run(rsock, wsock).await
     }
 
@@ -38,9 +41,10 @@ impl<'a> SSHServer<'a> {
     ///
     /// Note that the returned `ProgressHolder` holds a mutex over the session,
     /// so other calls to `SSHServer` may block until it is dropped.
-    pub async fn progress<'g, 'f>(&'g self, ph: &'f mut ProgressHolder<'g, 'a>)
-        -> Result<ServEvent<'f, 'a>> {
-
+    pub async fn progress<'g, 'f>(
+        &'g self,
+        ph: &'f mut ProgressHolder<'g, 'a>,
+    ) -> Result<ServEvent<'f, 'a>> {
         // poll until we get an actual event to return
         match self.sunset.progress(ph).await? {
             Event::Serv(x) => return Ok(x),
@@ -66,8 +70,10 @@ impl<'a> SSHServer<'a> {
     /// the returned stderr.
     /// The session will block until the streams are drained (they use the session buffer),
     /// so they must be drained if used.
-    pub async fn stdio_stderr(&self, ch: ChanHandle)
-        -> Result<(ChanInOut<'_, 'a>, ChanOut<'_, 'a>)> {
+    pub async fn stdio_stderr(
+        &self,
+        ch: ChanHandle,
+    ) -> Result<(ChanInOut<'_, 'a>, ChanOut<'_, 'a>)> {
         let num = ch.num();
         self.sunset.add_channel(ch, 2).await?;
         let i = ChanInOut::new(num, ChanData::Normal, &self.sunset);

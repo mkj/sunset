@@ -2,23 +2,28 @@
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
 
+use embassy_futures::select::{select, Either};
 use embassy_net::tcp::TcpSocket;
 use embassy_net::Stack;
-use embassy_futures::select::{select, Either};
 
 use embedded_io_async::Write;
 
 use heapless::String;
 
-use sunset::{event::{ServFirstAuth, ServOpenSession, ServPasswordAuth, ServPubkeyAuth}, *};
+use sunset::{
+    event::{ServFirstAuth, ServOpenSession, ServPasswordAuth, ServPubkeyAuth},
+    *,
+};
 use sunset_embassy::{SSHServer, SunsetMutex};
 
 use crate::SSHConfig;
 
 // common entry point
-pub async fn listener<S: DemoServer>(stack: Stack<'_>,
+pub async fn listener<S: DemoServer>(
+    stack: Stack<'_>,
     config: &SunsetMutex<SSHConfig>,
-    init: S::Init) -> ! {
+    init: S::Init,
+) -> ! {
     // TODO: buffer size?
     // Does it help to be larger than ethernet MTU?
     // Should TX and RX be symmetrical? Or larger TX might fill ethernet
@@ -30,7 +35,6 @@ pub async fn listener<S: DemoServer>(stack: Stack<'_>,
     let mut socket = TcpSocket::new(stack, &mut rx_tcp, &mut tx_tcp);
     // socket.set_nagle_enabled(false);
     loop {
-
         info!("Listening on TCP:22...");
         if let Err(_) = socket.accept(22).await {
             warn!("accept error");
@@ -51,8 +55,11 @@ pub async fn listener<S: DemoServer>(stack: Stack<'_>,
 }
 
 /// Run a SSH session when a socket accepts a connection
-async fn session<S: DemoServer>(socket: &mut TcpSocket<'_>, config: &SunsetMutex<SSHConfig>,
-    init: &S::Init) -> sunset::Result<()> {
+async fn session<S: DemoServer>(
+    socket: &mut TcpSocket<'_>,
+    config: &SunsetMutex<SSHConfig>,
+    init: &S::Init,
+) -> sunset::Result<()> {
     // OK unwrap: has been accepted
     let src = socket.remote_endpoint().unwrap();
     info!("Connection from {}:{}", src.addr, src.port);
@@ -98,12 +105,7 @@ impl ServerApp {
     const ADMIN_USER: &'static str = "config";
 
     fn new(config: SSHConfig) -> Result<Self> {
-
-        Ok(Self {
-            sess: None,
-            opened: false,
-            config,
-        })
+        Ok(Self { sess: None, opened: false, config })
     }
 
     // Handles most events except for shell and Defunct
@@ -111,26 +113,13 @@ impl ServerApp {
         trace!("ev {event:?}");
         match event {
             ServEvent::Hostkeys(h) => h.hostkeys(&[&self.config.hostkey]),
-            ServEvent::FirstAuth(a) => {
-                self.handle_firstauth(a)
-            }
-            ServEvent::PasswordAuth(a) => {
-                self.handle_password(a)
-            }
-            | ServEvent::PubkeyAuth(a) => {
-                self.handle_pubkey(a)
-            }
-            ServEvent::OpenSession(a) => {
-                self.open_session(a)
-            }
-            ServEvent::SessionPty(a) => {
-                a.succeed()
-            }
-            ServEvent::SessionExec(a) => {
-                a.fail()
-            }
-            | ServEvent::Defunct
-            | ServEvent::SessionShell(_) => {
+            ServEvent::FirstAuth(a) => self.handle_firstauth(a),
+            ServEvent::PasswordAuth(a) => self.handle_password(a),
+            ServEvent::PubkeyAuth(a) => self.handle_pubkey(a),
+            ServEvent::OpenSession(a) => self.open_session(a),
+            ServEvent::SessionPty(a) => a.succeed(),
+            ServEvent::SessionExec(a) => a.fail(),
+            ServEvent::Defunct | ServEvent::SessionShell(_) => {
                 error!("Expected caller to handle {event:?}");
                 error::BadUsage.fail()
             }
@@ -172,7 +161,7 @@ impl ServerApp {
         let username = a.username()?;
         if !self.is_admin(username) && self.config.console_noauth {
             info!("Allowing auth for user {username}");
-            return a.allow()
+            return a.allow();
         };
 
         // a.pubkey().password()
@@ -206,7 +195,6 @@ pub trait DemoServer {
     async fn run(&self, serv: &SSHServer<'_>, common: ServerApp) -> Result<()>;
 }
 
-
 /// A wrapper writing `Menu` output into a buffer that can be later written
 /// asynchronously to a channel.
 #[derive(Default)]
@@ -219,7 +207,8 @@ pub struct BufOutput {
 
 impl BufOutput {
     pub async fn flush<W>(&mut self, w: &mut W) -> Result<()>
-    where W: Write<Error = sunset::Error>
+    where
+        W: Write<Error = sunset::Error>,
     {
         let mut b = self.s.as_str().as_bytes();
         while b.len() > 0 {
@@ -250,4 +239,3 @@ impl core::fmt::Write for BufOutput {
         Ok(())
     }
 }
-

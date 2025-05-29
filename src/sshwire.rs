@@ -11,9 +11,9 @@ use {
     log::{debug, error, info, log, trace, warn},
 };
 
-use core::str::FromStr;
 use core::convert::AsRef;
-use core::fmt::{self,Debug,Display};
+use core::fmt::{self, Debug, Display};
+use core::str::FromStr;
 use digest::Output;
 use pretty_hex::PrettyHex;
 use snafu::{prelude::*, Location};
@@ -59,13 +59,17 @@ pub trait SSHDecode<'de>: Sized {
     ///
     /// The state of the `SSHSource` is undefined after an error is returned, data may
     /// have been partially consumed.
-    fn dec<S>(s: &mut S) -> WireResult<Self> where S: SSHSource<'de>;
+    fn dec<S>(s: &mut S) -> WireResult<Self>
+    where
+        S: SSHSource<'de>;
 }
 
 /// Decodes enums with an externally provided name
 pub trait SSHDecodeEnum<'de>: Sized {
     /// `var` is the variant name to decode, as raw bytes off the wire.
-    fn dec_enum<S>(s: &mut S, var: &'de [u8]) -> WireResult<Self> where S: SSHSource<'de>;
+    fn dec_enum<S>(s: &mut S, var: &'de [u8]) -> WireResult<Self>
+    where
+        S: SSHSource<'de>;
 }
 
 /// A subset of [`Error`] for `SSHEncode` and `SSHDecode`.
@@ -115,7 +119,7 @@ pub type WireResult<T> = core::result::Result<T, WireError>;
 
 /// Parses a [`Packet`] from a borrowed `&[u8]` byte buffer.
 pub fn packet_from_bytes<'a>(b: &'a [u8], ctx: &ParseContext) -> Result<Packet<'a>> {
-    let ctx = ParseContext { seen_unknown: false, .. ctx.clone()};
+    let ctx = ParseContext { seen_unknown: false, ..ctx.clone() };
     let mut s = DecodeBytes { input: b, parse_ctx: ctx };
     let p = Packet::dec(&mut s)?;
 
@@ -128,7 +132,10 @@ pub fn packet_from_bytes<'a>(b: &'a [u8], ctx: &ParseContext) -> Result<Packet<'
     }
 }
 
-pub fn read_ssh<'a, T: SSHDecode<'a>>(b: &'a [u8], ctx: Option<ParseContext>) -> Result<T> {
+pub fn read_ssh<'a, T: SSHDecode<'a>>(
+    b: &'a [u8],
+    ctx: Option<ParseContext>,
+) -> Result<T> {
     let mut s = DecodeBytes { input: b, parse_ctx: ctx.unwrap_or_default() };
     Ok(T::dec(&mut s)?)
 }
@@ -151,9 +158,10 @@ pub fn write_ssh_vec(value: &dyn SSHEncode) -> Result<Vec<u8>> {
 }
 
 /// Hashes the SSH wire format representation of `value`, with a `u32` length prefix.
-pub fn hash_ser_length(hash_ctx: &mut impl SSHWireDigestUpdate,
-    value: &dyn SSHEncode) -> Result<()>
-{
+pub fn hash_ser_length(
+    hash_ctx: &mut impl SSHWireDigestUpdate,
+    value: &dyn SSHEncode,
+) -> Result<()> {
     let len: u32 = length_enc(value)?;
     hash_ctx.digest_update(&len.to_be_bytes());
     hash_ser(hash_ctx, value)
@@ -162,18 +170,17 @@ pub fn hash_ser_length(hash_ctx: &mut impl SSHWireDigestUpdate,
 /// Hashes the SSH wire format representation of `value`
 ///
 /// Will only fail if `value.enc()` can return an error.
-pub fn hash_ser(hash_ctx: &mut impl SSHWireDigestUpdate,
+pub fn hash_ser(
+    hash_ctx: &mut impl SSHWireDigestUpdate,
     value: &dyn SSHEncode,
-    ) -> Result<()>
-{
+) -> Result<()> {
     let mut s = EncodeHash { hash_ctx };
     value.enc(&mut s)?;
     Ok(())
 }
 
 /// Returns `WireError::NoRoom` if larger than `u32`
-fn length_enc(value: &dyn SSHEncode) -> WireResult<u32>
-{
+fn length_enc(value: &dyn SSHEncode) -> WireResult<u32> {
     let mut s = EncodeLen { pos: 0 };
     value.enc(&mut s)?;
     s.pos.try_into().map_err(|_| WireError::NoRoom)
@@ -260,7 +267,7 @@ pub fn hash_mpint(hash_ctx: &mut dyn SSHWireDigestUpdate, m: &[u8]) {
 /// A SSH style binary string. Serialized as `u32` length followed by the bytes
 /// of the slice.
 /// Application API
-#[derive(Clone,PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct BinString<'a>(pub &'a [u8]);
 
 impl AsRef<[u8]> for BinString<'_> {
@@ -284,7 +291,9 @@ impl SSHEncode for BinString<'_> {
 
 impl<'de> SSHDecode<'de> for BinString<'de> {
     fn dec<S>(s: &mut S) -> WireResult<Self>
-    where S: sshwire::SSHSource<'de> {
+    where
+        S: sshwire::SSHSource<'de>,
+    {
         let len = u32::dec(s)? as usize;
         Ok(BinString(s.take(len)?))
     }
@@ -309,7 +318,7 @@ impl<const N: usize> SSHEncode for heapless::String<N> {
 /// example `"publickey"`, `"ssh-ed25519"`.
 ///
 /// Application API
-#[derive(Clone,PartialEq,Copy,Default)]
+#[derive(Clone, PartialEq, Copy, Default)]
 pub struct TextString<'a>(pub &'a [u8]);
 
 impl<'a> TextString<'a> {
@@ -369,7 +378,9 @@ impl SSHEncode for TextString<'_> {
 
 impl<'de> SSHDecode<'de> for TextString<'de> {
     fn dec<S>(s: &mut S) -> WireResult<Self>
-    where S: sshwire::SSHSource<'de> {
+    where
+        S: sshwire::SSHSource<'de>,
+    {
         let len = u32::dec(s)? as usize;
         Ok(TextString(s.take(len)?))
     }
@@ -411,7 +422,9 @@ impl<B: SSHEncode> SSHEncode for Blob<B> {
 
 impl<'de, B: SSHDecode<'de>> SSHDecode<'de> for Blob<B> {
     fn dec<S>(s: &mut S) -> WireResult<Self>
-    where S: sshwire::SSHSource<'de> {
+    where
+        S: sshwire::SSHSource<'de>,
+    {
         let len = u32::dec(s)? as usize;
         let rem1 = s.remaining();
         let inner = SSHDecode::dec(s)?;
@@ -426,10 +439,15 @@ impl<'de, B: SSHDecode<'de>> SSHDecode<'de> for Blob<B> {
                 let extra = len.checked_sub(used_len).ok_or(WireError::SSHProto)?;
                 s.take(extra)?;
             } else {
-                trace!("SSH blob length differs. \
+                trace!(
+                    "SSH blob length differs. \
                     Expected {} bytes, got {} remaining {}, {}",
-                    len, used_len, rem1, rem2);
-                return Err(WireError::SSHProto)
+                    len,
+                    used_len,
+                    rem1,
+                    rem2
+                );
+                return Err(WireError::SSHProto);
             }
         }
         Ok(Blob(inner))
@@ -489,7 +507,7 @@ impl<T: SSHEncode> SSHEncode for Option<T> {
     }
 }
 
-impl SSHEncode for &AsciiStr{
+impl SSHEncode for &AsciiStr {
     fn enc(&self, s: &mut dyn SSHSink) -> WireResult<()> {
         let v = self.as_bytes();
         BinString(v).enc(s)
@@ -498,14 +516,18 @@ impl SSHEncode for &AsciiStr{
 
 impl<'de> SSHDecode<'de> for bool {
     fn dec<S>(s: &mut S) -> WireResult<Self>
-    where S: SSHSource<'de> {
+    where
+        S: SSHSource<'de>,
+    {
         Ok(u8::dec(s)? != 0)
     }
 }
 
 impl<'de> SSHDecode<'de> for u8 {
     fn dec<S>(s: &mut S) -> WireResult<Self>
-    where S: SSHSource<'de> {
+    where
+        S: SSHSource<'de>,
+    {
         let t = s.take(core::mem::size_of::<u8>())?;
         Ok(u8::from_be_bytes(t.try_into().unwrap()))
     }
@@ -513,7 +535,9 @@ impl<'de> SSHDecode<'de> for u8 {
 
 impl<'de> SSHDecode<'de> for u32 {
     fn dec<S>(s: &mut S) -> WireResult<Self>
-    where S: SSHSource<'de> {
+    where
+        S: SSHSource<'de>,
+    {
         let t = s.take(core::mem::size_of::<u32>())?;
         Ok(u32::from_be_bytes(t.try_into().unwrap()))
     }
@@ -535,7 +559,9 @@ pub fn try_as_ascii_str(t: &[u8]) -> WireResult<&str> {
 
 impl<'de: 'a, 'a> SSHDecode<'de> for &'a str {
     fn dec<S>(s: &mut S) -> WireResult<Self>
-    where S: SSHSource<'de> {
+    where
+        S: SSHSource<'de>,
+    {
         let len = u32::dec(s)?;
         let t = s.take(len as usize)?;
         try_as_ascii_str(t)
@@ -545,7 +571,8 @@ impl<'de: 'a, 'a> SSHDecode<'de> for &'a str {
 impl<'de: 'a, 'a> SSHDecode<'de> for &'de AsciiStr {
     fn dec<S>(s: &mut S) -> WireResult<&'de AsciiStr>
     where
-        S: SSHSource<'de>, {
+        S: SSHSource<'de>,
+    {
         let b: BinString = SSHDecode::dec(s)?;
         try_as_ascii(b.0)
     }
@@ -553,7 +580,9 @@ impl<'de: 'a, 'a> SSHDecode<'de> for &'de AsciiStr {
 
 impl<'de, const N: usize> SSHDecode<'de> for &'de [u8; N] {
     fn dec<S>(s: &mut S) -> WireResult<Self>
-    where S: SSHSource<'de> {
+    where
+        S: SSHSource<'de>,
+    {
         // OK unwrap: take() fails if the length is short
         Ok(s.take(N)?.try_into().unwrap())
     }
@@ -561,7 +590,9 @@ impl<'de, const N: usize> SSHDecode<'de> for &'de [u8; N] {
 
 impl<'de, const N: usize> SSHDecode<'de> for [u8; N] {
     fn dec<S>(s: &mut S) -> WireResult<Self>
-    where S: SSHSource<'de> {
+    where
+        S: SSHSource<'de>,
+    {
         // OK unwrap: take() fails if the length is short
         Ok(s.take(N)?.try_into().unwrap())
     }
@@ -569,9 +600,10 @@ impl<'de, const N: usize> SSHDecode<'de> for [u8; N] {
 
 impl<'de, const N: usize> SSHDecode<'de> for heapless::String<N> {
     fn dec<S>(s: &mut S) -> WireResult<Self>
-    where S: SSHSource<'de> {
-        heapless::String::from_str(SSHDecode::dec(s)?)
-        .map_err(|_| WireError::NoRoom)
+    where
+        S: SSHSource<'de>,
+    {
+        heapless::String::from_str(SSHDecode::dec(s)?).map_err(|_| WireError::NoRoom)
     }
 }
 
@@ -621,11 +653,13 @@ impl SSHEncode for rsa::BigUint {
 #[cfg(feature = "rsa")]
 impl<'de> SSHDecode<'de> for rsa::BigUint {
     fn dec<S>(s: &mut S) -> WireResult<Self>
-    where S: SSHSource<'de> {
+    where
+        S: SSHSource<'de>,
+    {
         let b = BinString::dec(s)?;
         if top_bit_set(b.0) {
             trace!("received negative mpint");
-            return Err(WireError::BadKeyFormat)
+            return Err(WireError::BadKeyFormat);
         }
         Ok(rsa::BigUint::from_bytes_be(b.0))
     }
@@ -647,7 +681,10 @@ impl<T: SSHEncode> SSHEncode for OwnOrBorrow<'_, T> {
 }
 
 impl<'de, T: SSHDecode<'de>> SSHDecode<'de> for OwnOrBorrow<'_, T> {
-    fn dec<S>(s: &mut S) -> WireResult<Self> where S: SSHSource<'de> {
+    fn dec<S>(s: &mut S) -> WireResult<Self>
+    where
+        S: SSHSource<'de>,
+    {
         Ok(Self::Own(T::dec(s)?))
     }
 }
@@ -661,15 +698,14 @@ impl<'a, T> core::borrow::Borrow<T> for OwnOrBorrow<'a, T> {
     }
 }
 
-
 #[cfg(test)]
 pub(crate) mod tests {
     use crate::*;
-    use sunsetlog::init_test_log;
     use error::Error;
     use packets::*;
-    use sshwire::*;
     use pretty_hex::PrettyHex;
+    use sshwire::*;
+    use sunsetlog::init_test_log;
 
     /// Checks that two items serialize the same
     pub fn assert_serialize_equal<'de, T: SSHEncode>(p1: &T, p2: &T) {
@@ -685,8 +721,8 @@ pub(crate) mod tests {
     #[test]
     /// check that hash_ser_length() matches hashing a serialized message
     fn test_hash_packet() {
-        use sha2::Sha256;
         use digest::Digest;
+        use sha2::Sha256;
         let input = "hello";
         let mut buf = vec![99; 20];
         let w1 = write_ssh(&mut buf, &input).unwrap();
@@ -737,7 +773,8 @@ pub(crate) mod tests {
         let p = Userauth60::PwChangeReq(UserauthPwChangeReq {
             prompt: "change the password".into(),
             lang: "".into(),
-        }).into();
+        })
+        .into();
         ctx.cli_auth_type = Some(auth::AuthType::Password);
         test_roundtrip_context(&p, &ctx);
 
@@ -745,10 +782,9 @@ pub(crate) mod tests {
         // an enum but that can identify its own enum variant.
         let p = Userauth60::PkOk(UserauthPkOk {
             algo: "ed25519",
-            key: Blob(PubKey::Ed25519(Ed25519PubKey {
-                key: Blob([0x11; 32]),
-            })),
-        }).into();
+            key: Blob(PubKey::Ed25519(Ed25519PubKey { key: Blob([0x11; 32]) })),
+        })
+        .into();
         ctx.cli_auth_type = Some(auth::AuthType::PubKey);
         test_roundtrip_context(&p, &ctx);
     }
@@ -762,7 +798,7 @@ pub(crate) mod tests {
         let mut buf1 = vec![88; 1000];
         let l = write_ssh(&mut buf1, &p1).unwrap();
         // some leeway
-        buf1.truncate(l+5);
+        buf1.truncate(l + 5);
         // make the length one extra
         buf1[3] += 1;
         let r: Result<Blob<BinString>, _> = read_ssh(&buf1, None);
@@ -771,7 +807,7 @@ pub(crate) mod tests {
         let mut buf1 = vec![88; 1000];
         let l = write_ssh(&mut buf1, &p1).unwrap();
         // some leeway
-        buf1.truncate(l+5);
+        buf1.truncate(l + 5);
         // make the length one short
         buf1[3] -= 1;
         let r: Result<Blob<BinString>, _> = read_ssh(&buf1, None);
@@ -788,7 +824,7 @@ pub(crate) mod tests {
         let l = write_ssh(&mut buf1, &p1).unwrap();
 
         // too long
-        buf1.truncate(l+1);
+        buf1.truncate(l + 1);
         let r = packet_from_bytes(&buf1, &ctx);
         assert!(matches!(r.unwrap_err(), Error::WrongPacketLength));
 
@@ -797,10 +833,9 @@ pub(crate) mod tests {
         packet_from_bytes(&buf1, &ctx).unwrap();
 
         // short
-        buf1.truncate(l-1);
+        buf1.truncate(l - 1);
         let r = packet_from_bytes(&buf1, &ctx);
         assert!(matches!(r.unwrap_err(), Error::RanOut { .. }));
-
     }
 
     #[test]
@@ -811,6 +846,9 @@ pub(crate) mod tests {
         assert_eq!(write_ssh(&mut buf1, &"a").unwrap(), 5);
         assert_eq!(write_ssh(&mut buf1, &"aa").unwrap(), 6);
         assert_eq!(write_ssh(&mut buf1, &"aaa").unwrap(), 7);
-        assert!(matches!(write_ssh(&mut buf1, &"aaaa").unwrap_err(), Error::NoRoom { .. }));
+        assert!(matches!(
+            write_ssh(&mut buf1, &"aaaa").unwrap_err(),
+            Error::NoRoom { .. }
+        ));
     }
 }

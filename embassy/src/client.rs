@@ -1,12 +1,11 @@
-
 use embedded_io_async::{Read, Write};
 
-use sunset::{*};
+use sunset::*;
 
 use crate::*;
-use sunset::ChanData;
+use embassy_channel::{ChanIn, ChanInOut};
 use embassy_sunset::{EmbassySunset, ProgressHolder};
-use embassy_channel::{ChanInOut, ChanIn};
+use sunset::ChanData;
 
 /// An async SSH client instance
 ///
@@ -22,8 +21,7 @@ pub struct SSHClient<'a> {
 }
 
 impl<'a> SSHClient<'a> {
-    pub fn new(inbuf: &'a mut [u8], outbuf: &'a mut [u8],
-        ) -> Result<Self> {
+    pub fn new(inbuf: &'a mut [u8], outbuf: &'a mut [u8]) -> Result<Self> {
         let runner = Runner::new_client(inbuf, outbuf)?;
         let sunset = EmbassySunset::new(runner);
         Ok(Self { sunset })
@@ -32,7 +30,11 @@ impl<'a> SSHClient<'a> {
     /// Runs the session to completion.
     ///
     /// `rsock` and `wsock` are the SSH network channel (TCP port 22 or equivalent).
-    pub async fn run(&'a self, rsock: &mut impl Read, wsock: &mut impl Write) -> Result<()> {
+    pub async fn run(
+        &'a self,
+        rsock: &mut impl Read,
+        wsock: &mut impl Write,
+    ) -> Result<()> {
         self.sunset.run(rsock, wsock).await
     }
 
@@ -40,19 +42,21 @@ impl<'a> SSHClient<'a> {
     ///
     /// Note that the returned `ProgressHolder` holds a mutex over the session,
     /// so other calls to `SSHClient` may block until it is dropped.
-    pub async fn progress<'g, 'f>(&'g self, ph: &'f mut ProgressHolder<'g, 'a>)
-        -> Result<CliEvent<'f, 'a>> {
+    pub async fn progress<'g, 'f>(
+        &'g self,
+        ph: &'f mut ProgressHolder<'g, 'a>,
+    ) -> Result<CliEvent<'f, 'a>> {
         match self.sunset.progress(ph).await? {
             Event::Cli(x) => Ok(x),
             _ => Err(Error::bug()),
         }
     }
 
-    pub async fn open_session_nopty(&self)
-    -> Result<(ChanInOut<'_, 'a>, ChanIn<'_, 'a>)> {
-        let chan = self.sunset.with_runner(|runner| {
-            runner.open_client_session()
-        }).await?;
+    pub async fn open_session_nopty(
+        &self,
+    ) -> Result<(ChanInOut<'_, 'a>, ChanIn<'_, 'a>)> {
+        let chan =
+            self.sunset.with_runner(|runner| runner.open_client_session()).await?;
 
         let num = chan.num();
         self.sunset.add_channel(chan, 2).await?;
@@ -63,9 +67,8 @@ impl<'a> SSHClient<'a> {
     }
 
     pub async fn open_session_pty(&'a self) -> Result<ChanInOut<'a, 'a>> {
-        let chan = self.sunset.with_runner(|runner| {
-            runner.open_client_session()
-        }).await?;
+        let chan =
+            self.sunset.with_runner(|runner| runner.open_client_session()).await?;
 
         let num = chan.num();
         self.sunset.add_channel(chan, 1).await?;

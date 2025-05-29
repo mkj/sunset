@@ -6,11 +6,11 @@ use {
 
 use crate::sshnames::*;
 use crate::*;
-use packets::{AuthMethod, Userauth60, UserauthPkOk, Packet, UserauthRequest};
+use event::{CliEvent, ServEventId};
+use kex::SessId;
+use packets::{AuthMethod, Packet, Userauth60, UserauthPkOk, UserauthRequest};
 use sshwire::{BinString, Blob};
 use traffic::TrafSend;
-use kex::SessId;
-use event::{CliEvent, ServEventId};
 
 use heapless::{String, Vec};
 
@@ -26,7 +26,7 @@ pub(crate) struct ServAuth {
     tried_first: bool,
 
     /// Username previously used, as an array of bytes
-    pub username: Option<Vec<u8, {config::MAX_USERNAME}>>,
+    pub username: Option<Vec<u8, { config::MAX_USERNAME }>>,
 
     // TODO Add setters for methods in Runner/SSHServer creation.
     /// Whether to advertise password authentication and present it to the application
@@ -41,7 +41,7 @@ pub(crate) struct ServAuth {
 
 impl ServAuth {
     pub fn new() -> Self {
-        Self { 
+        Self {
             authed: false,
             tried_first: false,
             username: None,
@@ -65,7 +65,7 @@ impl ServAuth {
             // Compare with an existing username
             if prev != p.username.0 {
                 warn!("Client tried varying usernames");
-                return error::SSHProtoUnsupported.fail()
+                return error::SSHProtoUnsupported.fail();
             }
         } else {
             // Set new username and query app for auth methods
@@ -73,7 +73,7 @@ impl ServAuth {
                 Result::Ok(u) => self.username = Some(u),
                 Result::Err(_) => {
                     warn!("Client tried too long username");
-                    return error::SSHProtoUnsupported.fail()
+                    return error::SSHProtoUnsupported.fail();
                 }
             }
         }
@@ -86,10 +86,12 @@ impl ServAuth {
             AuthMethod::PubKey(_) if self.method_pubkey => {
                 self.request_pubkey(p, sess_id)?
             }
-            _ => if !self.tried_first {
-                DispatchEvent::ServEvent(ServEventId::FirstAuth)
-            } else {
-                DispatchEvent::None
+            _ => {
+                if !self.tried_first {
+                    DispatchEvent::ServEvent(ServEventId::FirstAuth)
+                } else {
+                    DispatchEvent::None
+                }
             }
         };
 
@@ -111,13 +113,16 @@ impl ServAuth {
         s.send(packets::UserauthFailure { methods, partial: false })
     }
 
-    fn request_pubkey(&mut self, mut p: packets::UserauthRequest,
-        sess_id: &SessId) -> Result<DispatchEvent> {
+    fn request_pubkey(
+        &mut self,
+        mut p: packets::UserauthRequest,
+        sess_id: &SessId,
+    ) -> Result<DispatchEvent> {
         // Extract the signature separately. The message for the signature
         // includes the auth packet without the signature part.
         let sig = match &mut p.method {
             AuthMethod::PubKey(m) => m.sig.take(),
-            _ => return Err(Error::bug())
+            _ => return Err(Error::bug()),
         };
 
         if let Some(ref sig) = sig {
@@ -126,7 +131,7 @@ impl ServAuth {
                 // Auth failure. OK to return early here since
                 // this doesn't rely on any particular username, no concerns
                 // about timing leaks.
-                return Ok(DispatchEvent::None)
+                return Ok(DispatchEvent::None);
             }
         }
 
@@ -144,10 +149,12 @@ impl ServAuth {
         }
     }
 
-    pub fn resume_pkok(&self, p: Packet, s: &mut TrafSend)
-    -> Result<()> {
-        if let Packet::UserauthRequest(
-            UserauthRequest { method: AuthMethod::PubKey(m), .. }) = p {
+    pub fn resume_pkok(&self, p: Packet, s: &mut TrafSend) -> Result<()> {
+        if let Packet::UserauthRequest(UserauthRequest {
+            method: AuthMethod::PubKey(m),
+            ..
+        }) = p
+        {
             s.send(Userauth60::PkOk(UserauthPkOk {
                 algo: m.sig_algo,
                 key: m.pubkey,
@@ -158,7 +165,12 @@ impl ServAuth {
     }
 
     /// Must be passed a MethodPubkey packet with a signature part None
-    fn verify_sig(&self, p: &packets::UserauthRequest, sig: &Signature, sess_id: &SessId) -> bool {
+    fn verify_sig(
+        &self,
+        p: &packets::UserauthRequest,
+        sig: &Signature,
+        sess_id: &SessId,
+    ) -> bool {
         // Remove the signature from the packet - the signature message includes
         // packet without that signature part.
 
@@ -171,20 +183,21 @@ impl ServAuth {
             AuthMethod::PubKey(m) => &m.pubkey.0,
             _ => {
                 debug_assert!(false, "Wrong method");
-                return false
+                return false;
             }
         };
 
         let msg = auth::AuthSigMsg::new(p.clone(), sess_id);
         match sig_type.verify(key, &msg, &sig) {
             Ok(()) => true,
-            Err(e) => { trace!("sig failed  {e}"); false},
+            Err(e) => {
+                trace!("sig failed  {e}");
+                false
+            }
         }
     }
 
-    fn avail_methods(
-        &self,
-    ) -> namelist::LocalNames {
+    fn avail_methods(&self) -> namelist::LocalNames {
         let mut l = namelist::LocalNames::new();
 
         // OK unwrap: buf is large enough

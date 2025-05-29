@@ -3,29 +3,29 @@ use futures::pin_mut;
 use log::{debug, error, info, log, trace, warn};
 use sunset::event::CliEvent;
 
-use core::str::FromStr;
 use core::fmt::Debug;
+use core::str::FromStr;
 
-use sunset::{AuthSigMsg, SignKey, OwnedSig, Pty, sshnames};
+use sunset::{sshnames, AuthSigMsg, OwnedSig, Pty, SignKey};
 use sunset::{Error, Result, Runner, SessionCommand};
 use sunset_embassy::*;
 
-use std::collections::VecDeque;
-use embassy_sync::channel::{Channel, Sender, Receiver};
+use embassy_sync::channel::{Channel, Receiver, Sender};
 use embassy_sync::signal::Signal;
 use embedded_io_async::{Read as _, Write as _};
+use std::collections::VecDeque;
 
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::signal::unix::{signal, SignalKind};
 
-use futures::{select_biased, future::Fuse};
 use futures::FutureExt;
+use futures::{future::Fuse, select_biased};
 
-use crate::*;
-use crate::AgentClient;
-use crate::{raw_pty, RawPtyGuard};
 use crate::pty::win_size;
+use crate::AgentClient;
+use crate::*;
+use crate::{raw_pty, RawPtyGuard};
 
 /// A commandline client session
 ///
@@ -72,7 +72,7 @@ impl CmdlineClient {
             Ok(p) => {
                 self.pty = Some(p);
                 self.want_pty = true;
-            },
+            }
             Err(e) => warn!("Failed getting current pty: {e:?}"),
         };
         self
@@ -96,15 +96,16 @@ impl CmdlineClient {
         self.agent = Some(agent)
     }
 
-    async fn chan_run(io: ChanInOut<'_, '_>,
+    async fn chan_run(
+        io: ChanInOut<'_, '_>,
         io_err: Option<ChanIn<'_, '_>>,
-        pty_guard: Option<RawPtyGuard>) -> Result<()> {
+        pty_guard: Option<RawPtyGuard>,
+    ) -> Result<()> {
         // out
         let fo = async {
             let mut io = io.clone();
-            let mut so = crate::stdout().map_err(|_| {
-                Error::msg("opening stdout failed")
-            })?;
+            let mut so =
+                crate::stdout().map_err(|_| Error::msg("opening stdout failed"))?;
             loop {
                 // TODO buffers
                 let mut buf = [0u8; 1000];
@@ -122,9 +123,8 @@ impl CmdlineClient {
         let fe = async {
             // if io_err is None we complete immediately
             if let Some(mut errin) = io_err {
-                let mut eo = crate::stderr_out().map_err(|_e| {
-                    Error::msg("opening stderr failed")
-                })?;
+                let mut eo = crate::stderr_out()
+                    .map_err(|_e| Error::msg("opening stderr failed"))?;
                 loop {
                     // TODO buffers
                     let mut buf = [0u8; 1000];
@@ -146,19 +146,17 @@ impl CmdlineClient {
         // in
         let fi = async {
             let mut io = io.clone();
-            let mut si = crate::stdin().map_err(|_| Error::msg("opening stdin failed"))?;
-            let mut esc = if pty_guard.is_some() {
-                Some(Escaper::new())
-            } else {
-                None
-            };
+            let mut si =
+                crate::stdin().map_err(|_| Error::msg("opening stdin failed"))?;
+            let mut esc =
+                if pty_guard.is_some() { Some(Escaper::new()) } else { None };
 
             loop {
                 // TODO buffers
                 let mut buf = [0u8; 1000];
                 let l = si.read(&mut buf).await.map_err(|_| Error::ChannelEOF)?;
                 if l == 0 {
-                    return Err(Error::ChannelEOF)
+                    return Err(Error::ChannelEOF);
                 }
 
                 let buf = &buf[..l];
@@ -176,7 +174,7 @@ impl CmdlineClient {
                         EscapeAction::Terminate => {
                             info!("Terminated");
                             terminate.signal(());
-                            return Ok(())
+                            return Ok(());
                         }
                         EscapeAction::Suspend => {
                             // disabled for the time being, doesn't resume OK.
@@ -197,7 +195,6 @@ impl CmdlineClient {
                 } else {
                     io.write_all(buf).await?;
                 }
-
             }
             #[allow(unreachable_code)]
             Ok::<_, sunset::Error>(())
@@ -230,8 +227,8 @@ impl CmdlineClient {
     /// Performs authentication, requests a shell or command, performs channel IO.
     /// Will return `Ok` after the session ends normally, or an error.
     pub async fn run<'g: 'a, 'a>(&mut self, cli: &'g SSHClient<'a>) -> Result<i32> {
-
-        let mut winch_signal = self.want_pty
+        let mut winch_signal = self
+            .want_pty
             .then(|| signal(SignalKind::window_change()))
             .transpose()
             .unwrap_or_else(|_| {
@@ -242,8 +239,11 @@ impl CmdlineClient {
         let mut io = None;
         let mut extin = None;
 
-        let launch_chan: Channel::<SunsetRawMutex, (ChanInOut, Option<ChanIn>, Option<RawPtyGuard>), 1>
-            = Channel::new();
+        let launch_chan: Channel<
+            SunsetRawMutex,
+            (ChanInOut, Option<ChanIn>, Option<RawPtyGuard>),
+            1,
+        > = Channel::new();
 
         let mut exit_code = 1i32;
 
@@ -261,7 +261,9 @@ impl CmdlineClient {
                 match ev {
                     CliEvent::Hostkey(h) => {
                         let key = h.hostkey()?;
-                        match knownhosts::check_known_hosts(&self.host, self.port, &key) {
+                        match knownhosts::check_known_hosts(
+                            &self.host, self.port, &key,
+                        ) {
                             Ok(()) => h.accept(),
                             Err(_e) => h.reject(),
                         }?;
@@ -271,7 +273,9 @@ impl CmdlineClient {
                     }
                     CliEvent::Password(p) => {
                         let pw = rpassword::prompt_password(format!(
-                            "password for {}: ", self.username))?;
+                            "password for {}: ",
+                            self.username
+                        ))?;
                         p.password(pw)?;
                     }
                     CliEvent::Pubkey(p) => {
@@ -282,7 +286,8 @@ impl CmdlineClient {
                         }?;
                     }
                     CliEvent::AgentSign(k) => {
-                        let agent = self.agent.as_mut().expect("agent keys without agent?");
+                        let agent =
+                            self.agent.as_mut().expect("agent keys without agent?");
                         let key = k.key()?;
                         let msg = k.message()?;
                         let sig = agent.sign_auth(key, &msg).await?;
@@ -303,13 +308,20 @@ impl CmdlineClient {
                         opener.cmd(&self.cmd)?;
                         // Start the IO loop
                         // TODO is there a better way
-                        launch_chan.send((io.clone().unwrap(), extin.clone(), self.pty_guard.take())).await;
+                        launch_chan
+                            .send((
+                                io.clone().unwrap(),
+                                extin.clone(),
+                                self.pty_guard.take(),
+                            ))
+                            .await;
                     }
                     CliEvent::SessionExit(ex) => {
                         trace!("session exit {ex:?}");
                         if let sunset::CliSessionExit::Status(u) = ex {
                             if u <= 255 {
-                                exit_code = i8::from_be_bytes([(u & 0xff) as u8]) as i32;
+                                exit_code =
+                                    i8::from_be_bytes([(u & 0xff) as u8]) as i32;
                             } else {
                                 exit_code = 1;
                             }
@@ -320,7 +332,7 @@ impl CmdlineClient {
                     }
                     CliEvent::Defunct => {
                         trace!("break defunct");
-                        break Ok::<_, Error>(())
+                        break Ok::<_, Error>(());
                     }
                 }
             }
@@ -339,9 +351,11 @@ impl CmdlineClient {
     /// Requests a PTY or non-PTY session
     ///
     /// Sets up the PTY if required.
-    async fn open_session<'g: 'a, 'a>(&mut self, cli: &'g SSHClient<'a>) ->
-        Result<(ChanInOut<'g, 'a>, Option<ChanIn<'g, 'a>>)> {
-            trace!("opens s");
+    async fn open_session<'g: 'a, 'a>(
+        &mut self,
+        cli: &'g SSHClient<'a>,
+    ) -> Result<(ChanInOut<'g, 'a>, Option<ChanIn<'g, 'a>>)> {
+        trace!("opens s");
         let (io, extin) = if self.want_pty {
             set_pty_guard(&mut self.pty_guard);
             let io = cli.open_session_pty().await?;
@@ -399,7 +413,7 @@ impl Escaper {
             match self {
                 Self::Newline if c == b'~' => {
                     *self = Self::Escape;
-                    return EscapeAction::None
+                    return EscapeAction::None;
                 }
                 Self::Escape => {
                     // handle the actual escape character
@@ -407,16 +421,16 @@ impl Escaper {
                         b'~' => {
                             // output the single '~' in buf.
                             *self = Self::Idle;
-                            return EscapeAction::Output { extra: None }
+                            return EscapeAction::Output { extra: None };
                         }
                         b'.' => {
                             *self = Self::Idle;
-                            return EscapeAction::Terminate
+                            return EscapeAction::Terminate;
                         }
                         // ctrl-z, suspend
                         0x1a => {
                             *self = Self::Idle;
-                            return EscapeAction::Suspend
+                            return EscapeAction::Suspend;
                         }
                         // fall through to reset below
                         _ => (),
@@ -491,6 +505,4 @@ pub(crate) mod tests {
             }
         }
     }
-
 }
-

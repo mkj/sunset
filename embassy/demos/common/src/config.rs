@@ -9,7 +9,7 @@ use sha2::Sha256;
 
 use heapless::{String, Vec};
 
-use embassy_net::{StaticConfigV4, Ipv4Cidr, Ipv4Address};
+use embassy_net::{Ipv4Address, Ipv4Cidr, StaticConfigV4};
 
 use sunset_sshwire_derive::*;
 
@@ -78,8 +78,10 @@ impl SSHConfig {
     pub fn new() -> Result<Self> {
         let hostkey = SignKey::generate(KeyType::Ed25519, None)?;
 
-        let wifi_net: String::<32> = option_env!("WIFI_NET").unwrap_or("guest").try_into().trap()?;
-        let wifi_pw: Option<String::<63>> = option_env!("WIFI_PW").map(|s| s.try_into()).transpose().trap()?;
+        let wifi_net: String<32> =
+            option_env!("WIFI_NET").unwrap_or("guest").try_into().trap()?;
+        let wifi_pw: Option<String<63>> =
+            option_env!("WIFI_PW").map(|s| s.try_into()).transpose().trap()?;
         let mac = random_mac()?;
         Ok(SSHConfig {
             hostkey,
@@ -176,7 +178,7 @@ where
         let prefix = SSHDecode::dec(s)?;
         if prefix > 32 {
             // emabassy panics, so test it here
-            return Err(WireError::PacketWrong)
+            return Err(WireError::PacketWrong);
         }
         let gw: Option<u32> = dec_option(s)?;
         let gateway = gw.map(|gw| Ipv4Address::from_bits(gw));
@@ -358,14 +360,23 @@ mod tests {
                 Some(Ed25519PubKey { key: Blob([29u8; 32]) }),
                 Some(Ed25519PubKey { key: Blob([39u8; 32]) }),
             ],
-            wifi_net: core::str::from_utf8([b'a'; 32].as_slice()).unwrap().try_into().unwrap(),
+            wifi_net: core::str::from_utf8([b'a'; 32].as_slice())
+                .unwrap()
+                .try_into()
+                .unwrap(),
             wifi_pw: Some(
-                core::str::from_utf8([b'f'; 63].as_slice()).unwrap().try_into().unwrap(),
+                core::str::from_utf8([b'f'; 63].as_slice())
+                    .unwrap()
+                    .try_into()
+                    .unwrap(),
             ),
             mac: [6, 2, 3, 4, 5, 6],
             ip4_static: Some(embassy_net::StaticConfigV4 {
-                address: embassy_net::Ipv4Cidr::new(embassy_net::Ipv4Address::new(44,33,22,11), 8),
-                gateway: Some(embassy_net::Ipv4Address::new(1,2,3,4)),
+                address: embassy_net::Ipv4Cidr::new(
+                    embassy_net::Ipv4Address::new(44, 33, 22, 11),
+                    8,
+                ),
+                gateway: Some(embassy_net::Ipv4Address::new(1, 2, 3, 4)),
                 // no dns servers. may need changing later?
                 dns_servers: heapless::Vec::new(),
             }),

@@ -9,12 +9,12 @@ use heapless::{String, Vec};
 
 use crate::*;
 use client::*;
+use kex::SessId;
 use packets::ParseContext;
 use packets::{Packet, Signature, Userauth60};
 use sign::SignKey;
 use sshnames::*;
 use sshwire::{BinString, SSHEncode, WireResult};
-use kex::SessId;
 
 /// The message to be signed in a pubkey authentication message,
 /// RFC4252 Section 7.
@@ -38,10 +38,7 @@ impl SSHEncode for AuthSigMsg<'_> {
 
 impl<'a> AuthSigMsg<'a> {
     pub(crate) fn new(u: packets::UserauthRequest<'a>, sess_id: &'a SessId) -> Self {
-        auth::AuthSigMsg {
-            sess_id: BinString(sess_id.as_ref()),
-            u,
-        }
+        auth::AuthSigMsg { sess_id: BinString(sess_id.as_ref()), u }
     }
 }
 
@@ -50,4 +47,3 @@ pub enum AuthType {
     Password,
     PubKey,
 }
-

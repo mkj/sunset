@@ -1,4 +1,4 @@
-// Modified from embassy 
+// Modified from embassy
 // examples/rp/src/bin/wifi_tcp_server.rs
 // Copyright (c) 2019-2022 Embassy project contributors
 // MIT or Apache-2.0 license
@@ -6,20 +6,20 @@
 #[allow(unused_imports)]
 pub use log::{debug, error, info, log, trace, warn};
 
-use embassy_rp::gpio::{Level, Output};
-use embassy_rp::pio::Pio;
-use embassy_rp::peripherals::*;
-use embassy_rp::bind_interrupts;
 use embassy_executor::Spawner;
 use embassy_net::StackResources;
+use embassy_rp::bind_interrupts;
+use embassy_rp::gpio::{Level, Output};
+use embassy_rp::peripherals::*;
+use embassy_rp::pio::Pio;
 
 use cyw43_pio::PioSpi;
 
-use static_cell::StaticCell;
 use rand::rngs::OsRng;
 use rand::RngCore;
+use static_cell::StaticCell;
 
-use crate::{SunsetMutex, SSHConfig};
+use crate::{SSHConfig, SunsetMutex};
 
 bind_interrupts!(struct Irqs {
     PIO0_IRQ_0 => embassy_rp::pio::InterruptHandler<PIO0>;
@@ -37,13 +37,16 @@ async fn wifi_task(
 }
 
 // It would be nice to make Pio0, Sm0, DMA_CH0 generic, but wifi_task can't have generics.
-pub(crate) async fn wifi_stack(spawner: &Spawner,
-    p23: PIN_23, p24: PIN_24, p25: PIN_25, p29: PIN_29, dma: DMA_CH0,
+pub(crate) async fn wifi_stack(
+    spawner: &Spawner,
+    p23: PIN_23,
+    p24: PIN_24,
+    p25: PIN_25,
+    p29: PIN_29,
+    dma: DMA_CH0,
     pio0: PIO0,
     config: &'static SunsetMutex<SSHConfig>,
-    ) -> embassy_net::Stack<'static>
-    {
-
+) -> embassy_net::Stack<'static> {
     let (fw, _clm) = get_fw();
 
     let pwr = Output::new(p23, Level::Low);
@@ -64,8 +67,10 @@ pub(crate) async fn wifi_stack(spawner: &Spawner,
     };
 
     // Init network stack
-    static SR: StaticCell<StackResources::<{crate::NUM_SOCKETS}>> = StaticCell::new();
-    let (stack, runner) = embassy_net::new(net_device, net_cf, SR.init(StackResources::new()), seed);
+    static SR: StaticCell<StackResources<{ crate::NUM_SOCKETS }>> =
+        StaticCell::new();
+    let (stack, runner) =
+        embassy_net::new(net_device, net_cf, SR.init(StackResources::new()), seed);
 
     spawner.spawn(net_task(runner, control, config)).unwrap();
 
@@ -73,10 +78,11 @@ pub(crate) async fn wifi_stack(spawner: &Spawner,
 }
 
 #[embassy_executor::task]
-async fn net_task(mut runner: embassy_net::Runner<'static, cyw43::NetDriver<'static>>,
+async fn net_task(
+    mut runner: embassy_net::Runner<'static, cyw43::NetDriver<'static>>,
     mut control: cyw43::Control<'static>,
     config: &'static SunsetMutex<SSHConfig>,
-    ) -> ! {
+) -> ! {
     let (_fw, clm) = get_fw();
     // control init() must occur before the net stack tries to access cyw43, otherwise
     // it seems to get stuck. await it here before spawning the net task.
@@ -115,7 +121,7 @@ fn get_fw() -> (&'static [u8], &'static [u8]) {
     let (fw, clm) = (
         include_bytes!("../firmware/43439A0.bin"),
         include_bytes!("../firmware/43439A0_clm.bin"),
-        );
+    );
 
     // To make flashing faster for development, you may want to flash the firmwares independently
     // at hardcoded addresses, instead of baking them into the program with `include_bytes!`:
@@ -127,7 +133,7 @@ fn get_fw() -> (&'static [u8], &'static [u8]) {
     let (fw, clm) = (
         unsafe { core::slice::from_raw_parts(0x10100000 as *const u8, fw.len()) },
         unsafe { core::slice::from_raw_parts(0x10140000 as *const u8, clm.len()) },
-        );
+    );
 
     (fw, clm)
 }

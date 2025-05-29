@@ -2,9 +2,9 @@
 use log::{debug, error, info, log, trace, warn};
 
 use std::fs::{File, OpenOptions};
-use std::path::{Path, PathBuf};
-use std::io::{BufRead, Write, Read};
 use std::io;
+use std::io::{BufRead, Read, Write};
+use std::path::{Path, PathBuf};
 
 use crate::*;
 use sunset::packets::PubKey;
@@ -14,22 +14,28 @@ type OpenSSHKey = ssh_key::PublicKey;
 #[derive(Debug)]
 pub enum KnownHostsError {
     /// Host Key Mismatch
-    Mismatch { path: PathBuf, line: usize, existing: OpenSSHKey },
+    Mismatch {
+        path: PathBuf,
+        line: usize,
+        existing: OpenSSHKey,
+    },
 
     /// User didn't accept new key
     NotAccepted,
 
     /// Failure
     Failure {
-        source: Box<dyn std::error::Error>
+        source: Box<dyn std::error::Error>,
     },
 
-    Other { msg: String },
+    Other {
+        msg: String,
+    },
 }
 
 impl<E> From<E> for KnownHostsError
 where
-    E: std::error::Error + 'static
+    E: std::error::Error + 'static,
 {
     fn from(e: E) -> Self {
         KnownHostsError::Failure { source: Box::new(e) }
@@ -83,14 +89,13 @@ pub fn check_known_hosts_file(
 
     let pubk: OpenSSHKey = key.try_into()?;
 
-    for (line, (lh, lk)) in f.lines().enumerate()
-        .filter_map(|(num, l)| {
-            if let Ok(l) = l {
-                line_entry(&l).map(|entry| (num, entry))
-            } else {
-                None
-            }
-        }) {
+    for (line, (lh, lk)) in f.lines().enumerate().filter_map(|(num, l)| {
+        if let Ok(l) = l {
+            line_entry(&l).map(|entry| (num, entry))
+        } else {
+            None
+        }
+    }) {
         let line = line + 1;
 
         if lh != match_host {
@@ -100,7 +105,12 @@ pub fn check_known_hosts_file(
         let known_key = match OpenSSHKey::from_openssh(&lk) {
             Ok(k) => k,
             Err(e) => {
-                warn!("Unparsed key for \"{}\" on line {}:{}", host, p.display(), line);
+                warn!(
+                    "Unparsed key for \"{}\" on line {}:{}",
+                    host,
+                    p.display(),
+                    line
+                );
                 trace!("{e:?}");
                 continue;
             }
@@ -111,12 +121,16 @@ pub fn check_known_hosts_file(
         } else {
             if pubk.key_data() == known_key.key_data() {
                 debug!("Line {line}, found matching key");
-                return Ok(())
+                return Ok(());
             } else {
                 let fp = known_key.fingerprint(Default::default());
                 println!("\nHost key mismatch for {match_host} in ~/.ssh/known_hosts line {line}\n\
                     Existing key has fingerprint {fp}\n");
-                return Err(KnownHostsError::Mismatch { path: p.to_path_buf(), line, existing: known_key });
+                return Err(KnownHostsError::Mismatch {
+                    path: p.to_path_buf(),
+                    line,
+                    existing: known_key,
+                });
             }
         }
     }
@@ -133,7 +147,7 @@ fn read_tty_response() -> Result<String, std::io::Error> {
         Err(_) => {
             s = io::stdin();
             &mut s
-        },
+        }
     };
 
     let mut f = io::BufReader::new(f);
@@ -148,7 +162,6 @@ fn ask_to_confirm(
     key: &PubKey,
     p: &Path,
 ) -> Result<(), KnownHostsError> {
-
     let k: OpenSSHKey = key.try_into()?;
     let fp = k.fingerprint(Default::default());
     let h = host_part(host, port);
@@ -169,7 +182,6 @@ fn add_key(
     key: &PubKey,
     p: &Path,
 ) -> Result<(), KnownHostsError> {
-
     let k: OpenSSHKey = key.try_into()?;
     // encode it
     let k = k.to_openssh()?;
@@ -184,4 +196,3 @@ fn add_key(
 
     Ok(())
 }
-

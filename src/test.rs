@@ -2,11 +2,11 @@
 mod tests {
     use crate::error::Error;
     use crate::packets::*;
+    use crate::packets::{Packet, ParseContext};
     use crate::sshwire::BinString;
-    use crate::packets::{Packet,ParseContext};
     use crate::{packets, sshwire};
     use pretty_hex::PrettyHex;
-    use simplelog::{TestLogger,self,LevelFilter};
+    use simplelog::{self, LevelFilter, TestLogger};
 
     pub fn init_log() {
         let _ = TestLogger::init(LevelFilter::Trace, simplelog::Config::default());
@@ -38,7 +38,9 @@ mod tests {
             cookie: &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
             kex: "kex".try_into().unwrap(),
             hostsig: "hostkey,another".try_into().unwrap(),
-            cipher_c2s: "chacha20-poly1305@openssh.com,aes128-ctr".try_into().unwrap(),
+            cipher_c2s: "chacha20-poly1305@openssh.com,aes128-ctr"
+                .try_into()
+                .unwrap(),
             cipher_s2c: "blowfish".try_into().unwrap(),
             mac_c2s: "hmac-sha1".try_into().unwrap(),
             mac_s2c: "hmac-md5".try_into().unwrap(),
@@ -57,7 +59,7 @@ mod tests {
     fn roundtrip_packet_kexdh() {
         // XXX: this should break later if the q_c length is
         let bs = BinString(&[0x11, 0x22, 0x33]);
-        let p = KexDHInit{ q_c: bs }.into();
+        let p = KexDHInit { q_c: bs }.into();
 
         test_roundtrip_packet(&p).unwrap();
         // packet format needs to be consistent

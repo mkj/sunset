@@ -89,7 +89,6 @@ pub enum AgentMessageNum {
     SSH_AGENT_IDENTITIES_ANSWER = 12,
     SSH_AGENTC_SIGN_REQUEST = 13,
     SSH_AGENT_SIGN_RESPONSE = 14,
-
 }
 
 /// [draft-miller-ssh-agent](https://datatracker.ietf.org/doc/html/draft-miller-ssh-agent-13#name-signature-flags-2)

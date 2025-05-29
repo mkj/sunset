@@ -24,7 +24,19 @@ use digest::Digest;
 // TODO remove once we use byupdate.
 // signatures are for hostkey (32 byte sessiid) or pubkey (auth packet || sessid).
 // we assume a max 40 character username here.
-const MAX_SIG_MSG: usize = 1+4+40+4+14+4+9+1+4+SSH_NAME_CURVE25519_LIBSSH.len()+4+32+32;
+const MAX_SIG_MSG: usize = 1
+    + 4
+    + 40
+    + 4
+    + 14
+    + 4
+    + 9
+    + 1
+    + 4
+    + SSH_NAME_CURVE25519_LIBSSH.len()
+    + 4
+    + 32
+    + 32;
 
 // RSA requires alloc.
 #[cfg(feature = "rsa")]
@@ -136,9 +148,7 @@ impl SigType {
         s: &packets::RSASig,
     ) -> Result<()> {
         let verifying_key =
-            rsa::pkcs1v15::VerifyingKey::<sha2::Sha256>::new(
-                k.key.clone(),
-            );
+            rsa::pkcs1v15::VerifyingKey::<sha2::Sha256>::new(k.key.clone());
         let signature = s.sig.0.try_into().map_err(|e| {
             trace!("RSA bad signature: {e}");
             Error::BadSig
@@ -333,9 +343,7 @@ impl SignKey {
             #[cfg(feature = "rsa")]
             SignKey::RSA(k) => {
                 let signing_key =
-                    rsa::pkcs1v15::SigningKey::<sha2::Sha256>::new(
-                        k.clone(),
-                    );
+                    rsa::pkcs1v15::SigningKey::<sha2::Sha256>::new(k.clone());
                 let mut h = sha2::Sha256::new();
                 sshwire::hash_ser(&mut h, msg)?;
                 let sig = signing_key.try_sign_digest(h).map_err(|e| {
@@ -417,7 +425,7 @@ impl TryFrom<ssh_key::PrivateKey> for SignKey {
             _ => {
                 debug!("Unknown ssh-key algorithm {}", k.algorithm().as_str());
                 Err(Error::NotAvailable { what: "ssh key algorithm" })
-            },
+            }
         }
     }
 }

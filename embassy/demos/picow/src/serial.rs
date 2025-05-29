@@ -3,11 +3,9 @@
 #[allow(unused_imports)]
 pub use log::{debug, error, info, log, trace, warn};
 
-use embassy_rp::peripherals::*;
 use embassy_rp::bind_interrupts;
-use embassy_rp::uart::{
-    self as rp_uart, BufferedInterruptHandler, BufferedUart, 
-};
+use embassy_rp::peripherals::*;
+use embassy_rp::uart::{self as rp_uart, BufferedInterruptHandler, BufferedUart};
 
 use sunset_embassy::*;
 
@@ -65,4 +63,3 @@ pub(crate) async fn task(
     let _ = select(io_rx, io_tx).await;
     panic!("serial finished");
 }
-

@@ -8,23 +8,23 @@ use core::ops::ControlFlow;
 
 use embassy_executor::Spawner;
 use embassy_futures::select::{select, Either};
-use embassy_net::{Stack, HardwareAddress, EthernetAddress};
-use embedded_io_async::{Write, Read};
+use embassy_net::{EthernetAddress, HardwareAddress, Stack};
 use embassy_rp::flash::Flash;
+use embedded_io_async::{Read, Write};
 
 use heapless::{String, Vec};
 
 use static_cell::StaticCell;
 
 use demo_common::menu::Runner as MenuRunner;
+use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_sync::mutex::Mutex;
-use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 
+use demo_common::{takepipe, DemoServer, SSHConfig, ServerApp};
 use sunset::*;
-use sunset_embassy::{SSHServer, SunsetMutex, ProgressHolder};
 use sunset_demo_embassy_common as demo_common;
-use demo_common::{SSHConfig, DemoServer, takepipe, ServerApp};
+use sunset_embassy::{ProgressHolder, SSHServer, SunsetMutex};
 use takepipe::TakePipe;
 
 mod flashconfig;
@@ -100,21 +100,27 @@ async fn main(spawner: Spawner) {
     };
 
     // Watchdog currently only used for triggering reset manually
-    static WD: StaticCell<SunsetMutex<embassy_rp::watchdog::Watchdog>> = StaticCell::new();
-    let watchdog = WD.init(SunsetMutex::new(
-        embassy_rp::watchdog::Watchdog::new(p.WATCHDOG)
-    ));
+    static WD: StaticCell<SunsetMutex<embassy_rp::watchdog::Watchdog>> =
+        StaticCell::new();
+    let watchdog =
+        WD.init(SunsetMutex::new(embassy_rp::watchdog::Watchdog::new(p.WATCHDOG)));
 
     // state depends on the mac for cyw43 vs w5500
     let net_mac = SunsetMutex::new([0; 6]);
     static STATE: StaticCell<GlobalState> = StaticCell::new();
-    let state = STATE.init_with(|| GlobalState { usb_pipe, serial1_pipe, config, flash, watchdog, net_mac});
+    let state = STATE.init_with(|| GlobalState {
+        usb_pipe,
+        serial1_pipe,
+        config,
+        flash,
+        watchdog,
+        net_mac,
+    });
 
     // create the network stack
     #[cfg(feature = "cyw43")]
     let stack = wifi::wifi_stack(
-        &spawner, p.PIN_23, p.PIN_24, p.PIN_25, p.PIN_29, p.DMA_CH0, p.PIO0,
-        config,
+        &spawner, p.PIN_23, p.PIN_24, p.PIN_25, p.PIN_29, p.DMA_CH0, p.PIO0, config,
     )
     .await;
 
@@ -216,7 +222,9 @@ where
             menu.input_byte(*c);
             menu.context.out.flush(chanw).await?;
 
-            if let ControlFlow::Break(_) = menu.context.progress(chanr, chanw).await? {
+            if let ControlFlow::Break(_) =
+                menu.context.progress(chanr, chanw).await?
+            {
                 break 'io;
             }
         }
@@ -284,17 +292,10 @@ impl DemoServer for PicoServer {
     type Init = &'static GlobalState;
 
     fn new(global: &Self::Init) -> Self {
-        Self {
-            global,
-        }
+        Self { global }
     }
 
-    async fn run(
-        &self,
-        serv: &SSHServer<'_>,
-        mut common: ServerApp
-    ) -> Result<()> {
-
+    async fn run(&self, serv: &SSHServer<'_>, mut common: ServerApp) -> Result<()> {
         let username = Mutex::<NoopRawMutex, _>::new(String::<20>::new());
         let chan_pipe = Channel::<NoopRawMutex, ChanHandle, 1>::new();
 
@@ -304,8 +305,7 @@ impl DemoServer for PicoServer {
                 let ev = serv.progress(&mut ph).await?;
                 trace!("ev {ev:?}");
                 match ev {
-                    ServEvent::SessionShell(a) => 
-                    {
+                    ServEvent::SessionShell(a) => {
                         if let Some(ch) = common.sess.take() {
                             debug_assert!(ch.num() == a.channel()?);
                             a.succeed()?;
@@ -324,11 +324,10 @@ impl DemoServer for PicoServer {
                     }
                     _ => common.handle_event(ev)?,
                 };
-            };
+            }
             #[allow(unreachable_code)]
             Ok::<_, Error>(())
         };
-
 
         let session = async {
             // wait for a shell to start

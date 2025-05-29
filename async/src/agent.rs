@@ -1,23 +1,26 @@
 #[allow(unused_imports)]
 use {
-    sunset::{Error, Result},
     log::{debug, error, info, log, trace, warn},
+    sunset::{Error, Result},
 };
 
 use std::path::Path;
 
 use pretty_hex::PrettyHex;
-use tokio::net::UnixStream;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::UnixStream;
 
 use sunset_sshwire_derive::*;
 
 use crate::*;
-use sunset::sshwire;
-use sunset::{PubKey, AuthSigMsg, Signature,OwnedSig, SignKey};
-use sshwire::{WireError, WireResult, BinString, TextString, Blob, SSHSink, SSHSource, SSHDecode, SSHEncode};
-use sshwire::{SSHEncodeEnum, SSHDecodeEnum};
+use sshwire::{
+    BinString, Blob, SSHDecode, SSHEncode, SSHSink, SSHSource, TextString,
+    WireError, WireResult,
+};
+use sshwire::{SSHDecodeEnum, SSHEncodeEnum};
 use sunset::sshnames::*;
+use sunset::sshwire;
+use sunset::{AuthSigMsg, OwnedSig, PubKey, SignKey, Signature};
 
 // Must be sufficient for the list of all public keys
 const MAX_RESPONSE: usize = 200_000;
@@ -72,7 +75,9 @@ enum AgentResponse<'a> {
 
 impl<'de: 'a, 'a> SSHDecode<'de> for AgentResponse<'a> {
     fn dec<S>(s: &mut S) -> WireResult<Self>
-    where S: SSHSource<'de> {
+    where
+        S: SSHSource<'de>,
+    {
         let number = u8::dec(s)?;
         if number == AgentMessageNum::SSH_AGENT_IDENTITIES_ANSWER as u8 {
             Ok(Self::IdentitiesAnswer(AgentIdentitiesAnswer::dec(s)?))
@@ -85,7 +90,10 @@ impl<'de: 'a, 'a> SSHDecode<'de> for AgentResponse<'a> {
 }
 
 impl<'de: 'a, 'a> SSHDecode<'de> for AgentIdentitiesAnswer<'a> {
-    fn dec<S>(s: &mut S) -> WireResult<Self> where S: SSHSource<'de> {
+    fn dec<S>(s: &mut S) -> WireResult<Self>
+    where
+        S: SSHSource<'de>,
+    {
         //     uint32                  nkeys
         // Where "nkeys" indicates the number of keys to follow.  Following the
         // preamble are zero or more keys, each encoded as:
@@ -98,9 +106,7 @@ impl<'de: 'a, 'a> SSHDecode<'de> for AgentIdentitiesAnswer<'a> {
             let comment = TextString::dec(s)?;
             keys.push((kb.0, comment))
         }
-        Ok(AgentIdentitiesAnswer {
-            keys,
-        })
+        Ok(AgentIdentitiesAnswer { keys })
     }
 }
 
@@ -116,10 +122,7 @@ impl AgentClient {
     /// `path` is a Unix socket to a ssh-agent, such as that from `$SSH_AUTH_SOCK`.
     pub async fn new(path: impl AsRef<Path>) -> Result<Self, std::io::Error> {
         let conn = UnixStream::connect(path).await?;
-        Ok(Self {
-            conn,
-            buf: vec![],
-        })
+        Ok(Self { conn, buf: vec![] })
     }
 
     async fn request(&mut self, r: AgentRequest<'_>) -> Result<AgentResponse> {
@@ -152,7 +155,7 @@ impl AgentClient {
                 for (pk, comment) in i.keys.iter() {
                     match SignKey::from_agent_pubkey(pk) {
                         Ok(k) => keys.push(k),
-                        Err(e) => debug!("skipping agent key {comment:?}: {e}")
+                        Err(e) => debug!("skipping agent key {comment:?}: {e}"),
                     }
                 }
                 Ok(keys)
@@ -164,7 +167,11 @@ impl AgentClient {
         }
     }
 
-    pub async fn sign_auth(&mut self, key: &SignKey, msg: &AuthSigMsg<'_>) -> Result<OwnedSig> {
+    pub async fn sign_auth(
+        &mut self,
+        key: &SignKey,
+        msg: &AuthSigMsg<'_>,
+    ) -> Result<OwnedSig> {
         let flags = match key {
             #[cfg(feature = "rsa")]
             SignKey::AgentRSA(_) => SSH_AGENT_FLAG_RSA_SHA2_256,
@@ -178,14 +185,11 @@ impl AgentClient {
         });
 
         match self.request(r).await? {
-            AgentResponse::SignResponse(s) => {
-                s.sig.0.try_into()
-            }
+            AgentResponse::SignResponse(s) => s.sig.0.try_into(),
             resp => {
                 debug!("response: {resp:?}");
                 Err(Error::msg("Unexpected agent response"))
             }
         }
     }
-
 }

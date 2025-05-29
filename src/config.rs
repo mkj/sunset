@@ -22,14 +22,13 @@ pub const RSA_MIN_KEYSIZE: usize = 1024;
 ///
 /// 31 is the limit for various Linux APIs like wtmp
 /// A larger limit can be set with `larger` crate feature
-#[cfg(not(feature="larger"))]
+#[cfg(not(feature = "larger"))]
 pub const MAX_USERNAME: usize = 31;
 
 /// Maximum username for client or server
 ///
 /// 32 is the limit for various Linux APIs like wtmp
-#[cfg(feature="larger")]
+#[cfg(feature = "larger")]
 pub const MAX_USERNAME: usize = 256;
-
 
 // TODO: server auth timeout/tries

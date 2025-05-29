@@ -1,17 +1,16 @@
 #![allow(unused_imports)]
-
 // avoid mysterious missing awaits
 #![deny(unused_must_use)]
 
-mod pty;
+mod agent;
 mod cmdline_client;
 pub mod knownhosts;
-mod agent;
+mod pty;
 
 #[cfg(unix)]
 mod fdio;
 #[cfg(unix)]
-use fdio::{stdin, stdout, stderr_out};
+use fdio::{stderr_out, stdin, stdout};
 
 use pty::{raw_pty, RawPtyGuard};
 

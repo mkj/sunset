@@ -1,8 +1,10 @@
 /// Events used by applications running the SSH connection
 ///
 /// These include hostkeys, authentication, and shell/command sessions
-
-use self::{channel::Channel, packets::{AuthMethod, MethodPubKey, UserauthRequest}};
+use self::{
+    channel::Channel,
+    packets::{AuthMethod, MethodPubKey, UserauthRequest},
+};
 
 #[allow(unused_imports)]
 use {
@@ -10,13 +12,13 @@ use {
     log::{debug, error, info, log, trace, warn},
 };
 
-use core::mem::Discriminant;
 use core::fmt::Debug;
+use core::mem::Discriminant;
 
 use crate::*;
-use sshwire::TextString;
+use channel::{CliSessionExit, CliSessionOpener};
 use packets::Packet;
-use channel::{CliSessionOpener, CliSessionExit};
+use sshwire::TextString;
 
 #[derive(Debug)]
 pub enum Event<'g, 'a> {
@@ -35,21 +37,22 @@ pub enum Event<'g, 'a> {
 }
 
 impl<'g, 'a> Event<'g, 'a> {
-    pub(crate) fn from_dispatch(disp: &DispatchEvent, runner: &'g mut Runner<'a>) -> Result<Self> {
+    pub(crate) fn from_dispatch(
+        disp: &DispatchEvent,
+        runner: &'g mut Runner<'a>,
+    ) -> Result<Self> {
         match disp {
             DispatchEvent::CliEvent(x) => Ok(Self::Cli(x.event(runner)?)),
             DispatchEvent::ServEvent(x) => Ok(Self::Serv(x.event(runner)?)),
             DispatchEvent::None => Ok(Self::None),
-            | DispatchEvent::Progressed  => Ok(Self::Progressed),
+            DispatchEvent::Progressed => Ok(Self::Progressed),
             // Events handled internally by Runner::progress()
-            | DispatchEvent::Data(_)
-            => Err(Error::bug()),
+            DispatchEvent::Data(_) => Err(Error::bug()),
         }
     }
 }
 
-pub enum CliEvent<'g, 'a>
-{
+pub enum CliEvent<'g, 'a> {
     Hostkey(CheckHostkey<'g, 'a>),
     Banner(Banner<'g>),
     Username(RequestUsername<'g, 'a>),
@@ -64,7 +67,6 @@ pub enum CliEvent<'g, 'a>
     /// The SSH connection is no longer running
     #[allow(unused)]
     Defunct,
-
     // ChanRequest(ChanRequest<'g, 'a>),
     // Banner { banner: TextString<'a>, language: TextString<'a> },
 }
@@ -182,9 +184,8 @@ impl Banner<'_> {
     }
 }
 
-
 // impl CliExit<''_, '_> {
-//     pub fn 
+//     pub fn
 
 // }
 
@@ -200,31 +201,24 @@ pub(crate) enum CliEventId {
     SessionExit,
     Banner,
     #[allow(unused)]
-    Defunct
-
-    // TODO:
-    // Disconnected
-    // OpenTCPForwarded (new session)
-    // TCPDirectOpened (response)
+    Defunct, // TODO:
+             // Disconnected
+             // OpenTCPForwarded (new session)
+             // TCPDirectOpened (response)
 }
 
 impl CliEventId {
-    pub fn event<'g, 'a>(self, runner: &'g mut Runner<'a>) -> Result<CliEvent<'g, 'a>> {
+    pub fn event<'g, 'a>(
+        self,
+        runner: &'g mut Runner<'a>,
+    ) -> Result<CliEvent<'g, 'a>> {
         let pk = runner.packet()?;
 
         match self {
-            Self::Username => {
-                Ok(CliEvent::Username(RequestUsername { runner }))
-            }
-            Self::Password => {
-                Ok(CliEvent::Password(RequestPassword { runner }))
-            }
-            Self::Pubkey => {
-                Ok(CliEvent::Pubkey(RequestPubkey { runner }))
-            }
-            Self::AgentSign => {
-                Ok(CliEvent::AgentSign(RequestSign { runner }))
-            }
+            Self::Username => Ok(CliEvent::Username(RequestUsername { runner })),
+            Self::Password => Ok(CliEvent::Password(RequestPassword { runner })),
+            Self::Pubkey => Ok(CliEvent::Pubkey(RequestPubkey { runner })),
+            Self::AgentSign => Ok(CliEvent::AgentSign(RequestSign { runner })),
             Self::Hostkey => {
                 debug_assert!(matches!(pk, Some(Packet::KexDHReply(_))));
                 Ok(CliEvent::Hostkey(CheckHostkey { runner }))
@@ -239,10 +233,8 @@ impl CliEventId {
             Self::SessionExit => {
                 Ok(CliEvent::SessionExit(runner.fetch_cli_session_exit()?))
             }
-            Self::Banner => {
-                Ok(CliEvent::Banner(runner.fetch_cli_banner()?))
-            }
-            Self::Defunct => error::BadUsage.fail()
+            Self::Banner => Ok(CliEvent::Banner(runner.fetch_cli_banner()?)),
+            Self::Defunct => error::BadUsage.fail(),
         }
     }
 
@@ -250,18 +242,16 @@ impl CliEventId {
     // Used for internal correctness checks.
     pub(crate) fn needs_resume(&self) -> bool {
         match self {
-            | Self::Authenticated
+            Self::Authenticated
             | Self::SessionOpened(_)
             | Self::SessionExit
             | Self::Banner
-            | Self::Defunct
-            => false,
-            | Self::Hostkey
+            | Self::Defunct => false,
+            Self::Hostkey
             | Self::Username
             | Self::Password
             | Self::Pubkey
-            | Self::AgentSign
-            => true,
+            | Self::AgentSign => true,
         }
     }
 }
@@ -314,10 +304,7 @@ pub struct ServPasswordAuth<'g, 'a> {
 
 impl<'g, 'a> ServPasswordAuth<'g, 'a> {
     fn new(runner: &'g mut Runner<'a>) -> Self {
-        Self {
-            runner,
-            done: false,
-        }
+        Self { runner, done: false }
     }
 
     pub fn username(&self) -> Result<&str> {
@@ -369,11 +356,7 @@ pub struct ServPubkeyAuth<'g, 'a> {
 
 impl<'g, 'a> ServPubkeyAuth<'g, 'a> {
     fn new(runner: &'g mut Runner<'a>, real_sig: bool) -> Self {
-        Self {
-            runner,
-            done: false,
-            real_sig
-        }
+        Self { runner, done: false, real_sig }
     }
 
     pub fn username(&self) -> Result<&str> {
@@ -422,10 +405,7 @@ pub struct ServFirstAuth<'g, 'a> {
 
 impl<'g, 'a> ServFirstAuth<'g, 'a> {
     fn new(runner: &'g mut Runner<'a>) -> Self {
-        Self {
-            runner,
-            done: false,
-        }
+        Self { runner, done: false }
     }
     pub fn username(&self) -> Result<&str> {
         self.raw_username()?.as_str()
@@ -458,7 +438,6 @@ impl Drop for ServFirstAuth<'_, '_> {
     }
 }
 
-
 pub struct ServOpenSession<'g, 'a> {
     runner: &'g mut Runner<'a>,
     done: bool,
@@ -467,11 +446,7 @@ pub struct ServOpenSession<'g, 'a> {
 
 impl<'g, 'a> ServOpenSession<'g, 'a> {
     fn new(runner: &'g mut Runner<'a>, ch: ChanNum) -> Self {
-        Self {
-            runner,
-            done: false,
-            ch,
-        }
+        Self { runner, done: false, ch }
     }
     pub fn accept(mut self) -> Result<ChanHandle> {
         self.done = true;
@@ -490,8 +465,10 @@ impl<'g, 'a> ServOpenSession<'g, 'a> {
 impl Drop for ServOpenSession<'_, '_> {
     fn drop(&mut self) {
         if !self.done {
-            if let Err(e) = self.runner.resume_chanopen(self.ch, 
-                Some(ChanFail::SSH_OPEN_ADMINISTRATIVELY_PROHIBITED)) {
+            if let Err(e) = self.runner.resume_chanopen(
+                self.ch,
+                Some(ChanFail::SSH_OPEN_ADMINISTRATIVELY_PROHIBITED),
+            ) {
                 trace!("Error for chanopen: {e}")
             }
         }
@@ -501,15 +478,18 @@ impl Drop for ServOpenSession<'_, '_> {
 pub(crate) enum ServEventId {
     Hostkeys,
     PasswordAuth,
-    PubkeyAuth { real_sig: bool },
+    PubkeyAuth {
+        real_sig: bool,
+    },
     FirstAuth,
-    OpenSession { ch: ChanNum },
+    OpenSession {
+        ch: ChanNum,
+    },
     SessionShell,
     SessionExec,
     SessionPty,
     #[allow(unused)]
     Defunct,
-
     // TODO:
     // Disconnected
     // OpenTCPForwarded (new session)
@@ -518,7 +498,10 @@ pub(crate) enum ServEventId {
 }
 
 impl ServEventId {
-    pub fn event<'g, 'a>(self, runner: &'g mut Runner<'a>) -> Result<ServEvent<'g, 'a>> {
+    pub fn event<'g, 'a>(
+        self,
+        runner: &'g mut Runner<'a>,
+    ) -> Result<ServEvent<'g, 'a>> {
         let p = if cfg!(debug_assertions) { runner.packet()? } else { None };
 
         match self {
@@ -562,17 +545,15 @@ impl ServEventId {
     // Used for internal correctness checks.
     pub(crate) fn needs_resume(&self) -> bool {
         match self {
-            | Self::Defunct
-            => false,
-            | Self::Hostkeys
+            Self::Defunct => false,
+            Self::Hostkeys
             | Self::FirstAuth
             | Self::PasswordAuth
             | Self::PubkeyAuth { .. }
             | Self::OpenSession { .. }
             | Self::SessionShell
             | Self::SessionExec
-            | Self::SessionPty
-            => true,
+            | Self::SessionPty => true,
         }
     }
 }
@@ -584,10 +565,7 @@ pub struct ChanRequest<'g, 'a> {
 
 impl<'g, 'a> ChanRequest<'g, 'a> {
     fn new(runner: &'g mut Runner<'a>) -> Self {
-        Self {
-            runner,
-            done: false,
-        }
+        Self { runner, done: false }
     }
     /// Indicate that the request succeeded.
     ///
@@ -625,4 +603,3 @@ impl Drop for ChanRequest<'_, '_> {
         }
     }
 }
-

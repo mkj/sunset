@@ -1,8 +1,5 @@
-
 #[allow(unused_imports)]
-use {
-    log::{debug, error, info, log, trace, warn},
-};
+use log::{debug, error, info, log, trace, warn};
 
 use embassy_executor::Spawner;
 use embassy_net::{Stack, StackResources};
@@ -11,22 +8,22 @@ use rand::rngs::OsRng;
 use rand::RngCore;
 
 use demo_common::menu::Runner as MenuRunner;
-use embedded_io_async::Read;
-use embassy_sync::channel::Channel;
 use embassy_futures::select::select;
 use embassy_net_tuntap::TunTapDevice;
+use embassy_sync::channel::Channel;
+use embedded_io_async::Read;
 
 use sunset::*;
-use sunset_embassy::{SSHServer, SunsetMutex, SunsetRawMutex, ProgressHolder};
+use sunset_embassy::{ProgressHolder, SSHServer, SunsetMutex, SunsetRawMutex};
 
 mod setupmenu;
 pub(crate) use sunset_demo_embassy_common as demo_common;
 
-use demo_common::{SSHConfig, demo_menu, DemoServer, ServerApp};
+use demo_common::{demo_menu, DemoServer, SSHConfig, ServerApp};
 
 const NUM_LISTENERS: usize = 4;
 // +1 for dhcp
-const NUM_SOCKETS: usize = NUM_LISTENERS+1;
+const NUM_SOCKETS: usize = NUM_LISTENERS + 1;
 
 #[embassy_executor::task]
 async fn net_task(mut runner: embassy_net::Runner<'static, TunTapDevice>) -> ! {
@@ -78,8 +75,7 @@ impl DemoServer for StdDemo {
         Default::default()
     }
 
-    async fn run(&self, serv: &SSHServer<'_>, mut common: ServerApp) -> Result<()>
-    {
+    async fn run(&self, serv: &SSHServer<'_>, mut common: ServerApp) -> Result<()> {
         let chan_pipe = Channel::<SunsetRawMutex, ChanHandle, 1>::new();
 
         let prog_loop = async {
@@ -88,8 +84,7 @@ impl DemoServer for StdDemo {
                 let ev = serv.progress(&mut ph).await?;
                 trace!("ev {ev:?}");
                 match ev {
-                    ServEvent::SessionShell(a) => 
-                    {
+                    ServEvent::SessionShell(a) => {
                         if let Some(ch) = common.sess.take() {
                             debug_assert!(ch.num() == a.channel()?);
                             a.succeed()?;
@@ -100,13 +95,12 @@ impl DemoServer for StdDemo {
                     }
                     other => common.handle_event(other)?,
                 };
-            };
+            }
             #[allow(unreachable_code)]
             Ok::<_, Error>(())
         };
 
         let shell_loop = async {
-
             let ch = chan_pipe.receive().await;
 
             debug!("got handle");
@@ -117,7 +111,12 @@ impl DemoServer for StdDemo {
             let mut menu_buf = [0u8; 150];
             let menu_out = demo_menu::BufOutput::default();
 
-            let mut menu = MenuRunner::new(&setupmenu::SETUP_MENU, &mut menu_buf, true, menu_out);
+            let mut menu = MenuRunner::new(
+                &setupmenu::SETUP_MENU,
+                &mut menu_buf,
+                true,
+                menu_out,
+            );
 
             // bodge
             for c in "help\r\n".bytes() {
@@ -129,7 +128,7 @@ impl DemoServer for StdDemo {
                 let mut b = [0u8; 20];
                 let lr = stdio.read(&mut b).await?;
                 if lr == 0 {
-                    break
+                    break;
                 }
                 let b = &mut b[..lr];
                 for c in b.iter() {
@@ -147,9 +146,10 @@ impl DemoServer for StdDemo {
 
 // TODO: pool_size should be NUM_LISTENERS but needs a literal
 #[embassy_executor::task(pool_size = 4)]
-async fn listener(stack: Stack<'static>,
-    config: &'static SunsetMutex<SSHConfig>) -> ! {
-
+async fn listener(
+    stack: Stack<'static>,
+    config: &'static SunsetMutex<SSHConfig>,
+) -> ! {
     demo_common::listener::<StdDemo>(stack, config, ()).await
 }
 

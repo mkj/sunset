@@ -11,7 +11,7 @@ use embassy_usb::Builder;
 use embassy_usb_driver::Driver;
 // use usbd_hid::descriptor::{KeyboardReport, SerializedDescriptor};
 
-use embedded_io_async::{Read, Write, BufRead, ErrorType};
+use embedded_io_async::{BufRead, ErrorType, Read, Write};
 
 use sunset_embassy::*;
 
@@ -133,7 +133,6 @@ async fn menu_if02_run<'a, D: Driver<'a>>(
         debug!("got menu if02 conn");
         let mut cdc_tx = CDCWrite::new(&mut cdc_tx);
         let mut cdc_rx = CDCRead::new(&mut cdc_rx);
-
 
         // wait for a keystroke before writing anything.
         let mut c = [0u8];

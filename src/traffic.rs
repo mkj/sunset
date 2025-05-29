@@ -1,17 +1,17 @@
 #[allow(unused_imports)]
 use {
-    crate::error::{Error,Result},
+    crate::error::{Error, Result},
     log::{debug, error, info, log, trace, warn},
 };
 
 use zeroize::Zeroize;
 
+use crate::channel::{ChanData, ChanNum};
 use crate::encrypt::KeyState;
 use crate::encrypt::{SSH_LENGTH_SIZE, SSH_PAYLOAD_START};
 use crate::ident::RemoteVersion;
-use crate::channel::{ChanNum, ChanData};
-use crate::*;
 use crate::packets::Packet;
+use crate::*;
 use pretty_hex::PrettyHex;
 
 // TODO: if smoltcp exposed both ends of a CircularBuffer to recv()
@@ -19,9 +19,7 @@ use pretty_hex::PrettyHex;
 // Would need changes to ciphers with block boundaries
 
 pub(crate) struct TrafOut<'a> {
-
     // TODO: decompression will need another buffer
-
     /// Accumulated output buffer.
     ///
     /// Should be sized to fit the largest
@@ -37,7 +35,6 @@ pub(crate) struct TrafOut<'a> {
 // pub(crate) struct TrafIn<'a> {
 pub struct TrafIn<'a> {
     // TODO: decompression will need another buffer
-
     /// Accumulated input buffer.
     ///
     /// Should be sized to fit the largest packet allowed for input.
@@ -50,7 +47,6 @@ pub struct TrafIn<'a> {
 /// State machine for writes
 #[derive(Debug)]
 enum TxState {
-
     /// Awaiting write, buffer is unused
     Idle,
 
@@ -70,7 +66,6 @@ enum TxState {
 
 #[derive(Debug)]
 enum RxState {
-
     /// Awaiting read, buffer is unused
     Idle,
     /// Reading initial encrypted block for packet length. idx > 0.
@@ -101,25 +96,26 @@ impl<'a> TrafIn<'a> {
 
     pub fn is_input_ready(&self) -> bool {
         match self.state {
-            | RxState::Idle
-            | RxState::ReadInitial { .. }
-            | RxState::Read { .. }
-            => true,
-            | RxState::ReadComplete { .. }
+            RxState::Idle | RxState::ReadInitial { .. } | RxState::Read { .. } => {
+                true
+            }
+            RxState::ReadComplete { .. }
             | RxState::InPayload { .. }
-            | RxState::InChannelData { .. }
-            => false,
+            | RxState::InChannelData { .. } => false,
         }
     }
 
     /// Returns the number of bytes consumed.
     pub fn input(
-        &mut self, keys: &mut KeyState, remote_version: &mut RemoteVersion,
+        &mut self,
+        keys: &mut KeyState,
+        remote_version: &mut RemoteVersion,
         buf: &[u8],
     ) -> Result<usize, Error> {
         let mut inlen = 0;
         debug_assert!(self.is_input_ready());
-        if remote_version.version().is_none() && matches!(self.state, RxState::Idle) {
+        if remote_version.version().is_none() && matches!(self.state, RxState::Idle)
+        {
             // Handle initial version string
             inlen += remote_version.consume(buf)?;
         }
@@ -160,7 +156,9 @@ impl<'a> TrafIn<'a> {
     }
 
     fn fill_input(
-        &mut self, keys: &mut KeyState, buf: &[u8],
+        &mut self,
+        keys: &mut KeyState,
+        buf: &[u8],
     ) -> Result<usize, Error> {
         let size_block = keys.size_block_dec();
         // 'r' is the remaining input, a slice that moves along.
@@ -227,7 +225,7 @@ impl<'a> TrafIn<'a> {
                 debug_assert!(len > idx);
                 let rem = len - idx;
                 Some((chan, dt, rem))
-            },
+            }
             _ => None,
         }
     }
@@ -236,7 +234,12 @@ impl<'a> TrafIn<'a> {
         match self.state {
             RxState::InPayload { .. } => {
                 let idx = SSH_PAYLOAD_START + di.dt.packet_offset();
-                self.state = RxState::InChannelData { chan: di.num, dt: di.dt, idx, len: idx + di.len };
+                self.state = RxState::InChannelData {
+                    chan: di.num,
+                    dt: di.dt,
+                    idx,
+                    len: idx + di.len,
+                };
                 Ok(())
             }
             _ => Err(Error::bug()),
@@ -251,10 +254,10 @@ impl<'a> TrafIn<'a> {
         dt: ChanData,
         buf: &mut [u8],
     ) -> (usize, Option<usize>) {
-
         match self.state {
             RxState::InChannelData { chan: c, dt: e, ref mut idx, len }
-            if (c, e) == (chan, dt) => {
+                if (c, e) == (chan, dt) =>
+            {
                 debug_assert!(len >= *idx);
                 let wlen = (len - *idx).min(buf.len());
                 buf[..wlen].copy_from_slice(&self.buf[*idx..*idx + wlen]);
@@ -268,7 +271,7 @@ impl<'a> TrafIn<'a> {
                     (wlen, None)
                 }
             }
-            _ => (0, None)
+            _ => (0, None),
         }
     }
 
@@ -278,10 +281,10 @@ impl<'a> TrafIn<'a> {
         chan: ChanNum,
         buf: &mut [u8],
     ) -> (usize, Option<usize>, ChanData) {
-
         match self.state {
             RxState::InChannelData { chan: c, dt, ref mut idx, len }
-            if c == chan => {
+                if c == chan =>
+            {
                 debug_assert!(len >= *idx);
                 let wlen = (len - *idx).min(buf.len());
                 buf[..wlen].copy_from_slice(&self.buf[*idx..*idx + wlen]);
@@ -296,19 +299,18 @@ impl<'a> TrafIn<'a> {
                     (wlen, None, dt)
                 }
             }
-            _ => (0, None, ChanData::Normal)
+            _ => (0, None, ChanData::Normal),
         }
     }
 
     /// Returns the length of data discarded
     pub fn discard_channel_input(&mut self, chan: ChanNum) -> usize {
         match self.state {
-            RxState::InChannelData { chan: c, len, .. }
-            if c == chan => {
+            RxState::InChannelData { chan: c, len, .. } if c == chan => {
                 self.state = RxState::Idle;
                 len
             }
-            _ => 0
+            _ => 0,
         }
     }
 }
@@ -319,13 +321,17 @@ impl<'a> TrafOut<'a> {
     }
 
     /// Serializes and and encrypts a packet to send
-    pub(crate) fn send_packet(&mut self, p: packets::Packet, keys: &mut KeyState) -> Result<()> {
+    pub(crate) fn send_packet(
+        &mut self,
+        p: packets::Packet,
+        keys: &mut KeyState,
+    ) -> Result<()> {
         // Sanity check
         match p.category() {
             packets::Category::All | packets::Category::Kex => (), // OK cleartext
             _ => {
                 if keys.is_cleartext() {
-                    return Error::bug_msg("send cleartext")
+                    return Error::bug_msg("send cleartext");
                 }
             }
         }
@@ -337,23 +343,22 @@ impl<'a> TrafOut<'a> {
             TxState::Closed => {
                 trace!("Dropped output after close {p:?}");
                 return Ok(());
-            },
+            }
         };
 
         // Use the remainder of our buffer to write the packet. Payload starts
         // after the length and padding bytes which get filled by encrypt()
         let wbuf = &mut self.buf[len..];
         if wbuf.len() < SSH_PAYLOAD_START {
-            return error::NoRoom.fail()
+            return error::NoRoom.fail();
         }
         let plen = sshwire::write_ssh(&mut wbuf[SSH_PAYLOAD_START..], &p)?;
         trace!("Sending {p:?}");
 
         // Encrypt in place
         let elen = keys.encrypt(plen, wbuf)?;
-        self.state = TxState::Write { idx, len: len+elen };
+        self.state = TxState::Write { idx, len: len + elen };
         Ok(())
-
     }
 
     pub fn is_output_pending(&self) -> bool {
@@ -371,12 +376,8 @@ impl<'a> TrafOut<'a> {
     pub fn send_allowed(&self, keys: &KeyState) -> usize {
         // TODO: test for full output buffer
         match self.state {
-            TxState::Write { len, .. } => {
-                keys.max_enc_payload(self.buf.len() - len)
-            }
-            TxState::Idle => {
-                keys.max_enc_payload(self.buf.len())
-            }
+            TxState::Write { len, .. } => keys.max_enc_payload(self.buf.len() - len),
+            TxState::Idle => keys.max_enc_payload(self.buf.len()),
             // ouput will just be dropped in closed state.
             TxState::Closed => self.buf.len(),
         }
@@ -421,11 +422,9 @@ impl<'a> TrafOut<'a> {
         }
     }
 
-
     pub fn sender<'s>(&'s mut self, keys: &'s mut KeyState) -> TrafSend<'s, 'a> {
         TrafSend::new(self, keys)
     }
-
 }
 
 /// Convenience to pass TrafOut with keys
@@ -436,10 +435,7 @@ pub(crate) struct TrafSend<'s, 'a> {
 
 impl<'s, 'a> TrafSend<'s, 'a> {
     fn new(out: &'s mut TrafOut<'a>, keys: &'s mut KeyState) -> Self {
-        Self {
-            out,
-            keys,
-        }
+        Self { out, keys }
     }
 
     pub fn send<'p, P: Into<packets::Packet<'p>>>(&mut self, p: P) -> Result<()> {
@@ -467,4 +463,3 @@ impl<'s, 'a> TrafSend<'s, 'a> {
         self.keys.seq_decrypt.0
     }
 }
-

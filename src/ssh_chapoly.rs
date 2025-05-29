@@ -4,14 +4,16 @@ use {
     log::{debug, error, info, log, trace, warn},
 };
 
+use chacha20::cipher::{
+    KeyIvInit, StreamCipher, StreamCipherSeek, StreamCipherSeekCore,
+};
 use chacha20::ChaCha20;
-use chacha20::cipher::{KeyIvInit, StreamCipher, StreamCipherSeek, StreamCipherSeekCore};
-use poly1305::Poly1305;
-use poly1305::universal_hash::UniversalHash;
+use digest::KeyInit;
 use poly1305::universal_hash::generic_array::GenericArray;
+use poly1305::universal_hash::UniversalHash;
+use poly1305::Poly1305;
 use subtle::ConstantTimeEq;
 use zeroize::{Zeroize, ZeroizeOnDrop};
-use digest::KeyInit;
 
 use pretty_hex::PrettyHex;
 
@@ -27,7 +29,6 @@ pub struct SSHChaPoly {
     k2: [u8; 32],
 }
 
-
 impl SSHChaPoly {
     pub const TAG_LEN: usize = 16;
     pub const KEY_LEN: usize = 64;
@@ -35,16 +36,13 @@ impl SSHChaPoly {
     /// `key` must be 64 bytes
     pub fn new_from_slice(key: &[u8]) -> Result<Self> {
         if key.len() != Self::KEY_LEN {
-            return Err(Error::BadKey)
+            return Err(Error::BadKey);
         }
         let mut k1 = [0u8; 32];
         let mut k2 = [0u8; 32];
         k1.copy_from_slice(&key[32..64]);
         k2.copy_from_slice(&key[..32]);
-        Ok(Self {
-            k1,
-            k2,
-        })
+        Ok(Self { k1, k2 })
     }
 
     fn cha20(key: &[u8; 32], seq: u32) -> ChaCha20 {
@@ -60,7 +58,8 @@ impl SSHChaPoly {
         if buf.len() < SSH_LENGTH_SIZE {
             return Err(Error::BadDecrypt);
         }
-        let mut b: [u8; SSH_LENGTH_SIZE] = buf[..SSH_LENGTH_SIZE].try_into().unwrap();
+        let mut b: [u8; SSH_LENGTH_SIZE] =
+            buf[..SSH_LENGTH_SIZE].try_into().unwrap();
         let mut c = Self::cha20(&self.k1, seq);
         c.apply_keystream(&mut b);
         trace!("packet_length {:?}", b.hex_dump());

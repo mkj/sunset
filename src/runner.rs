@@ -1,23 +1,30 @@
-
 #[allow(unused_imports)]
 use {
     crate::error::{Error, Result, TrapBug},
     log::{debug, error, info, log, trace, warn},
 };
 
-use core::{hash::Hash, mem::discriminant, task::{Poll, Waker}};
+use core::{
+    hash::Hash,
+    mem::discriminant,
+    task::{Poll, Waker},
+};
 
 use pretty_hex::PrettyHex;
 
-use crate::{event::ChanRequest, packets::{Packet, Subsystem}, *};
-use packets::{ChannelDataExt, ChannelData};
-use channel::{ChanNum, ChanData};
+use crate::{
+    event::ChanRequest,
+    packets::{Packet, Subsystem},
+    *,
+};
+use channel::{ChanData, ChanNum};
 use channel::{CliSessionExit, CliSessionOpener};
 use encrypt::KeyState;
+use event::{CliEvent, CliEventId, Event, ServEvent, ServEventId};
+use packets::{ChannelData, ChannelDataExt};
 use traffic::{TrafIn, TrafOut};
-use event::{Event, CliEvent, ServEvent, ServEventId, CliEventId};
 
-use conn::{Conn, Dispatched, DispatchEvent};
+use conn::{Conn, DispatchEvent, Dispatched};
 
 // Runner public methods take a `ChanHandle` which cannot be cloned. This prevents
 // confusion if an application were to continue using a channel after the channel
@@ -57,10 +64,10 @@ pub struct Runner<'a> {
 impl core::fmt::Debug for Runner<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Runner")
-        .field("keys", &self.keys)
-        .field("output_waker", &self.output_waker)
-        .field("input_waker", &self.input_waker)
-        .finish_non_exhaustive()
+            .field("keys", &self.keys)
+            .field("output_waker", &self.output_waker)
+            .field("input_waker", &self.input_waker)
+            .finish_non_exhaustive()
     }
 }
 
@@ -122,7 +129,7 @@ impl<'a> Runner<'a> {
             // Events that need a response would have cleared runner.resume_event in their
             // resume handler.
             debug!("No response provided to {:?} event", prev);
-            return error::BadUsage.fail()
+            return error::BadUsage.fail();
         }
 
         // Another event may be pending from the same payload, emit it.
@@ -149,26 +156,23 @@ impl<'a> Runner<'a> {
                     // incoming channel data, we haven't finished with payload
                     self.traf_in.set_channel_input(data_in)?;
                     disp.event = DispatchEvent::Progressed
-                },
-                | DispatchEvent::CliEvent(_) 
-                | DispatchEvent::ServEvent(_)
-                 => {
+                }
+                DispatchEvent::CliEvent(_) | DispatchEvent::ServEvent(_) => {
                     // will return as an event
                 }
-                | DispatchEvent::None => {
+                DispatchEvent::None => {
                     // packets have been completed
                     self.traf_in.done_payload()
-                },
+                }
                 // TODO, may get used later?
-                | DispatchEvent::Progressed
-                => return Err(Error::bug()),
+                DispatchEvent::Progressed => return Err(Error::bug()),
             }
         } else if self.closed_input {
             // all incoming packets have been consumed, and we're closed for input,
             if self.conn.is_client() {
-                return Ok(Event::Cli(CliEvent::Defunct))
+                return Ok(Event::Cli(CliEvent::Defunct));
             } else {
-                return Ok(Event::Serv(ServEvent::Defunct))
+                return Ok(Event::Serv(ServEvent::Defunct));
             }
         }
 
@@ -178,11 +182,10 @@ impl<'a> Runner<'a> {
             disp = self.conn.progress(&mut s)?;
             trace!("prog disp {disp:?}");
             match disp.event {
-                | DispatchEvent::CliEvent(_) 
+                DispatchEvent::CliEvent(_)
                 | DispatchEvent::ServEvent(_)
                 | DispatchEvent::None
-                | DispatchEvent::Progressed
-                => (),
+                | DispatchEvent::Progressed => (),
                 // Don't expect data from conn.progress()
                 DispatchEvent::Data(_) => return Err(Error::bug()),
             }
@@ -208,25 +211,22 @@ impl<'a> Runner<'a> {
     // Accept bytes from the wire, returning the size consumed
     pub fn input(&mut self, buf: &[u8]) -> Result<usize, Error> {
         if self.closed_input {
-            return error::ChannelEOF.fail()
+            return error::ChannelEOF.fail();
         }
-        self.traf_in.input(
-            &mut self.keys,
-            &mut self.conn.remote_version,
-            buf,
-        )
+        self.traf_in.input(&mut self.keys, &mut self.conn.remote_version, buf)
     }
 
     // Whether [`input()`](input) is ready
     pub fn is_input_ready(&self) -> bool {
-        (self.conn.initial_sent() && self.traf_in.is_input_ready()) || self.closed_input
+        (self.conn.initial_sent() && self.traf_in.is_input_ready())
+            || self.closed_input
     }
 
     /// Set a waker to be notified when [`input()`](Self::input) is ready to be called.
     pub fn set_input_waker(&mut self, waker: &Waker) {
         if let Some(ref w) = self.input_waker {
             if w.will_wake(waker) {
-                return
+                return;
             }
         }
         if let Some(w) = self.input_waker.replace(waker.clone()) {
@@ -259,7 +259,7 @@ impl<'a> Runner<'a> {
     pub fn set_output_waker(&mut self, waker: &Waker) {
         if let Some(ref w) = self.output_waker {
             if w.will_wake(waker) {
-                return
+                return;
             }
         }
         if let Some(w) = self.output_waker.replace(waker.clone()) {
@@ -277,7 +277,8 @@ impl<'a> Runner<'a> {
     pub fn open_client_session(&mut self) -> Result<ChanHandle> {
         trace!("open_client_session");
 
-        let (chan, p) = self.conn.channels.open(packets::ChannelOpenType::Session)?;
+        let (chan, p) =
+            self.conn.channels.open(packets::ChannelOpenType::Session)?;
         self.traf_out.send_packet(p, &mut self.keys)?;
         self.wake();
         Ok(ChanHandle(chan))
@@ -295,11 +296,11 @@ impl<'a> Runner<'a> {
     ) -> Result<usize> {
         if self.traf_out.closed() {
             // TODO: unsure if we need this
-            return error::ChannelEOF.fail()
+            return error::ChannelEOF.fail();
         }
 
         if buf.is_empty() {
-            return Ok(0)
+            return Ok(0);
         }
 
         let len = self.ready_channel_send(chan, dt)?;
@@ -329,13 +330,13 @@ impl<'a> Runner<'a> {
         buf: &mut [u8],
     ) -> Result<usize> {
         if self.closed_input {
-            return error::ChannelEOF.fail()
+            return error::ChannelEOF.fail();
         }
 
         dt.validate_receive(self.conn.is_client())?;
 
         if self.is_channel_eof(chan) {
-            return error::ChannelEOF.fail()
+            return error::ChannelEOF.fail();
         }
 
         let (len, complete) = self.traf_in.channel_input(chan.0, dt, buf);
@@ -357,7 +358,6 @@ impl<'a> Runner<'a> {
         }
         Ok((len, dt))
     }
-
 
     /// Discards any channel input data pending for `chan`, regardless of whether
     /// normal or extended.
@@ -400,9 +400,13 @@ impl<'a> Runner<'a> {
     /// Returns `Ok(None)` on channel closed.
     ///
     /// May fail with `BadChannelData` if dt is invalid for this session.
-    pub fn ready_channel_send(&self, chan: &ChanHandle, dt: ChanData) -> Result<Option<usize>> {
+    pub fn ready_channel_send(
+        &self,
+        chan: &ChanHandle,
+        dt: ChanData,
+    ) -> Result<Option<usize>> {
         if self.traf_out.closed() {
-            return Ok(None)
+            return Ok(None);
         }
         // TODO: return 0 if InKex means we can't transmit packets.
 
@@ -413,7 +417,11 @@ impl<'a> Runner<'a> {
         let payload_space = self.traf_out.send_allowed(&self.keys);
         // subtract space for packet headers prior to data
         let payload_space = payload_space.saturating_sub(dt.packet_offset());
-        let r = Ok(self.conn.channels.send_allowed(chan.0).map(|s| s.min(payload_space)));
+        let r = Ok(self
+            .conn
+            .channels
+            .send_allowed(chan.0)
+            .map(|s| s.min(payload_space)));
         trace!("ready_channel_send {chan:?} -> {r:?}");
         r
     }
@@ -436,7 +444,11 @@ impl<'a> Runner<'a> {
     /// Send a terminal window size change report.
     ///
     /// Only call on a client session with a pty
-    pub fn term_window_change(&mut self, chan: &ChanHandle, winch: packets::WinChange) -> Result<()> {
+    pub fn term_window_change(
+        &mut self,
+        chan: &ChanHandle,
+        winch: packets::WinChange,
+    ) -> Result<()> {
         if self.is_client() {
             let mut s = self.traf_out.sender(&mut self.keys);
             self.conn.channels.term_window_change(chan.0, winch, &mut s)
@@ -448,9 +460,9 @@ impl<'a> Runner<'a> {
     /// Send a break to a session channel
     ///
     /// `length` is in milliseconds, or
-    /// pass 0 as a default (to be interpreted by the remote implementation). 
+    /// pass 0 as a default (to be interpreted by the remote implementation).
     /// Otherwise length will be clamped to the range [500, 3000] ms.
-    /// Only call on a client session. 
+    /// Only call on a client session.
     pub fn term_break(&mut self, chan: &ChanHandle, length: u32) -> Result<()> {
         if self.is_client() {
             let mut s = self.traf_out.sender(&mut self.keys);
@@ -460,14 +472,14 @@ impl<'a> Runner<'a> {
         }
     }
 
-    pub(crate) fn cli_session_opener(&mut self, ch: ChanNum) -> Result<CliSessionOpener<'_, 'a>> {
+    pub(crate) fn cli_session_opener(
+        &mut self,
+        ch: ChanNum,
+    ) -> Result<CliSessionOpener<'_, 'a>> {
         let ch = self.conn.channels.get(ch)?;
         let s = self.traf_out.sender(&mut self.keys);
 
-        Ok(CliSessionOpener {
-            ch,
-            s,
-        })
+        Ok(CliSessionOpener { ch, s })
     }
 
     pub(crate) fn fetch_cli_session_exit(&mut self) -> Result<CliSessionExit> {
@@ -499,16 +511,22 @@ impl<'a> Runner<'a> {
         }
     }
 
-
-    fn check_resume_inner(&self, expect: &DispatchEvent,
-        compare: &DispatchEvent) {
+    fn check_resume_inner(&self, expect: &DispatchEvent, compare: &DispatchEvent) {
         match (expect, compare) {
-            (DispatchEvent::CliEvent(e), DispatchEvent::CliEvent(c)) => 
-                debug_assert_eq!(discriminant(c), discriminant(e),
-                    "Expected response to pending {expect:?} event"),
-            (DispatchEvent::ServEvent(e), DispatchEvent::ServEvent(c)) => 
-                debug_assert_eq!(discriminant(c), discriminant(e),
-                    "Expected response to pending {expect:?} event"),
+            (DispatchEvent::CliEvent(e), DispatchEvent::CliEvent(c)) => {
+                debug_assert_eq!(
+                    discriminant(c),
+                    discriminant(e),
+                    "Expected response to pending {expect:?} event"
+                )
+            }
+            (DispatchEvent::ServEvent(e), DispatchEvent::ServEvent(c)) => {
+                debug_assert_eq!(
+                    discriminant(c),
+                    discriminant(e),
+                    "Expected response to pending {expect:?} event"
+                )
+            }
             _ => debug_assert!(false),
         }
     }
@@ -531,7 +549,10 @@ impl<'a> Runner<'a> {
         Ok(())
     }
 
-    pub(crate) fn resume_clipassword(&mut self, password: Option<&str>) -> Result<()> {
+    pub(crate) fn resume_clipassword(
+        &mut self,
+        password: Option<&str>,
+    ) -> Result<()> {
         self.resume(&DispatchEvent::CliEvent(CliEventId::Password));
         self.traf_in.done_payload();
         let mut s = self.traf_out.sender(&mut self.keys);
@@ -616,26 +637,35 @@ impl<'a> Runner<'a> {
     }
 
     pub(crate) fn fetch_servpubkey(&self) -> Result<PubKey> {
-        self.check_resume(&DispatchEvent::ServEvent(ServEventId::PubkeyAuth { real_sig: false }));
+        self.check_resume(&DispatchEvent::ServEvent(ServEventId::PubkeyAuth {
+            real_sig: false,
+        }));
         let (payload, _seq) = self.traf_in.payload().trap()?;
         self.conn.fetch_servpubkey(payload)
     }
-
 
     pub(crate) fn resume_servauth(&mut self, allow: bool) -> Result<()> {
         let prev_event = self.resume_event.take();
         // auth packets have passwords
         self.traf_in.zeroize_payload();
         debug_assert!(
-            matches!(prev_event, DispatchEvent::ServEvent(ServEventId::PasswordAuth))
-            || matches!(prev_event, DispatchEvent::ServEvent(ServEventId::PubkeyAuth {..})));
+            matches!(
+                prev_event,
+                DispatchEvent::ServEvent(ServEventId::PasswordAuth)
+            ) || matches!(
+                prev_event,
+                DispatchEvent::ServEvent(ServEventId::PubkeyAuth { .. })
+            )
+        );
 
         let mut s = self.traf_out.sender(&mut self.keys);
         self.conn.resume_servauth(allow, &mut s)
     }
 
     pub(crate) fn resume_servauth_pkok(&mut self) -> Result<()> {
-        self.resume(&DispatchEvent::ServEvent(ServEventId::PubkeyAuth{real_sig: false}));
+        self.resume(&DispatchEvent::ServEvent(ServEventId::PubkeyAuth {
+            real_sig: false,
+        }));
 
         let (payload, _seq) = self.traf_in.payload().trap()?;
         let mut s = self.traf_out.sender(&mut self.keys);
@@ -644,7 +674,11 @@ impl<'a> Runner<'a> {
         r
     }
 
-    pub(crate) fn resume_chanopen(&mut self, ch: ChanNum, failure: Option<ChanFail>) -> Result<()> {
+    pub(crate) fn resume_chanopen(
+        &mut self,
+        ch: ChanNum,
+        failure: Option<ChanFail>,
+    ) -> Result<()> {
         self.resume(&DispatchEvent::ServEvent(ServEventId::OpenSession { ch }));
         self.traf_in.done_payload();
         let mut s = self.traf_out.sender(&mut self.keys);
@@ -653,10 +687,17 @@ impl<'a> Runner<'a> {
 
     fn check_chanreq(prev_event: &DispatchEvent) {
         debug_assert!(
-            matches!(prev_event, DispatchEvent::ServEvent(ServEventId::SessionShell))
-            || matches!(prev_event, DispatchEvent::ServEvent(ServEventId::SessionExec))
-            || matches!(prev_event, DispatchEvent::ServEvent(ServEventId::SessionPty))
-            );
+            matches!(
+                prev_event,
+                DispatchEvent::ServEvent(ServEventId::SessionShell)
+            ) || matches!(
+                prev_event,
+                DispatchEvent::ServEvent(ServEventId::SessionExec)
+            ) || matches!(
+                prev_event,
+                DispatchEvent::ServEvent(ServEventId::SessionPty)
+            )
+        );
     }
 
     pub(crate) fn resume_chanreq(&mut self, success: bool) -> Result<()> {

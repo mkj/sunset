@@ -61,7 +61,7 @@ impl KeyState {
             seq_encrypt: Wrapping(0),
             seq_decrypt: Wrapping(0),
             strict_kex: false,
-            done_first_kex: false
+            done_first_kex: false,
         }
     }
 

@@ -115,9 +115,16 @@ fn do_auth_pw(_item: &Item<BufOutput>, _args: &[&str], context: &mut BufOutput) 
     let _ = writeln!(context, "this is auth pw");
 }
 
-fn do_erase_config(_item: &Item<BufOutput>, _args: &[&str], _context: &mut BufOutput) {
+fn do_erase_config(
+    _item: &Item<BufOutput>,
+    _args: &[&str],
+    _context: &mut BufOutput,
+) {
 }
 
 fn do_about(_item: &Item<BufOutput>, _args: &[&str], context: &mut BufOutput) {
-    let _ = writeln!(context, "Sunset SSH, USB serial\nMatt Johnston <matt@ucc.asn.au>\n");
+    let _ = writeln!(
+        context,
+        "Sunset SSH, USB serial\nMatt Johnston <matt@ucc.asn.au>\n"
+    );
 }

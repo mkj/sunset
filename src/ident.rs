@@ -1,4 +1,4 @@
-use crate::error::{self, Error,TrapBug, Result};
+use crate::error::{self, Error, Result, TrapBug};
 
 pub(crate) const OUR_VERSION: &[u8] = b"SSH-2.0-Sunset-1";
 
@@ -13,7 +13,6 @@ pub const CR: u8 = 0x0d;
 pub const LF: u8 = 0x0a;
 
 pub(crate) fn write_version(buf: &mut [u8]) -> Result<usize> {
-
     let total_len = OUR_VERSION.len() + 2;
     if total_len > buf.len() {
         return error::NoRoom.fail();
@@ -94,7 +93,8 @@ impl RemoteVersion {
 
             match self.st {
                 VersPars::Start(ref mut pos) => {
-                    let w = self.storage.get_mut(*pos).ok_or(error::NoRoom.build())?;
+                    let w =
+                        self.storage.get_mut(*pos).ok_or(error::NoRoom.build())?;
                     *w = b;
                     *pos += 1;
                     // Check if line so far matches SSH-2.0-
@@ -134,7 +134,10 @@ impl RemoteVersion {
                         return Err(Error::msg("bad remote version"));
                     }
                     _ => {
-                        let w = self.storage.get_mut(*pos).ok_or(error::NoRoom.build())?;
+                        let w = self
+                            .storage
+                            .get_mut(*pos)
+                            .ok_or(error::NoRoom.build())?;
                         *w = b;
                         *pos += 1;
                     }

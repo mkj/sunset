@@ -6,7 +6,7 @@
 pub use log::{debug, error, info, log, trace, warn};
 
 use embassy_executor::Spawner;
-use embassy_net::{StackResources};
+use embassy_net::StackResources;
 use embassy_rp::gpio::{Input, Level, Output, Pull};
 use embassy_rp::peripherals::*;
 use embassy_rp::spi::{Async, Config as SpiConfig, Spi};
@@ -15,9 +15,9 @@ use embedded_hal_bus::spi::ExclusiveDevice;
 
 use embassy_net_wiznet::*;
 
-use static_cell::StaticCell;
 use rand::rngs::OsRng;
 use rand::RngCore;
+use static_cell::StaticCell;
 
 use crate::{SSHConfig, SunsetMutex};
 
@@ -56,7 +56,7 @@ pub(crate) async fn w5500_stack(
     let w5500_reset = Output::new(p20, Level::High);
 
     let mac_addr = config.lock().await.mac;
-    // 
+    //
     static STATE: StaticCell<State<8, 8>> = StaticCell::new();
     let state = STATE.init_with(|| State::new());
     let (net_device, runner) = embassy_net_wiznet::new(
@@ -79,8 +79,10 @@ pub(crate) async fn w5500_stack(
     let seed = OsRng.next_u64();
 
     // Init network stack
-    static SR: StaticCell<StackResources::<{crate::NUM_SOCKETS}>> = StaticCell::new();
-    let (stack, runner) = embassy_net::new(net_device, net_cf, SR.init(StackResources::new()), seed);
+    static SR: StaticCell<StackResources<{ crate::NUM_SOCKETS }>> =
+        StaticCell::new();
+    let (stack, runner) =
+        embassy_net::new(net_device, net_cf, SR.init(StackResources::new()), seed);
 
     // Launch network task
     spawner.spawn(net_task(runner)).unwrap();

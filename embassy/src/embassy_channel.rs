@@ -2,11 +2,11 @@
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
 
-use embedded_io_async::{Read, Write, ErrorType};
+use embedded_io_async::{ErrorType, Read, Write};
 
 use crate::*;
 use embassy_sunset::EmbassySunset;
-use sunset::{Result, ChanData, ChanNum};
+use sunset::{ChanData, ChanNum, Result};
 
 /// Common implementation
 struct ChanIO<'g, 'a> {
@@ -39,11 +39,7 @@ impl Drop for ChanIO<'_, '_> {
 impl Clone for ChanIO<'_, '_> {
     fn clone(&self) -> Self {
         self.sunset.inc_chan(self.num);
-        Self {
-            num: self.num,
-            dt: self.dt,
-            sunset: self.sunset,
-        }
+        Self { num: self.num, dt: self.dt, sunset: self.sunset }
     }
 }
 
@@ -83,10 +79,12 @@ pub struct ChanOut<'g, 'a>(ChanIO<'g, 'a>);
 
 impl<'g, 'a> ChanInOut<'g, 'a> {
     // caller must have already incremented the refcount
-    pub(crate) fn new(num: ChanNum, dt: ChanData, sunset: &'g EmbassySunset<'a>) -> Self {
-        Self(ChanIO {
-            num, dt, sunset,
-        })
+    pub(crate) fn new(
+        num: ChanNum,
+        dt: ChanData,
+        sunset: &'g EmbassySunset<'a>,
+    ) -> Self {
+        Self(ChanIO { num, dt, sunset })
     }
 
     /// A future that waits until the channel closes
@@ -97,26 +95,33 @@ impl<'g, 'a> ChanInOut<'g, 'a> {
     /// Send a terminal size change notification
     ///
     /// Only applicable to client shell channels with a PTY
-    pub async fn term_window_change(&self, winch: sunset::packets::WinChange) -> Result<()> {
+    pub async fn term_window_change(
+        &self,
+        winch: sunset::packets::WinChange,
+    ) -> Result<()> {
         self.0.sunset.term_window_change(self.0.num, winch).await
     }
 }
 
 impl<'g, 'a> ChanIn<'g, 'a> {
     // caller must have already incremented the refcount
-    pub(crate) fn new(num: ChanNum, dt: ChanData, sunset: &'g EmbassySunset<'a>) -> Self {
-        Self(ChanIO {
-            num, dt, sunset,
-        })
+    pub(crate) fn new(
+        num: ChanNum,
+        dt: ChanData,
+        sunset: &'g EmbassySunset<'a>,
+    ) -> Self {
+        Self(ChanIO { num, dt, sunset })
     }
 }
 
 impl<'g, 'a> ChanOut<'g, 'a> {
     // caller must have already incremented the refcount
-    pub(crate) fn new(num: ChanNum, dt: ChanData, sunset: &'g EmbassySunset<'a>) -> Self {
-        Self(ChanIO {
-            num, dt, sunset,
-        })
+    pub(crate) fn new(
+        num: ChanNum,
+        dt: ChanData,
+        sunset: &'g EmbassySunset<'a>,
+    ) -> Self {
+        Self(ChanIO { num, dt, sunset })
     }
 
     /// A future that waits until the channel closes

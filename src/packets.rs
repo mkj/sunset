@@ -20,11 +20,11 @@ use sunset_sshwire_derive::*;
 
 use crate::*;
 use namelist::NameList;
+use sign::{OwnedSig, SigType};
 use sshnames::*;
-use sshwire::{BinString, TextString, Blob};
-use sign::{SigType, OwnedSig};
-use sshwire::{SSHEncode, SSHDecode, SSHSource, SSHSink, WireResult, WireError};
-use sshwire::{SSHEncodeEnum, SSHDecodeEnum};
+use sshwire::{BinString, Blob, TextString};
+use sshwire::{SSHDecode, SSHEncode, SSHSink, SSHSource, WireError, WireResult};
+use sshwire::{SSHDecodeEnum, SSHEncodeEnum};
 
 #[cfg(feature = "rsa")]
 use rsa::traits::PublicKeyParts;
@@ -115,12 +115,14 @@ pub struct ExtInfo<'a> {
     // repeat the following 2 fields "nr-extensions" times:
     //   string   extension-name
     //   string   extension-value (binary)
-
     pub server_sig_algs: Option<NameList<'a>>,
 }
 
 impl<'de: 'a, 'a> SSHDecode<'de> for ExtInfo<'a> {
-    fn dec<S>(s: &mut S) -> WireResult<Self> where S: SSHSource<'de> {
+    fn dec<S>(s: &mut S) -> WireResult<Self>
+    where
+        S: SSHSource<'de>,
+    {
         let mut server_sig_algs = None;
         let num = u32::dec(s)?;
         for _ in 0..num {
@@ -128,16 +130,14 @@ impl<'de: 'a, 'a> SSHDecode<'de> for ExtInfo<'a> {
             match ext {
                 SSH_EXT_SERVER_SIG_ALGS => {
                     server_sig_algs = Some(SSHDecode::dec(s)?);
-                },
+                }
                 _ => {
                     // skip over
                     let _: BinString = SSHDecode::dec(s)?;
-                },
+                }
             }
         }
-        Ok(Self {
-            server_sig_algs
-        })
+        Ok(Self { server_sig_algs })
     }
 }
 
@@ -183,9 +183,13 @@ pub enum Userauth60<'a> {
 
 impl<'de: 'a, 'a> SSHDecode<'de> for Userauth60<'a> {
     fn dec<S>(s: &mut S) -> WireResult<Self>
-    where S: SSHSource<'de> {
+    where
+        S: SSHSource<'de>,
+    {
         match s.ctx().cli_auth_type {
-            Some(auth::AuthType::Password) => Ok(Self::PwChangeReq(SSHDecode::dec(s)?)),
+            Some(auth::AuthType::Password) => {
+                Ok(Self::PwChangeReq(SSHDecode::dec(s)?))
+            }
             Some(auth::AuthType::PubKey) => Ok(Self::PkOk(SSHDecode::dec(s)?)),
             _ => {
                 trace!("Wrong packet state for userauth60");
@@ -214,7 +218,7 @@ pub struct MethodPassword<'a> {
 }
 
 // Don't print password
-impl Debug for MethodPassword<'_>{
+impl Debug for MethodPassword<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("MethodPassword")
             .field("change", &self.change)
@@ -235,16 +239,9 @@ pub struct MethodPubKey<'a> {
 
 impl<'a> MethodPubKey<'a> {
     pub fn new(pubkey: PubKey<'a>, sig: Option<&'a OwnedSig>) -> Result<Self> {
-        let sig_algo =
-            Signature::sig_name_for_pubkey(&pubkey).trap()?;
+        let sig_algo = Signature::sig_name_for_pubkey(&pubkey).trap()?;
         let sig = sig.map(|s| Blob((s).into()));
-        Ok(MethodPubKey {
-            sig_algo,
-            pubkey: Blob(pubkey),
-            sig,
-            force_sig: false,
-        })
-
+        Ok(MethodPubKey { sig_algo, pubkey: Blob(pubkey), sig, force_sig: false })
     }
 }
 
@@ -271,15 +268,13 @@ impl SSHEncode for MethodPubKey<'_> {
 
 impl<'de: 'a, 'a> SSHDecode<'de> for MethodPubKey<'a> {
     fn dec<S>(s: &mut S) -> WireResult<Self>
-    where S: sshwire::SSHSource<'de> {
+    where
+        S: sshwire::SSHSource<'de>,
+    {
         let sig = bool::dec(s)?;
         let sig_algo = SSHDecode::dec(s)?;
         let pubkey = SSHDecode::dec(s)?;
-        let sig = if sig {
-            Some(SSHDecode::dec(s)?)
-        } else {
-            None
-        };
+        let sig = if sig { Some(SSHDecode::dec(s)?) } else { None };
         Ok(Self { sig_algo, pubkey, sig, force_sig: false })
     }
 }
@@ -327,13 +322,10 @@ impl PubKey<'_> {
     #[cfg(feature = "openssh-key")]
     pub fn matches_openssh(&self, k: &str) -> Result<bool> {
         let k = ssh_key::PublicKey::from_openssh(k)
-            .map_err(|_| {
-                Error::msg("Unsupported OpenSSH key")
-            })?;
+            .map_err(|_| Error::msg("Unsupported OpenSSH key"))?;
 
         let m = match (k.key_data(), self) {
-            (ssh_key::public::KeyData::Ed25519(kssh),
-                PubKey::Ed25519(kself)) => {
+            (ssh_key::public::KeyData::Ed25519(kssh), PubKey::Ed25519(kself)) => {
                 kssh.0 == kself.key.0
             }
             _ => false,
@@ -393,11 +385,13 @@ impl SSHEncode for RSAPubKey {
 
 #[cfg(feature = "rsa")]
 impl<'de> SSHDecode<'de> for RSAPubKey {
-    fn dec<S>(s: &mut S) -> WireResult<Self> where S: SSHSource<'de> {
+    fn dec<S>(s: &mut S) -> WireResult<Self>
+    where
+        S: SSHSource<'de>,
+    {
         let e = SSHDecode::dec(s)?;
         let n = SSHDecode::dec(s)?;
-        let key = rsa::RsaPublicKey::new(n, e)
-        .map_err(|e| {
+        let key = rsa::RsaPublicKey::new(n, e).map_err(|e| {
             debug!("Invalid RSA public key: {e}");
             WireError::BadKeyFormat
         })?;
@@ -414,7 +408,7 @@ impl Debug for RSAPubKey {
     }
 }
 
-#[derive(Debug, SSHEncode,  SSHDecode, Clone)]
+#[derive(Debug, SSHEncode, SSHDecode, Clone)]
 #[sshwire(variant_prefix)]
 pub enum Signature<'a> {
     #[sshwire(variant = SSH_NAME_ED25519)]
@@ -452,7 +446,7 @@ impl<'a> Signature<'a> {
             PubKey::RSA(_) => Ok(SSH_NAME_RSA_SHA256),
             PubKey::Unknown(u) => {
                 warn!("Unknown key type \"{}\"", u);
-                Err(Error::UnknownMethod {kind: "key"})
+                Err(Error::UnknownMethod { kind: "key" })
             }
         }
     }
@@ -464,22 +458,25 @@ impl<'a> Signature<'a> {
             Signature::RSA(_) => Ok(SigType::RSA),
             Signature::Unknown(u) => {
                 warn!("Unknown signature type \"{}\"", u);
-                Err(Error::UnknownMethod {kind: "signature" })
+                Err(Error::UnknownMethod { kind: "signature" })
             }
         }
     }
 }
 
-impl <'a> From<&'a OwnedSig> for Signature<'a> {
+impl<'a> From<&'a OwnedSig> for Signature<'a> {
     fn from(s: &'a OwnedSig) -> Self {
         match s {
-            OwnedSig::Ed25519(s) => Signature::Ed25519(Ed25519Sig { sig: BinString(s) }),
+            OwnedSig::Ed25519(s) => {
+                Signature::Ed25519(Ed25519Sig { sig: BinString(s) })
+            }
             #[cfg(feature = "rsa")]
-            OwnedSig::RSA(s) => Signature::RSA(RSASig { sig: BinString(s.as_ref()) })
+            OwnedSig::RSA(s) => {
+                Signature::RSA(RSASig { sig: BinString(s.as_ref()) })
+            }
         }
     }
 }
-
 
 #[derive(Debug, SSHEncode, SSHDecode, Clone)]
 pub struct Ed25519Sig<'a> {
@@ -495,7 +492,6 @@ pub struct RSASig<'a> {
 #[derive(Debug, SSHEncode, SSHDecode)]
 pub struct GlobalRequest<'a> {
     #[sshwire(variant_name = req)]
-
     pub want_reply: bool,
     pub req: GlobalRequestMethod<'a>,
 }
@@ -528,7 +524,10 @@ pub enum RequestSuccess {
 }
 
 impl<'de> SSHDecode<'de> for RequestSuccess {
-    fn dec<S>(_s: &mut S) -> WireResult<Self> where S: SSHSource<'de> {
+    fn dec<S>(_s: &mut S) -> WireResult<Self>
+    where
+        S: SSHSource<'de>,
+    {
         // if s.ctx().last_req_port {
         //     Ok(Self::TcpPort(TcpPort::dec(s)?))
         // } else {
@@ -572,7 +571,7 @@ pub enum ChannelOpenType<'a> {
     Unknown(Unknown<'a>),
 }
 
-#[derive(Debug,SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode)]
 pub struct ChannelOpenConfirmation {
     pub num: u32,
     pub sender_num: u32,
@@ -580,7 +579,7 @@ pub struct ChannelOpenConfirmation {
     pub max_packet: u32,
 }
 
-#[derive(Debug,SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode)]
 pub struct ChannelOpenFailure<'a> {
     pub num: u32,
     pub reason: u32,
@@ -588,13 +587,13 @@ pub struct ChannelOpenFailure<'a> {
     pub lang: &'a str,
 }
 
-#[derive(Debug,SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode)]
 pub struct ChannelWindowAdjust {
     pub num: u32,
     pub adjust: u32,
 }
 
-#[derive(Debug,SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode)]
 pub struct ChannelData<'a> {
     pub num: u32,
     pub data: BinString<'a>,
@@ -605,7 +604,7 @@ impl ChannelData<'_> {
     pub const DATA_OFFSET: usize = 9;
 }
 
-#[derive(Debug,SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode)]
 pub struct ChannelDataExt<'a> {
     pub num: u32,
     pub code: u32,
@@ -617,22 +616,22 @@ impl ChannelDataExt<'_> {
     pub const DATA_OFFSET: usize = 13;
 }
 
-#[derive(Debug,SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode)]
 pub struct ChannelEof {
     pub num: u32,
 }
 
-#[derive(Debug,SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode)]
 pub struct ChannelClose {
     pub num: u32,
 }
 
-#[derive(Debug,SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode)]
 pub struct ChannelSuccess {
     pub num: u32,
 }
 
-#[derive(Debug,SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode)]
 pub struct ChannelFailure {
     pub num: u32,
 }
@@ -643,7 +642,6 @@ pub struct ChannelRequest<'a> {
 
     // channel_type is implicit in req below
     #[sshwire(variant_name = req)]
-
     pub want_reply: bool,
     pub req: ChannelReqType<'a>,
 }
@@ -755,7 +753,6 @@ pub struct DirectTcpip<'a> {
     pub origin_port: u32,
 }
 
-
 /// Placeholder for unknown method names.
 ///
 /// These are sometimes non-fatal and
@@ -802,10 +799,7 @@ pub struct ParseContext {
 
 impl ParseContext {
     pub fn new() -> Self {
-        ParseContext {
-            cli_auth_type: None,
-            seen_unknown: false,
-        }
+        ParseContext { cli_auth_type: None, seen_unknown: false }
     }
 }
 
@@ -991,11 +985,11 @@ messagetypes![
 
 #[cfg(test)]
 mod tests {
-    use crate::sunsetlog::init_test_log;
     use crate::packets::*;
     use crate::sshnames::*;
     use crate::sshwire::tests::{assert_serialize_equal, test_roundtrip};
     use crate::sshwire::{packet_from_bytes, write_ssh};
+    use crate::sunsetlog::init_test_log;
     use crate::{packets, sshwire};
     use pretty_hex::PrettyHex;
 
@@ -1016,12 +1010,14 @@ mod tests {
         init_test_log();
         // with None sig
         let k = SignKey::generate(KeyType::Ed25519, None).unwrap();
-        let method = AuthMethod::PubKey(MethodPubKey::new(k.pubkey(), None).unwrap());
+        let method =
+            AuthMethod::PubKey(MethodPubKey::new(k.pubkey(), None).unwrap());
         let p = UserauthRequest {
             username: "matt".into(),
             service: "conn".into(),
             method,
-        }.into();
+        }
+        .into();
         test_roundtrip(&p);
 
         // again with a sig
@@ -1035,11 +1031,8 @@ mod tests {
             sig,
             force_sig: false,
         });
-        let p = UserauthRequest {
-            username: "matt".into(),
-            service: "conn",
-            method,
-        }.into();
+        let p = UserauthRequest { username: "matt".into(), service: "conn", method }
+            .into();
         test_roundtrip(&p);
     }
 
@@ -1086,8 +1079,9 @@ mod tests {
         let ctx = ParseContext::default();
         let p2 = packet_from_bytes(&buf1, &ctx).unwrap();
         trace!("broken: {p2:#?}");
-        assert!(matches!(p2,
-            Packet::ChannelOpen(ChannelOpen { ty: ChannelOpenType::Unknown(_), ..})
+        assert!(matches!(
+            p2,
+            Packet::ChannelOpen(ChannelOpen { ty: ChannelOpenType::Unknown(_), .. })
         ));
     }
 
@@ -1096,17 +1090,20 @@ mod tests {
     fn unknown_variant_in_blob() {
         init_test_log();
         let p: Packet = UserauthRequest {
-            username: "matt".into(), service: "connection",
+            username: "matt".into(),
+            service: "connection",
             method: AuthMethod::PubKey(MethodPubKey {
                 sig_algo: "something",
-                pubkey: Blob(PubKey::Ed25519(
-                    Ed25519PubKey { key: Blob([3u8; 32]) }
-                )),
+                pubkey: Blob(PubKey::Ed25519(Ed25519PubKey {
+                    key: Blob([3u8; 32]),
+                })),
                 sig: Some(Blob(Signature::Ed25519(Ed25519Sig {
-                    sig: BinString(b"sighere")
+                    sig: BinString(b"sighere"),
                 }))),
                 force_sig: false,
-            })}.into();
+            }),
+        }
+        .into();
 
         let mut buf1 = vec![88; 1000];
         let l = write_ssh(&mut buf1, &p).unwrap();
@@ -1117,7 +1114,8 @@ mod tests {
         let ctx = ParseContext::default();
         let p2 = packet_from_bytes(&buf1, &ctx).unwrap();
         trace!("broken: {p2:#?}");
-        assert!(matches!(p2,
+        assert!(matches!(
+            p2,
             Packet::UserauthRequest(UserauthRequest {
                 method: AuthMethod::PubKey(MethodPubKey {
                     pubkey: Blob(PubKey::Unknown(Unknown(b"ssF-ed25519"))),
@@ -1137,7 +1135,7 @@ mod tests {
             sender_num: 0,
             initial_window: 200000,
             max_packet: 88200,
-            ty: ChannelOpenType::Unknown(Unknown(b"audio-stream"))
+            ty: ChannelOpenType::Unknown(Unknown(b"audio-stream")),
         });
         let mut buf1 = vec![88; 1000];
         write_ssh(&mut buf1, &p).unwrap();

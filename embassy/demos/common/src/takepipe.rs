@@ -3,13 +3,13 @@ use log::{debug, error, info, log, trace, warn};
 
 use core::ops::DerefMut;
 
-use embedded_io_async::{Write, Read, ErrorType};
+use embedded_io_async::{ErrorType, Read, Write};
 
-use embassy_sync::{pipe, mutex::Mutex, signal::Signal};
-use embassy_sync::pipe::Pipe;
 use embassy_futures::select::{select, Either};
+use embassy_sync::pipe::Pipe;
+use embassy_sync::{mutex::Mutex, pipe, signal::Signal};
 
-use sunset_embassy::{SunsetRawMutex, SunsetMutex};
+use sunset_embassy::{SunsetMutex, SunsetRawMutex};
 
 pub const READ_SIZE: usize = 200;
 pub const WRITE_SIZE: usize = 64;
@@ -28,7 +28,7 @@ pub const WRITE_SIZE: usize = 64;
 ///
 /// It works a bit like `screen -r -d`.
 pub struct TakePipeStorage {
-	fanout: Pipe<SunsetRawMutex, READ_SIZE>,
+    fanout: Pipe<SunsetRawMutex, READ_SIZE>,
     fanin: Pipe<SunsetRawMutex, WRITE_SIZE>,
 }
 
@@ -52,10 +52,7 @@ impl TakePipeStorage {
 
 impl Default for TakePipeStorage {
     fn default() -> Self {
-        Self {
-            fanout: Pipe::new(),
-            fanin: Pipe::new(),
-        }
+        Self { fanout: Pipe::new(), fanin: Pipe::new() }
     }
 }
 
@@ -71,7 +68,6 @@ pub struct TakePipe<'a> {
 
 impl<'a> TakePipe<'a> {
     pub async fn take(&'a self) -> (TakeRead<'a>, TakeWrite<'a>) {
-
         self.wake.signal(());
         let mut lr = self.shared_read.lock().await;
         let (cr, _r) = lr.deref_mut();
@@ -86,14 +82,8 @@ impl<'a> TakePipe<'a> {
         // for high levels to deal with if needed.
         self.wake.reset();
 
-        let r = TakeRead {
-            pipe: Some(self),
-            counter: *cr,
-        };
-        let w = TakeWrite {
-            pipe: Some(self),
-            counter: *cw,
-        };
+        let r = TakeRead { pipe: Some(self), counter: *cr };
+        let w = TakeWrite { pipe: Some(self), counter: *cw };
         (r, w)
     }
 
@@ -102,12 +92,8 @@ impl<'a> TakePipe<'a> {
     }
 
     pub fn split(&'a self) -> (TakePipeRead<'a>, TakePipeWrite<'a>) {
-        let r = TakePipeRead {
-            pipe: self,
-        };
-        let w = TakePipeWrite {
-            pipe: self,
-        };
+        let r = TakePipeRead { pipe: self };
+        let w = TakePipeWrite { pipe: self };
         (r, w)
     }
 }
@@ -148,7 +134,6 @@ pub struct TakeRead<'a> {
 }
 
 impl Read for TakeRead<'_> {
-
     async fn read(&mut self, buf: &mut [u8]) -> sunset::Result<usize> {
         let p = self.pipe.ok_or(sunset::Error::ChannelEOF)?;
 
@@ -162,10 +147,7 @@ impl Read for TakeRead<'_> {
             Ok(o.read(buf).await.unwrap())
         };
 
-        let r = select(
-            op,
-            p.wake.wait(),
-        );
+        let r = select(op, p.wake.wait());
 
         match r.await {
             // read completed
@@ -202,10 +184,7 @@ impl Write for TakeWrite<'_> {
             Ok(o.write(buf).await.unwrap())
         };
 
-        let r = select(
-            op,
-            p.wake.wait(),
-        );
+        let r = select(op, p.wake.wait());
 
         match r.await {
             // write completed
@@ -226,13 +205,13 @@ impl ErrorType for TakeWrite<'_> {
 #[cfg(test)]
 mod tests {
     use crate::takepipe::*;
-    use embedded_io_async::{Write, Read};
     use anyhow::Result;
+    use embedded_io_async::{Read, Write};
 
     async fn read_vec(len: usize, r: &mut impl Read) -> Result<Vec<u8>> {
         let mut v = vec![0; len];
 
-        let l = r.read(&mut v).await.map_err(|_| anyhow::anyhow!("read failed") )?;
+        let l = r.read(&mut v).await.map_err(|_| anyhow::anyhow!("read failed"))?;
         v.truncate(l);
         Ok(v)
     }

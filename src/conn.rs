@@ -1,29 +1,33 @@
 //! Represents the state of a SSH connection.
 
-use self::{cliauth::CliAuth, event::Banner, packets::{AuthMethod, UserauthRequest}};
+use self::{
+    cliauth::CliAuth,
+    event::Banner,
+    packets::{AuthMethod, UserauthRequest},
+};
 
 #[allow(unused_imports)]
 use {
-    crate::error::{*, Error, Result, TrapBug},
+    crate::error::{Error, Result, TrapBug, *},
     log::{debug, error, info, log, trace, warn},
 };
 
 use core::char::MAX;
-use core::task::{Waker,Poll};
+use core::task::{Poll, Waker};
 
-use pretty_hex::PrettyHex;
 use heapless::Vec;
+use pretty_hex::PrettyHex;
 
 use crate::*;
-use sshnames::*;
-use client::Client;
-use packets::{Packet,ParseContext};
-use server::Server;
-use traffic::TrafSend;
 use channel::{Channels, CliSessionExit};
+use client::Client;
 use config::MAX_CHANNELS;
-use kex::{Kex, SessId, AlgoConfig};
 use event::{CliEvent, ServEvent};
+use kex::{AlgoConfig, Kex, SessId};
+use packets::{Packet, ParseContext};
+use server::Server;
+use sshnames::*;
+use traffic::TrafSend;
 
 /// The core state of a SSH instance.
 pub(crate) struct Conn {
@@ -79,8 +83,7 @@ enum ConnState {
 // must_use so return values can't be forgotten in Conn::dispatch_packet
 #[must_use]
 #[derive(Debug, Clone)]
-pub(crate) enum DispatchEvent
-{
+pub(crate) enum DispatchEvent {
     /// Incoming channel data
     Data(channel::DataIn),
     CliEvent(event::CliEventId),
@@ -116,10 +119,7 @@ impl DispatchEvent {
     /// call the appropriate resume method.
     pub(crate) fn needs_resume(&self) -> bool {
         match self {
-            | Self::None
-            | Self::Data(_)
-            | Self::Progressed
-            => false,
+            Self::None | Self::Data(_) | Self::Progressed => false,
             Self::CliEvent(x) => x.needs_resume(),
             Self::ServEvent(x) => x.needs_resume(),
         }
@@ -168,27 +168,30 @@ impl Conn {
     pub fn server(&self) -> Result<&server::Server> {
         match &self.cliserv {
             ClientServer::Server(s) => Ok(s),
-            _ => Err(Error::bug())
+            _ => Err(Error::bug()),
         }
     }
 
     pub fn mut_server(&mut self) -> Result<&mut server::Server> {
         match &mut self.cliserv {
             ClientServer::Server(s) => Ok(s),
-            _ => Err(Error::bug())
+            _ => Err(Error::bug()),
         }
     }
 
     pub fn client(&self) -> Result<&client::Client> {
         match &self.cliserv {
             ClientServer::Client(x) => Ok(x),
-            _ => Err(Error::bug())
+            _ => Err(Error::bug()),
         }
     }
 
     /// Updates `ConnState` and sends any packets required to progress the connection state.
     // TODO can this just move to the bottom of handle_payload(), and make module-private?
-    pub(crate) fn progress(&mut self, s: &mut TrafSend) -> Result<Dispatched, Error> {
+    pub(crate) fn progress(
+        &mut self,
+        s: &mut TrafSend,
+    ) -> Result<Dispatched, Error> {
         let mut disp = Dispatched::default();
         match self.state {
             ConnState::SendIdent => {
@@ -237,15 +240,19 @@ impl Conn {
         !matches!(self.state, ConnState::SendIdent)
     }
 
-    pub(crate) fn packet<'p>(&self, payload: &'p[u8]) -> Result<Packet<'p>> {
+    pub(crate) fn packet<'p>(&self, payload: &'p [u8]) -> Result<Packet<'p>> {
         sshwire::packet_from_bytes(payload, &self.parse_ctx)
     }
 
     /// Consumes an input payload which is a view into [`traffic::Traffic::rxbuf`].
     /// We queue response packets that can be sent (written into the same buffer)
     /// after `handle_payload()` runs.
-    pub(crate) fn handle_payload(&mut self, payload: &[u8], seq: u32, 
-        s: &mut TrafSend) -> Result<Dispatched, Error> {
+    pub(crate) fn handle_payload(
+        &mut self,
+        payload: &[u8],
+        seq: u32,
+        s: &mut TrafSend,
+    ) -> Result<Dispatched, Error> {
         // Parse the packet
         trace!("Received\n{:#?}", payload.hex_dump());
 
@@ -254,9 +261,9 @@ impl Conn {
                 let num = p.message_num() as u8;
                 let a = self.dispatch_packet(p, s);
                 match a {
-                    | Err(Error::SSHProto { .. })
-                    | Err(Error::PacketWrong)
-                    => debug!("Error handling {num} packet"),
+                    Err(Error::SSHProto { .. }) | Err(Error::PacketWrong) => {
+                        debug!("Error handling {num} packet")
+                    }
                     _ => (),
                 }
                 a
@@ -282,7 +289,7 @@ impl Conn {
                 _ => {
                     debug!("Non-kex packet during strict kex");
                     error::SSHProto.fail()
-                },
+                }
             }
         } else if !matches!(self.kex, Kex::Idle) {
             // Normal KEX only allows certain packets
@@ -292,34 +299,26 @@ impl Conn {
                 _ => {
                     debug!("Invalid packet during kex");
                     error::SSHProto.fail()
-                },
+                }
             }
         } else {
             // No KEX in progress, check for post-auth packets
             match p.category() {
                 packets::Category::All => Ok(()),
                 packets::Category::Kex => Ok(()),
-                packets::Category::Auth => {
-                    match self.state {
-                        | ConnState::PreAuth
-                        | ConnState::Authed
-                        => Ok(()),
-                        _ => error::SSHProto.fail(),
-                    }
-                }
-                packets::Category::Sess => {
-                    match self.state {
-                        ConnState::Authed
-                        => Ok(()),
-                        _ => error::SSHProto.fail(),
-                    }
-                }
+                packets::Category::Auth => match self.state {
+                    ConnState::PreAuth | ConnState::Authed => Ok(()),
+                    _ => error::SSHProto.fail(),
+                },
+                packets::Category::Sess => match self.state {
+                    ConnState::Authed => Ok(()),
+                    _ => error::SSHProto.fail(),
+                },
             }
         };
 
         if r.is_err() {
-            error!("Received unexpected packet {}",
-                p.message_num() as u8);
+            error!("Received unexpected packet {}", p.message_num() as u8);
             debug!("state is {:?}", self.state);
         }
         r
@@ -329,7 +328,10 @@ impl Conn {
         self.sess_id.is_none()
     }
 
-    pub fn dispatch_packet(&mut self, packet: Packet, s: &mut TrafSend,
+    pub fn dispatch_packet(
+        &mut self,
+        packet: Packet,
+        s: &mut TrafSend,
     ) -> Result<Dispatched, Error> {
         // TODO: perhaps could consolidate packet client vs server checks
         trace!("Incoming {packet:#?}");
@@ -380,7 +382,7 @@ impl Conn {
                     serv.service_request(&p, s)?;
                 } else {
                     debug!("Server sent a service request");
-                    return error::SSHProto.fail()
+                    return error::SSHProto.fail();
                 }
             }
             Packet::ServiceAccept(p) => {
@@ -411,7 +413,7 @@ impl Conn {
                     disp.event = serv.auth.request(sess_id, s, p)?;
                 } else {
                     debug!("Server sent an auth request");
-                    return error::SSHProto.fail()
+                    return error::SSHProto.fail();
                 }
             }
             Packet::UserauthFailure(p) => {
@@ -419,7 +421,7 @@ impl Conn {
                     disp.event = cli.auth.failure(&p, &mut self.parse_ctx)?;
                 } else {
                     debug!("Received UserauthFailure as a server");
-                    return error::SSHProto.fail()
+                    return error::SSHProto.fail();
                 }
             }
             Packet::UserauthSuccess(_) => {
@@ -432,13 +434,13 @@ impl Conn {
                     }
                 } else {
                     debug!("Received UserauthSuccess as a server");
-                    return error::SSHProto.fail()
+                    return error::SSHProto.fail();
                 }
             }
             Packet::UserauthBanner(_) => {
                 if self.is_server() {
                     debug!("Received banner as a server");
-                    return error::SSHProto.fail()
+                    return error::SSHProto.fail();
                 }
                 disp.event = DispatchEvent::CliEvent(CliEventId::Banner);
             }
@@ -446,13 +448,14 @@ impl Conn {
                 // TODO: client only
                 if let ClientServer::Client(cli) = &mut self.cliserv {
                     let sess_id = self.sess_id.as_ref().trap()?;
-                    disp.event = cli.auth.auth60(&p, sess_id, &mut self.parse_ctx, s)?;
+                    disp.event =
+                        cli.auth.auth60(&p, sess_id, &mut self.parse_ctx, s)?;
                 } else {
                     debug!("Received userauth60 as a server");
-                    return error::SSHProto.fail()
+                    return error::SSHProto.fail();
                 }
             }
-            | Packet::ChannelOpen(_)
+            Packet::ChannelOpen(_)
             | Packet::ChannelOpenConfirmation(_)
             | Packet::ChannelOpenFailure(_)
             | Packet::ChannelWindowAdjust(_)
@@ -462,9 +465,7 @@ impl Conn {
             | Packet::ChannelClose(_)
             | Packet::ChannelRequest(_)
             | Packet::ChannelSuccess(_)
-            | Packet::ChannelFailure(_)
-
-            => {
+            | Packet::ChannelFailure(_) => {
                 disp.event = self.channels.dispatch(packet, s)?;
             }
             Packet::GlobalRequest(p) => {
@@ -485,32 +486,35 @@ impl Conn {
 
     pub(crate) fn cliauth(&self) -> Result<&CliAuth> {
         let ClientServer::Client(cli) = &self.cliserv else {
-            return Err(Error::bug())
+            return Err(Error::bug());
         };
         Ok(&cli.auth)
     }
 
-    pub(crate) fn mut_cliauth(&mut self) -> Result<(&mut CliAuth, &mut ParseContext)> {
+    pub(crate) fn mut_cliauth(
+        &mut self,
+    ) -> Result<(&mut CliAuth, &mut ParseContext)> {
         let ClientServer::Client(cli) = &mut self.cliserv else {
-            return Err(Error::bug())
+            return Err(Error::bug());
         };
         Ok((&mut cli.auth, &mut self.parse_ctx))
     }
 
-
     pub(crate) fn fetch_agentsign_msg(&self) -> Result<AuthSigMsg> {
         let ClientServer::Client(cli) = &self.cliserv else {
-            return Err(Error::bug())
+            return Err(Error::bug());
         };
 
         let sess_id = self.sess_id.as_ref().trap()?;
         cli.auth.fetch_agentsign_msg(sess_id)
     }
 
-    pub(crate) fn resume_checkhostkey(&mut self, 
+    pub(crate) fn resume_checkhostkey(
+        &mut self,
         payload: &[u8],
         s: &mut TrafSend,
-        accept: bool) -> Result<()> {
+        accept: bool,
+    ) -> Result<()> {
         self.client()?;
 
         let packet = self.packet(payload)?;
@@ -518,7 +522,7 @@ impl Conn {
             if !accept {
                 // TODO set state to closing?
                 info!("Host key rejected");
-                return error::BadUsage.fail()
+                return error::BadUsage.fail();
             }
 
             self.kex.resume_kexdhreply(&p, self.is_first_kex(), s)
@@ -527,7 +531,10 @@ impl Conn {
         }
     }
 
-    pub(crate) fn fetch_checkhostkey<'f>(&self, payload: &'f [u8]) -> Result<PubKey<'f>> {
+    pub(crate) fn fetch_checkhostkey<'f>(
+        &self,
+        payload: &'f [u8],
+    ) -> Result<PubKey<'f>> {
         self.client()?;
 
         let packet = self.packet(payload)?;
@@ -538,13 +545,19 @@ impl Conn {
         }
     }
 
-    pub(crate) fn fetch_cli_session_exit<'p>(&mut self, payload: &'p [u8]) -> Result<CliSessionExit<'p>> {
+    pub(crate) fn fetch_cli_session_exit<'p>(
+        &mut self,
+        payload: &'p [u8],
+    ) -> Result<CliSessionExit<'p>> {
         self.client()?;
         let packet = self.packet(payload)?;
         CliSessionExit::new(&packet)
     }
 
-    pub(crate) fn fetch_cli_banner<'p>(&mut self, payload: &'p [u8]) -> Result<Banner<'p>> {
+    pub(crate) fn fetch_cli_banner<'p>(
+        &mut self,
+        payload: &'p [u8],
+    ) -> Result<Banner<'p>> {
         self.client()?;
         if let Packet::UserauthBanner(b) = self.packet(payload)? {
             Ok(Banner(b))
@@ -553,8 +566,12 @@ impl Conn {
         }
     }
 
-    pub(crate) fn resume_servhostkeys(&mut self,
-        payload: &[u8], s: &mut TrafSend, keys: &[&SignKey]) -> Result<()> {
+    pub(crate) fn resume_servhostkeys(
+        &mut self,
+        payload: &[u8],
+        s: &mut TrafSend,
+        keys: &[&SignKey],
+    ) -> Result<()> {
         self.server()?;
 
         let packet = self.packet(payload)?;
@@ -565,38 +582,60 @@ impl Conn {
         }
     }
 
-    pub(crate) fn fetch_servpassword<'f>(&self, payload: &'f [u8]) -> Result<TextString<'f>> {
+    pub(crate) fn fetch_servpassword<'f>(
+        &self,
+        payload: &'f [u8],
+    ) -> Result<TextString<'f>> {
         self.server()?;
 
         let packet = self.packet(payload)?;
-        if let Packet::UserauthRequest(UserauthRequest {method: AuthMethod::Password(m), ..}) = packet {
+        if let Packet::UserauthRequest(UserauthRequest {
+            method: AuthMethod::Password(m),
+            ..
+        }) = packet
+        {
             Ok(m.password)
         } else {
             Err(Error::bug())
         }
     }
 
-    pub(crate) fn fetch_servpubkey<'f>(&self, payload: &'f [u8]) -> Result<PubKey<'f>> {
+    pub(crate) fn fetch_servpubkey<'f>(
+        &self,
+        payload: &'f [u8],
+    ) -> Result<PubKey<'f>> {
         self.server()?;
 
         let packet = self.packet(payload)?;
-        if let Packet::UserauthRequest(UserauthRequest {method: AuthMethod::PubKey(m), ..}) = packet {
+        if let Packet::UserauthRequest(UserauthRequest {
+            method: AuthMethod::PubKey(m),
+            ..
+        }) = packet
+        {
             Ok(m.pubkey.0)
         } else {
             Err(Error::bug())
         }
     }
 
-    pub(crate) fn resume_servauth(&mut self, allow: bool, s: &mut TrafSend) -> Result<()> {
+    pub(crate) fn resume_servauth(
+        &mut self,
+        allow: bool,
+        s: &mut TrafSend,
+    ) -> Result<()> {
         let auth = &mut self.mut_server()?.auth;
         auth.resume_request(allow, s)?;
         if auth.authed && matches!(self.state, ConnState::PreAuth) {
             self.state = ConnState::Authed;
         }
-        return Ok(())
+        return Ok(());
     }
 
-    pub(crate) fn resume_servauth_pkok(&mut self, payload: &[u8], s: &mut TrafSend) -> Result<()> {
+    pub(crate) fn resume_servauth_pkok(
+        &mut self,
+        payload: &[u8],
+        s: &mut TrafSend,
+    ) -> Result<()> {
         let p = self.packet(payload)?;
         self.server()?.auth.resume_pkok(p, s)
     }
@@ -604,8 +643,7 @@ impl Conn {
 
 #[cfg(test)]
 mod tests {
-    use crate::sunsetlog::*;
     use crate::conn::*;
     use crate::error::Error;
+    use crate::sunsetlog::*;
 }
-

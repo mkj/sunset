@@ -6,23 +6,23 @@ use {
     log::{debug, error, info, log, trace, warn},
 };
 
-use core::{mem, marker::PhantomData};
+use core::{marker::PhantomData, mem};
 
 use heapless::{Deque, String, Vec};
 
 use crate::*;
 use config::*;
+use conn::DispatchEvent;
 use conn::Dispatched;
+use event::{CliEventId, ServEventId};
 use packets::{
     ChannelData, ChannelDataExt, ChannelOpen, ChannelOpenFailure, ChannelOpenType,
     ChannelReqType, ChannelRequest, Packet,
 };
-use sshnames::*;
-use sshwire::{BinString, TextString, SSHEncodeEnum};
-use traffic::TrafSend;
 use runner::ChanHandle;
-use conn::DispatchEvent;
-use event::{CliEventId, ServEventId};
+use sshnames::*;
+use sshwire::{BinString, SSHEncodeEnum, TextString};
+use traffic::TrafSend;
 
 use snafu::ErrorCompat;
 
@@ -33,10 +33,7 @@ pub(crate) struct Channels {
 
 impl Channels {
     pub fn new(is_client: bool) -> Self {
-        Channels {
-            ch: Default::default(),
-            is_client,
-        }
+        Channels { ch: Default::default(), is_client }
     }
 
     pub fn open<'b>(
@@ -74,10 +71,10 @@ impl Channels {
         let ch = self.get_any(num)?;
 
         match ch.state {
-            | ChanState::InOpen
-            | ChanState::Opening { .. }
-            => error::BadChannel { num }.fail(),
-            _ => Ok(ch)
+            ChanState::InOpen | ChanState::Opening { .. } => {
+                error::BadChannel { num }.fail()
+            }
+            _ => Ok(ch),
         }
     }
 
@@ -95,10 +92,10 @@ impl Channels {
         let ch = self.get_any_mut(num)?;
 
         match ch.state {
-            | ChanState::InOpen
-            | ChanState::Opening { .. }
-            => error::BadChannel { num }.fail(),
-            _ => Ok(ch)
+            ChanState::InOpen | ChanState::Opening { .. } => {
+                error::BadChannel { num }.fail()
+            }
+            _ => Ok(ch),
         }
     }
 
@@ -134,9 +131,13 @@ impl Channels {
         self.ch
             .iter()
             .enumerate()
-            .find_map(
-                |(i, ch)| if ch.as_ref().is_none() { Some(ChanNum(i as u32)) } else { None },
-            )
+            .find_map(|(i, ch)| {
+                if ch.as_ref().is_none() {
+                    Some(ChanNum(i as u32))
+                } else {
+                    None
+                }
+            })
             .ok_or(Error::NoChannels)
     }
 
@@ -172,8 +173,12 @@ impl Channels {
         let ch = self.get_mut(num)?;
         let send = ch.send.as_mut().trap()?;
         if data.len() > send.max_packet || data.len() > send.window {
-            trace!("data len {}, max {}, window {}",
-                data.len(), send.max_packet, send.window);
+            trace!(
+                "data len {}, max {}, window {}",
+                data.len(),
+                send.max_packet,
+                send.window
+            );
             return Err(Error::bug());
         }
         send.window -= data.len();
@@ -183,7 +188,11 @@ impl Channels {
         let p = match dt {
             ChanData::Normal => packets::ChannelData { num: send.num, data }.into(),
             ChanData::Stderr => packets::ChannelDataExt {
-                num: send.num, code: sshnames::SSH_EXTENDED_DATA_STDERR, data }.into(),
+                num: send.num,
+                code: sshnames::SSH_EXTENDED_DATA_STDERR,
+                data,
+            }
+            .into(),
         };
 
         Ok(p)
@@ -191,8 +200,12 @@ impl Channels {
 
     /// Informs the channel layer that an incoming packet has been read out,
     /// so a window adjustment can be sent.
-    pub(crate) fn finished_input(&mut self, num: ChanNum, len: usize,
-        s: &mut TrafSend) -> Result<()> {
+    pub(crate) fn finished_input(
+        &mut self,
+        num: ChanNum,
+        len: usize,
+        s: &mut TrafSend,
+    ) -> Result<()> {
         let ch = self.get_mut(num)?;
         ch.finished_input(len);
         if let Some(w) = ch.check_window_adjust()? {
@@ -209,7 +222,6 @@ impl Channels {
         self.get(num).map_or(false, |c| c.is_closed())
     }
 
-
     pub(crate) fn send_allowed(&self, num: ChanNum) -> Option<usize> {
         self.get(num).map_or(Some(0), |c| c.send_allowed())
     }
@@ -218,8 +230,12 @@ impl Channels {
         self.get(num).map_or(false, |c| c.valid_send(dt))
     }
 
-    pub(crate) fn term_window_change(&self, num: ChanNum, winch: packets::WinChange,
-        s: &mut TrafSend) -> Result<()> {
+    pub(crate) fn term_window_change(
+        &self,
+        num: ChanNum,
+        winch: packets::WinChange,
+        s: &mut TrafSend,
+    ) -> Result<()> {
         let ch = self.get(num)?;
         match ch.ty {
             ChanType::Session => Req::WinChange(winch).send(ch, s),
@@ -227,10 +243,15 @@ impl Channels {
         }
     }
 
-    pub(crate) fn term_break(&self, num: ChanNum, length: u32, s: &mut TrafSend) -> Result<()> {
+    pub(crate) fn term_break(
+        &self,
+        num: ChanNum,
+        length: u32,
+        s: &mut TrafSend,
+    ) -> Result<()> {
         let ch = self.get(num)?;
         let br = packets::Break {
-            length: if length == 0 { 0 } else { length.clamp(500, 3000) }
+            length: if length == 0 { 0 } else { length.clamp(500, 3000) },
         };
         match ch.ty {
             ChanType::Session => Req::Break(br).send(ch, s),
@@ -259,9 +280,10 @@ impl Channels {
     }
 
     // the caller will send failure messages if required
-    fn dispatch_open_inner(&mut self, p: &ChannelOpen)
-        -> Result<DispatchEvent, DispatchOpenError> {
-
+    fn dispatch_open_inner(
+        &mut self,
+        p: &ChannelOpen,
+    ) -> Result<DispatchEvent, DispatchOpenError> {
         // Check validity before reserving a channel
         match &p.ty {
             ChannelOpenType::Unknown(u) => {
@@ -273,7 +295,7 @@ impl Channels {
                 return Err(error::SSHProto.build().into());
             }
             _ => (),
-       }
+        }
 
         // Reserve a channel
         let ch = self.reserve_chan(p)?;
@@ -282,7 +304,9 @@ impl Channels {
 
         match &p.ty {
             ChannelOpenType::Session => {
-                Ok(DispatchEvent::ServEvent(ServEventId::OpenSession { ch: ch.num() } ))
+                Ok(DispatchEvent::ServEvent(ServEventId::OpenSession {
+                    ch: ch.num(),
+                }))
             }
             // ChannelOpenType::ForwardedTcpip(t) => b.open_tcp_forwarded(handle, t),
             // ChannelOpenType::DirectTcpip(t) => b.open_tcp_direct(handle, t),
@@ -293,8 +317,12 @@ impl Channels {
         }
     }
 
-    pub fn resume_open(&mut self, c: ChanNum, failure: Option<ChanFail>, s: &mut TrafSend) 
-        -> Result<()> {
+    pub fn resume_open(
+        &mut self,
+        c: ChanNum,
+        failure: Option<ChanFail>,
+        s: &mut TrafSend,
+    ) -> Result<()> {
         let ch = self.get_any_mut(c)?;
         if let Some(failure) = failure {
             let sender_num = ch.send_num()?;
@@ -313,8 +341,11 @@ impl Channels {
     }
 
     // Some returned errors will be caught by caller and returned as SSH messages
-    fn dispatch_inner(&mut self, packet: Packet, s: &mut TrafSend) 
-        -> Result<DispatchEvent> {
+    fn dispatch_inner(
+        &mut self,
+        packet: Packet,
+        s: &mut TrafSend,
+    ) -> Result<DispatchEvent> {
         let mut ev = DispatchEvent::default();
         match packet {
             Packet::ChannelOpen(p) => {
@@ -334,8 +365,10 @@ impl Channels {
 
                         match ch.ty {
                             ChanType::Session => {
-                                ev = DispatchEvent::CliEvent(CliEventId::SessionOpened(ch.num()));
-                            },
+                                ev = DispatchEvent::CliEvent(
+                                    CliEventId::SessionOpened(ch.num()),
+                                );
+                            }
                             ChanType::Tcp => {
                                 trace!("TODO tcp channel")
                             }
@@ -345,7 +378,7 @@ impl Channels {
                     }
                     _ => {
                         trace!("Bad channel state {:?}", ch.state);
-                        return error::SSHProto.fail()
+                        return error::SSHProto.fail();
                     }
                 }
             }
@@ -424,8 +457,11 @@ impl Channels {
     /// Incoming packet handling
     // TODO: protocol errors etc should perhaps be less fatal,
     // ssh implementations are usually imperfect.
-    pub fn dispatch(&mut self, packet: Packet, s: &mut TrafSend)
-        -> Result<DispatchEvent> {
+    pub fn dispatch(
+        &mut self,
+        packet: Packet,
+        s: &mut TrafSend,
+    ) -> Result<DispatchEvent> {
         let r = self.dispatch_inner(packet, s);
 
         match r {
@@ -439,7 +475,12 @@ impl Channels {
         }
     }
 
-    pub fn resume_chanreq(&self, p: &Packet, success: bool, s: &mut TrafSend) -> Result<()> {
+    pub fn resume_chanreq(
+        &self,
+        p: &Packet,
+        success: bool,
+        s: &mut TrafSend,
+    ) -> Result<()> {
         if let Packet::ChannelRequest(r) = p {
             let ch = self.get(ChanNum(r.num))?;
             if r.want_reply {
@@ -550,9 +591,9 @@ impl Req<'_> {
             Req::Exec(cmd) => {
                 ChannelReqType::Exec(packets::Exec { command: cmd.into() })
             }
-            Req::Subsystem(cmd) => {
-                ChannelReqType::Subsystem(packets::Subsystem { subsystem: cmd.into() })
-            }
+            Req::Subsystem(cmd) => ChannelReqType::Subsystem(packets::Subsystem {
+                subsystem: cmd.into(),
+            }),
             Req::WinChange(rt) => ChannelReqType::WinChange(rt),
             Req::Break(rt) => ChannelReqType::Break(rt),
         };
@@ -577,7 +618,7 @@ pub enum SessionCommand<S: AsRef<str>> {
 
 impl<'a, S: AsRef<str> + 'a> From<&'a SessionCommand<S>> for Req<'a> {
     fn from(val: &'a SessionCommand<S>) -> Self {
-        match val  {
+        match val {
             SessionCommand::Shell => Req::Shell,
             SessionCommand::Exec(s) => Req::Exec(s.as_ref()),
             SessionCommand::Subsystem(s) => Req::Subsystem(s.as_ref()),
@@ -603,7 +644,6 @@ enum ChanState {
     InOpen,
 
     // TODO: perhaps .get() and .get_mut() should ignore Opening state channels?
-
     Opening,
     Normal,
     RecvEof,
@@ -683,8 +723,12 @@ impl Channel {
         Ok(p)
     }
 
-    fn dispatch_request(&mut self, p: &packets::ChannelRequest, s: &mut TrafSend, is_client: bool) 
-        -> DispatchEvent {
+    fn dispatch_request(
+        &mut self,
+        p: &packets::ChannelRequest,
+        s: &mut TrafSend,
+        is_client: bool,
+    ) -> DispatchEvent {
         let r = if is_client {
             self.dispatch_client_request(p, s)
         } else {
@@ -704,18 +748,25 @@ impl Channel {
         })
     }
 
-    fn dispatch_server_request(&self, 
-        p: &packets::ChannelRequest, 
+    fn dispatch_server_request(
+        &self,
+        p: &packets::ChannelRequest,
         _s: &mut TrafSend,
     ) -> Result<DispatchEvent> {
         if !matches!(self.ty, ChanType::Session) {
-            return Err(Error::SSHProtoUnsupported)
+            return Err(Error::SSHProtoUnsupported);
         }
 
         match &p.req {
-            ChannelReqType::Shell => Ok(DispatchEvent::ServEvent(ServEventId::SessionShell)),
-            ChannelReqType::Exec(_) => Ok(DispatchEvent::ServEvent(ServEventId::SessionExec)),
-            ChannelReqType::Pty(_) => Ok(DispatchEvent::ServEvent(ServEventId::SessionPty)),
+            ChannelReqType::Shell => {
+                Ok(DispatchEvent::ServEvent(ServEventId::SessionShell))
+            }
+            ChannelReqType::Exec(_) => {
+                Ok(DispatchEvent::ServEvent(ServEventId::SessionExec))
+            }
+            ChannelReqType::Pty(_) => {
+                Ok(DispatchEvent::ServEvent(ServEventId::SessionPty))
+            }
             _ => {
                 if let ChannelReqType::Unknown(u) = &p.req {
                     warn!("Unknown channel req type \"{}\"", u)
@@ -738,7 +789,7 @@ impl Channel {
         _s: &mut TrafSend,
     ) -> Result<DispatchEvent> {
         if !matches!(self.ty, ChanType::Session) {
-            return Err(Error::SSHProtoUnsupported)
+            return Err(Error::SSHProtoUnsupported);
         }
 
         match &p.req {
@@ -837,7 +888,7 @@ pub enum ChanOpened {
     /// A channel open response will be sent later (for eg TCP open)
     Defer,
     /// A SSH failure code, as well as returning the passed channel handle
-    Failure((ChanFail, ChanHandle))
+    Failure((ChanFail, ChanHandle)),
 }
 
 /// A SSH protocol local channel number
@@ -922,7 +973,6 @@ pub struct CliSessionOpener<'g, 'a> {
 }
 
 impl<'g, 'a> CliSessionOpener<'g, 'a> {
-
     /// Returns the channel associated with this session.
     ///
     /// This will match that previously returned from [`Runner::cli_session_opener`]
@@ -975,19 +1025,21 @@ pub enum CliSessionExit<'g> {
     /// Remote process exited with an exit status code
     Status(u32),
     /// Remote process exited by signal
-    Signal(ExitSignal<'g>)
+    Signal(ExitSignal<'g>),
 }
 
 impl<'g> CliSessionExit<'g> {
     pub fn new(p: &Packet<'g>) -> Result<Self> {
         match p {
-            Packet::ChannelRequest(ChannelRequest { req: ChannelReqType::ExitStatus(e), .. }) => {
-                Ok(Self::Status(e.status))
-            }
-            Packet::ChannelRequest(ChannelRequest { req: ChannelReqType::ExitSignal(e), .. }) => {
-                Ok(Self::Signal(e.clone()))
-            }
-            _ => Err(Error::bug())
+            Packet::ChannelRequest(ChannelRequest {
+                req: ChannelReqType::ExitStatus(e),
+                ..
+            }) => Ok(Self::Status(e.status)),
+            Packet::ChannelRequest(ChannelRequest {
+                req: ChannelReqType::ExitSignal(e),
+                ..
+            }) => Ok(Self::Signal(e.clone())),
+            _ => Err(Error::bug()),
         }
     }
 }

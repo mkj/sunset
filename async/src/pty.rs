@@ -8,9 +8,9 @@ use std::os::fd::AsRawFd;
 use libc::{ioctl, winsize};
 use nix::sys::termios::Termios;
 
-use sunset::{Runner, Result, Pty};
 use sunset::config::*;
 use sunset::packets::WinChange;
+use sunset::{Pty, Result, Runner};
 
 /// Returns the size of the current terminal
 pub fn win_size() -> Result<WinChange, IoError> {
@@ -18,7 +18,7 @@ pub fn win_size() -> Result<WinChange, IoError> {
     // OK unsafe: TIOCGWINSZ returns a winsize
     let r = unsafe { ioctl(libc::STDIN_FILENO, libc::TIOCGWINSZ, &mut ws) };
     if r != 0 {
-        return Err(IoError::last_os_error())
+        return Err(IoError::last_os_error());
     }
 
     Ok(WinChange {
@@ -49,7 +49,6 @@ pub fn current_pty() -> Result<Pty, IoError> {
         height: wc.height,
         modes,
     })
-
 }
 
 /// Puts stdin/stdout into raw mode.
@@ -71,9 +70,7 @@ impl RawPtyGuard {
     fn new() -> Result<Self, IoError> {
         let saved = Self::set_raw()?.into();
 
-        Ok(Self {
-            saved,
-        })
+        Ok(Self { saved })
     }
 
     fn set_raw() -> nix::Result<Termios> {
@@ -88,19 +85,21 @@ impl RawPtyGuard {
         // We could also set IUCLC but it isn't in posix
         raw.input_flags.remove(
             InputFlags::ISTRIP
-            | InputFlags::INLCR
-            | InputFlags::IGNCR
-            | InputFlags::ICRNL
-            | InputFlags::IXON
-            | InputFlags::IXANY
-            | InputFlags::IXOFF);
+                | InputFlags::INLCR
+                | InputFlags::IGNCR
+                | InputFlags::ICRNL
+                | InputFlags::IXON
+                | InputFlags::IXANY
+                | InputFlags::IXOFF,
+        );
         raw.local_flags.remove(
             LocalFlags::ISIG
-            | LocalFlags::ICANON
-            | LocalFlags::ECHO
-            | LocalFlags::ECHOE
-            | LocalFlags::ECHOK
-            | LocalFlags::ECHONL);
+                | LocalFlags::ICANON
+                | LocalFlags::ECHO
+                | LocalFlags::ECHOE
+                | LocalFlags::ECHOK
+                | LocalFlags::ECHONL,
+        );
         raw.output_flags.remove(OutputFlags::OPOST);
 
         tcsetattr(fd, SetArg::TCSADRAIN, &raw)?;
