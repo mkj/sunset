@@ -1,4 +1,4 @@
-#![cfg_attr(not(any(feature = "std", test)), no_std)]
+#![cfg_attr(not(test), no_std)]
 
 // avoid warning about Send for the time being
 #[allow(async_fn_in_trait)]
