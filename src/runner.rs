@@ -655,6 +655,9 @@ impl<'a> Runner<'a> {
             ) || matches!(
                 prev_event,
                 DispatchEvent::ServEvent(ServEventId::PubkeyAuth { .. })
+            ) || matches!(
+                prev_event,
+                DispatchEvent::ServEvent(ServEventId::FirstAuth)
             )
         );
 
