@@ -2,7 +2,7 @@
 use log::{debug, error, info, log, trace, warn};
 
 use embassy_executor::Spawner;
-use embassy_net::{Stack, StackResources};
+use embassy_net::{Stack, StackResources, StaticConfigV4};
 
 use rand::rngs::OsRng;
 use rand::RngCore;
@@ -34,11 +34,22 @@ async fn net_task(mut runner: embassy_net::Runner<'static, TunTapDevice>) -> ! {
 async fn main_task(spawner: Spawner) {
     // TODO config
     let opt_tap0 = "tap0";
+    let ip4 = "192.168.69.2";
+    let cir = 24;
 
     let config = Box::leak(Box::new({
         let mut config = SSHConfig::new().unwrap();
         config.set_admin_pw(Some("pw")).unwrap();
         config.console_noauth = true;
+        config.ip4_static = if let Ok(ip) = ip4.parse() {
+            Some(StaticConfigV4 {
+                address: embassy_net::Ipv4Cidr::new(ip, cir),
+                gateway: None,
+                dns_servers: { heapless::Vec::new() },
+            })
+        } else {
+            None
+        };
         SunsetMutex::new(config)
     }));
 
@@ -47,6 +58,7 @@ async fn main_task(spawner: Spawner) {
     } else {
         embassy_net::Config::dhcpv4(Default::default())
     };
+    info!("Net config: {net_cf:?}");
 
     // Init network device
     let net_device = TunTapDevice::new(opt_tap0).unwrap();
