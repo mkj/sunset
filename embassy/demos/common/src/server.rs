@@ -6,10 +6,6 @@ use embassy_futures::select::{select, Either};
 use embassy_net::tcp::TcpSocket;
 use embassy_net::Stack;
 
-use embedded_io_async::Write;
-
-use heapless::String;
-
 use sunset::{
     event::{ServFirstAuth, ServOpenSession, ServPasswordAuth, ServPubkeyAuth},
     *,
@@ -193,49 +189,4 @@ pub trait DemoServer {
 
     /// A task to run for each incoming connection.
     async fn run(&self, serv: &SSHServer<'_>, common: ServerApp) -> Result<()>;
-}
-
-/// A wrapper writing `Menu` output into a buffer that can be later written
-/// asynchronously to a channel.
-#[derive(Default)]
-pub struct BufOutput {
-    /// Sufficient to hold output produced from a single keystroke input. Further output will be discarded
-    // pub s: String<300>,
-    // todo size
-    pub s: String<500>,
-}
-
-impl BufOutput {
-    pub async fn flush<W>(&mut self, w: &mut W) -> Result<()>
-    where
-        W: Write<Error = sunset::Error>,
-    {
-        let mut b = self.s.as_str().as_bytes();
-        while b.len() > 0 {
-            let l = w.write(b).await?;
-            b = &b[l..];
-        }
-        self.s.clear();
-        Ok(())
-    }
-}
-
-impl core::fmt::Write for BufOutput {
-    fn write_str(&mut self, s: &str) -> Result<(), core::fmt::Error> {
-        let mut inner = || {
-            for c in s.chars() {
-                if c == '\n' {
-                    self.s.push('\r').map_err(|_| core::fmt::Error)?;
-                }
-                self.s.push(c).map_err(|_| core::fmt::Error)?;
-            }
-            Ok::<_, core::fmt::Error>(())
-        };
-
-        if inner().is_err() {
-            trace!("Buffer full in BufOutput");
-        }
-
-        Ok(())
-    }
 }

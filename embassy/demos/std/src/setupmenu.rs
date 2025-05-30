@@ -1,6 +1,6 @@
 use core::fmt::Write;
 use demo_common::menu::*;
-pub use demo_common::BufOutput;
+pub use demo_common::AsyncMenuBuf;
 pub(crate) use sunset_demo_embassy_common as demo_common;
 
 /*
@@ -13,7 +13,7 @@ config
 
 */
 
-pub const SETUP_MENU: Menu<BufOutput> = Menu {
+pub const SETUP_MENU: Menu<AsyncMenuBuf> = Menu {
     label: "setup",
     items: &[
         &AUTH_ITEM,
@@ -38,7 +38,7 @@ pub const SETUP_MENU: Menu<BufOutput> = Menu {
     exit: None,
 };
 
-const AUTH_ITEM: Item<BufOutput> = Item {
+const AUTH_ITEM: Item<AsyncMenuBuf> = Item {
     command: "auth",
     item_type: ItemType::Menu(&Menu {
         label: "auth",
@@ -95,34 +95,46 @@ const AUTH_ITEM: Item<BufOutput> = Item {
     help: Some("Passwords and Keys."),
 };
 
-fn enter_top(context: &mut BufOutput) {
+fn enter_top(context: &mut AsyncMenuBuf) {
     let _ = writeln!(context, "In setup menu").unwrap();
 }
 
-fn enter_auth(context: &mut BufOutput) {
+fn enter_auth(context: &mut AsyncMenuBuf) {
     let _ = writeln!(context, "In auth menu").unwrap();
 }
 
-fn do_auth_show(_item: &Item<BufOutput>, _args: &[&str], context: &mut BufOutput) {
+fn do_auth_show(
+    _item: &Item<AsyncMenuBuf>,
+    _args: &[&str],
+    context: &mut AsyncMenuBuf,
+) {
     let _ = writeln!(context, "auth key");
 }
 
-fn do_auth_key(_item: &Item<BufOutput>, _args: &[&str], context: &mut BufOutput) {
+fn do_auth_key(
+    _item: &Item<AsyncMenuBuf>,
+    _args: &[&str],
+    context: &mut AsyncMenuBuf,
+) {
     let _ = writeln!(context, "auth key");
 }
 
-fn do_auth_pw(_item: &Item<BufOutput>, _args: &[&str], context: &mut BufOutput) {
+fn do_auth_pw(
+    _item: &Item<AsyncMenuBuf>,
+    _args: &[&str],
+    context: &mut AsyncMenuBuf,
+) {
     let _ = writeln!(context, "this is auth pw");
 }
 
 fn do_erase_config(
-    _item: &Item<BufOutput>,
+    _item: &Item<AsyncMenuBuf>,
     _args: &[&str],
-    _context: &mut BufOutput,
+    _context: &mut AsyncMenuBuf,
 ) {
 }
 
-fn do_about(_item: &Item<BufOutput>, _args: &[&str], context: &mut BufOutput) {
+fn do_about(_item: &Item<AsyncMenuBuf>, _args: &[&str], context: &mut AsyncMenuBuf) {
     let _ = writeln!(
         context,
         "Sunset SSH, USB serial\nMatt Johnston <matt@ucc.asn.au>\n"

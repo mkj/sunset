@@ -23,7 +23,7 @@ use pretty_hex::PrettyHex;
 use crate::demo_common;
 use crate::flashconfig;
 use crate::GlobalState;
-use demo_common::{BufOutput, SSHConfig};
+use demo_common::{AsyncMenuBuf, SSHConfig};
 
 use demo_common::menu::*;
 
@@ -34,7 +34,7 @@ use sunset::*;
 const MAX_PW_LEN: usize = 50;
 
 pub(crate) struct MenuCtx {
-    pub out: BufOutput,
+    pub out: AsyncMenuBuf,
     state: &'static GlobalState,
 
     // true for local serial console menu, false for SSH menu
@@ -69,7 +69,7 @@ impl MenuCtx {
     /// Any modifications will be saved to flash (on a future `progress()` call).
     fn with_config<F>(&mut self, f: F) -> bool
     where
-        F: FnOnce(&mut SSHConfig, &mut BufOutput),
+        F: FnOnce(&mut SSHConfig, &mut AsyncMenuBuf),
     {
         let mut c = match self.state.config.try_lock() {
             Ok(c) => c,

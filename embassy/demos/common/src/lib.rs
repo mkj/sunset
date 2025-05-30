@@ -5,12 +5,12 @@
 mod server;
 
 pub mod config;
-pub mod demo_menu;
 pub mod menu;
+mod menu_buf;
 pub mod takepipe;
 
 pub use config::SSHConfig;
-pub use demo_menu::BufOutput;
+pub use menu_buf::AsyncMenuBuf;
 pub use server::{listener, DemoServer, ServerApp};
 
 // needed for derive

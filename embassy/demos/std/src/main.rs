@@ -19,7 +19,7 @@ use sunset_embassy::{ProgressHolder, SSHServer, SunsetMutex, SunsetRawMutex};
 mod setupmenu;
 pub(crate) use sunset_demo_embassy_common as demo_common;
 
-use demo_common::{demo_menu, DemoServer, SSHConfig, ServerApp};
+use demo_common::{DemoServer, SSHConfig, ServerApp};
 
 const NUM_LISTENERS: usize = 4;
 // +1 for dhcp
@@ -121,7 +121,7 @@ impl DemoServer for StdDemo {
 
             // input buffer, large enough for a ssh-ed25519 key
             let mut menu_buf = [0u8; 150];
-            let menu_out = demo_menu::BufOutput::default();
+            let menu_out = demo_common::AsyncMenuBuf::default();
 
             let mut menu = MenuRunner::new(
                 &setupmenu::SETUP_MENU,
