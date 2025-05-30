@@ -240,6 +240,9 @@ impl CliEventId {
 
     // Whether the event must have called an appropriate `resume_` method.
     // Used for internal correctness checks.
+    //
+    // Note that some of these are called by the event's Drop handler
+    // with a default (eg reject auth).
     pub(crate) fn needs_resume(&self) -> bool {
         match self {
             Self::Authenticated
@@ -256,14 +259,42 @@ impl CliEventId {
     }
 }
 
+/// Server events.
+///
+/// These events are returned by the `progress()` function
+/// which is polled during the course of the connection.
+/// The application can call response functions on the associated
+/// enum item, for example accepting or requesting a client request.
 pub enum ServEvent<'g, 'a> {
+    /// Request hostkeys to use for the session
     Hostkeys(ServHostkeys<'g, 'a>),
-    PasswordAuth(ServPasswordAuth<'g, 'a>),
-    PubkeyAuth(ServPubkeyAuth<'g, 'a>),
+    /// Client's first authentication attempt.
+    ///
+    /// This can be used to capture the username.
+    /// The application can accept a login without any
+    /// authentication by calling ServerFirstAuth::allow().
     FirstAuth(ServFirstAuth<'g, 'a>),
+    /// Client's password authentication attempt.
+    ///
+    /// `ServerPasswordAuth::allow()` will allow the user to log in.
+    PasswordAuth(ServPasswordAuth<'g, 'a>),
+    /// Client's public key authentication attempt.
+    ///
+    /// `ServerPubkeyAuth::allow()` will allow the user to log in.
+    PubkeyAuth(ServPubkeyAuth<'g, 'a>),
+    /// Client's request for a session channel.
+    ///
+    /// After accepting a channel the [`ChanHandle`] will be returned.
     OpenSession(ServOpenSession<'g, 'a>),
+    /// Client requested to run a shell on a channel.
     SessionShell(ChanRequest<'g, 'a>),
+    /// Client requested to execute a command on a channel.
+    ///
+    /// TODO the actual command is missing here!
     SessionExec(ChanRequest<'g, 'a>),
+    /// Client requested a PTY for the channel.
+    ///
+    /// TODO details
     SessionPty(ChanRequest<'g, 'a>),
     /// The SSH session is no longer running
     #[allow(unused)]
@@ -287,11 +318,17 @@ impl Debug for ServEvent<'_, '_> {
     }
 }
 
+/// Provide server hostkeys.
+///
+/// `hostkeys()` must be called.
 pub struct ServHostkeys<'g, 'a> {
     runner: &'g mut Runner<'a>,
 }
 
 impl<'g, 'a> ServHostkeys<'g, 'a> {
+    /// Provide the list of hostkeys to use.
+    ///
+    /// This function must be called, with at least one hostkey.
     pub fn hostkeys(self, keys: &[&SignKey]) -> Result<()> {
         self.runner.resume_servhostkeys(keys)
     }
@@ -311,10 +348,16 @@ impl<'g, 'a> ServPasswordAuth<'g, 'a> {
         self.raw_username()?.as_str()
     }
 
+    /// Retrieve the password presented by the user.
+    ///
+    /// When comparing with an expected password or hash, take
+    /// care to use timing-insensitive comparison, for example
+    /// by using [`subtle`](https://docs.rs/subtle/latest/subtle/) crate.
     pub fn password(&self) -> Result<&str> {
         self.raw_password()?.as_str()
     }
 
+    /// Accept the presented password.
     pub fn allow(mut self) -> Result<()> {
         self.done = true;
         self.runner.resume_servauth(true)
@@ -363,10 +406,16 @@ impl<'g, 'a> ServPubkeyAuth<'g, 'a> {
         self.raw_username()?.as_str()
     }
 
+    /// Retreive the public key presented by a client.
     pub fn pubkey(&self) -> Result<PubKey> {
         self.runner.fetch_servpubkey()
     }
 
+    /// Accept the presented public key.
+    ///
+    /// Note that this event may be emitted multiple times,
+    /// since the client first queries acceptable public keys,
+    /// and then later sends an actual signature.
     pub fn allow(mut self) -> Result<()> {
         self.done = true;
         if self.real_sig {
@@ -407,15 +456,24 @@ impl<'g, 'a> ServFirstAuth<'g, 'a> {
     fn new(runner: &'g mut Runner<'a>) -> Self {
         Self { runner, done: false }
     }
+
+    /// Retrieve the username presented by the client.
     pub fn username(&self) -> Result<&str> {
         self.raw_username()?.as_str()
     }
 
+    /// Allow the user to log in.
+    ///
+    /// No further authentication challenges will be requested.
     pub fn allow(mut self) -> Result<()> {
         self.done = true;
         self.runner.resume_servauth(true)
     }
 
+    /// Don't allow the user to log in immediately.
+    ///
+    /// Subsequent authentication requests (eg password or pubkey)
+    /// may still succeed.
     /// Does not need to be called explicitly, also occurs on drop without `allow()`
     pub fn reject(mut self) -> Result<()> {
         self.done = true;
@@ -586,6 +644,10 @@ impl<'g, 'a> ChanRequest<'g, 'a> {
         self.runner.resume_chanreq(false)
     }
 
+    /// Return the associated channel number.
+    ///
+    /// This will correspond to a `ChanHandle::num()`
+    /// from a previous [`ServOpenSession`] event.
     pub fn channel(&self) -> Result<ChanNum> {
         self.runner.fetch_reqchannel()
     }

@@ -40,8 +40,9 @@ impl<'a> SSHClient<'a> {
 
     /// Returns an event from the SSH Session
     ///
-    /// Note that the returned `ProgressHolder` holds a mutex over the session,
-    /// so other calls to `SSHClient` may block until it is dropped.
+    /// Note that on return `ProgressHolder` holds a mutex over the session,
+    /// so other calls to `SSHClient` may block until the `ProgressHolder`
+    /// is dropped.
     pub async fn progress<'g, 'f>(
         &'g self,
         ph: &'f mut ProgressHolder<'g, 'a>,

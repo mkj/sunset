@@ -39,8 +39,9 @@ impl<'a> SSHServer<'a> {
 
     /// Returns an event from the SSH Session
     ///
-    /// Note that the returned `ProgressHolder` holds a mutex over the session,
-    /// so other calls to `SSHServer` may block until it is dropped.
+    /// Note that on return `ProgressHolder` holds a mutex over the session,
+    /// so most other calls to `SSHServer` will block until the `ProgressHolder`
+    /// is dropped.
     pub async fn progress<'g, 'f>(
         &'g self,
         ph: &'f mut ProgressHolder<'g, 'a>,
@@ -56,8 +57,7 @@ impl<'a> SSHServer<'a> {
     ///
     /// For a shell this is stdin/stdout, for other channel types it is the only
     /// data type.
-    /// `ch` is the [`ChanHandle`] provided from accepting a channel open [`ServEvent`].
-    /// methods.
+    /// `ch` is the [`ChanHandle`] returned after accepting a [`ServEvent::OpenSession`] event.
     pub async fn stdio(&self, ch: ChanHandle) -> Result<ChanInOut<'_, 'a>> {
         let num = ch.num();
         self.sunset.add_channel(ch, 1).await?;
