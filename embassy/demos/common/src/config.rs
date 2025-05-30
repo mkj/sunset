@@ -6,6 +6,7 @@ use log::{debug, error, info, log, trace, warn};
 
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
+use subtle::ConstantTimeEq;
 
 use heapless::{String, Vec};
 
@@ -309,7 +310,7 @@ impl PwHash {
         let prehash = Self::prehash(pw, &self.salt);
         let check_hash =
             bcrypt::bcrypt(self.cost as u32, self.salt.clone(), &prehash);
-        check_hash == self.hash
+        check_hash.ct_eq(&self.hash).into()
     }
 
     fn prehash(pw: &str, salt: &[u8]) -> [u8; 32] {
