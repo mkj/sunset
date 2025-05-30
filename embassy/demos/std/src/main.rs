@@ -42,14 +42,14 @@ async fn main_task(spawner: Spawner) {
         config.set_admin_pw(Some("pw")).unwrap();
         config.console_noauth = true;
         config.ip4_static = if let Ok(ip) = ip4.parse() {
-                Some(StaticConfigV4 {
-                    address: embassy_net::Ipv4Cidr::new(ip, cir),
-                    gateway: None,
-                    dns_servers: { heapless::Vec::new() },
-                })
-            } else {
-                None
-            };
+            Some(StaticConfigV4 {
+                address: embassy_net::Ipv4Cidr::new(ip, cir),
+                gateway: None,
+                dns_servers: { heapless::Vec::new() },
+            })
+        } else {
+            None
+        };
         SunsetMutex::new(config)
     }));
 
