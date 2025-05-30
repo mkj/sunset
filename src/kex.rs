@@ -635,6 +635,11 @@ impl SharedSecret {
         p: &packets::KexDHInit,
         s: &mut TrafSend,
     ) -> Result<KexOutput> {
+        if keys.is_empty() {
+            debug!("Hostkey list is empty");
+            return error::BadUsage.fail();
+        }
+
         let hostkey = keys.iter().find(|k| k.can_sign(algos.hostsig));
         let hostkey = hostkey.ok_or_else(|| {
             // TODO: hostkeys should be requested
