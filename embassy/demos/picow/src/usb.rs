@@ -25,7 +25,7 @@ bind_interrupts!(struct Irqs {
 #[embassy_executor::task]
 pub(crate) async fn task(
     usb: embassy_rp::peripherals::USB,
-    global: &'static GlobalState,
+    global: &'static PicoDemo,
 ) -> ! {
     let driver = embassy_rp::usb::Driver::new(usb, Irqs);
 
@@ -100,7 +100,7 @@ pub(crate) async fn task(
 }
 
 async fn console_if00_run<'a, D: Driver<'a>>(
-    global: &'static GlobalState,
+    global: &'static PicoDemo,
     cdc: CdcAcmClass<'a, D>,
 ) -> ! {
     let (mut cdc_tx, mut cdc_rx) = cdc.split();
@@ -123,7 +123,7 @@ async fn console_if00_run<'a, D: Driver<'a>>(
 }
 
 async fn menu_if02_run<'a, D: Driver<'a>>(
-    global: &'static GlobalState,
+    global: &'static PicoDemo,
     cdc: CdcAcmClass<'a, D>,
 ) -> ! {
     let (mut cdc_tx, mut cdc_rx) = cdc.split();

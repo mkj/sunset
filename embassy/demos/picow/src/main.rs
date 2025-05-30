@@ -21,7 +21,7 @@ use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_sync::mutex::Mutex;
 
-use demo_common::{takepipe, DemoServer, SSHConfig, ServerApp};
+use demo_common::{takepipe, DemoCommon, DemoServer, SSHConfig};
 use sunset::*;
 use sunset_demo_embassy_common as demo_common;
 use sunset_embassy::{ProgressHolder, SSHServer, SunsetMutex};
@@ -107,8 +107,8 @@ async fn main(spawner: Spawner) {
 
     // state depends on the mac for cyw43 vs w5500
     let net_mac = SunsetMutex::new([0; 6]);
-    static STATE: StaticCell<GlobalState> = StaticCell::new();
-    let state = STATE.init_with(|| GlobalState {
+    static STATE: StaticCell<PicoDemo> = StaticCell::new();
+    let state = STATE.init_with(|| PicoDemo {
         usb_pipe,
         serial1_pipe,
         config,
@@ -158,12 +158,16 @@ async fn main(spawner: Spawner) {
 async fn net_listener(
     stack: Stack<'static>,
     config: &'static SunsetMutex<SSHConfig>,
-    global: &'static GlobalState,
+    demo: &'static PicoDemo,
 ) -> ! {
-    demo_common::listener::<PicoServer>(stack, config, global).await
+    demo_common::listen(stack, config, &demo).await
 }
 
-pub(crate) struct GlobalState {
+/// Shared state for the device.
+///
+/// This is shared between all connections.
+/// `PicoDemo` implements `DemoServer` to handle incoming connections.
+pub(crate) struct PicoDemo {
     // If locking multiple mutexes, always lock in the order below to avoid inversion.
     pub usb_pipe: &'static TakePipe<'static>,
     pub serial1_pipe: &'static TakePipe<'static>,
@@ -175,10 +179,6 @@ pub(crate) struct GlobalState {
     pub net_mac: SunsetMutex<[u8; 6]>,
 }
 
-struct PicoServer {
-    global: &'static GlobalState,
-}
-
 // Presents a menu, either on serial or incoming SSH
 //
 // `local` is set for usb serial menus which require different auth
@@ -186,7 +186,7 @@ async fn menu<R, W>(
     chanr: &mut R,
     chanw: &mut W,
     local: bool,
-    state: &'static GlobalState,
+    state: &'static PicoDemo,
 ) -> Result<()>
 where
     R: Read<Error = sunset::Error>,
@@ -288,14 +288,9 @@ where
     info!("serial task completed");
     Ok(())
 }
-impl DemoServer for PicoServer {
-    type Init = &'static GlobalState;
 
-    fn new(global: &Self::Init) -> Self {
-        Self { global }
-    }
-
-    async fn run(&self, serv: &SSHServer<'_>, mut common: ServerApp) -> Result<()> {
+impl DemoServer for &'static PicoDemo {
+    async fn run(&self, serv: &SSHServer<'_>, mut common: DemoCommon) -> Result<()> {
         let username = Mutex::<NoopRawMutex, _>::new(String::<20>::new());
         let chan_pipe = Channel::<NoopRawMutex, ChanHandle, 1>::new();
 
@@ -337,14 +332,14 @@ impl DemoServer for PicoServer {
             #[cfg(feature = "serial1")]
             let default_pipe = self.global.serial1_pipe;
             #[cfg(not(feature = "serial1"))]
-            let default_pipe = self.global.usb_pipe;
+            let default_pipe = self.usb_pipe;
 
             let mut stdio2 = stdio.clone();
             match username.lock().await.as_str() {
                 // Open the config menu
-                "config" => menu(&mut stdio, &mut stdio2, false, self.global).await,
+                "config" => menu(&mut stdio, &mut stdio2, false, self).await,
                 // Open the usb serial directly
-                "usb" => serial(&mut stdio, &mut stdio2, self.global.usb_pipe).await,
+                "usb" => serial(&mut stdio, &mut stdio2, self.usb_pipe).await,
                 // Open the normal (?) serial directly (either usb or uart)
                 _ => serial(&mut stdio, &mut stdio2, default_pipe).await,
             }

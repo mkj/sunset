@@ -19,7 +19,7 @@ use sunset_embassy::{ProgressHolder, SSHServer, SunsetMutex, SunsetRawMutex};
 mod setupmenu;
 pub(crate) use sunset_demo_embassy_common as demo_common;
 
-use demo_common::{DemoServer, SSHConfig, ServerApp};
+use demo_common::{DemoCommon, DemoServer, SSHConfig};
 
 const NUM_LISTENERS: usize = 4;
 // +1 for dhcp
@@ -73,7 +73,7 @@ async fn main_task(spawner: Spawner) {
     spawner.spawn(net_task(runner)).unwrap();
 
     for _ in 0..NUM_LISTENERS {
-        spawner.spawn(listener(stack, config)).unwrap();
+        spawner.spawn(listen(stack, config)).unwrap();
     }
 }
 
@@ -81,13 +81,7 @@ async fn main_task(spawner: Spawner) {
 struct StdDemo;
 
 impl DemoServer for StdDemo {
-    type Init = ();
-
-    fn new(_init: &Self::Init) -> Self {
-        Default::default()
-    }
-
-    async fn run(&self, serv: &SSHServer<'_>, mut common: ServerApp) -> Result<()> {
+    async fn run(&self, serv: &SSHServer<'_>, mut common: DemoCommon) -> Result<()> {
         let chan_pipe = Channel::<SunsetRawMutex, ChanHandle, 1>::new();
 
         let prog_loop = async {
@@ -158,11 +152,12 @@ impl DemoServer for StdDemo {
 
 // TODO: pool_size should be NUM_LISTENERS but needs a literal
 #[embassy_executor::task(pool_size = 4)]
-async fn listener(
+async fn listen(
     stack: Stack<'static>,
     config: &'static SunsetMutex<SSHConfig>,
 ) -> ! {
-    demo_common::listener::<StdDemo>(stack, config, ()).await
+    let demo = StdDemo::default();
+    demo_common::listen(stack, config, &demo).await
 }
 
 #[embassy_executor::main]

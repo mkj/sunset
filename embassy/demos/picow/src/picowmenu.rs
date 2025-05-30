@@ -22,7 +22,7 @@ use pretty_hex::PrettyHex;
 
 use crate::demo_common;
 use crate::flashconfig;
-use crate::GlobalState;
+use crate::PicoDemo;
 use demo_common::{AsyncMenuBuf, SSHConfig};
 
 use demo_common::menu::*;
@@ -35,7 +35,7 @@ const MAX_PW_LEN: usize = 50;
 
 pub(crate) struct MenuCtx {
     pub out: AsyncMenuBuf,
-    state: &'static GlobalState,
+    state: &'static PicoDemo,
 
     // true for local serial console menu, false for SSH menu
     local: bool,
@@ -50,7 +50,7 @@ pub(crate) struct MenuCtx {
 }
 
 impl MenuCtx {
-    pub fn new(state: &'static GlobalState, local: bool) -> Self {
+    pub fn new(state: &'static PicoDemo, local: bool) -> Self {
         Self {
             state,
             local,

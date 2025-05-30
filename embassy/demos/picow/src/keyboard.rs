@@ -9,7 +9,7 @@ use embassy_usb_driver::Driver;
 use crate::*;
 
 pub(crate) async fn run<'a, D: Driver<'a>>(
-    _global: &'static GlobalState,
+    _global: &'static PicoDemo,
     hid: HidReaderWriter<'a, D, 1, 8>,
 ) -> ! {
     let (reader, _writer) = hid.split();

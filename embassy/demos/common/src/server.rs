@@ -14,11 +14,16 @@ use sunset_embassy::{SSHServer, SunsetMutex};
 
 use crate::SSHConfig;
 
+pub trait DemoServer {
+    /// A handler to run for each incoming connection.
+    async fn run(&self, serv: &SSHServer<'_>, common: DemoCommon) -> Result<()>;
+}
+
 // common entry point
-pub async fn listener<S: DemoServer>(
+pub async fn listen(
     stack: Stack<'_>,
     config: &SunsetMutex<SSHConfig>,
-    init: S::Init,
+    demo: &impl DemoServer,
 ) -> ! {
     // TODO: buffer size?
     // Does it help to be larger than ethernet MTU?
@@ -37,7 +42,7 @@ pub async fn listener<S: DemoServer>(
             continue;
         }
 
-        let r = session::<S>(&mut socket, &config, &init).await;
+        let r = session(&mut socket, &config, demo).await;
         if let Err(e) = r {
             warn!("Ended with error {e:#?}");
         }
@@ -51,10 +56,10 @@ pub async fn listener<S: DemoServer>(
 }
 
 /// Run a SSH session when a socket accepts a connection
-async fn session<S: DemoServer>(
+async fn session(
     socket: &mut TcpSocket<'_>,
     config: &SunsetMutex<SSHConfig>,
-    init: &S::Init,
+    demo: &impl DemoServer,
 ) -> sunset::Result<()> {
     // OK unwrap: has been accepted
     let src = socket.remote_endpoint().unwrap();
@@ -66,11 +71,10 @@ async fn session<S: DemoServer>(
     let mut ssh_txbuf = [0; 1000];
     let serv = SSHServer::new(&mut ssh_rxbuf, &mut ssh_txbuf)?;
 
-    // Create the handler. ServerApp is common handling (this file),
+    // Create the handler. DemoCommon is common handling (this file),
     // demo is the specific demo (std or picow).
-    let demo = S::new(init);
     let conf = config.lock().await.clone();
-    let app = ServerApp::new(conf)?;
+    let app = DemoCommon::new(conf)?;
     // .run returns a future that runs for the life of the session
     let session = demo.run(&serv, app);
 
@@ -89,7 +93,7 @@ async fn session<S: DemoServer>(
 /// Provides `ServBehaviour` for the server
 ///
 /// Further customisations are provided by `DemoServer` generic
-pub struct ServerApp {
+pub struct DemoCommon {
     config: SSHConfig,
 
     opened: bool,
@@ -97,7 +101,7 @@ pub struct ServerApp {
     pub sess: Option<ChanHandle>,
 }
 
-impl ServerApp {
+impl DemoCommon {
     const ADMIN_USER: &'static str = "config";
 
     fn new(config: SSHConfig) -> Result<Self> {
@@ -179,14 +183,4 @@ impl ServerApp {
     fn is_admin(&self, username: &str) -> bool {
         username == Self::ADMIN_USER
     }
-}
-
-pub trait DemoServer {
-    /// State to be passed to each new connection by the server
-    type Init;
-
-    fn new(init: &Self::Init) -> Self;
-
-    /// A task to run for each incoming connection.
-    async fn run(&self, serv: &SSHServer<'_>, common: ServerApp) -> Result<()>;
 }
