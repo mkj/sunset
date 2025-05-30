@@ -154,7 +154,7 @@ impl ServerApp {
     }
 
     fn handle_pubkey(&mut self, a: ServPubkeyAuth) -> Result<()> {
-        a.deny()
+        a.reject()
     }
 
     fn handle_firstauth(&self, a: ServFirstAuth) -> Result<()> {

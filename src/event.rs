@@ -321,7 +321,7 @@ impl<'g, 'a> ServPasswordAuth<'g, 'a> {
     }
 
     /// Does not need to be called explicitly, also occurs on drop without `allow()`
-    pub fn deny(mut self) -> Result<()> {
+    pub fn reject(mut self) -> Result<()> {
         self.done = true;
         self.runner.resume_servauth(false)
     }
@@ -335,7 +335,7 @@ impl<'g, 'a> ServPasswordAuth<'g, 'a> {
     }
 }
 
-// implement Drop to be the same as .deny()
+// implement Drop to be the same as .reject()
 impl Drop for ServPasswordAuth<'_, '_> {
     fn drop(&mut self) {
         if !self.done {
@@ -377,7 +377,7 @@ impl<'g, 'a> ServPubkeyAuth<'g, 'a> {
     }
 
     /// Does not need to be called explicitly, also occurs on drop without `allow()`
-    pub fn deny(mut self) -> Result<()> {
+    pub fn reject(mut self) -> Result<()> {
         self.done = true;
         self.runner.resume_servauth(false)
     }
@@ -387,7 +387,7 @@ impl<'g, 'a> ServPubkeyAuth<'g, 'a> {
     }
 }
 
-// implement Drop to be the same as .deny()
+// implement Drop to be the same as .reject()
 impl Drop for ServPubkeyAuth<'_, '_> {
     fn drop(&mut self) {
         if !self.done {
@@ -417,7 +417,7 @@ impl<'g, 'a> ServFirstAuth<'g, 'a> {
     }
 
     /// Does not need to be called explicitly, also occurs on drop without `allow()`
-    pub fn deny(mut self) -> Result<()> {
+    pub fn reject(mut self) -> Result<()> {
         self.done = true;
         self.runner.resume_servauth(false)
     }
@@ -427,7 +427,7 @@ impl<'g, 'a> ServFirstAuth<'g, 'a> {
     }
 }
 
-// implement Drop to be the same as .deny()
+// implement Drop to be the same as .reject()
 impl Drop for ServFirstAuth<'_, '_> {
     fn drop(&mut self) {
         if !self.done {
