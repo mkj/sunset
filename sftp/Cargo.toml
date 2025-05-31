@@ -1,6 +1,8 @@
 [package]
 name = "sunset-sftp"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
+sunset = { version = "0.2.0", path = "../" }
+sunset-sshwire-derive = { version = "0.2", path = "../sshwire-derive" }
