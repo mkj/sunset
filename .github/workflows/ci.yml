@@ -1,8 +1,5 @@
 # This is a minimal wrapper around ci.sh
 # ci.sh is intended to be usable locally without github.
-
-# This yaml file can be debugged using act https://github.com/nektos/act
-
 name: ci
 on:
   pull_request:
@@ -19,16 +16,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Cache multiple paths
+      - name: Cache Rust files
         uses: actions/cache@v4
         with:
           path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
+            ~/.cargo/
+            ~/.rustup/
             target_ci
-          key: rust3-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml') }}
+          # Save a unique cache each time
+          # (https://github.com/actions/cache/blob/main/tips-and-workarounds.md#update-a-cache)
+          key: rust-cache1-${{ github.run_id }}
+          # Load from the most recent match
+          restore-keys: |
+            rust-cache1
 
       - name: build
         run: ./testing/ci.sh
