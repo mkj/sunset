@@ -1,1 +1,2 @@
-mod sftp_proto;
+mod proto;
+mod sftpserver;
