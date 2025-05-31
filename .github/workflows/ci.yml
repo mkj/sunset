@@ -22,7 +22,7 @@ jobs:
           path: |
             ~/.cargo/
             ~/.rustup/
-            target_ci
+            testing/target
           # Save a unique cache each time
           # (https://github.com/actions/cache/blob/main/tips-and-workarounds.md#update-a-cache)
           key: rust-cache1-${{ github.run_id }}
