@@ -83,10 +83,10 @@ async fn run(args: Args) -> Result<i32> {
             app.pty();
         }
         if let Some(c) = cmd {
-            app.exec(&c);
+            app.exec(c);
         }
         if let Some(c) = args.subsystem {
-            app.subsystem(&c);
+            app.subsystem(c);
         }
         for i in &args.identityfile {
             app.add_authkey(
