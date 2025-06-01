@@ -8,7 +8,7 @@ use core::str::FromStr;
 
 use sunset::{sshnames, AuthSigMsg, OwnedSig, Pty, SignKey};
 use sunset::{Error, Result, Runner, SessionCommand};
-use sunset_embassy::*;
+use sunset_async::*;
 
 use embassy_sync::channel::{Channel, Receiver, Sender};
 use embassy_sync::signal::Signal;

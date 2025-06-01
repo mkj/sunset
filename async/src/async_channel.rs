@@ -5,14 +5,14 @@ use log::{debug, error, info, log, trace, warn};
 use embedded_io_async::{ErrorType, Read, Write};
 
 use crate::*;
-use embassy_sunset::EmbassySunset;
+use async_sunset::AsyncSunset;
 use sunset::{ChanData, ChanNum, Result};
 
 /// Common implementation
 struct ChanIO<'g, 'a> {
     num: ChanNum,
     dt: ChanData,
-    sunset: &'g EmbassySunset<'a>,
+    sunset: &'g AsyncSunset<'a>,
 }
 
 impl core::fmt::Debug for ChanIO<'_, '_> {
@@ -82,7 +82,7 @@ impl<'g, 'a> ChanInOut<'g, 'a> {
     pub(crate) fn new(
         num: ChanNum,
         dt: ChanData,
-        sunset: &'g EmbassySunset<'a>,
+        sunset: &'g AsyncSunset<'a>,
     ) -> Self {
         Self(ChanIO { num, dt, sunset })
     }
@@ -108,7 +108,7 @@ impl<'g, 'a> ChanIn<'g, 'a> {
     pub(crate) fn new(
         num: ChanNum,
         dt: ChanData,
-        sunset: &'g EmbassySunset<'a>,
+        sunset: &'g AsyncSunset<'a>,
     ) -> Self {
         Self(ChanIO { num, dt, sunset })
     }
@@ -119,7 +119,7 @@ impl<'g, 'a> ChanOut<'g, 'a> {
     pub(crate) fn new(
         num: ChanNum,
         dt: ChanData,
-        sunset: &'g EmbassySunset<'a>,
+        sunset: &'g AsyncSunset<'a>,
     ) -> Self {
         Self(ChanIO { num, dt, sunset })
     }

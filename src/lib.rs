@@ -1,11 +1,13 @@
+//! Sunset SSH
+//!
+//! Sunset is a SSH library for embedded and larger systems. The core `sunset` crate
+//! is IO-less, suitable for both async and non-async uses.
+
 // Tests use std as it's easier
 #![cfg_attr(not(any(feature = "std", test)), no_std)]
 #![forbid(unsafe_code)]
 // avoids headscratching
 #![deny(unused_must_use)]
-// for the time being silence the lint. need to figure if we actually
-// want to work with Send (not needed for embassy)
-#![allow(async_fn_in_trait)]
 // XXX unused_imports only during dev churn
 #![allow(unused_imports)]
 

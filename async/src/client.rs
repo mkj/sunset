@@ -3,8 +3,8 @@ use embedded_io_async::{Read, Write};
 use sunset::*;
 
 use crate::*;
-use embassy_channel::{ChanIn, ChanInOut};
-use embassy_sunset::{EmbassySunset, ProgressHolder};
+use async_channel::{ChanIn, ChanInOut};
+use async_sunset::{AsyncSunset, ProgressHolder};
 use sunset::ChanData;
 
 /// An async SSH client instance
@@ -17,13 +17,13 @@ use sunset::ChanData;
 ///
 /// This is async executor agnostic.
 pub struct SSHClient<'a> {
-    sunset: EmbassySunset<'a>,
+    sunset: AsyncSunset<'a>,
 }
 
 impl<'a> SSHClient<'a> {
     pub fn new(inbuf: &'a mut [u8], outbuf: &'a mut [u8]) -> Result<Self> {
         let runner = Runner::new_client(inbuf, outbuf)?;
-        let sunset = EmbassySunset::new(runner);
+        let sunset = AsyncSunset::new(runner);
         Ok(Self { sunset })
     }
 

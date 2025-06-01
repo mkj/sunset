@@ -7,7 +7,7 @@ use embassy_rp::bind_interrupts;
 use embassy_rp::peripherals::*;
 use embassy_rp::uart::{self as rp_uart, BufferedInterruptHandler, BufferedUart};
 
-use sunset_embassy::*;
+use sunset_async::*;
 
 use crate::*;
 

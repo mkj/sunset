@@ -1,9 +1,13 @@
 [package]
-name = "sunset-demo-embassy-std"
+name = "sunset-demo-std"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+sunset = { workspace = true, features = ["rsa", "std"] }
+sunset-async.workspace = true
+sunset-demo-common.workspace = true
+
 # 131072 was determined empirically
 embassy-executor = { version = "0.5",  features = ["log", "arch-std", "integrated-timers", "executor-thread", "task-arena-size-131072"] }
 embassy-time = { version = "0.3",  default-features=false, features = ["log", "std"] }
@@ -28,9 +32,6 @@ async-io = "1.6.0"
 # using local fork
 # menu = "0.3"
 
-sunset-embassy = { path = "../../" }
-sunset = { path = "../../..", features = ["rsa", "std"] }
-sunset-demo-embassy-common= { path = "../common" }
 
 critical-section = "1.1"
 rand = { version = "0.8", default-features = false, features = ["getrandom"] }

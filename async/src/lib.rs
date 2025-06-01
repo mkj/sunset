@@ -1,11 +1,14 @@
+//! Async for Sunset SSH
+//!
+//! This provides async for Sunset SSH.
 #![no_std]
 #![forbid(unsafe_code)]
 // avoid mysterious missing awaits
 #![deny(unused_must_use)]
 
+mod async_channel;
+mod async_sunset;
 mod client;
-mod embassy_channel;
-mod embassy_sunset;
 mod server;
 
 // TODO: if SSHServer and SSHClient don't specialise much then
@@ -13,9 +16,9 @@ mod server;
 pub use client::SSHClient;
 pub use server::SSHServer;
 
-pub use embassy_channel::{ChanIn, ChanInOut, ChanOut};
+pub use async_channel::{ChanIn, ChanInOut, ChanOut};
 
-pub use embassy_sunset::{
+pub use async_sunset::{
     io_buf_copy, io_copy, ProgressHolder, SunsetMutex, SunsetRawMutex,
 };
-pub use embassy_sunset::{io_buf_copy_noreaderror, io_copy_nowriteerror};
+pub use async_sunset::{io_buf_copy_noreaderror, io_copy_nowriteerror};
