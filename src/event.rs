@@ -214,7 +214,6 @@ pub(crate) enum CliEventId {
     Banner,
     #[allow(unused)]
     Defunct,
-
     // TODO:
     // Disconnected
     // OpenTCPForwarded (new session)

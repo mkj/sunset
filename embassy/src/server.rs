@@ -14,6 +14,7 @@ use embassy_sunset::{EmbassySunset, ProgressHolder};
 /// and [`stdio_stderr()`][Self::stdio_stderr] methods.
 ///
 /// This is async executor agnostic.
+#[derive(Debug)]
 pub struct SSHServer<'a> {
     sunset: EmbassySunset<'a>,
 }
