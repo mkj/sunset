@@ -11,7 +11,7 @@ keywords = ["ssh"]
 [workspace]
 members = [
     "sshwire-derive",
-    "async",
+    "stdasync",
     "embassy",
     "embassy/demos/common",
     "embassy/demos/picow",

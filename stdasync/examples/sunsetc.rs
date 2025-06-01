@@ -14,7 +14,7 @@ use std::io::Read;
 use sunset::*;
 use sunset_embassy::SSHClient;
 
-use sunset_async::{AgentClient, CmdlineClient};
+use sunset_stdasync::{AgentClient, CmdlineClient};
 
 use embedded_io_adapters::tokio_1::FromTokio;
 

@@ -98,7 +98,6 @@ fn setup_log(args: &Args) -> Result<()> {
         // not debugging these bits of the stack at present
         .add_filter_ignore_str("sunset::traffic")
         .add_filter_ignore_str("sunset::runner")
-        .add_filter_ignore_str("sunset_async::async_sunset")
         .set_time_offset_to_local()
         .expect("Couldn't get local timezone")
         .build();

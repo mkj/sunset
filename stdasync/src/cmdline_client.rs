@@ -27,7 +27,7 @@ use crate::AgentClient;
 use crate::*;
 use crate::{raw_pty, RawPtyGuard};
 
-/// A commandline client session
+/// A commandline client implementation
 ///
 /// This opens a single channel and presents it to the stdin/stdout terminal.
 pub struct CmdlineClient {
