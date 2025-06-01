@@ -38,7 +38,7 @@ pub enum Event<'g, 'a> {
 
 impl<'g, 'a> Event<'g, 'a> {
     pub(crate) fn from_dispatch(
-        disp: &DispatchEvent,
+        disp: DispatchEvent,
         runner: &'g mut Runner<'a>,
     ) -> Result<Self> {
         match disp {
@@ -204,7 +204,7 @@ impl Banner<'_> {
 
 // }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub(crate) enum CliEventId {
     Hostkey,
     Username,
@@ -556,7 +556,7 @@ impl Drop for ServOpenSession<'_, '_> {
         }
     }
 }
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub(crate) enum ServEventId {
     Hostkeys,
     PasswordAuth,
