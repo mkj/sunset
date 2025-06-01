@@ -119,12 +119,12 @@ pub struct RequestPassword<'g, 'a> {
 }
 
 impl RequestPassword<'_, '_> {
-    /// Provide a password to try
+    /// Provide a password to try.
     pub fn password(self, password: impl AsRef<str>) -> Result<()> {
         self.runner.resume_clipassword(Some(password.as_ref()))
     }
 
-    /// Don't provide a password
+    /// Don't provide a password.
     ///
     /// `RequestPassword` will not be returned again.
     pub fn skip(self) -> Result<()> {
@@ -137,12 +137,12 @@ pub struct RequestPubkey<'g, 'a> {
 }
 
 impl<'g, 'a> RequestPubkey<'g, 'a> {
-    /// Provide a public key to try
+    /// Provide a public key to try.
     pub fn pubkey(self, signkey: SignKey) -> Result<()> {
         self.runner.resume_clipubkey(Some(signkey))
     }
 
-    /// Don't provide a public key
+    /// Don't provide a public key.
     ///
     /// `RequestPubkey` will not be returned again.
     pub fn skip(self) -> Result<()> {
@@ -199,11 +199,8 @@ impl Banner<'_> {
     }
 }
 
-// impl CliExit<''_, '_> {
-//     pub fn
-
-// }
-
+// Only small values should be stored inline.
+// Larger state is retrieved from the current packet via Runner::fetch_*()
 #[derive(Debug, Clone)]
 pub(crate) enum CliEventId {
     Hostkey,
@@ -216,10 +213,12 @@ pub(crate) enum CliEventId {
     SessionExit,
     Banner,
     #[allow(unused)]
-    Defunct, // TODO:
-             // Disconnected
-             // OpenTCPForwarded (new session)
-             // TCPDirectOpened (response)
+    Defunct,
+
+    // TODO:
+    // Disconnected
+    // OpenTCPForwarded (new session)
+    // TCPDirectOpened (response)
 }
 
 impl CliEventId {
@@ -296,6 +295,10 @@ pub enum ServEvent<'g, 'a> {
     /// Client's public key authentication attempt.
     ///
     /// `ServerPubkeyAuth::allow()` will allow the user to log in.
+    ///
+    /// Note that this event may be emitted multiple times,
+    /// since the client first queries acceptable public keys,
+    /// and then later sends an actual signature.
     PubkeyAuth(ServPubkeyAuth<'g, 'a>),
     /// Client's request for a session channel.
     ///
@@ -430,16 +433,12 @@ impl<'g, 'a> ServPubkeyAuth<'g, 'a> {
         self.raw_username()?.as_str()
     }
 
-    /// Retreive the public key presented by a client.
+    /// Retrieve the public key presented by a client.
     pub fn pubkey(&self) -> Result<PubKey> {
         self.runner.fetch_servpubkey()
     }
 
     /// Accept the presented public key.
-    ///
-    /// Note that this event may be emitted multiple times,
-    /// since the client first queries acceptable public keys,
-    /// and then later sends an actual signature.
     pub fn allow(mut self) -> Result<()> {
         self.done = true;
         if self.real_sig {
@@ -449,6 +448,8 @@ impl<'g, 'a> ServPubkeyAuth<'g, 'a> {
         }
     }
 
+    /// Reject the public key.
+    ///
     /// Does not need to be called explicitly, also occurs on drop without `allow()`
     pub fn reject(mut self) -> Result<()> {
         self.done = true;
@@ -556,6 +557,9 @@ impl Drop for ServOpenSession<'_, '_> {
         }
     }
 }
+
+// Only small values should be stored inline.
+// Larger state is retrieved from the current packet via Runner::fetch_*()
 #[derive(Debug, Clone)]
 pub(crate) enum ServEventId {
     Hostkeys,
