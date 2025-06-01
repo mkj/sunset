@@ -1,10 +1,10 @@
 [package]
-name = "sunset-async"
+name = "sunset-stdasync"
 version = "0.2.0"
 edition = "2021"
 repository = "https://github.com/mkj/sunset"
 license = "0BSD"
-description = "Std async wrapper for Sunset SSH"
+description = "Sunset SSH for larger systems"
 
 [dependencies]
 sunset = { version = "0.2", path = "..", features = ["std", "openssh-key"] }

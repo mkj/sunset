@@ -37,7 +37,7 @@ cargo doc
 cargo test --doc
 
 (
-cd async
+cd stdasync
 # only test lib since some examples are broken
 cargo test --lib
 cargo build --example sunsetc
