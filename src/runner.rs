@@ -155,7 +155,7 @@ impl<'a> Runner<'a> {
                 DispatchEvent::Data(data_in) => {
                     // incoming channel data, we haven't finished with payload
                     self.traf_in.set_channel_input(data_in)?;
-                    disp.event = DispatchEvent::Progressed
+                    disp.event = DispatchEvent::None
                 }
                 DispatchEvent::CliEvent(_) | DispatchEvent::ServEvent(_) => {
                     // will return as an event
