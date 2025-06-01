@@ -69,7 +69,7 @@ pub const SSH_EXT_SERVER_SIG_ALGS: &str = "server-sig-algs";
 
 /// [RFC4254](https://tools.ietf.org/html/rfc4254)
 #[allow(non_camel_case_types)]
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone, Hash)]
 pub enum ChanFail {
     SSH_OPEN_ADMINISTRATIVELY_PROHIBITED = 1,
     SSH_OPEN_CONNECT_FAILED = 2,
@@ -81,7 +81,7 @@ pub enum ChanFail {
 ///
 /// [draft-miller-ssh-agent](https://datatracker.ietf.org/doc/html/draft-miller-ssh-agent-14#section-5.1)
 #[allow(non_camel_case_types)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone, Hash)]
 pub enum AgentMessageNum {
     SSH_AGENT_FAILURE = 5,
     SSH_AGENT_SUCCESS = 6,

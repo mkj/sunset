@@ -267,7 +267,7 @@ pub fn hash_mpint(hash_ctx: &mut dyn SSHWireDigestUpdate, m: &[u8]) {
 /// A SSH style binary string. Serialized as `u32` length followed by the bytes
 /// of the slice.
 /// Application API
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BinString<'a>(pub &'a [u8]);
 
 impl AsRef<[u8]> for BinString<'_> {
@@ -318,7 +318,7 @@ impl<const N: usize> SSHEncode for heapless::String<N> {
 /// example `"publickey"`, `"ssh-ed25519"`.
 ///
 /// Application API
-#[derive(Clone, PartialEq, Copy, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct TextString<'a>(pub &'a [u8]);
 
 impl<'a> TextString<'a> {
