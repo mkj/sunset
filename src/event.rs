@@ -52,6 +52,13 @@ impl<'g, 'a> Event<'g, 'a> {
     }
 }
 
+/// Client events.
+///
+/// These events are returned by the `progress()` function
+/// which is polled during the course of the connection.
+/// The application can call response functions on the associated
+/// enum item, for example providing a username or password
+/// for authentication.
 pub enum CliEvent<'g, 'a> {
     Hostkey(CheckHostkey<'g, 'a>),
     Banner(Banner<'g>),
@@ -64,11 +71,18 @@ pub enum CliEvent<'g, 'a> {
     /// Remote process exited
     SessionExit(CliSessionExit<'g>),
 
+    // ChanRequest(ChanRequest<'g, 'a>),
+    // Banner { banner: TextString<'a>, language: TextString<'a> },
     /// The SSH connection is no longer running
     #[allow(unused)]
     Defunct,
-    // ChanRequest(ChanRequest<'g, 'a>),
-    // Banner { banner: TextString<'a>, language: TextString<'a> },
+
+    /// No event was returned.
+    ///
+    /// The caller should poll `progress()` again.
+    // TODO: remove this after polonius lands in rustc.
+    // [#70255](https://github.com/rust-lang/rust/issues/70255), eventually
+    PollAgain,
 }
 
 impl Debug for CliEvent<'_, '_> {
@@ -84,6 +98,7 @@ impl Debug for CliEvent<'_, '_> {
             Self::AgentSign(_) => "AgentSign",
             Self::Banner(_) => "Banner",
             Self::Defunct => "Defunct",
+            Self::PollAgain => "PollAgain",
         };
         write!(f, "CliEvent({e})")
     }
@@ -296,9 +311,17 @@ pub enum ServEvent<'g, 'a> {
     ///
     /// TODO details
     SessionPty(ChanRequest<'g, 'a>),
+
     /// The SSH session is no longer running
     #[allow(unused)]
     Defunct,
+
+    /// No event was returned.
+    ///
+    /// The caller should poll `progress()` again.
+    // TODO: remove this after polonius lands in rustc.
+    // [#70255](https://github.com/rust-lang/rust/issues/70255), eventually
+    PollAgain,
 }
 
 impl Debug for ServEvent<'_, '_> {
@@ -313,6 +336,7 @@ impl Debug for ServEvent<'_, '_> {
             Self::SessionExec(_) => "SessionExec",
             Self::SessionPty(_) => "SessionPty",
             Self::Defunct => "Defunct",
+            Self::PollAgain => "PollAgain",
         };
         write!(f, "ServEvent({e})")
     }

@@ -24,7 +24,3 @@ log = { version = "0.4" }
 # The application should depend on critical-section "std" feature.
 # When multi-thread is disabled locking overhead is avoided.
 multi-thread = []
-
-# Remove any use of `unsafe`. This currently requires
-# nightly and -Zpolonius (not ready yet)
-try-polonius = []

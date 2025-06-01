@@ -1,5 +1,5 @@
 #![no_std]
-#![cfg_attr(feature = "try-polonius", forbid(unsafe_code))]
+#![forbid(unsafe_code)]
 // avoid mysterious missing awaits
 #![deny(unused_must_use)]
 

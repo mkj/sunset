@@ -123,6 +123,7 @@ impl DemoCommon {
                 error!("Expected caller to handle {event:?}");
                 error::BadUsage.fail()
             }
+            ServEvent::PollAgain => Ok(()),
         }
     }
 

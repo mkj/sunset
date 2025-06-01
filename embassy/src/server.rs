@@ -37,7 +37,7 @@ impl<'a> SSHServer<'a> {
         self.sunset.run(rsock, wsock).await
     }
 
-    /// Returns an event from the SSH Session
+    /// Returns an event from the SSH session.
     ///
     /// Note that on return `ProgressHolder` holds a mutex over the session,
     /// so most other calls to `SSHServer` will block until the `ProgressHolder`
@@ -48,8 +48,10 @@ impl<'a> SSHServer<'a> {
     ) -> Result<ServEvent<'f, 'a>> {
         // poll until we get an actual event to return
         match self.sunset.progress(ph).await? {
-            Event::Serv(x) => return Ok(x),
-            _ => return Err(Error::bug()),
+            Event::Serv(x) => Ok(x),
+            Event::None => Ok(ServEvent::PollAgain),
+            Event::Progressed => Ok(ServEvent::PollAgain),
+            Event::Cli(_) => Err(Error::bug()),
         }
     }
 

@@ -76,7 +76,7 @@ impl<'a> Inner<'a> {
 /// or [`SSHServer::progress()`](crate::SSHServer::progress) call.
 #[derive(Default)]
 pub struct ProgressHolder<'g, 'a> {
-    g: Option<MutexGuard<'g, SunsetRawMutex, Inner<'a>>>,
+    guard: Option<MutexGuard<'g, SunsetRawMutex, Inner<'a>>>,
 }
 
 impl<'g, 'a> ProgressHolder<'g, 'a> {
@@ -95,6 +95,7 @@ pub(crate) struct EmbassySunset<'a> {
     inner: SunsetMutex<Inner<'a>>,
 
     progress_notify: Signal<SunsetRawMutex, ()>,
+    last_progress_idled: AtomicBool,
 
     // wake_progress() should be called after modifying these atomics, to
     // trigger the progress loop to handle state changes
@@ -126,6 +127,7 @@ impl<'a> EmbassySunset<'a> {
             moribund: AtomicBool::new(false),
             progress_notify,
             chan_refcounts: Default::default(),
+            last_progress_idled: AtomicBool::new(false),
         }
     }
 
@@ -298,70 +300,53 @@ impl<'a> EmbassySunset<'a> {
         Ok(())
     }
 
-    /// Returns an `Event` once one is ready.
+    /// Returns an `Event`.
     ///
     /// The returned `Event` borrows from the mutex locked in `ph`.
     pub(crate) async fn progress<'g, 'f>(
         &'g self,
         ph: &'f mut ProgressHolder<'g, 'a>,
     ) -> Result<Event<'f, 'a>> {
-        ph.g = None;
-        #[cfg(feature = "try-polonius")]
-        let guard = &mut ph.g;
+        // In case a ProgressHolder was reused, release any guard.
+        *ph = ProgressHolder::default();
 
-        // poll progress until we get an actual event to return
-        loop {
-            // Safety: At the start of the loop iteration nothing is borrowing from
-            // guard, it is set to None. We dereference through a pointer to lose the 'f
-            // bound which applies to the Event::Cli/Event::Serv returned variants,
-            // but not other match arms.
-            //
-            // Once polonius is implemented this is unnecessary. polonius-the-crab
-            // can't be used since it would require an async closure.
-            #[cfg(not(feature = "try-polonius"))]
-            let guard = unsafe { &mut *(&mut ph.g as *mut Option<_>) };
-            debug_assert!(guard.is_none());
-
-            let idle = {
-                let inner = guard.insert(self.inner.lock().await);
-
-                // Drop any finished channels now we have the lock
-                self.clear_refcounts(inner)?;
-
-                self.wake_channels(inner)?;
-                let ev = inner.runner.progress()?;
-
-                match ev {
-                    // Return borrowed Cli/Serv directly, with a Event<'f, 'a> bound.
-                    Event::Cli(_) => return Ok(ev),
-                    Event::Serv(_) => return Ok(ev),
-                    Event::Progressed => false,
-                    Event::None => true,
-                }
-            };
-
-            // Safety: No borrows of guard remain, can lose the inferred 'f lifetime.
-            // Not required after polonius.
-            #[cfg(not(feature = "try-polonius"))]
-            let guard = unsafe { &mut *(&mut ph.g as *mut Option<_>) };
-
-            // Drop the Mutex
-            *guard = None;
-
-            if self.moribund.load(Relaxed) {
-                // if we're flushing, we exit once there is no progress
-                debug!("All data flushed")
-            }
-
-            if !idle {
-                // Run runner.progress() again if we made forward progress.
-                continue;
-            }
-
-            // Idle until input is received
-            // TODO do we also want to wake in other situations?
+        // Ideally we would .wait() after calling .progress() below when
+        // Event::None is returned, but the borrow checker won't allow that.
+        // Instead we wait at the start of the next progress() call,
+        // but will return immediately if something external
+        // has woken the progress_notify in the interim.
+        //
+        // TODO: rework once rustc's polonius is stable.
+        // https://github.com/rust-lang/rust/issues/54663
+        //
+        // This is a non-atomic swap since thumbv6m won't support it.
+        // Only one task should be calling progress(), so that's OK.
+        let need_wait = self.last_progress_idled.load(Relaxed);
+        if need_wait {
+            self.last_progress_idled.store(false, Relaxed);
             self.progress_notify.wait().await;
         }
+
+        // The returned event borrows from a guard inside ProgressHolder
+        let inner = ph.guard.insert(self.inner.lock().await);
+
+        // Drop deferred finished channels
+        self.clear_refcounts(inner)?;
+        // Wake channels
+        self.wake_channels(inner)?;
+
+        if self.moribund.load(Relaxed) {
+            // if we're flushing, we exit once there is no progress
+            debug!("All data flushed")
+            // TODO make this do something!
+        }
+
+        let ev = inner.runner.progress();
+        if matches!(ev, Ok(Event::None)) {
+            // nothing happened, will progress_notify.wait() next progress() call, see above.
+            self.last_progress_idled.store(true, Relaxed);
+        }
+        ev
     }
 
     pub(crate) async fn with_runner<F, R>(&self, f: F) -> R
