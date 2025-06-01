@@ -38,7 +38,7 @@ impl<'a> SSHClient<'a> {
         self.sunset.run(rsock, wsock).await
     }
 
-    /// Returns an event from the SSH Session
+    /// Returns an event from the SSH session.
     ///
     /// Note that on return `ProgressHolder` holds a mutex over the session,
     /// so other calls to `SSHClient` may block until the `ProgressHolder`
@@ -49,6 +49,7 @@ impl<'a> SSHClient<'a> {
     ) -> Result<CliEvent<'f, 'a>> {
         match self.sunset.progress(ph).await? {
             Event::Cli(x) => Ok(x),
+            Event::None => return Ok(CliEvent::PollAgain),
             _ => Err(Error::bug()),
         }
     }

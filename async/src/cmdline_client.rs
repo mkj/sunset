@@ -334,6 +334,7 @@ impl CmdlineClient {
                         trace!("break defunct");
                         break Ok::<_, Error>(());
                     }
+                    CliEvent::PollAgain => (),
                 }
             }
         };
