@@ -21,7 +21,7 @@ use tokio::task::spawn_local;
 use embedded_io_adapters::tokio_1::FromTokio;
 
 use sunset::*;
-use sunset_embassy::SSHServer;
+use sunset_async::SSHServer;
 
 // struct StdRawMutex {
 //     l: std::sync::Mutex<()>,

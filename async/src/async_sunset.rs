@@ -91,8 +91,8 @@ impl<'g, 'a> ProgressHolder<'g, 'a> {
 /// A [`ChanHandle`] provided by sunset core must be added with [`add_channel()`] before
 /// a method can be called with the equivalent ChanNum.
 ///
-/// Applications use `embassy_sunset::{Client,Server}`.
-pub(crate) struct EmbassySunset<'a> {
+/// Applications use `async_sunset::{Client,Server}`.
+pub(crate) struct AsyncSunset<'a> {
     inner: SunsetMutex<Inner<'a>>,
 
     progress_notify: Signal<SunsetRawMutex, ()>,
@@ -110,9 +110,9 @@ pub(crate) struct EmbassySunset<'a> {
     chan_refcounts: [AtomicUsize; MAX_CHANNELS],
 }
 
-impl core::fmt::Debug for EmbassySunset<'_> {
+impl core::fmt::Debug for AsyncSunset<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let mut d = f.debug_struct("EmbassySunset");
+        let mut d = f.debug_struct("AsyncSunset");
         if let Ok(i) = self.inner.try_lock() {
             d.field("runner", &i.runner);
         } else {
@@ -122,7 +122,7 @@ impl core::fmt::Debug for EmbassySunset<'_> {
     }
 }
 
-impl<'a> EmbassySunset<'a> {
+impl<'a> AsyncSunset<'a> {
     pub fn new(runner: Runner<'a>) -> Self {
         let wakers = Wakers {
             chan_read: Default::default(),
@@ -516,7 +516,7 @@ impl<'a> EmbassySunset<'a> {
 
     /// Adds a new channel handle provided by sunset core.
     ///
-    /// EmbassySunset will take ownership of the handle. An initial refcount
+    /// AsyncSunset will take ownership of the handle. An initial refcount
     /// must be provided, this will match the number of ChanIO that
     /// will be created. (A zero initial refcount would be prone to immediate
     /// garbage collection).

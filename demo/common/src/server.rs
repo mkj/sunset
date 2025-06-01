@@ -10,7 +10,7 @@ use sunset::{
     event::{ServFirstAuth, ServOpenSession, ServPasswordAuth, ServPubkeyAuth},
     *,
 };
-use sunset_embassy::{SSHServer, SunsetMutex};
+use sunset_async::{SSHServer, SunsetMutex};
 
 use crate::SSHConfig;
 

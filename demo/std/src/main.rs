@@ -14,10 +14,10 @@ use embassy_sync::channel::Channel;
 use embedded_io_async::Read;
 
 use sunset::*;
-use sunset_embassy::{ProgressHolder, SSHServer, SunsetMutex, SunsetRawMutex};
+use sunset_async::{ProgressHolder, SSHServer, SunsetMutex, SunsetRawMutex};
 
 mod setupmenu;
-pub(crate) use sunset_demo_embassy_common as demo_common;
+pub(crate) use sunset_demo_common as demo_common;
 
 use demo_common::{DemoCommon, DemoServer, SSHConfig};
 
@@ -168,7 +168,7 @@ async fn main(spawner: Spawner) {
         .filter_module("sunset::traffic", log::LevelFilter::Info)
         .filter_module("sunset::encrypt", log::LevelFilter::Info)
         // .filter_module("sunset::conn", log::LevelFilter::Info)
-        // .filter_module("sunset_embassy::embassy_sunset", log::LevelFilter::Info)
+        // .filter_module("sunset_async::async_sunset", log::LevelFilter::Info)
         .filter_module("async_io", log::LevelFilter::Info)
         .filter_module("polling", log::LevelFilter::Info)
         .format_timestamp_nanos()

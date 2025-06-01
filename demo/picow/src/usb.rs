@@ -13,7 +13,7 @@ use embassy_usb_driver::Driver;
 
 use embedded_io_async::{BufRead, ErrorType, Read, Write};
 
-use sunset_embassy::*;
+use sunset_async::*;
 
 use crate::*;
 use picowmenu::request_pw;

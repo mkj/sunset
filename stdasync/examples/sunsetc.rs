@@ -12,7 +12,7 @@ use tokio::net::TcpStream;
 use std::io::Read;
 
 use sunset::*;
-use sunset_embassy::SSHClient;
+use sunset_async::SSHClient;
 
 use sunset_stdasync::{AgentClient, CmdlineClient};
 
@@ -65,7 +65,7 @@ async fn run(args: Args) -> Result<i32> {
     }
 
     // Sunset will work fine on a non-threaded executor (such as Tokio LocalSet).
-    // sunset-embassy's "multi-thread" feature is not required in that case.
+    // sunset-async's "multi-thread" feature is not required in that case.
     // sunsetc example here uses the normal threaded scheduler in order to test the
     // "multi-thread" feature (and as a more "default" example).
     let ssh_task = tokio::task::spawn(async move {
@@ -244,7 +244,7 @@ fn setup_log(args: &Args, tz: UtcOffset) -> Result<()> {
         // not debugging these bits of the stack at present
         // .add_filter_ignore_str("sunset::traffic")
         .add_filter_ignore_str("sunset::runner")
-        // .add_filter_ignore_str("sunset_embassy")
+        // .add_filter_ignore_str("async_sunset")
         .set_time_offset(tz)
         .build();
 

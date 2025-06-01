@@ -1,13 +1,13 @@
 [package]
-name = "sunset-demo-embassy-picow"
+name = "sunset-demo-picow"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-sunset-embassy = { path = "../../" }
-sunset = { path = "../../.." }
-sunset-sshwire-derive = { path = "../../../sshwire-derive" }
-sunset-demo-embassy-common= { path = "../common" }
+sunset.workspace = true
+sunset-demo-common.workspace = true
+sunset-async.workspace = true
+sunset-sshwire-derive.workspace = true
 
 cyw43 = { version = "0.1.0", optional = true, features = ["log", "firmware-logs"]}
 cyw43-pio = { version = "0.1.0", optional = true }

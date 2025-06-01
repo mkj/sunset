@@ -23,8 +23,8 @@ use embassy_sync::mutex::Mutex;
 
 use demo_common::{takepipe, DemoCommon, DemoServer, SSHConfig};
 use sunset::*;
-use sunset_demo_embassy_common as demo_common;
-use sunset_embassy::{ProgressHolder, SSHServer, SunsetMutex};
+use sunset_async::{ProgressHolder, SSHServer, SunsetMutex};
+use sunset_demo_common as demo_common;
 use takepipe::TakePipe;
 
 mod flashconfig;

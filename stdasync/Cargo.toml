@@ -7,9 +7,10 @@ license = "0BSD"
 description = "Sunset SSH for larger systems"
 
 [dependencies]
-sunset = { version = "0.2", path = "..", features = ["std", "openssh-key"] }
-sunset-sshwire-derive = { version = "0.2", path = "../sshwire-derive" }
-sunset-embassy = { version = "0.2", path = "../embassy" }
+sunset = { workspace = true, features = ["std", "openssh-key"] }
+sunset-sshwire-derive.workspace = true
+sunset-async.workspace = true
+
 log = { version = "0.4", features = ["release_max_level_trace"] }
 rpassword = "7.2"
 argh = "0.1"
@@ -51,5 +52,5 @@ simplelog = "0.12"
 # for simplelog
 time = { version = "0.3", features = ["local-offset"] }
 
-sunset-embassy = { version = "0.2", path = "../embassy", features = ["multi-thread"] }
+sunset-async = { workspace = true, features = ["multi-thread"] }
 critical-section = { version = "1.1", features = ["std"] }

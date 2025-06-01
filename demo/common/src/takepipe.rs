@@ -9,7 +9,7 @@ use embassy_futures::select::{select, Either};
 use embassy_sync::pipe::Pipe;
 use embassy_sync::{mutex::Mutex, pipe, signal::Signal};
 
-use sunset_embassy::{SunsetMutex, SunsetRawMutex};
+use sunset_async::{SunsetMutex, SunsetRawMutex};
 
 pub const READ_SIZE: usize = 200;
 pub const WRITE_SIZE: usize = 64;

@@ -3,7 +3,7 @@ use embedded_io_async::{Read, Write};
 use sunset::*;
 
 use crate::*;
-use embassy_sunset::{EmbassySunset, ProgressHolder};
+use async_sunset::{AsyncSunset, ProgressHolder};
 
 /// An async SSH server instance
 ///
@@ -16,14 +16,14 @@ use embassy_sunset::{EmbassySunset, ProgressHolder};
 /// This is async executor agnostic.
 #[derive(Debug)]
 pub struct SSHServer<'a> {
-    sunset: EmbassySunset<'a>,
+    sunset: AsyncSunset<'a>,
 }
 
 impl<'a> SSHServer<'a> {
     // May return an error if RNG fails
     pub fn new(inbuf: &'a mut [u8], outbuf: &'a mut [u8]) -> Result<Self> {
         let runner = Runner::new_server(inbuf, outbuf)?;
-        let sunset = EmbassySunset::new(runner);
+        let sunset = AsyncSunset::new(runner);
         Ok(Self { sunset })
     }
 

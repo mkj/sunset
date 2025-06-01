@@ -1,11 +1,11 @@
 [package]
-name = "sunset-embassy"
+name = "sunset-async"
 version = "0.2.0"
 edition = "2021"
 repository = "https://github.com/mkj/sunset"
 categories = ["network-programming", "embedded", "no-std"]
 license = "0BSD"
-description = "async wrapper for Sunset SSH"
+description = "Async for Sunset SSH"
 
 [dependencies]
 embassy-sync = { version = "0.5" }

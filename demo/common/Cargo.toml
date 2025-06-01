@@ -1,13 +1,13 @@
 [package]
-name = "sunset-demo-embassy-common"
+name = "sunset-demo-common"
 description = "Shared code for Sunset demos"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-sunset-embassy = { path = "../../" }
-sunset = { path = "../../.." }
-sunset-sshwire-derive = { path = "../../../sshwire-derive" }
+sunset.workspace = true
+sunset-async.workspace = true
+sunset-sshwire-derive.workspace = true
 
 embassy-sync = { version = "0.5" }
 embassy-net = { version = "0.5", features = ["tcp", "dhcpv4", "medium-ethernet", "log"] }
@@ -30,5 +30,5 @@ pretty-hex = { version = "0.4", default-features = false }
 
 [dev-dependencies]
 anyhow = { version = "1.0" }
-sunset = { path = "../../..", features = ["std"] }
+sunset = { workspace = true, features = ["std"] }
 tokio = { version = "1.25", features = ["full"] }
