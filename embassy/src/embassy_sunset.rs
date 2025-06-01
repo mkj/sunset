@@ -31,6 +31,7 @@ pub type SunsetRawMutex = NoopRawMutex;
 
 pub type SunsetMutex<T> = Mutex<SunsetRawMutex, T>;
 
+#[derive(Debug)]
 struct Wakers {
     chan_read: [WakerRegistration; MAX_CHANNELS],
 
@@ -107,6 +108,18 @@ pub(crate) struct EmbassySunset<'a> {
     // decremented on `ChanIn::drop()` etc.
     // The pending chan_refcount=0 handling occurs in the `progress()` loop.
     chan_refcounts: [AtomicUsize; MAX_CHANNELS],
+}
+
+impl core::fmt::Debug for EmbassySunset<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let mut d = f.debug_struct("EmbassySunset");
+        if let Ok(i) = self.inner.try_lock() {
+            d.field("runner", &i.runner);
+        } else {
+            d.field("inner", &"(locked)");
+        }
+        d.finish_non_exhaustive()
+    }
 }
 
 impl<'a> EmbassySunset<'a> {

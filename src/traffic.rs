@@ -1,3 +1,5 @@
+use core::fmt;
+
 #[allow(unused_imports)]
 use {
     crate::error::{Error, Result},
@@ -87,6 +89,18 @@ enum RxState {
         /// length of channel data
         len: usize,
     },
+}
+
+impl core::fmt::Debug for TrafIn<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TrafIn").field("state", &self.state).finish_non_exhaustive()
+    }
+}
+
+impl core::fmt::Debug for TrafOut<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TrafOut").field("state", &self.state).finish_non_exhaustive()
+    }
 }
 
 impl<'a> TrafIn<'a> {

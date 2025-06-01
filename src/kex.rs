@@ -54,6 +54,7 @@ const fixed_options_cipher: &[&str] = &[SSH_NAME_CHAPOLY, SSH_NAME_AES256_CTR];
 const fixed_options_mac: &[&str] = &[SSH_NAME_HMAC_SHA256];
 const fixed_options_comp: &[&str] = &[SSH_NAME_NONE];
 
+#[derive(Debug)]
 pub(crate) struct AlgoConfig {
     kexs: LocalNames,
     hostsig: LocalNames,
