@@ -896,7 +896,7 @@ pub enum ChanOpened {
 /// The number will always be in the range `0 <= num < MAX_CHANNELS`
 /// and can be used as an index by applications.
 /// Most external application API methods take a `ChanHandle` instead.
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Clone, Copy, Eq, Hash, Ord, PartialOrd)]
 pub struct ChanNum(pub u32);
 
 impl core::fmt::Display for ChanNum {

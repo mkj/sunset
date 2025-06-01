@@ -749,6 +749,7 @@ impl<'a> Runner<'a> {
 // channel numbers cannot be used after closing/reuse.
 //
 // This must not be `Clone`
+#[derive(PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub struct ChanHandle(pub(crate) ChanNum);
 
 impl ChanHandle {
