@@ -136,7 +136,7 @@ impl<'a> Runner<'a> {
         let ex = self.extra_resume_event.take();
         if ex.is_some() {
             self.resume_event = ex.clone();
-            return Event::from_dispatch(&ex, self);
+            return Event::from_dispatch(ex, self);
         }
 
         // Previous event payload is complete
@@ -197,7 +197,7 @@ impl<'a> Runner<'a> {
         self.resume_event = disp.event.clone();
 
         // Create an Event that borrows from Runner
-        Event::from_dispatch(&disp.event, self)
+        Event::from_dispatch(disp.event, self)
     }
 
     pub(crate) fn packet(&self) -> Result<Option<packets::Packet>> {
