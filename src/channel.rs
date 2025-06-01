@@ -1001,12 +1001,12 @@ impl<'g, 'a> CliSessionOpener<'g, 'a> {
         self.send(Req::Shell)
     }
 
-    pub fn exec(&mut self, cmd: &str) -> Result<()> {
-        self.send(Req::Exec(cmd))
+    pub fn exec(&mut self, cmd: impl AsRef<str>) -> Result<()> {
+        self.send(Req::Exec(cmd.as_ref()))
     }
 
-    pub fn subsystem(&mut self, cmd: &str) -> Result<()> {
-        self.send(Req::Subsystem(cmd))
+    pub fn subsystem(&mut self, cmd: impl AsRef<str>) -> Result<()> {
+        self.send(Req::Subsystem(cmd.as_ref()))
     }
 
     fn send(&mut self, req: Req) -> Result<()> {

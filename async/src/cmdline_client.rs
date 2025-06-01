@@ -78,13 +78,13 @@ impl CmdlineClient {
         self
     }
 
-    pub fn exec(&mut self, cmd: &str) -> &mut Self {
-        self.cmd = SessionCommand::Exec(cmd.into());
+    pub fn exec(&mut self, cmd: impl AsRef<str>) -> &mut Self {
+        self.cmd = SessionCommand::Exec(cmd.as_ref().into());
         self
     }
 
-    pub fn subsystem(&mut self, subsystem: &str) -> &mut Self {
-        self.cmd = SessionCommand::Subsystem(subsystem.into());
+    pub fn subsystem(&mut self, subsystem: impl AsRef<str>) -> &mut Self {
+        self.cmd = SessionCommand::Subsystem(subsystem.as_ref().into());
         self
     }
 
