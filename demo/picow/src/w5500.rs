@@ -26,9 +26,9 @@ async fn ethernet_task(
     runner: Runner<
         'static,
         embassy_net_wiznet::chip::W5500,
-        ExclusiveDevice<Spi<'static, SPI0, Async>, Output<'static, PIN_17>, Delay>,
-        Input<'static, PIN_21>,
-        Output<'static, PIN_20>,
+        ExclusiveDevice<Spi<'static, SPI0, Async>, Output<'static>, Delay>,
+        Input<'static>,
+        Output<'static>,
     >,
 ) -> ! {
     runner.run().await
@@ -66,7 +66,8 @@ pub(crate) async fn w5500_stack(
         w5500_int,
         w5500_reset,
     )
-    .await;
+    .await
+    .unwrap();
     spawner.spawn(ethernet_task(runner)).unwrap();
 
     let net_cf = if let Some(ref s) = config.lock().await.ip4_static {

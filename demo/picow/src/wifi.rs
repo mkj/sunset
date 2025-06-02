@@ -29,8 +29,8 @@ bind_interrupts!(struct Irqs {
 async fn wifi_task(
     runner: cyw43::Runner<
         'static,
-        Output<'static, PIN_23>,
-        PioSpi<'static, PIN_25, PIO0, 0, DMA_CH0>,
+        Output<'static>,
+        PioSpi<'static, PIO0, 0, DMA_CH0>,
     >,
 ) -> ! {
     runner.run().await
@@ -52,7 +52,16 @@ pub(crate) async fn wifi_stack(
     let pwr = Output::new(p23, Level::Low);
     let cs = Output::new(p25, Level::High);
     let mut pio = Pio::new(pio0, Irqs);
-    let spi = PioSpi::new(&mut pio.common, pio.sm0, pio.irq0, cs, p24, p29, dma);
+    let spi = PioSpi::new(
+        &mut pio.common,
+        pio.sm0,
+        cyw43_pio::DEFAULT_CLOCK_DIVIDER,
+        pio.irq0,
+        cs,
+        p24,
+        p29,
+        dma,
+    );
 
     static STATE: StaticCell<cyw43::State> = StaticCell::new();
     let state = STATE.init_with(|| cyw43::State::new());
@@ -97,13 +106,14 @@ async fn net_task(
     };
 
     for _ in 0..2 {
-        let status = if let Some(ref pw) = wifi_pw {
+        let opts = if let Some(ref pw) = wifi_pw {
             info!("wifi net {} wpa2", wifi_net);
-            control.join_wpa2(&wifi_net, &pw).await
+            cyw43::JoinOptions::new(pw.as_bytes())
         } else {
             info!("wifi net {} open", wifi_net);
-            control.join_open(&wifi_net).await
+            cyw43::JoinOptions::new_open()
         };
+        let status = control.join(&wifi_net, opts).await;
 
         if let Err(ref e) = status {
             info!("wifi join failed, code {}", e.status);

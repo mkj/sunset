@@ -50,7 +50,7 @@ pub(crate) async fn task(
     //     rp_uart::Config::default(),
     // );
 
-    let (mut rx, mut tx) = uart.split();
+    let (mut tx, mut rx) = uart.split();
 
     // console via SSH
     let (mut chan_rx, mut chan_tx) = pipe.split();

@@ -15,9 +15,6 @@ use embassy_sync::signal::Signal;
 use embassy_sync::waitqueue::WakerRegistration;
 use embedded_io_async::{BufRead, Read, Write};
 
-// thumbv6m has no atomic usize add/sub
-use atomic_polyfill::AtomicUsize;
-
 use pin_utils::pin_mut;
 
 use sunset::config::MAX_CHANNELS;
@@ -107,7 +104,9 @@ pub(crate) struct AsyncSunset<'a> {
     // Refcount for `Inner::chan_handles`. Must be non-async so it can be
     // decremented on `ChanIn::drop()` etc.
     // The pending chan_refcount=0 handling occurs in the `progress()` loop.
-    chan_refcounts: [AtomicUsize; MAX_CHANNELS],
+    //
+    // thumbv6m has no atomic usize add/sub.
+    chan_refcounts: [portable_atomic::AtomicUsize; MAX_CHANNELS],
 }
 
 impl core::fmt::Debug for AsyncSunset<'_> {
