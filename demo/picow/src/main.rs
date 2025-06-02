@@ -47,18 +47,17 @@ const NUM_LISTENERS: usize = 4;
 // +1 for dhcp. referenced directly by wifi_stack() function
 pub(crate) const NUM_SOCKETS: usize = NUM_LISTENERS + 1;
 
-const LOG_LEVEL: log::LevelFilter = log::LevelFilter::Debug;
-static LOGGER: rtt_logger::RTTLogger = rtt_logger::RTTLogger::new(LOG_LEVEL);
-
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     // Some logs are better than fully dropped. Use a larger buffer.
-    rtt_target::rtt_init_print!(NoBlockTrim, 4000);
-    // rtt_target::rtt_init_print!(BlockIfFull);
+    rtt_target::rtt_init_log!(
+        log::LevelFilter::Debug,
+        rtt_target::ChannelMode::NoBlockTrim,
+        4000
+    );
     unsafe {
         // thumbv6 doesn't have atomics normally needed by log
-        log::set_logger_racy(&LOGGER).unwrap();
-        log::set_max_level_racy(LOG_LEVEL);
+        log::set_max_level_racy(log::LevelFilter::Debug);
     }
     info!("Welcome to Sunset SSH");
     debug!("Debug");
