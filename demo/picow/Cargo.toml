@@ -30,8 +30,7 @@ static_cell = { version = "2" }
 portable-atomic = { workspace = true, features = ["critical-section"] }
 
 log = { version = "0.4" }
-rtt-target = "0.3"
-rtt-logger = "0.2"
+rtt-target = { version = "0.6", features = ["log"] }
 
 pretty-hex = { version = "0.4", default-features = false }
 
