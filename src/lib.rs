@@ -61,3 +61,7 @@ pub use sshnames::ChanFail;
 pub use event::{CliEvent, Event, ServEvent};
 pub use runner::ChanHandle;
 pub use runner::Runner;
+
+pub use client::Client;
+pub use conn::CliServ;
+pub use server::Server;

@@ -18,6 +18,7 @@ use core::mem::Discriminant;
 use crate::*;
 use channel::{CliSessionExit, CliSessionOpener};
 use packets::Packet;
+use runner::{CliRunner, ServRunner};
 use sshwire::TextString;
 
 #[derive(Debug)]
@@ -34,22 +35,6 @@ pub enum Event<'g, 'a> {
     ///
     /// No progress, may idle waiting for external events.
     None,
-}
-
-impl<'g, 'a> Event<'g, 'a> {
-    pub(crate) fn from_dispatch(
-        disp: DispatchEvent,
-        runner: &'g mut Runner<'a>,
-    ) -> Result<Self> {
-        match disp {
-            DispatchEvent::CliEvent(x) => Ok(Self::Cli(x.event(runner)?)),
-            DispatchEvent::ServEvent(x) => Ok(Self::Serv(x.event(runner)?)),
-            DispatchEvent::None => Ok(Self::None),
-            DispatchEvent::Progressed => Ok(Self::Progressed),
-            // Events handled internally by Runner::progress()
-            DispatchEvent::Data(_) => Err(Error::bug()),
-        }
-    }
 }
 
 /// Client events.
@@ -105,7 +90,7 @@ impl Debug for CliEvent<'_, '_> {
 }
 
 pub struct RequestUsername<'g, 'a> {
-    runner: &'g mut Runner<'a>,
+    runner: &'g mut CliRunner<'a>,
 }
 
 impl RequestUsername<'_, '_> {
@@ -115,7 +100,7 @@ impl RequestUsername<'_, '_> {
 }
 
 pub struct RequestPassword<'g, 'a> {
-    runner: &'g mut Runner<'a>,
+    runner: &'g mut CliRunner<'a>,
 }
 
 impl RequestPassword<'_, '_> {
@@ -133,7 +118,7 @@ impl RequestPassword<'_, '_> {
 }
 
 pub struct RequestPubkey<'g, 'a> {
-    runner: &'g mut Runner<'a>,
+    runner: &'g mut CliRunner<'a>,
 }
 
 impl<'g, 'a> RequestPubkey<'g, 'a> {
@@ -151,7 +136,7 @@ impl<'g, 'a> RequestPubkey<'g, 'a> {
 }
 
 pub struct RequestSign<'g, 'a> {
-    runner: &'g mut Runner<'a>,
+    runner: &'g mut CliRunner<'a>,
 }
 
 impl RequestSign<'_, '_> {
@@ -170,7 +155,7 @@ impl RequestSign<'_, '_> {
 }
 
 pub struct CheckHostkey<'g, 'a> {
-    runner: &'g mut Runner<'a>,
+    runner: &'g mut CliRunner<'a>,
 }
 
 impl CheckHostkey<'_, '_> {
@@ -223,7 +208,7 @@ pub(crate) enum CliEventId {
 impl CliEventId {
     pub fn event<'g, 'a>(
         self,
-        runner: &'g mut Runner<'a>,
+        runner: &'g mut CliRunner<'a>,
     ) -> Result<CliEvent<'g, 'a>> {
         let pk = runner.packet()?;
 
@@ -304,15 +289,15 @@ pub enum ServEvent<'g, 'a> {
     /// After accepting a channel the [`ChanHandle`] will be returned.
     OpenSession(ServOpenSession<'g, 'a>),
     /// Client requested to run a shell on a channel.
-    SessionShell(ChanRequest<'g, 'a>),
+    SessionShell(ChanRequest<'g, 'a, server::Server>),
     /// Client requested to execute a command on a channel.
     ///
     /// TODO the actual command is missing here!
-    SessionExec(ChanRequest<'g, 'a>),
+    SessionExec(ChanRequest<'g, 'a, server::Server>),
     /// Client requested a PTY for the channel.
     ///
     /// TODO details
-    SessionPty(ChanRequest<'g, 'a>),
+    SessionPty(ChanRequest<'g, 'a, server::Server>),
 
     /// The SSH session is no longer running
     #[allow(unused)]
@@ -348,7 +333,7 @@ impl Debug for ServEvent<'_, '_> {
 ///
 /// `hostkeys()` must be called.
 pub struct ServHostkeys<'g, 'a> {
-    runner: &'g mut Runner<'a>,
+    runner: &'g mut Runner<'a, server::Server>,
 }
 
 impl<'g, 'a> ServHostkeys<'g, 'a> {
@@ -361,12 +346,12 @@ impl<'g, 'a> ServHostkeys<'g, 'a> {
 }
 
 pub struct ServPasswordAuth<'g, 'a> {
-    runner: &'g mut Runner<'a>,
+    runner: &'g mut ServRunner<'a>,
     done: bool,
 }
 
 impl<'g, 'a> ServPasswordAuth<'g, 'a> {
-    fn new(runner: &'g mut Runner<'a>) -> Self {
+    fn new(runner: &'g mut ServRunner<'a>) -> Self {
         Self { runner, done: false }
     }
 
@@ -416,7 +401,7 @@ impl Drop for ServPasswordAuth<'_, '_> {
 }
 
 pub struct ServPubkeyAuth<'g, 'a> {
-    runner: &'g mut Runner<'a>,
+    runner: &'g mut ServRunner<'a>,
     done: bool,
     // Indicates whether this was a real auth request (signature already
     // verified) or a query for public key suitability.
@@ -424,7 +409,7 @@ pub struct ServPubkeyAuth<'g, 'a> {
 }
 
 impl<'g, 'a> ServPubkeyAuth<'g, 'a> {
-    fn new(runner: &'g mut Runner<'a>, real_sig: bool) -> Self {
+    fn new(runner: &'g mut ServRunner<'a>, real_sig: bool) -> Self {
         Self { runner, done: false, real_sig }
     }
 
@@ -472,12 +457,12 @@ impl Drop for ServPubkeyAuth<'_, '_> {
 }
 
 pub struct ServFirstAuth<'g, 'a> {
-    runner: &'g mut Runner<'a>,
+    runner: &'g mut ServRunner<'a>,
     done: bool,
 }
 
 impl<'g, 'a> ServFirstAuth<'g, 'a> {
-    fn new(runner: &'g mut Runner<'a>) -> Self {
+    fn new(runner: &'g mut ServRunner<'a>) -> Self {
         Self { runner, done: false }
     }
 
@@ -521,13 +506,13 @@ impl Drop for ServFirstAuth<'_, '_> {
 }
 
 pub struct ServOpenSession<'g, 'a> {
-    runner: &'g mut Runner<'a>,
+    runner: &'g mut ServRunner<'a>,
     done: bool,
     ch: ChanNum,
 }
 
 impl<'g, 'a> ServOpenSession<'g, 'a> {
-    fn new(runner: &'g mut Runner<'a>, ch: ChanNum) -> Self {
+    fn new(runner: &'g mut ServRunner<'a>, ch: ChanNum) -> Self {
         Self { runner, done: false, ch }
     }
     pub fn accept(mut self) -> Result<ChanHandle> {
@@ -585,7 +570,7 @@ pub(crate) enum ServEventId {
 impl ServEventId {
     pub fn event<'g, 'a>(
         self,
-        runner: &'g mut Runner<'a>,
+        runner: &'g mut ServRunner<'a>,
     ) -> Result<ServEvent<'g, 'a>> {
         let p = if cfg!(debug_assertions) { runner.packet()? } else { None };
 
@@ -643,13 +628,13 @@ impl ServEventId {
     }
 }
 
-pub struct ChanRequest<'g, 'a> {
-    runner: &'g mut Runner<'a>,
+pub struct ChanRequest<'g, 'a, CS: conn::CliServ> {
+    runner: &'g mut Runner<'a, CS>,
     done: bool,
 }
 
-impl<'g, 'a> ChanRequest<'g, 'a> {
-    fn new(runner: &'g mut Runner<'a>) -> Self {
+impl<'g, 'a, CS: conn::CliServ> ChanRequest<'g, 'a, CS> {
+    fn new(runner: &'g mut Runner<'a, CS>) -> Self {
         Self { runner, done: false }
     }
     /// Indicate that the request succeeded.
@@ -683,7 +668,7 @@ impl<'g, 'a> ChanRequest<'g, 'a> {
 }
 
 // implement Drop to be the same as .fail()
-impl Drop for ChanRequest<'_, '_> {
+impl<CS: conn::CliServ> Drop for ChanRequest<'_, '_, CS> {
     fn drop(&mut self) {
         if !self.done {
             if let Err(e) = self.runner.resume_chanreq(false) {

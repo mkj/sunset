@@ -4,7 +4,7 @@ pub use log::{debug, error, info, log, trace, warn};
 use core::future::{poll_fn, Future};
 use core::sync::atomic::AtomicBool;
 use core::sync::atomic::Ordering::{Relaxed, SeqCst};
-use core::task::{Context, Poll};
+use core::task::{Context, Poll, Poll::Pending, Poll::Ready};
 
 use embassy_futures::join;
 use embassy_futures::select::select;
@@ -19,7 +19,7 @@ use pin_utils::pin_mut;
 
 use sunset::config::MAX_CHANNELS;
 use sunset::event::Event;
-use sunset::{error, ChanData, ChanHandle, ChanNum, Error, Result, Runner};
+use sunset::{error, ChanData, ChanHandle, ChanNum, CliServ, Error, Result, Runner};
 
 #[cfg(feature = "multi-thread")]
 pub type SunsetRawMutex = CriticalSectionRawMutex;
@@ -42,8 +42,8 @@ struct Wakers {
     chan_close: [WakerRegistration; MAX_CHANNELS],
 }
 
-struct Inner<'a> {
-    runner: Runner<'a>,
+struct Inner<'a, CS: CliServ> {
+    runner: Runner<'a, CS>,
 
     wakers: Wakers,
 
@@ -52,14 +52,14 @@ struct Inner<'a> {
     chan_handles: [Option<ChanHandle>; MAX_CHANNELS],
 }
 
-impl<'a> Inner<'a> {
+impl<'a, CS: CliServ> Inner<'a, CS> {
     /// Helper to lookup the corresponding ChanHandle
     ///
     /// Returns split references that will be required by many callers
     fn fetch(
         &mut self,
         num: ChanNum,
-    ) -> Result<(&mut Runner<'a>, &ChanHandle, &mut Wakers)> {
+    ) -> Result<(&mut Runner<'a, CS>, &ChanHandle, &mut Wakers)> {
         let h = self
             .chan_handles
             .get(num.0 as usize)
@@ -72,14 +72,19 @@ impl<'a> Inner<'a> {
 
 /// A handle used for storage from a [`SSHClient::progress()`](crate::SSHClient::progress)
 /// or [`SSHServer::progress()`](crate::SSHServer::progress) call.
-#[derive(Default)]
-pub struct ProgressHolder<'g, 'a> {
-    guard: Option<MutexGuard<'g, SunsetRawMutex, Inner<'a>>>,
+pub struct ProgressHolder<'g, 'a, CS: CliServ> {
+    guard: Option<MutexGuard<'g, SunsetRawMutex, Inner<'a, CS>>>,
 }
 
-impl<'g, 'a> ProgressHolder<'g, 'a> {
+impl<'g, 'a, CS: CliServ> ProgressHolder<'g, 'a, CS> {
     pub fn new() -> Self {
-        Self::default()
+        Self { guard: None }
+    }
+}
+
+impl<CS: CliServ> Default for ProgressHolder<'_, '_, CS> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -89,8 +94,8 @@ impl<'g, 'a> ProgressHolder<'g, 'a> {
 /// a method can be called with the equivalent ChanNum.
 ///
 /// Applications use `async_sunset::{Client,Server}`.
-pub(crate) struct AsyncSunset<'a> {
-    inner: SunsetMutex<Inner<'a>>,
+pub(crate) struct AsyncSunset<'a, CS: CliServ> {
+    inner: SunsetMutex<Inner<'a, CS>>,
 
     progress_notify: Signal<SunsetRawMutex, ()>,
     last_progress_idled: AtomicBool,
@@ -109,7 +114,7 @@ pub(crate) struct AsyncSunset<'a> {
     chan_refcounts: [portable_atomic::AtomicUsize; MAX_CHANNELS],
 }
 
-impl core::fmt::Debug for AsyncSunset<'_> {
+impl<CS: CliServ> core::fmt::Debug for AsyncSunset<'_, CS> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let mut d = f.debug_struct("AsyncSunset");
         if let Ok(i) = self.inner.try_lock() {
@@ -121,8 +126,8 @@ impl core::fmt::Debug for AsyncSunset<'_> {
     }
 }
 
-impl<'a> AsyncSunset<'a> {
-    pub fn new(runner: Runner<'a>) -> Self {
+impl<'a, CS: CliServ> AsyncSunset<'a, CS> {
+    pub fn new(runner: Runner<'a, CS>) -> Self {
         let wakers = Wakers {
             chan_read: Default::default(),
             chan_write: Default::default(),
@@ -222,7 +227,7 @@ impl<'a> AsyncSunset<'a> {
         self.progress_notify.signal(())
     }
 
-    fn wake_channels(&self, inner: &mut Inner) -> Result<()> {
+    fn wake_channels(&self, inner: &mut Inner<CS>) -> Result<()> {
         // Read wakers
         let w = &mut inner.wakers;
         if let Some((num, dt, _len)) = inner.runner.ready_channel_input() {
@@ -257,7 +262,7 @@ impl<'a> AsyncSunset<'a> {
                 w.chan_write[idx].wake()
             }
 
-            if !inner.runner.is_client()
+            if !CS::is_client()
                 && inner
                     .runner
                     .ready_channel_send(ch, ChanData::Stderr)?
@@ -270,7 +275,7 @@ impl<'a> AsyncSunset<'a> {
             // TODO: do we want to keep waking it?
             if inner.runner.is_channel_eof(ch) {
                 w.chan_read[idx].wake();
-                if inner.runner.is_client() {
+                if CS::is_client() {
                     w.chan_ext[idx].wake();
                 }
             }
@@ -288,7 +293,7 @@ impl<'a> AsyncSunset<'a> {
     /// without "async Drop" it isn't possible to take the `inner` lock during
     /// `drop()`.
     /// Instead this runs periodically from an async context to release channels.
-    fn clear_refcounts(&self, inner: &mut Inner) -> Result<()> {
+    fn clear_refcounts(&self, inner: &mut Inner<CS>) -> Result<()> {
         for (ch, count) in
             inner.chan_handles.iter_mut().zip(self.chan_refcounts.iter())
         {
@@ -310,7 +315,7 @@ impl<'a> AsyncSunset<'a> {
     /// The returned `Event` borrows from the mutex locked in `ph`.
     pub(crate) async fn progress<'g, 'f>(
         &'g self,
-        ph: &'f mut ProgressHolder<'g, 'a>,
+        ph: &'f mut ProgressHolder<'g, 'a, CS>,
     ) -> Result<Event<'f, 'a>> {
         // In case a ProgressHolder was reused, release any guard.
         *ph = ProgressHolder::default();
@@ -356,7 +361,7 @@ impl<'a> AsyncSunset<'a> {
 
     pub(crate) async fn with_runner<F, R>(&self, f: F) -> R
     where
-        F: FnOnce(&mut Runner) -> R,
+        F: FnOnce(&mut Runner<CS>) -> R,
     {
         let mut inner = self.inner.lock().await;
         f(&mut inner.runner)
@@ -365,7 +370,7 @@ impl<'a> AsyncSunset<'a> {
     /// helper to perform a function on the `inner`, returning a `Poll` value
     async fn poll_inner<F, T>(&self, mut f: F) -> T
     where
-        F: FnMut(&mut Inner, &mut Context) -> Poll<T>,
+        F: FnMut(&mut Inner<CS>, &mut Context) -> Poll<T>,
     {
         poll_fn(|cx| {
             // Attempt to lock .inner
@@ -456,91 +461,6 @@ impl<'a> AsyncSunset<'a> {
         res
     }
 
-    /// Reads channel data.
-    pub(crate) async fn read_channel(
-        &self,
-        num: ChanNum,
-        dt: ChanData,
-        buf: &mut [u8],
-    ) -> Result<usize> {
-        trace!("readch {dt:?}");
-        self.poll_inner(|inner, cx| {
-            let (runner, h, wakers) = inner.fetch(num)?;
-            let i = match runner.channel_input(h, dt, buf) {
-                Ok(0) => {
-                    // 0 bytes read, pending
-                    match dt {
-                        ChanData::Normal => {
-                            wakers.chan_read[num.0 as usize].register(cx.waker());
-                        }
-                        ChanData::Stderr => {
-                            wakers.chan_ext[num.0 as usize].register(cx.waker());
-                        }
-                    }
-                    Poll::Pending
-                }
-                Err(Error::ChannelEOF) => Poll::Ready(Ok(0)),
-                r => Poll::Ready(r),
-            };
-            if matches!(i, Poll::Ready(_)) {
-                self.wake_progress()
-            }
-            i
-        })
-        .await
-    }
-
-    pub(crate) async fn write_channel(
-        &self,
-        num: ChanNum,
-        dt: ChanData,
-        buf: &[u8],
-    ) -> Result<usize> {
-        self.poll_inner(|inner, cx| {
-            let (runner, h, wakers) = inner.fetch(num)?;
-            let l = runner.channel_send(h, dt, buf);
-            if let Ok(0) = l {
-                // 0 bytes written, pending
-                match dt {
-                    ChanData::Normal => {
-                        wakers.chan_write[num.0 as usize].register(cx.waker());
-                    }
-                    ChanData::Stderr => {
-                        wakers.chan_ext[num.0 as usize].register(cx.waker());
-                    }
-                }
-                Poll::Pending
-            } else {
-                self.wake_progress();
-                Poll::Ready(l)
-            }
-        })
-        .await
-    }
-
-    pub(crate) async fn until_channel_closed(&self, num: ChanNum) -> Result<()> {
-        self.poll_inner(|inner, cx| {
-            let (runner, h, wakers) = inner.fetch(num)?;
-            if runner.is_channel_closed(h) {
-                Poll::Ready(Ok(()))
-            } else {
-                wakers.chan_close[num.0 as usize].register(cx.waker());
-                Poll::Pending
-            }
-        })
-        .await
-    }
-
-    pub async fn term_window_change(
-        &self,
-        num: ChanNum,
-        winch: sunset::packets::WinChange,
-    ) -> Result<()> {
-        let mut inner = self.inner.lock().await;
-        let (runner, h, _) = inner.fetch(num)?;
-        runner.term_window_change(h, winch)
-    }
-
     /// Adds a new channel handle provided by sunset core.
     ///
     /// AsyncSunset will take ownership of the handle. An initial refcount
@@ -565,15 +485,61 @@ impl<'a> AsyncSunset<'a> {
         self.chan_refcounts[idx].store(init_refcount, Relaxed);
         Ok(())
     }
+}
 
-    pub(crate) fn inc_chan(&self, num: ChanNum) {
+// necessary for the &dyn ChanCore
+#[cfg(feature = "multi-thread")]
+pub(crate) trait MaybeSend: Sync {}
+#[cfg(not(feature = "multi-thread"))]
+pub(crate) trait MaybeSend {}
+
+impl<'a, CS: CliServ> MaybeSend for AsyncSunset<'a, CS> {}
+
+// Ideally the poll_...() methods would be async, but that isn't
+// dyn compatible at present. Instead run poll_fn in the ChanIO caller.
+pub(crate) trait ChanCore: MaybeSend {
+    fn inc_chan(&self, num: ChanNum);
+    fn dec_chan(&self, num: ChanNum);
+
+    fn poll_until_channel_closed(
+        &self,
+        cx: &mut Context,
+        num: ChanNum,
+    ) -> Poll<Result<()>>;
+
+    fn poll_read_channel(
+        &self,
+        cx: &mut Context,
+        num: ChanNum,
+        dt: ChanData,
+        buf: &mut [u8],
+    ) -> Poll<Result<usize>>;
+
+    fn poll_write_channel(
+        &self,
+        cx: &mut Context,
+        num: ChanNum,
+        dt: ChanData,
+        buf: &[u8],
+    ) -> Poll<Result<usize>>;
+
+    fn poll_term_window_change(
+        &self,
+        cx: &mut Context,
+        num: ChanNum,
+        winch: &sunset::packets::WinChange,
+    ) -> Poll<Result<()>>;
+}
+
+impl<'a, CS: CliServ> ChanCore for AsyncSunset<'a, CS> {
+    fn inc_chan(&self, num: ChanNum) {
         let c = self.chan_refcounts[num.0 as usize].fetch_add(1, SeqCst);
         debug_assert_ne!(c, 0);
         // overflow shouldn't be possible unless ChanIn etc is leaking
         debug_assert_ne!(c, usize::MAX);
     }
 
-    pub(crate) fn dec_chan(&self, num: ChanNum) {
+    fn dec_chan(&self, num: ChanNum) {
         // refcounts that hit zero will be cleaned up later in clear_refcounts()
         let c = self.chan_refcounts[num.0 as usize].fetch_sub(1, SeqCst);
         debug_assert_ne!(c, 0);
@@ -582,6 +548,114 @@ impl<'a> AsyncSunset<'a> {
             // in an async context
             self.wake_progress();
         }
+    }
+
+    fn poll_until_channel_closed(
+        &self,
+        cx: &mut Context,
+        num: ChanNum,
+    ) -> Poll<Result<()>> {
+        // Attempt to lock .inner
+        let i = self.inner.lock();
+        pin_mut!(i);
+        let Ready(mut inner) = i.poll(cx) else {
+            return Pending;
+        };
+
+        let (runner, h, wakers) = inner.fetch(num)?;
+        if runner.is_channel_closed(h) {
+            Poll::Ready(Ok(()))
+        } else {
+            wakers.chan_close[num.0 as usize].register(cx.waker());
+            Poll::Pending
+        }
+    }
+
+    /// Reads channel data.
+    fn poll_read_channel(
+        &self,
+        cx: &mut Context,
+        num: ChanNum,
+        dt: ChanData,
+        buf: &mut [u8],
+    ) -> Poll<Result<usize>> {
+        // Attempt to lock .inner
+        let i = self.inner.lock();
+        pin_mut!(i);
+        let Ready(mut inner) = i.poll(cx) else {
+            return Pending;
+        };
+
+        let (runner, h, wakers) = inner.fetch(num)?;
+        let i = match runner.channel_input(h, dt, buf) {
+            Ok(0) => {
+                // 0 bytes read, pending
+                match dt {
+                    ChanData::Normal => {
+                        wakers.chan_read[num.0 as usize].register(cx.waker());
+                    }
+                    ChanData::Stderr => {
+                        wakers.chan_ext[num.0 as usize].register(cx.waker());
+                    }
+                }
+                Poll::Pending
+            }
+            Err(Error::ChannelEOF) => Poll::Ready(Ok(0)),
+            r => Poll::Ready(r),
+        };
+        if matches!(i, Poll::Ready(_)) {
+            self.wake_progress()
+        }
+        i
+    }
+
+    fn poll_write_channel(
+        &self,
+        cx: &mut Context,
+        num: ChanNum,
+        dt: ChanData,
+        buf: &[u8],
+    ) -> Poll<Result<usize>> {
+        // Attempt to lock .inner
+        let i = self.inner.lock();
+        pin_mut!(i);
+        let Ready(mut inner) = i.poll(cx) else {
+            return Pending;
+        };
+
+        let (runner, h, wakers) = inner.fetch(num)?;
+        let l = runner.channel_send(h, dt, buf);
+        if let Ok(0) = l {
+            // 0 bytes written, pending
+            match dt {
+                ChanData::Normal => {
+                    wakers.chan_write[num.0 as usize].register(cx.waker());
+                }
+                ChanData::Stderr => {
+                    wakers.chan_ext[num.0 as usize].register(cx.waker());
+                }
+            }
+            Poll::Pending
+        } else {
+            self.wake_progress();
+            Poll::Ready(l)
+        }
+    }
+
+    fn poll_term_window_change(
+        &self,
+        cx: &mut Context,
+        num: ChanNum,
+        winch: &sunset::packets::WinChange,
+    ) -> Poll<Result<()>> {
+        // Attempt to lock .inner
+        let i = self.inner.lock();
+        pin_mut!(i);
+        let Ready(mut inner) = i.poll(cx) else {
+            return Pending;
+        };
+        let (runner, h, _) = inner.fetch(num)?;
+        Poll::Ready(runner.term_window_change(h, winch))
     }
 }
 

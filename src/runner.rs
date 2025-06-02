@@ -24,7 +24,10 @@ use event::{CliEvent, CliEventId, Event, ServEvent, ServEventId};
 use packets::{ChannelData, ChannelDataExt};
 use traffic::{TrafIn, TrafOut};
 
-use conn::{Conn, DispatchEvent, Dispatched};
+use conn::{CliServ, Conn, DispatchEvent, Dispatched};
+
+pub(crate) type ServRunner<'a> = Runner<'a, server::Server>;
+pub(crate) type CliRunner<'a> = Runner<'a, client::Client>;
 
 // Runner public methods take a `ChanHandle` which cannot be cloned. This prevents
 // confusion if an application were to continue using a channel after the channel
@@ -35,8 +38,8 @@ use conn::{Conn, DispatchEvent, Dispatched};
 ///
 /// An application provides network or channel data to `Runner` method calls,
 /// and provides customisation callbacks via `CliBehaviour` or `ServBehaviour`.
-pub struct Runner<'a> {
-    conn: Conn,
+pub struct Runner<'a, CS: conn::CliServ> {
+    conn: Conn<CS>,
 
     /// Binary packet handling from the network buffer
     traf_in: TrafIn<'a>,
@@ -61,7 +64,7 @@ pub struct Runner<'a> {
     extra_resume_event: DispatchEvent,
 }
 
-impl core::fmt::Debug for Runner<'_> {
+impl<CS: CliServ> core::fmt::Debug for Runner<'_, CS> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Runner")
             .field("keys", &self.keys)
@@ -76,29 +79,34 @@ impl core::fmt::Debug for Runner<'_> {
 //     pub event: Event<'g, 'a>,
 // }
 
-impl<'a> Runner<'a> {
+impl<'a> Runner<'a, client::Client> {
     /// `inbuf` and `outbuf` must be sized to fit the largest SSH packet allowed.
     pub fn new_client(
         inbuf: &'a mut [u8],
         outbuf: &'a mut [u8],
-    ) -> Result<Runner<'a>, Error> {
-        Self::new(inbuf, outbuf, true)
+    ) -> Result<Runner<'a, client::Client>, Error> {
+        let conn = Conn::new_client()?;
+        Self::new(inbuf, outbuf, conn)
     }
+}
 
+impl<'a> Runner<'a, server::Server> {
     /// `inbuf` and `outbuf` must be sized to fit the largest SSH packet allowed.
     pub fn new_server(
         inbuf: &'a mut [u8],
         outbuf: &'a mut [u8],
-    ) -> Result<Runner<'a>, Error> {
-        Self::new(inbuf, outbuf, false)
+    ) -> Result<Runner<'a, server::Server>, Error> {
+        let conn = Conn::new_server()?;
+        Self::new(inbuf, outbuf, conn)
     }
+}
 
-    pub fn new(
+impl<'a, CS: CliServ> Runner<'a, CS> {
+    fn new(
         inbuf: &'a mut [u8],
         outbuf: &'a mut [u8],
-        is_client: bool,
-    ) -> Result<Runner<'a>, Error> {
-        let conn = Conn::new(is_client)?;
+        conn: Conn<CS>,
+    ) -> Result<Runner<'a, CS>, Error> {
         let runner = Runner {
             conn,
             traf_in: TrafIn::new(inbuf),
@@ -112,10 +120,6 @@ impl<'a> Runner<'a> {
         };
 
         Ok(runner)
-    }
-
-    pub fn is_client(&self) -> bool {
-        self.conn.is_client()
     }
 
     /// Drives connection progress, handling received payload and queueing
@@ -136,7 +140,7 @@ impl<'a> Runner<'a> {
         let ex = self.extra_resume_event.take();
         if ex.is_some() {
             self.resume_event = ex.clone();
-            return Event::from_dispatch(ex, self);
+            return CS::dispatch_into_event(self, ex);
         }
 
         // Previous event payload is complete
@@ -169,7 +173,7 @@ impl<'a> Runner<'a> {
             }
         } else if self.closed_input {
             // all incoming packets have been consumed, and we're closed for input,
-            if self.conn.is_client() {
+            if CS::is_client() {
                 return Ok(Event::Cli(CliEvent::Defunct));
             } else {
                 return Ok(Event::Serv(ServEvent::Defunct));
@@ -197,7 +201,7 @@ impl<'a> Runner<'a> {
         self.resume_event = disp.event.clone();
 
         // Create an Event that borrows from Runner
-        Event::from_dispatch(disp.event, self)
+        CS::dispatch_into_event(self, disp.event)
     }
 
     pub(crate) fn packet(&self) -> Result<Option<packets::Packet>> {
@@ -353,7 +357,7 @@ impl<'a> Runner<'a> {
             return error::ChannelEOF.fail();
         }
 
-        dt.validate_receive(self.conn.is_client())?;
+        dt.validate_receive(CS::is_client())?;
 
         if self.is_channel_eof(chan) {
             return error::ChannelEOF.fail();
@@ -431,7 +435,7 @@ impl<'a> Runner<'a> {
         // TODO: return 0 if InKex means we can't transmit packets.
 
         // Avoid apps polling forever on a packet type that won't come
-        dt.validate_send(self.conn.is_client())?;
+        dt.validate_send(CS::is_client())?;
 
         // minimum of buffer space and channel window available
         let payload_space = self.traf_out.send_allowed(&self.keys);
@@ -469,9 +473,9 @@ impl<'a> Runner<'a> {
     pub fn term_window_change(
         &mut self,
         chan: &ChanHandle,
-        winch: packets::WinChange,
+        winch: &packets::WinChange,
     ) -> Result<()> {
-        if self.is_client() {
+        if CS::is_client() {
             let mut s = self.traf_out.sender(&mut self.keys);
             self.conn.channels.term_window_change(chan.0, winch, &mut s)
         } else {
@@ -486,7 +490,7 @@ impl<'a> Runner<'a> {
     /// Otherwise length will be clamped to the range [500, 3000] ms.
     /// Only call on a client session.
     pub fn term_break(&mut self, chan: &ChanHandle, length: u32) -> Result<()> {
-        if self.is_client() {
+        if CS::is_client() {
             let mut s = self.traf_out.sender(&mut self.keys);
             self.conn.channels.term_break(chan.0, length, &mut s)
         } else {

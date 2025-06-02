@@ -17,7 +17,7 @@ use sunset::ChanData;
 ///
 /// This is async executor agnostic.
 pub struct SSHClient<'a> {
-    sunset: AsyncSunset<'a>,
+    sunset: AsyncSunset<'a, sunset::Client>,
 }
 
 impl<'a> SSHClient<'a> {
@@ -45,18 +45,17 @@ impl<'a> SSHClient<'a> {
     /// is dropped.
     pub async fn progress<'g, 'f>(
         &'g self,
-        ph: &'f mut ProgressHolder<'g, 'a>,
+        ph: &'f mut ProgressHolder<'g, 'a, sunset::Client>,
     ) -> Result<CliEvent<'f, 'a>> {
         match self.sunset.progress(ph).await? {
             Event::Cli(x) => Ok(x),
             Event::None => return Ok(CliEvent::PollAgain),
+            Event::Progressed => Ok(CliEvent::PollAgain),
             _ => Err(Error::bug()),
         }
     }
 
-    pub async fn open_session_nopty(
-        &self,
-    ) -> Result<(ChanInOut<'_, 'a>, ChanIn<'_, 'a>)> {
+    pub async fn open_session_nopty(&self) -> Result<(ChanInOut<'_>, ChanIn<'_>)> {
         let chan =
             self.sunset.with_runner(|runner| runner.open_client_session()).await?;
 
@@ -68,7 +67,7 @@ impl<'a> SSHClient<'a> {
         Ok((cstd, cerr))
     }
 
-    pub async fn open_session_pty(&'a self) -> Result<ChanInOut<'a, 'a>> {
+    pub async fn open_session_pty(&self) -> Result<ChanInOut<'_>> {
         let chan =
             self.sunset.with_runner(|runner| runner.open_client_session()).await?;
 

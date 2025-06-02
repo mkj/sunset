@@ -16,7 +16,7 @@ use async_sunset::{AsyncSunset, ProgressHolder};
 /// This is async executor agnostic.
 #[derive(Debug)]
 pub struct SSHServer<'a> {
-    sunset: AsyncSunset<'a>,
+    sunset: AsyncSunset<'a, sunset::Server>,
 }
 
 impl<'a> SSHServer<'a> {
@@ -45,7 +45,7 @@ impl<'a> SSHServer<'a> {
     /// is dropped.
     pub async fn progress<'g, 'f>(
         &'g self,
-        ph: &'f mut ProgressHolder<'g, 'a>,
+        ph: &'f mut ProgressHolder<'g, 'a, sunset::Server>,
     ) -> Result<ServEvent<'f, 'a>> {
         // poll until we get an actual event to return
         match self.sunset.progress(ph).await? {
@@ -61,7 +61,7 @@ impl<'a> SSHServer<'a> {
     /// For a shell this is stdin/stdout, for other channel types it is the only
     /// data type.
     /// `ch` is the [`ChanHandle`] returned after accepting a [`ServEvent::OpenSession`] event.
-    pub async fn stdio(&self, ch: ChanHandle) -> Result<ChanInOut<'_, 'a>> {
+    pub async fn stdio(&self, ch: ChanHandle) -> Result<ChanInOut<'_>> {
         let num = ch.num();
         self.sunset.add_channel(ch, 1).await?;
         Ok(ChanInOut::new(num, ChanData::Normal, &self.sunset))
@@ -76,7 +76,7 @@ impl<'a> SSHServer<'a> {
     pub async fn stdio_stderr(
         &self,
         ch: ChanHandle,
-    ) -> Result<(ChanInOut<'_, 'a>, ChanOut<'_, 'a>)> {
+    ) -> Result<(ChanInOut<'_>, ChanOut<'_>)> {
         let num = ch.num();
         self.sunset.add_channel(ch, 2).await?;
         let i = ChanInOut::new(num, ChanData::Normal, &self.sunset);
