@@ -22,6 +22,8 @@ sunset-sshwire-derive = { version = "0.2", path = "sshwire-derive" }
 sunset-async = { path = "async", version = "0.2" }
 sunset-demo-common = { path = "demo/common" }
 
+portable-atomic = "1"
+
 [dependencies]
 sunset-sshwire-derive = { workspace = true }
 
