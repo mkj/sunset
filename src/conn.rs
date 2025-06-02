@@ -30,7 +30,7 @@ use sshnames::*;
 use traffic::TrafSend;
 
 /// The core state of a SSH instance.
-pub(crate) struct Conn {
+pub(crate) struct Conn<CS: CliServ> {
     state: ConnState,
 
     // State of any current Key Exchange
@@ -38,7 +38,7 @@ pub(crate) struct Conn {
 
     sess_id: Option<SessId>,
 
-    cliserv: ClientServer,
+    cliserv: CS,
 
     algo_conf: AlgoConfig,
 
@@ -50,19 +50,6 @@ pub(crate) struct Conn {
     pub(crate) remote_version: ident::RemoteVersion,
 
     pub(crate) channels: Channels,
-}
-
-// TODO: what tricks can we do to optimise away client or server code if we only
-// want one of them?
-enum ClientServer {
-    Client(client::Client),
-    Server(server::Server),
-}
-
-impl ClientServer {
-    pub fn is_client(&self) -> bool {
-        matches!(self, ClientServer::Client(_))
-    }
 }
 
 #[derive(Debug)]
@@ -143,54 +130,160 @@ pub(crate) struct Dispatched {
     pub disconnect: bool,
 }
 
-impl Conn {
-    pub fn new(is_client: bool) -> Result<Self> {
-        let algo_conf = AlgoConfig::new(is_client);
-        let cliserv = if is_client {
-            ClientServer::Client(client::Client::new())
-        } else {
-            ClientServer::Server(server::Server::new())
-        };
+pub trait CliServ: Sized + Send {
+    fn is_client() -> bool;
+
+    #[inline]
+    fn server(&self) -> Result<&server::Server> {
+        Err(Error::bug())
+    }
+
+    #[inline]
+    fn mut_server(&mut self) -> Result<&mut server::Server> {
+        Err(Error::bug())
+    }
+
+    #[inline]
+    fn client(&self) -> Result<&client::Client> {
+        Err(Error::bug())
+    }
+
+    #[inline]
+    fn mut_client(&mut self) -> Result<&mut client::Client> {
+        Err(Error::bug())
+    }
+
+    #[expect(private_interfaces)]
+    fn dispatch_into_event<'a, 'g>(
+        runner: &'g mut Runner<'a, Self>,
+        disp: DispatchEvent,
+    ) -> Result<Event<'g, 'a>>;
+}
+
+impl CliServ for client::Client {
+    #[inline]
+    fn is_client() -> bool {
+        true
+    }
+
+    #[inline]
+    fn client(&self) -> Result<&client::Client> {
+        Ok(self)
+    }
+
+    #[inline]
+    fn mut_client(&mut self) -> Result<&mut client::Client> {
+        Ok(self)
+    }
+
+    #[expect(private_interfaces)]
+    fn dispatch_into_event<'a, 'g>(
+        runner: &'g mut Runner<'a, Self>,
+        disp: DispatchEvent,
+    ) -> Result<Event<'g, 'a>> {
+        match disp {
+            DispatchEvent::CliEvent(x) => Ok(Event::Cli(x.event(runner)?)),
+            DispatchEvent::ServEvent(_) => Err(Error::bug()),
+            DispatchEvent::None => Ok(Event::None),
+            DispatchEvent::Progressed => Ok(Event::Progressed),
+            // Events handled internally by Runner::progress()
+            DispatchEvent::Data(_) => Err(Error::bug()),
+        }
+    }
+}
+
+impl CliServ for server::Server {
+    #[inline]
+    fn is_client() -> bool {
+        false
+    }
+
+    #[inline]
+    fn server(&self) -> Result<&server::Server> {
+        Ok(self)
+    }
+
+    #[inline]
+    fn mut_server(&mut self) -> Result<&mut server::Server> {
+        Ok(self)
+    }
+
+    #[allow(private_interfaces)]
+    fn dispatch_into_event<'a, 'g>(
+        runner: &'g mut Runner<'a, Self>,
+        disp: DispatchEvent,
+    ) -> Result<Event<'g, 'a>> {
+        match disp {
+            DispatchEvent::CliEvent(_) => Err(Error::bug()),
+            DispatchEvent::ServEvent(x) => Ok(Event::Serv(x.event(runner)?)),
+            DispatchEvent::None => Ok(Event::None),
+            DispatchEvent::Progressed => Ok(Event::Progressed),
+            // Events handled internally by Runner::progress()
+            DispatchEvent::Data(_) => Err(Error::bug()),
+        }
+    }
+}
+
+impl Conn<client::Client> {
+    pub fn new_client() -> Result<Self> {
+        let algo_conf = AlgoConfig::new(true);
+        let cliserv = client::Client::new();
 
         Ok(Conn {
             sess_id: None,
             kex: Kex::new(),
-            remote_version: ident::RemoteVersion::new(cliserv.is_client()),
+            remote_version: ident::RemoteVersion::new(true),
             state: ConnState::SendIdent,
             algo_conf,
-            channels: Channels::new(cliserv.is_client()),
+            channels: Channels::new(true),
             parse_ctx: ParseContext::new(),
             cliserv,
         })
     }
+}
 
-    pub fn is_client(&self) -> bool {
-        self.cliserv.is_client()
+impl Conn<server::Server> {
+    pub fn new_server() -> Result<Self> {
+        let algo_conf = AlgoConfig::new(false);
+        let cliserv = server::Server::new();
+
+        Ok(Conn {
+            sess_id: None,
+            kex: Kex::new(),
+            remote_version: ident::RemoteVersion::new(false),
+            state: ConnState::SendIdent,
+            algo_conf,
+            channels: Channels::new(false),
+            parse_ctx: ParseContext::new(),
+            cliserv,
+        })
+    }
+}
+
+impl<CS: CliServ> Conn<CS> {
+    #[inline]
+    fn is_client(&self) -> bool {
+        CS::is_client()
     }
 
-    pub fn is_server(&self) -> bool {
+    #[inline]
+    fn is_server(&self) -> bool {
         !self.is_client()
     }
 
+    #[inline]
     pub fn server(&self) -> Result<&server::Server> {
-        match &self.cliserv {
-            ClientServer::Server(s) => Ok(s),
-            _ => Err(Error::bug()),
-        }
+        self.cliserv.server()
     }
 
-    pub fn mut_server(&mut self) -> Result<&mut server::Server> {
-        match &mut self.cliserv {
-            ClientServer::Server(s) => Ok(s),
-            _ => Err(Error::bug()),
-        }
+    #[inline]
+    fn mut_server(&mut self) -> Result<&mut server::Server> {
+        self.cliserv.mut_server()
     }
 
-    pub fn client(&self) -> Result<&client::Client> {
-        match &self.cliserv {
-            ClientServer::Client(x) => Ok(x),
-            _ => Err(Error::bug()),
-        }
+    #[inline]
+    fn client(&self) -> Result<&client::Client> {
+        self.cliserv.client()
     }
 
     /// Updates `ConnState` and sends any packets required to progress the connection state.
@@ -225,8 +318,8 @@ impl Conn {
             ConnState::PreAuth => {
                 // TODO. need to figure how we'll do "unbounded" responses
                 // and backpressure. can_output() should have a size check?
-                if s.can_output() {
-                    if let ClientServer::Client(cli) = &mut self.cliserv {
+                if s.can_output() && self.is_client() {
+                    if let Ok(cli) = self.cliserv.mut_client() {
                         disp.event = cli.auth.progress();
                     }
                 }
@@ -350,7 +443,7 @@ impl Conn {
             Packet::KexInit(k) => {
                 self.kex.handle_kexinit(
                     k,
-                    self.cliserv.is_client(),
+                    self.is_client(),
                     &self.algo_conf,
                     &self.remote_version,
                     self.is_first_kex(),
@@ -358,7 +451,7 @@ impl Conn {
                 )?;
             }
             Packet::KexDHInit(_p) => {
-                if self.cliserv.is_client() {
+                if self.is_client() {
                     // TODO: client/server validity checks should move somewhere more general
                     trace!("kexdhinit not server");
                     return error::SSHProto.fail();
@@ -367,7 +460,7 @@ impl Conn {
                 disp.event = self.kex.handle_kexdhinit()?;
             }
             Packet::KexDHReply(_p) => {
-                if !self.cliserv.is_client() {
+                if !self.is_client() {
                     // TODO: client/server validity checks should move somewhere more general
                     trace!("kexdhreply not server");
                     return error::SSHProto.fail();
@@ -379,18 +472,17 @@ impl Conn {
                 self.kex.handle_newkeys(&mut self.sess_id, s)?;
             }
             Packet::ExtInfo(p) => {
-                if let ClientServer::Client(cli) = &mut self.cliserv {
+                if let Ok(cli) = self.cliserv.mut_client() {
                     cli.auth.handle_ext_info(&p);
                 }
                 // could potentially pass it to other handlers too
             }
             Packet::ServiceRequest(p) => {
-                if let ClientServer::Server(serv) = &mut self.cliserv {
-                    serv.service_request(&p, s)?;
-                } else {
+                let Ok(serv) = self.cliserv.mut_server() else {
                     debug!("Server sent a service request");
                     return error::SSHProto.fail();
-                }
+                };
+                serv.service_request(&p, s)?;
             }
             Packet::ServiceAccept(p) => {
                 // Don't need to do anything, if a request failed the server disconnects
@@ -415,33 +507,30 @@ impl Conn {
                 disp.disconnect = true;
             }
             Packet::UserauthRequest(p) => {
-                if let ClientServer::Server(serv) = &mut self.cliserv {
-                    let sess_id = self.sess_id.as_ref().trap()?;
-                    disp.event = serv.auth.request(sess_id, s, p)?;
-                } else {
+                let Ok(serv) = self.cliserv.mut_server() else {
                     debug!("Server sent an auth request");
                     return error::SSHProto.fail();
-                }
+                };
+                let sess_id = self.sess_id.as_ref().trap()?;
+                disp.event = serv.auth.request(sess_id, s, p)?;
             }
             Packet::UserauthFailure(p) => {
-                if let ClientServer::Client(cli) = &mut self.cliserv {
-                    disp.event = cli.auth.failure(&p, &mut self.parse_ctx)?;
-                } else {
+                let Ok(cli) = self.cliserv.mut_client() else {
                     debug!("Received UserauthFailure as a server");
                     return error::SSHProto.fail();
-                }
+                };
+                disp.event = cli.auth.failure(&p, &mut self.parse_ctx)?;
             }
             Packet::UserauthSuccess(_) => {
-                if let ClientServer::Client(cli) = &mut self.cliserv {
-                    if matches!(self.state, ConnState::PreAuth) {
-                        self.state = ConnState::Authed;
-                        disp.event = cli.auth_success(&mut self.parse_ctx);
-                    } else {
-                        debug!("Received UserauthSuccess unrequested")
-                    }
-                } else {
+                let Ok(cli) = self.cliserv.mut_client() else {
                     debug!("Received UserauthSuccess as a server");
                     return error::SSHProto.fail();
+                };
+                if matches!(self.state, ConnState::PreAuth) {
+                    self.state = ConnState::Authed;
+                    disp.event = cli.auth_success(&mut self.parse_ctx);
+                } else {
+                    debug!("Received UserauthSuccess unrequested")
                 }
             }
             Packet::UserauthBanner(_) => {
@@ -452,15 +541,12 @@ impl Conn {
                 disp.event = DispatchEvent::CliEvent(CliEventId::Banner);
             }
             Packet::Userauth60(p) => {
-                // TODO: client only
-                if let ClientServer::Client(cli) = &mut self.cliserv {
-                    let sess_id = self.sess_id.as_ref().trap()?;
-                    disp.event =
-                        cli.auth.auth60(&p, sess_id, &mut self.parse_ctx, s)?;
-                } else {
+                let Ok(cli) = self.cliserv.mut_client() else {
                     debug!("Received userauth60 as a server");
                     return error::SSHProto.fail();
-                }
+                };
+                let sess_id = self.sess_id.as_ref().trap()?;
+                disp.event = cli.auth.auth60(&p, sess_id, &mut self.parse_ctx, s)?;
             }
             Packet::ChannelOpen(_)
             | Packet::ChannelOpenConfirmation(_)
@@ -492,26 +578,19 @@ impl Conn {
     }
 
     pub(crate) fn cliauth(&self) -> Result<&CliAuth> {
-        let ClientServer::Client(cli) = &self.cliserv else {
-            return Err(Error::bug());
-        };
+        let cli = self.client()?;
         Ok(&cli.auth)
     }
 
     pub(crate) fn mut_cliauth(
         &mut self,
     ) -> Result<(&mut CliAuth, &mut ParseContext)> {
-        let ClientServer::Client(cli) = &mut self.cliserv else {
-            return Err(Error::bug());
-        };
+        let cli = self.cliserv.mut_client()?;
         Ok((&mut cli.auth, &mut self.parse_ctx))
     }
 
     pub(crate) fn fetch_agentsign_msg(&self) -> Result<AuthSigMsg> {
-        let ClientServer::Client(cli) = &self.cliserv else {
-            return Err(Error::bug());
-        };
-
+        let cli = self.cliserv.client()?;
         let sess_id = self.sess_id.as_ref().trap()?;
         cli.auth.fetch_agentsign_msg(sess_id)
     }

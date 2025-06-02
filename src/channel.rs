@@ -233,12 +233,12 @@ impl Channels {
     pub(crate) fn term_window_change(
         &self,
         num: ChanNum,
-        winch: packets::WinChange,
+        winch: &packets::WinChange,
         s: &mut TrafSend,
     ) -> Result<()> {
         let ch = self.get(num)?;
         match ch.ty {
-            ChanType::Session => Req::WinChange(winch).send(ch, s),
+            ChanType::Session => Req::WinChange(winch.clone()).send(ch, s),
             _ => error::BadChannelData.fail(),
         }
     }

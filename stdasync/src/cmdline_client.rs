@@ -97,8 +97,8 @@ impl CmdlineClient {
     }
 
     async fn chan_run(
-        io: ChanInOut<'_, '_>,
-        io_err: Option<ChanIn<'_, '_>>,
+        io: ChanInOut<'_>,
+        io_err: Option<ChanIn<'_>>,
         pty_guard: Option<RawPtyGuard>,
     ) -> Result<()> {
         // out
@@ -355,7 +355,7 @@ impl CmdlineClient {
     async fn open_session<'g: 'a, 'a>(
         &mut self,
         cli: &'g SSHClient<'a>,
-    ) -> Result<(ChanInOut<'g, 'a>, Option<ChanIn<'g, 'a>>)> {
+    ) -> Result<(ChanInOut<'g>, Option<ChanIn<'g>>)> {
         trace!("opens s");
         let (io, extin) = if self.want_pty {
             set_pty_guard(&mut self.pty_guard);

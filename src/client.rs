@@ -14,12 +14,12 @@ use sign::SignKey;
 use sshnames::*;
 use traffic::TrafSend;
 
-pub(crate) struct Client {
-    pub auth: CliAuth,
+pub struct Client {
+    pub(crate) auth: CliAuth,
 }
 
 impl Client {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Client { auth: CliAuth::new() }
     }
 
