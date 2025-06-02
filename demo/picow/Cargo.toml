@@ -9,25 +9,23 @@ sunset-demo-common.workspace = true
 sunset-async.workspace = true
 sunset-sshwire-derive.workspace = true
 
-cyw43 = { version = "0.1.0", optional = true, features = ["log", "firmware-logs"]}
-cyw43-pio = { version = "0.1.0", optional = true }
+cyw43 = { version = "0.3.0", optional = true, features = ["log", "firmware-logs"]}
+cyw43-pio = { version = "0.4.0", optional = true }
 
-embassy-net-wiznet = { version = "0.1.0", optional = true }
+embassy-net-wiznet = { version = "0.2.0", optional = true }
 
-embassy-executor = { version = "0.5", features = [
-    "integrated-timers", "executor-thread", "arch-cortex-m", "log",
+embassy-executor = { version = "0.7", features = [
+    "executor-thread", "arch-cortex-m", "log", 
     # This is sufficient for NUM_LISTENERS=4. It seems like it should fit in 96kB,
     # but has failures.
     "task-arena-size-131072"] }
-embassy-time = { version = "0.3",  features = [] }
-embassy-rp = { version = "0.1",  features = ["unstable-pac", "time-driver"] }
-embassy-net = { version = "0.5", features = ["tcp", "dhcpv4", "medium-ethernet", "log"] }
-embassy-net-driver = { version = "0.2" }
+embassy-time = { version = "0.4",  features = [] }
+embassy-rp = { version = "0.4",  features = ["time-driver", "rp2040"] }
+embassy-net = { version = "0.7", features = ["tcp", "dhcpv4", "medium-ethernet", "log"] }
 embassy-usb-driver = { version = "0.1" }
-embassy-sync = { version = "0.5" }
+embassy-sync = { version = "0.7" }
 embassy-futures = { version = "0.1" }
-embassy-usb = { version = "0.1", features = ["log"] }
-atomic-polyfill = "1.0"
+embassy-usb = { version = "0.4", features = ["log"] }
 static_cell = { version = "1.0", features = [ "nightly" ] }
 
 log = { version = "0.4" }
@@ -48,14 +46,14 @@ embedded-io-async = "0.6"
 embedded-storage-async = "0.4"
 heapless = "0.8"
 
-caprand = "0.1"
+caprand = "0.2"
 getrandom = { version = "0.2", features = ["custom"] }
 
 critical-section = "1.1"
 rand = { version = "0.8", default-features = false, features = ["getrandom"] }
 sha2 = { version = "0.10", default-features = false }
 
-usbd-hid = "0.6"
+# usbd-hid = "0.8"
 
 [features]
 default = ["cyw43"]

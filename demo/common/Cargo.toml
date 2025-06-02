@@ -9,11 +9,11 @@ sunset.workspace = true
 sunset-async.workspace = true
 sunset-sshwire-derive.workspace = true
 
-embassy-sync = { version = "0.5" }
-embassy-net = { version = "0.5", features = ["tcp", "dhcpv4", "medium-ethernet", "log"] }
+embassy-sync = { version = "0.7" }
+embassy-net = { version = "0.7", features = ["tcp", "dhcpv4", "medium-ethernet", "log"] }
 embassy-net-driver = { version = "0.2" }
 embassy-futures = { version = "0.1" }
-embassy-time = { version = "0.3" }
+embassy-time = { version = "0.4" }
 
 heapless = "0.8"
 # using local fork

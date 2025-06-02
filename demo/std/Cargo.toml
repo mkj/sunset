@@ -9,14 +9,14 @@ sunset-async.workspace = true
 sunset-demo-common.workspace = true
 
 # 131072 was determined empirically
-embassy-executor = { version = "0.5",  features = ["log", "arch-std", "integrated-timers", "executor-thread", "task-arena-size-131072"] }
-embassy-time = { version = "0.3",  default-features=false, features = ["log", "std"] }
-# embassy-net/nightly is required for asynch::Read/Write on TcpReader/TcpWriter
-embassy-net = { version = "0.5", features = ["tcp", "dhcpv4", "medium-ethernet"] }
+embassy-executor = { version = "0.7", features = [
+    "executor-thread", "arch-std", "log", "task-arena-size-131072"] }
+embassy-net = { version = "0.7", features = ["tcp", "dhcpv4", "medium-ethernet"] }
 embassy-net-tuntap = { version = "0.1" }
-embassy-sync = { version = "0.5" }
+embassy-sync = { version = "0.7" }
 embassy-futures = { version = "0.1" }
-atomic-polyfill = "1.0"
+# embassy-time dep required to link a time driver
+embassy-time = { version = "0.4",  default-features=false, features = ["log", "std"] }
 
 log = { version = "0.4" }
 # default regex feature is huge
