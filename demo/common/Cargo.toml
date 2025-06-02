@@ -21,7 +21,10 @@ heapless = "0.8"
 embedded-io-async = "0.6"
 sha2 = { version = "0.10", default-features = false }
 hmac = { version = "0.12", default-features = false }
+
+# bcrypt depends on getrandom
 bcrypt = { version = "0.15", default-features = false }
+# dalek depends on getrandom
 ed25519-dalek = { version = "2.0.0-rc.2", default-features = false }
 subtle = { version = "2.4", default-features = false }
 
