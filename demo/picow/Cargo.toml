@@ -52,7 +52,7 @@ getrandom = { version = "0.2", features = ["custom"] }
 
 critical-section = "1.1"
 rand = { version = "0.8", default-features = false, features = ["getrandom"] }
-sha2 = { version = "0.10", default-features = false }
+sha2 = { version = "0.10", default-features = false, features = ["force-soft-compact"] }
 
 # usbd-hid = "0.8"
 
