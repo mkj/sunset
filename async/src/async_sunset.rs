@@ -543,16 +543,17 @@ impl<'a> AsyncSunset<'a> {
         debug_assert_ne!(c, 0);
         // overflow shouldn't be possible unless ChanIn etc is leaking
         debug_assert_ne!(c, usize::MAX);
-        // perhaps not necessary? is cheap?
-        self.wake_progress();
     }
 
     pub(crate) fn dec_chan(&self, num: ChanNum) {
         // refcounts that hit zero will be cleaned up later in clear_refcounts()
         let c = self.chan_refcounts[num.0 as usize].fetch_sub(1, SeqCst);
         debug_assert_ne!(c, 0);
-        // perhaps not necessary? is cheap?
-        self.wake_progress();
+        if c == 1 {
+            // refcount hit zero, progress() will clean it up
+            // in an async context
+            self.wake_progress();
+        }
     }
 }
 
