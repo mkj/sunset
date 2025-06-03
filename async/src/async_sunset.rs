@@ -156,18 +156,11 @@ impl<'a> AsyncSunset<'a> {
         let rx_stop = Signal::<SunsetRawMutex, ()>::new();
 
         let tx = async {
-            loop {
-                // TODO: make sunset read directly from socket, no intermediate buffer?
-                // Perhaps not possible async, might deadlock.
-                let mut buf = [0; 1024];
-                let l = self.output(&mut buf).await;
-                if wsock.write_all(&buf[..l]).await.is_err() {
-                    info!("socket write error");
-                    self.with_runner(|r| r.close_output()).await;
-                    break Err::<(), sunset::Error>(Error::ChannelEOF);
-                }
-            }
-            .inspect(|r| warn!("tx complete {r:?}"))
+            let r = self
+                .output_loop(wsock)
+                .await
+                .inspect(|r| warn!("tx complete {r:?}"));
+            r
         };
         let tx = select(tx, tx_stop.wait());
 
@@ -389,21 +382,56 @@ impl<'a> AsyncSunset<'a> {
         .await
     }
 
-    pub async fn output(&self, buf: &mut [u8]) -> usize {
-        let len = self
-            .poll_inner(|inner, cx| {
-                let l = inner.runner.output(buf);
-                if l == 0 {
+    pub async fn output_loop(&self, wsock: &mut impl Write) -> Result<()> {
+        poll_fn(|cx| {
+            // Attempt to lock .inner
+            let i = self.inner.lock();
+            pin_mut!(i);
+            let Ready(mut inner) = i.poll(cx) else {
+                return Pending;
+            };
+
+            loop {
+                let buf = inner.runner.output_buf();
+                if buf.is_empty() {
                     // no output ready
                     inner.runner.set_output_waker(cx.waker());
-                    Poll::Pending
-                } else {
-                    Poll::Ready(l)
+                    return Pending;
                 }
-            })
-            .await;
-        self.wake_progress();
-        len
+
+                let res = {
+                    let w = wsock.write(buf);
+                    pin_mut!(w);
+                    w.poll(cx)
+                };
+
+                return match res {
+                    Pending => Pending,
+                    Ready(Ok(0)) => {
+                        info!("socket EOF");
+                        inner.runner.close_output();
+                        Ready(error::ChannelEOF.fail())
+                    }
+                    Ready(Ok(write_len)) => {
+                        let buf_len = buf.len();
+                        inner.runner.consume_output(write_len);
+                        if write_len < buf_len {
+                            // Must keep going until either wsock
+                            // or output_buf returns Pending and
+                            // registers a waker.
+                            continue;
+                        }
+                        Pending
+                    }
+                    Ready(Err(_e)) => {
+                        info!("socket write error");
+                        inner.runner.close_output();
+                        Ready(error::ChannelEOF.fail())
+                    }
+                };
+            }
+        })
+        .await
     }
 
     pub async fn input(&self, buf: &[u8]) -> Result<usize> {
