@@ -25,7 +25,7 @@ pub(crate) struct TrafOut<'a> {
     /// Accumulated output buffer.
     ///
     /// Should be sized to fit the largest
-    /// sequence of packets to be sent at once (see [`conn::MAX_RESPONSES`]).
+    /// sequence of packets to be sent at once.
     /// Contains ciphertext or cleartext, encrypted in-place.
     /// Writing may contain multiple SSH packets to write out, encrypted
     /// in-place as they are written to `buf`.
@@ -393,7 +393,7 @@ impl<'a> TrafOut<'a> {
         match self.state {
             TxState::Write { len, .. } => keys.max_enc_payload(self.buf.len() - len),
             TxState::Idle => keys.max_enc_payload(self.buf.len()),
-            // ouput will just be dropped in closed state.
+            // output will just be dropped in closed state.
             TxState::Closed => self.buf.len(),
         }
     }
