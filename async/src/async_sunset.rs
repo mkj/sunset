@@ -230,7 +230,7 @@ impl<'a, CS: CliServ> AsyncSunset<'a, CS> {
     fn wake_channels(&self, inner: &mut Inner<CS>) -> Result<()> {
         // Read wakers
         let w = &mut inner.wakers;
-        if let Some((num, dt, _len)) = inner.runner.ready_channel_input() {
+        if let Some((num, dt, _len)) = inner.runner.read_channel_ready() {
             let waker = match dt {
                 ChanData::Normal => &mut w.chan_read[num.0 as usize],
                 ChanData::Stderr => &mut w.chan_ext[num.0 as usize],
@@ -244,7 +244,7 @@ impl<'a, CS: CliServ> AsyncSunset<'a, CS> {
                 // over the write fore Stderr. Something needs to mark it done,
                 // since the session can't proceed until it's consumed.
                 if let Some(h) = &inner.chan_handles[num.0 as usize] {
-                    inner.runner.discard_channel_input(h)?
+                    inner.runner.discard_read_channel(h)?
                 }
             }
         }
@@ -256,7 +256,7 @@ impl<'a, CS: CliServ> AsyncSunset<'a, CS> {
 
             // TODO: if this is slow we could be smarter about aggregating dt vs standard,
             // or handling the case of full out payload buffers.
-            if inner.runner.ready_channel_send(ch, ChanData::Normal)?.unwrap_or(0)
+            if inner.runner.write_channel_ready(ch, ChanData::Normal)?.unwrap_or(0)
                 > 0
             {
                 w.chan_write[idx].wake()
@@ -265,7 +265,7 @@ impl<'a, CS: CliServ> AsyncSunset<'a, CS> {
             if !CS::is_client()
                 && inner
                     .runner
-                    .ready_channel_send(ch, ChanData::Stderr)?
+                    .write_channel_ready(ch, ChanData::Stderr)?
                     .unwrap_or(0)
                     > 0
             {
@@ -587,7 +587,7 @@ impl<'a, CS: CliServ> ChanCore for AsyncSunset<'a, CS> {
         };
 
         let (runner, h, wakers) = inner.fetch(num)?;
-        let i = match runner.channel_input(h, dt, buf) {
+        let i = match runner.read_channel(h, dt, buf) {
             Ok(0) => {
                 // 0 bytes read, pending
                 match dt {
@@ -624,7 +624,7 @@ impl<'a, CS: CliServ> ChanCore for AsyncSunset<'a, CS> {
         };
 
         let (runner, h, wakers) = inner.fetch(num)?;
-        let l = runner.channel_send(h, dt, buf);
+        let l = runner.write_channel(h, dt, buf);
         if let Ok(0) = l {
             // 0 bytes written, pending
             match dt {
