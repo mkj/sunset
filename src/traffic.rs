@@ -233,7 +233,7 @@ impl<'a> TrafIn<'a> {
     }
 
     /// Returns `(channel, dt, length)`
-    pub fn ready_channel_input(&self) -> Option<(ChanNum, ChanData, usize)> {
+    pub fn read_channel_ready(&self) -> Option<(ChanNum, ChanData, usize)> {
         match self.state {
             RxState::InChannelData { chan, dt, idx, len } => {
                 debug_assert!(len > idx);
@@ -244,7 +244,8 @@ impl<'a> TrafIn<'a> {
         }
     }
 
-    pub fn set_channel_input(&mut self, di: channel::DataIn) -> Result<()> {
+    /// Set channel data ready to be read.
+    pub fn set_read_channel_data(&mut self, di: channel::DataIn) -> Result<()> {
         match self.state {
             RxState::InPayload { .. } => {
                 let idx = SSH_PAYLOAD_START + di.dt.packet_offset();
@@ -260,9 +261,9 @@ impl<'a> TrafIn<'a> {
         }
     }
 
-    // Returns the length consumed, and an Option<len> indicating whether the whole
+    // Returns the length returned, and an Option<len> indicating whether the whole
     // data packet has been completed, or None if some is still pending.
-    pub fn channel_input(
+    pub fn read_channel(
         &mut self,
         chan: ChanNum,
         dt: ChanData,
@@ -290,7 +291,7 @@ impl<'a> TrafIn<'a> {
     }
 
     // Returns (length, complete: Option<len: usize>>, Option(dt))
-    pub fn channel_input_either(
+    pub fn read_channel_either(
         &mut self,
         chan: ChanNum,
         buf: &mut [u8],
@@ -318,7 +319,7 @@ impl<'a> TrafIn<'a> {
     }
 
     /// Returns the length of data discarded
-    pub fn discard_channel_input(&mut self, chan: ChanNum) -> usize {
+    pub fn discard_read_channel(&mut self, chan: ChanNum) -> usize {
         match self.state {
             RxState::InChannelData { chan: c, len, .. } if c == chan => {
                 self.state = RxState::Idle;

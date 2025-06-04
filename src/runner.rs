@@ -158,7 +158,7 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
             match disp.event {
                 DispatchEvent::Data(data_in) => {
                     // incoming channel data, we haven't finished with payload
-                    self.traf_in.set_channel_input(data_in)?;
+                    self.traf_in.set_read_channel_data(data_in)?;
                     disp.event = DispatchEvent::None
                 }
                 DispatchEvent::CliEvent(_) | DispatchEvent::ServEvent(_) => {
@@ -312,7 +312,7 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
     ///
     /// Returns `Ok(len)` consumed, `Err(Error::ChannelEof)` on EOF,
     /// or other errors.
-    pub fn channel_send(
+    pub fn write_channel(
         &mut self,
         chan: &ChanHandle,
         dt: ChanData,
@@ -327,7 +327,7 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
             return Ok(0);
         }
 
-        let len = self.ready_channel_send(chan, dt)?;
+        let len = self.write_channel_ready(chan, dt)?;
         let len = match len {
             Some(l) if l == 0 => return Ok(0),
             Some(l) => l,
@@ -347,7 +347,7 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
     /// Returns `Ok(len)` received, `Err(Error::ChannelEof)` on EOF,
     /// or other errors. Ok(0) indicates no data available, ie pending.
     /// TODO: EOF is unimplemented
-    pub fn channel_input(
+    pub fn read_channel(
         &mut self,
         chan: &ChanHandle,
         dt: ChanData,
@@ -363,37 +363,41 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
             return error::ChannelEOF.fail();
         }
 
-        let (len, complete) = self.traf_in.channel_input(chan.0, dt, buf);
+        let (len, complete) = self.traf_in.read_channel(chan.0, dt, buf);
         if let Some(x) = complete {
-            self.finished_input(chan, x)?;
+            self.finished_read_channel(chan, x)?;
         }
         Ok(len)
     }
 
     /// Receives input data, either normal or extended.
-    pub fn channel_input_either(
+    pub fn read_channel_either(
         &mut self,
         chan: &ChanHandle,
         buf: &mut [u8],
     ) -> Result<(usize, ChanData)> {
-        let (len, complete, dt) = self.traf_in.channel_input_either(chan.0, buf);
+        let (len, complete, dt) = self.traf_in.read_channel_either(chan.0, buf);
         if let Some(x) = complete {
-            self.finished_input(chan, x)?;
+            self.finished_read_channel(chan, x)?;
         }
         Ok((len, dt))
     }
 
     /// Discards any channel input data pending for `chan`, regardless of whether
     /// normal or extended.
-    pub fn discard_channel_input(&mut self, chan: &ChanHandle) -> Result<()> {
-        let x = self.traf_in.discard_channel_input(chan.0);
-        self.finished_input(chan, x)?;
+    pub fn discard_read_channel(&mut self, chan: &ChanHandle) -> Result<()> {
+        let x = self.traf_in.discard_read_channel(chan.0);
+        self.finished_read_channel(chan, x)?;
         Ok(())
     }
 
-    fn finished_input(&mut self, chan: &ChanHandle, len: usize) -> Result<()> {
+    fn finished_read_channel(
+        &mut self,
+        chan: &ChanHandle,
+        len: usize,
+    ) -> Result<()> {
         let mut s = self.traf_out.sender(&mut self.keys);
-        self.conn.channels.finished_input(chan.0, len, &mut s)?;
+        self.conn.channels.finished_read(chan.0, len, &mut s)?;
         self.wake();
         Ok(())
     }
@@ -407,8 +411,8 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
     /// be owned by the caller already.
     ///
     /// Returns `None` if no data ready.
-    pub fn ready_channel_input(&self) -> Option<(ChanNum, ChanData, usize)> {
-        self.traf_in.ready_channel_input()
+    pub fn read_channel_ready(&self) -> Option<(ChanNum, ChanData, usize)> {
+        self.traf_in.read_channel_ready()
     }
 
     pub fn is_channel_eof(&self, chan: &ChanHandle) -> bool {
@@ -424,7 +428,7 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
     /// Returns `Ok(None)` on channel closed.
     ///
     /// May fail with `BadChannelData` if dt is invalid for this session.
-    pub fn ready_channel_send(
+    pub fn write_channel_ready(
         &self,
         chan: &ChanHandle,
         dt: ChanData,
@@ -453,7 +457,8 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
     /// Returns `true` if the channel and `dt` are currently valid for writing.
     ///
     /// Note that they may not be ready to send output.
-    pub fn valid_channel_send(&self, chan: &ChanHandle, dt: ChanData) -> bool {
+    pub fn is_write_channel_valid(&self, chan: &ChanHandle, dt: ChanData) -> bool {
+        // TODO is this needed? currently unused
         self.conn.channels.valid_send(chan.0, dt)
     }
 

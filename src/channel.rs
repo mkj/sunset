@@ -200,7 +200,7 @@ impl Channels {
 
     /// Informs the channel layer that an incoming packet has been read out,
     /// so a window adjustment can be sent.
-    pub(crate) fn finished_input(
+    pub(crate) fn finished_read(
         &mut self,
         num: ChanNum,
         len: usize,
