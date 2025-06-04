@@ -310,8 +310,8 @@ impl CmdlineClient {
                         // TODO is there a better way
                         launch_chan
                             .send((
-                                io.clone().unwrap(),
-                                extin.clone(),
+                                io.take().unwrap(),
+                                extin.take(),
                                 self.pty_guard.take(),
                             ))
                             .await;
