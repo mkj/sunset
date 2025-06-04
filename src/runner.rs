@@ -243,8 +243,8 @@ impl<'a> Runner<'a> {
     /// Write any pending output to the wire, returning the size written
     pub fn output(&mut self, buf: &mut [u8]) -> usize {
         let r = self.traf_out.output(buf);
-        if r > 0 {
-            trace!("output() wake");
+        if !self.traf_out.is_output_pending() {
+            // State has changed
             self.wake();
         }
         r
@@ -262,7 +262,11 @@ impl<'a> Runner<'a> {
 
     /// Indicate how many bytes were taken from `output_buf()`
     pub fn consume_output(&mut self, l: usize) {
-        self.traf_out.consume_output(l)
+        self.traf_out.consume_output(l);
+        if !self.traf_out.is_output_pending() {
+            // State has changed
+            self.wake();
+        }
     }
 
     // Whether [`output()`](output) is ready
@@ -285,7 +289,8 @@ impl<'a> Runner<'a> {
     /// Indicate that the output SSH tcp socket has closed
     pub fn close_output(&mut self) {
         trace!("close_input");
-        self.traf_out.close()
+        self.traf_out.close();
+        self.wake();
     }
 
     // TODO: move somewhere client specific?
@@ -453,7 +458,9 @@ impl<'a> Runner<'a> {
     /// Channel numbers will not be re-used without calling this, so
     /// failing to call this may result in running out of channels.
     pub fn channel_done(&mut self, chan: ChanHandle) -> Result<()> {
-        self.conn.channels.done(chan.0)
+        self.conn.channels.done(chan.0)?;
+        self.wake();
+        Ok(())
     }
 
     /// Send a terminal window size change report.
