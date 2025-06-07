@@ -134,23 +134,23 @@ pub trait CliServ: Sized + Send + Default {
     fn is_client() -> bool;
 
     #[inline]
-    fn server(&self) -> Result<&server::Server> {
-        Err(Error::bug())
+    fn try_server(&self) -> Option<&server::Server> {
+        None
     }
 
     #[inline]
-    fn mut_server(&mut self) -> Result<&mut server::Server> {
-        Err(Error::bug())
+    fn try_mut_server(&mut self) -> Option<&mut server::Server> {
+        None
     }
 
     #[inline]
-    fn client(&self) -> Result<&client::Client> {
-        Err(Error::bug())
+    fn try_client(&self) -> Option<&client::Client> {
+        None
     }
 
     #[inline]
-    fn mut_client(&mut self) -> Result<&mut client::Client> {
-        Err(Error::bug())
+    fn try_mut_client(&mut self) -> Option<&mut client::Client> {
+        None
     }
 
     #[expect(private_interfaces)]
@@ -167,13 +167,13 @@ impl CliServ for client::Client {
     }
 
     #[inline]
-    fn client(&self) -> Result<&client::Client> {
-        Ok(self)
+    fn try_client(&self) -> Option<&client::Client> {
+        Some(self)
     }
 
     #[inline]
-    fn mut_client(&mut self) -> Result<&mut client::Client> {
-        Ok(self)
+    fn try_mut_client(&mut self) -> Option<&mut client::Client> {
+        Some(self)
     }
 
     #[expect(private_interfaces)]
@@ -199,13 +199,13 @@ impl CliServ for server::Server {
     }
 
     #[inline]
-    fn server(&self) -> Result<&server::Server> {
-        Ok(self)
+    fn try_server(&self) -> Option<&server::Server> {
+        Some(self)
     }
 
     #[inline]
-    fn mut_server(&mut self) -> Result<&mut server::Server> {
-        Ok(self)
+    fn try_mut_server(&mut self) -> Option<&mut server::Server> {
+        Some(self)
     }
 
     #[allow(private_interfaces)]
@@ -253,17 +253,27 @@ impl<CS: CliServ> Conn<CS> {
 
     #[inline]
     pub fn server(&self) -> Result<&server::Server> {
-        self.cliserv.server()
+        self.cliserv.try_server().ok_or_else(|| Error::bug())
+    }
+
+    #[inline]
+    fn try_mut_server(&mut self) -> Option<&mut server::Server> {
+        self.cliserv.try_mut_server()
     }
 
     #[inline]
     fn mut_server(&mut self) -> Result<&mut server::Server> {
-        self.cliserv.mut_server()
+        self.try_mut_server().ok_or_else(|| Error::bug())
     }
 
     #[inline]
     fn client(&self) -> Result<&client::Client> {
-        self.cliserv.client()
+        self.cliserv.try_client().ok_or_else(|| Error::bug())
+    }
+
+    #[inline]
+    fn try_mut_client(&mut self) -> Option<&mut client::Client> {
+        self.cliserv.try_mut_client()
     }
 
     /// Updates `ConnState` and sends any packets required to progress the connection state.
@@ -298,8 +308,8 @@ impl<CS: CliServ> Conn<CS> {
             ConnState::PreAuth => {
                 // TODO. need to figure how we'll do "unbounded" responses
                 // and backpressure. can_output() should have a size check?
-                if s.can_output() && self.is_client() {
-                    if let Ok(cli) = self.cliserv.mut_client() {
+                if s.can_output() {
+                    if let Some(cli) = self.try_mut_client() {
                         disp.event = cli.auth.progress();
                     }
                 }
@@ -452,13 +462,13 @@ impl<CS: CliServ> Conn<CS> {
                 self.kex.handle_newkeys(&mut self.sess_id, s)?;
             }
             Packet::ExtInfo(p) => {
-                if let Ok(cli) = self.cliserv.mut_client() {
+                if let Some(cli) = self.try_mut_client() {
                     cli.auth.handle_ext_info(&p);
                 }
                 // could potentially pass it to other handlers too
             }
             Packet::ServiceRequest(p) => {
-                let Ok(serv) = self.cliserv.mut_server() else {
+                let Some(serv) = self.try_mut_server() else {
                     debug!("Server sent a service request");
                     return error::SSHProto.fail();
                 };
@@ -487,7 +497,7 @@ impl<CS: CliServ> Conn<CS> {
                 disp.disconnect = true;
             }
             Packet::UserauthRequest(p) => {
-                let Ok(serv) = self.cliserv.mut_server() else {
+                let Some(serv) = self.cliserv.try_mut_server() else {
                     debug!("Server sent an auth request");
                     return error::SSHProto.fail();
                 };
@@ -495,14 +505,14 @@ impl<CS: CliServ> Conn<CS> {
                 disp.event = serv.auth.request(sess_id, s, p)?;
             }
             Packet::UserauthFailure(p) => {
-                let Ok(cli) = self.cliserv.mut_client() else {
+                let Some(cli) = self.cliserv.try_mut_client() else {
                     debug!("Received UserauthFailure as a server");
                     return error::SSHProto.fail();
                 };
                 disp.event = cli.auth.failure(&p, &mut self.parse_ctx)?;
             }
             Packet::UserauthSuccess(_) => {
-                let Ok(cli) = self.cliserv.mut_client() else {
+                let Some(cli) = self.cliserv.try_mut_client() else {
                     debug!("Received UserauthSuccess as a server");
                     return error::SSHProto.fail();
                 };
@@ -521,7 +531,7 @@ impl<CS: CliServ> Conn<CS> {
                 disp.event = DispatchEvent::CliEvent(CliEventId::Banner);
             }
             Packet::Userauth60(p) => {
-                let Ok(cli) = self.cliserv.mut_client() else {
+                let Some(cli) = self.cliserv.try_mut_client() else {
                     debug!("Received userauth60 as a server");
                     return error::SSHProto.fail();
                 };
@@ -565,12 +575,12 @@ impl<CS: CliServ> Conn<CS> {
     pub(crate) fn mut_cliauth(
         &mut self,
     ) -> Result<(&mut CliAuth, &mut ParseContext)> {
-        let cli = self.cliserv.mut_client()?;
+        let cli = self.cliserv.try_mut_client().ok_or_else(|| Error::bug())?;
         Ok((&mut cli.auth, &mut self.parse_ctx))
     }
 
     pub(crate) fn fetch_agentsign_msg(&self) -> Result<AuthSigMsg> {
-        let cli = self.cliserv.client()?;
+        let cli = self.client()?;
         let sess_id = self.sess_id.as_ref().trap()?;
         cli.auth.fetch_agentsign_msg(sess_id)
     }
