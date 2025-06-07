@@ -99,6 +99,17 @@ impl DemoServer for StdDemo {
                             a.fail()?;
                         }
                     }
+                    ServEvent::SessionExec(a) => {
+                        if a.command()? == "sh" {
+                            info!("Accepting a shell exec");
+                            if let Some(ch) = common.sess.take() {
+                                a.succeed()?;
+                                let _ = chan_pipe.try_send(ch);
+                            }
+                        } else {
+                            info!("Requested exec '{}', rejecting.", a.command()?);
+                        }
+                    }
                     other => common.handle_event(other)?,
                 };
             }

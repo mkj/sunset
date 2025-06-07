@@ -12,11 +12,8 @@ use core::{
 
 use pretty_hex::PrettyHex;
 
-use crate::{
-    event::ChanRequest,
-    packets::{Packet, Subsystem},
-    *,
-};
+use crate::packets::{Packet, Subsystem};
+use crate::*;
 use channel::{ChanData, ChanNum};
 use channel::{CliSessionExit, CliSessionOpener};
 use encrypt::KeyState;
@@ -754,6 +751,13 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
 
         let p = self.conn.packet(payload)?;
         self.conn.channels.fetch_reqchannel(&p)
+    }
+
+    pub(crate) fn fetch_servcommand(&self) -> Result<TextString> {
+        self.check_resume(&DispatchEvent::ServEvent(ServEventId::SessionExec));
+        let (payload, _seq) = self.traf_in.payload().trap()?;
+        let p = self.conn.packet(payload)?;
+        self.conn.channels.fetch_servcommand(&p)
     }
 }
 

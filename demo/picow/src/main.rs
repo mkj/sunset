@@ -308,6 +308,9 @@ impl DemoServer for &'static PicoDemo {
                             a.fail()?;
                         }
                     }
+                    ServEvent::SessionExec(a) => {
+                        trace!("Reject exec '{}'", a.command()?);
+                    }
                     ServEvent::FirstAuth(ref a) => {
                         // record the username
                         if username.lock().await.push_str(a.username()?).is_err() {
