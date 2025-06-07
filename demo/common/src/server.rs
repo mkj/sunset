@@ -118,8 +118,9 @@ impl DemoCommon {
             ServEvent::PubkeyAuth(a) => self.handle_pubkey(a),
             ServEvent::OpenSession(a) => self.open_session(a),
             ServEvent::SessionPty(a) => a.succeed(),
-            ServEvent::SessionExec(a) => a.fail(),
-            ServEvent::Defunct | ServEvent::SessionShell(_) => {
+            ServEvent::Defunct
+            | ServEvent::SessionShell(_)
+            | ServEvent::SessionExec(_) => {
                 error!("Expected caller to handle {event:?}");
                 error::BadUsage.fail()
             }

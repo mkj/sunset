@@ -289,15 +289,15 @@ pub enum ServEvent<'g, 'a> {
     /// After accepting a channel the [`ChanHandle`] will be returned.
     OpenSession(ServOpenSession<'g, 'a>),
     /// Client requested to run a shell on a channel.
-    SessionShell(ChanRequest<'g, 'a, server::Server>),
+    SessionShell(ServShellRequest<'g, 'a>),
     /// Client requested to execute a command on a channel.
     ///
     /// TODO the actual command is missing here!
-    SessionExec(ChanRequest<'g, 'a, server::Server>),
+    SessionExec(ServExecRequest<'g, 'a>),
     /// Client requested a PTY for the channel.
     ///
     /// TODO details
-    SessionPty(ChanRequest<'g, 'a, server::Server>),
+    SessionPty(ServPtyRequest<'g, 'a>),
 
     /// The SSH session is no longer running
     #[allow(unused)]
@@ -542,6 +542,172 @@ impl Drop for ServOpenSession<'_, '_> {
     }
 }
 
+pub struct ServShellRequest<'g, 'a> {
+    runner: &'g mut Runner<'a, Server>,
+    done: bool,
+}
+
+impl<'g, 'a> ServShellRequest<'g, 'a> {
+    fn new(runner: &'g mut Runner<'a, Server>) -> Self {
+        Self { runner, done: false }
+    }
+    /// Indicate that the request succeeded.
+    ///
+    /// Note that if the peer didn't request a reply, this call
+    /// will not do anything.
+    pub fn succeed(mut self) -> Result<()> {
+        self.done = true;
+        self.runner.resume_chanreq(true)
+    }
+
+    /// Indicate that the request failed.
+    ///
+    /// Note that if the peer didn't request a reply, this call
+    /// will not do anything.
+    /// Does not need to be called explicitly, also occurs on drop without `accept()`
+    pub fn fail(mut self) -> Result<()> {
+        self.done = true;
+        self.runner.resume_chanreq(false)
+    }
+
+    /// Return the associated channel number.
+    ///
+    /// This will correspond to a `ChanHandle::num()`
+    /// from a previous [`ServOpenSession`] event.
+    pub fn channel(&self) -> Result<ChanNum> {
+        self.runner.fetch_reqchannel()
+    }
+
+    // TODO: does the app care about wantreply?
+}
+
+// implement Drop to be the same as .fail()
+impl Drop for ServShellRequest<'_, '_> {
+    fn drop(&mut self) {
+        if !self.done {
+            if let Err(e) = self.runner.resume_chanreq(false) {
+                trace!("Error for shellreq: {e}")
+            }
+        }
+    }
+}
+
+pub struct ServExecRequest<'g, 'a> {
+    runner: &'g mut Runner<'a, Server>,
+    done: bool,
+}
+
+impl<'g, 'a> ServExecRequest<'g, 'a> {
+    fn new(runner: &'g mut Runner<'a, Server>) -> Self {
+        Self { runner, done: false }
+    }
+
+    /// Retrieve the command presented by the client.
+    pub fn command(&self) -> Result<&str> {
+        self.raw_command()?.as_str()
+    }
+
+    pub fn raw_command(&self) -> Result<TextString> {
+        self.runner.fetch_servcommand()
+    }
+
+    /// Indicate that the request succeeded.
+    ///
+    /// Note that if the peer didn't request a reply, this call
+    /// will not do anything.
+    pub fn succeed(mut self) -> Result<()> {
+        self.done = true;
+        self.runner.resume_chanreq(true)
+    }
+
+    /// Indicate that the request failed.
+    ///
+    /// Note that if the peer didn't request a reply, this call
+    /// will not do anything.
+    /// Does not need to be called explicitly, also occurs on drop without `accept()`
+    pub fn fail(mut self) -> Result<()> {
+        self.done = true;
+        self.runner.resume_chanreq(false)
+    }
+
+    /// Return the associated channel number.
+    ///
+    /// This will correspond to a `ChanHandle::num()`
+    /// from a previous [`ServOpenSession`] event.
+    pub fn channel(&self) -> Result<ChanNum> {
+        self.runner.fetch_reqchannel()
+    }
+
+    // TODO: does the app care about wantreply?
+}
+
+// implement Drop to be the same as .fail()
+impl Drop for ServExecRequest<'_, '_> {
+    fn drop(&mut self) {
+        if !self.done {
+            if let Err(e) = self.runner.resume_chanreq(false) {
+                trace!("Error for shellreq: {e}")
+            }
+        }
+    }
+}
+
+/// A PTY request
+///
+/// Placeholder, doesn't yet return the PTY information.
+pub struct ServPtyRequest<'g, 'a> {
+    runner: &'g mut Runner<'a, Server>,
+    done: bool,
+}
+
+impl<'g, 'a> ServPtyRequest<'g, 'a> {
+    fn new(runner: &'g mut Runner<'a, Server>) -> Self {
+        Self { runner, done: false }
+    }
+
+    // TODO return PTY information to the caller
+
+    /// Indicate that the request succeeded.
+    ///
+    /// Note that if the peer didn't request a reply, this call
+    /// will not do anything.
+    pub fn succeed(mut self) -> Result<()> {
+        self.done = true;
+        self.runner.resume_chanreq(true)
+    }
+
+    /// Indicate that the request failed.
+    ///
+    /// Note that if the peer didn't request a reply, this call
+    /// will not do anything.
+    /// Does not need to be called explicitly, also occurs on drop without `accept()`
+    pub fn fail(mut self) -> Result<()> {
+        self.done = true;
+        self.runner.resume_chanreq(false)
+    }
+
+    /// Return the associated channel number.
+    ///
+    /// This will correspond to a `ChanHandle::num()`
+    /// from a previous [`ServOpenSession`] event.
+    pub fn channel(&self) -> Result<ChanNum> {
+        self.runner.fetch_reqchannel()
+    }
+
+    // TODO: does the app care about wantreply?
+}
+
+// implement Drop to be the same as .fail()
+impl Drop for ServPtyRequest<'_, '_> {
+    fn drop(&mut self) {
+        if !self.done {
+            if let Err(e) = self.runner.resume_chanreq(false) {
+                trace!("Error for shellreq: {e}")
+            }
+        }
+    }
+}
+
 // Only small values should be stored inline.
 // Larger state is retrieved from the current packet via Runner::fetch_*()
 #[derive(Debug, Clone)]
@@ -597,15 +763,15 @@ impl ServEventId {
             }
             Self::SessionShell => {
                 debug_assert!(matches!(p, Some(Packet::ChannelRequest(_))));
-                Ok(ServEvent::SessionShell(ChanRequest::new(runner)))
+                Ok(ServEvent::SessionShell(ServShellRequest::new(runner)))
             }
             Self::SessionExec => {
                 debug_assert!(matches!(p, Some(Packet::ChannelRequest(_))));
-                Ok(ServEvent::SessionExec(ChanRequest::new(runner)))
+                Ok(ServEvent::SessionExec(ServExecRequest::new(runner)))
             }
             Self::SessionPty => {
                 debug_assert!(matches!(p, Some(Packet::ChannelRequest(_))));
-                Ok(ServEvent::SessionPty(ChanRequest::new(runner)))
+                Ok(ServEvent::SessionPty(ServPtyRequest::new(runner)))
             }
             Self::Defunct => Ok(ServEvent::Defunct),
         }
@@ -624,56 +790,6 @@ impl ServEventId {
             | Self::SessionShell
             | Self::SessionExec
             | Self::SessionPty => true,
-        }
-    }
-}
-
-pub struct ChanRequest<'g, 'a, CS: conn::CliServ> {
-    runner: &'g mut Runner<'a, CS>,
-    done: bool,
-}
-
-impl<'g, 'a, CS: conn::CliServ> ChanRequest<'g, 'a, CS> {
-    fn new(runner: &'g mut Runner<'a, CS>) -> Self {
-        Self { runner, done: false }
-    }
-    /// Indicate that the request succeeded.
-    ///
-    /// Note that if the peer didn't request a reply, this call
-    /// will not do anything.
-    pub fn succeed(mut self) -> Result<()> {
-        self.done = true;
-        self.runner.resume_chanreq(true)
-    }
-
-    /// Indicate that the request failed.
-    ///
-    /// Note that if the peer didn't request a reply, this call
-    /// will not do anything.
-    /// Does not need to be called explicitly, also occurs on drop without `accept()`
-    pub fn fail(mut self) -> Result<()> {
-        self.done = true;
-        self.runner.resume_chanreq(false)
-    }
-
-    /// Return the associated channel number.
-    ///
-    /// This will correspond to a `ChanHandle::num()`
-    /// from a previous [`ServOpenSession`] event.
-    pub fn channel(&self) -> Result<ChanNum> {
-        self.runner.fetch_reqchannel()
-    }
-
-    // TODO: does the app care about wantreply?
-}
-
-// implement Drop to be the same as .fail()
-impl<CS: conn::CliServ> Drop for ChanRequest<'_, '_, CS> {
-    fn drop(&mut self) {
-        if !self.done {
-            if let Err(e) = self.runner.resume_chanreq(false) {
-                trace!("Error for chanreq: {e}")
-            }
         }
     }
 }

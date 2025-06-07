@@ -1,4 +1,4 @@
-use self::{event::ChanRequest, packets::ExitSignal};
+use self::packets::ExitSignal;
 
 #[allow(unused_imports)]
 use {
@@ -501,6 +501,18 @@ impl Channels {
     pub fn fetch_reqchannel(&self, p: &Packet) -> Result<ChanNum> {
         if let Packet::ChannelRequest(r) = p {
             Ok(ChanNum(r.num))
+        } else {
+            Err(Error::bug())
+        }
+    }
+
+    pub fn fetch_servcommand<'p>(&self, p: &Packet<'p>) -> Result<TextString<'p>> {
+        if let Packet::ChannelRequest(ChannelRequest {
+            req: ChannelReqType::Exec(packets::Exec { command }),
+            ..
+        }) = p
+        {
+            Ok(command.clone())
         } else {
             Err(Error::bug())
         }
