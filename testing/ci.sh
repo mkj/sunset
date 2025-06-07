@@ -16,6 +16,7 @@ mkdir -p ci_out
 OUT="$(realpath ci_out)"
 
 export RUSTDOCFLAGS='-D warnings'
+export RUSTFLAGS='-D warnings'
 
 # dependencies
 which cargo-bloat > /dev/null || cargo install cargo-bloat
@@ -71,6 +72,12 @@ cargo build --release --no-default-features --features w5500,romfw
 )
 size target/thumbv6m-none-eabi/release/sunset-demo-picow | tee "$OUT/picow-size.txt"
 
+(
+cd fuzz
+export RUSTFLAGS="$RUSTFLAGS --cfg fuzzing"
+cargo build --features nofuzz --profile fuzz
+cargo build --features nofuzz,arbfuzz --profile fuzz
+)
 
 # other checks
 

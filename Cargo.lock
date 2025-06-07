@@ -30,6 +30,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "afl"
+version = "0.15.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a2e868a49dcc54f7edcec970721ba68c4b5cc5f1e478393ae2dd2d475efd752e"
+dependencies = [
+ "home",
+ "libc",
+ "rustc_version 0.4.0",
+ "xdg",
+]
+
+[[package]]
 name = "ahash"
 version = "0.8.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1425,6 +1437,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "honggfuzz"
+version = "0.5.57"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fc563d4f41b17364d5c48ded509f2bcf1c3f6ae9c7f203055b4a5c325072d57e"
+dependencies = [
+ "arbitrary",
+ "lazy_static",
+ "memmap2",
+ "rustc_version 0.4.0",
+ "semver 1.0.21",
+]
+
+[[package]]
 name = "humantime"
 version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1549,9 +1574,9 @@ dependencies = [
 
 [[package]]
 name = "lazy_static"
-version = "1.4.0"
+version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
+checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 dependencies = [
  "spin",
 ]
@@ -1607,6 +1632,15 @@ name = "memchr"
 version = "2.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "523dc4f511e55ab87b694dc30d0f820d60906ef06413f93d4d7a1385599cc149"
+
+[[package]]
+name = "memmap2"
+version = "0.9.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fd3f7eed9d3848f8b98834af67102b720745c4ec028fcd0aa0239277e7de374f"
+dependencies = [
+ "libc",
+]
 
 [[package]]
 name = "memoffset"
@@ -2554,9 +2588,9 @@ dependencies = [
 
 [[package]]
 name = "spin"
-version = "0.5.2"
+version = "0.9.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
+checksum = "6980e8d7511241f8acf4aebddbb1ff938df5eebe98691418c4468d0b72a96a67"
 
 [[package]]
 name = "spki"
@@ -2794,6 +2828,19 @@ dependencies = [
  "sunset",
  "sunset-async",
  "sunset-demo-common",
+]
+
+[[package]]
+name = "sunset-fuzz"
+version = "0.1.0"
+dependencies = [
+ "afl",
+ "arbitrary",
+ "env_logger",
+ "honggfuzz",
+ "log",
+ "sunset",
+ "sunset-sshwire-derive",
 ]
 
 [[package]]
@@ -3357,6 +3404,12 @@ dependencies = [
  "rand_core",
  "zeroize",
 ]
+
+[[package]]
+name = "xdg"
+version = "3.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2fb433233f2df9344722454bc7e96465c9d03bff9d77c248f9e7523fe79585b5"
 
 [[package]]
 name = "zerocopy"

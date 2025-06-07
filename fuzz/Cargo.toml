@@ -1,0 +1,33 @@
+[package]
+name = "sunset-fuzz"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+honggfuzz = { version = "=0.5.57", optional = true }
+afl = { version = "*", optional = true }
+sunset.workspace = true
+sunset-sshwire-derive.workspace = true
+
+# default regex feature is huge
+env_logger = { version = "0.11", default-features=false, features = ["auto-color", "humantime"] }
+log = "0.4"
+
+arbitrary = { workspace = true, optional = true }
+
+[features]
+# Can't use release_max_level_off since we enable debug assertions in "fuzz" profile,
+# which log uses to determine "release"
+nolog = ["log/max_level_off"]
+honggfuzz = ["dep:honggfuzz", "nolog"]
+afl = ["dep:afl", "nolog"]
+nofuzz = []
+
+arbfuzz = [ "sunset/arbitrary", "dep:arbitrary" ]
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(fuzzing)'] }
+
+[[bin]]
+name = "fuzz-server"
+path = "src/bin/server.rs"

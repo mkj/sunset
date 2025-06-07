@@ -11,7 +11,7 @@ keywords = ["ssh"]
 [workspace]
 members = [
     "demo/picow",
-    "demo/std",
+    "demo/std", "fuzz",
     "stdasync",
     # workspace.dependencies paths are automatic
 ]
@@ -141,3 +141,11 @@ debug = false
 debug-assertions = false
 opt-level = 0
 overflow-checks = false
+
+[profile.fuzz]
+inherits = "release"
+debug-assertions = true
+lto = "fat"
+opt-level = 3
+overflow-checks = true
+panic = "abort"
