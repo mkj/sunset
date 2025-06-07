@@ -14,15 +14,12 @@ use sign::SignKey;
 use sshnames::*;
 use traffic::TrafSend;
 
+#[derive(Default)]
 pub struct Client {
     pub(crate) auth: CliAuth,
 }
 
 impl Client {
-    pub(crate) fn new() -> Self {
-        Client { auth: CliAuth::new() }
-    }
-
     pub(crate) fn auth_success(
         &mut self,
         parse_ctx: &mut ParseContext,

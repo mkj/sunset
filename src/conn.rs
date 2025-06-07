@@ -130,7 +130,7 @@ pub(crate) struct Dispatched {
     pub disconnect: bool,
 }
 
-pub trait CliServ: Sized + Send {
+pub trait CliServ: Sized + Send + Default {
     fn is_client() -> bool;
 
     #[inline]
@@ -224,43 +224,23 @@ impl CliServ for server::Server {
     }
 }
 
-impl Conn<client::Client> {
-    pub fn new_client() -> Result<Self> {
-        let algo_conf = AlgoConfig::new(true);
-        let cliserv = client::Client::new();
-
-        Ok(Conn {
-            sess_id: None,
-            kex: Kex::new(),
-            remote_version: ident::RemoteVersion::new(true),
-            state: ConnState::SendIdent,
-            algo_conf,
-            channels: Channels::new(true),
-            parse_ctx: ParseContext::new(),
-            cliserv,
-        })
-    }
-}
-
-impl Conn<server::Server> {
-    pub fn new_server() -> Result<Self> {
-        let algo_conf = AlgoConfig::new(false);
-        let cliserv = server::Server::new();
-
-        Ok(Conn {
-            sess_id: None,
-            kex: Kex::new(),
-            remote_version: ident::RemoteVersion::new(false),
-            state: ConnState::SendIdent,
-            algo_conf,
-            channels: Channels::new(false),
-            parse_ctx: ParseContext::new(),
-            cliserv,
-        })
-    }
-}
-
 impl<CS: CliServ> Conn<CS> {
+    pub fn new() -> Self {
+        let algo_conf = AlgoConfig::new(CS::is_client());
+        let cliserv = CS::default();
+
+        Conn {
+            sess_id: None,
+            kex: Kex::new(),
+            remote_version: ident::RemoteVersion::new(CS::is_client()),
+            state: ConnState::SendIdent,
+            algo_conf,
+            channels: Channels::new(CS::is_client()),
+            parse_ctx: ParseContext::new(),
+            cliserv,
+        }
+    }
+
     #[inline]
     fn is_client(&self) -> bool {
         CS::is_client()

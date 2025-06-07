@@ -51,8 +51,8 @@ pub(crate) struct CliAuth {
     allow_rsa_sha2: bool,
 }
 
-impl CliAuth {
-    pub fn new() -> Self {
+impl Default for CliAuth {
+    fn default() -> Self {
         CliAuth {
             state: AuthState::Unstarted,
             username: String::new(),
@@ -61,7 +61,9 @@ impl CliAuth {
             allow_rsa_sha2: false,
         }
     }
+}
 
+impl CliAuth {
     // May be called multiple times
     pub fn progress(&mut self) -> DispatchEvent {
         if let AuthState::Unstarted = self.state {

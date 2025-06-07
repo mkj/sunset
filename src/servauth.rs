@@ -39,8 +39,8 @@ pub(crate) struct ServAuth {
     pub method_pubkey: bool,
 }
 
-impl ServAuth {
-    pub fn new() -> Self {
+impl Default for ServAuth {
+    fn default() -> Self {
         Self {
             authed: false,
             tried_first: false,
@@ -49,7 +49,9 @@ impl ServAuth {
             method_pubkey: true,
         }
     }
+}
 
+impl ServAuth {
     /// Returns an event for the app, or `DispatchEvent::None` if auth failure
     /// has been returned immediately.
     pub fn request(
