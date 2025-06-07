@@ -206,6 +206,9 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
         if self.closed_input {
             return error::SessionEOF.fail();
         }
+        if !self.is_input_ready() {
+            return Ok(0);
+        }
         self.traf_in.input(&mut self.keys, &mut self.conn.remote_version, buf)
     }
 
