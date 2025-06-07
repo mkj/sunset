@@ -31,7 +31,7 @@ impl<'a> SSHClient<'a> {
     ///
     /// `rsock` and `wsock` are the SSH network channel (TCP port 22 or equivalent).
     pub async fn run(
-        &'a self,
+        &self,
         rsock: &mut impl Read,
         wsock: &mut impl Write,
     ) -> Result<()> {
