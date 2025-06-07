@@ -11,6 +11,8 @@
 // XXX unused_imports only during dev churn
 #![allow(unused_imports)]
 
+// Static allocations hit this inherently.
+#[allow(clippy::large_enum_variant)]
 pub mod config;
 pub mod packets;
 pub mod sshnames;
