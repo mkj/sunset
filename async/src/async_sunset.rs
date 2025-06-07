@@ -150,7 +150,7 @@ impl<'a, CS: CliServ> AsyncSunset<'a, CS> {
 
     /// Runs the session to completion
     pub async fn run(
-        &'a self,
+        &self,
         rsock: &mut impl Read,
         wsock: &mut impl Write,
     ) -> Result<()> {
