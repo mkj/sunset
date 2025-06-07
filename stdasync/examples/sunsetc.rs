@@ -71,7 +71,7 @@ async fn run(args: Args) -> Result<i32> {
     let ssh_task = tokio::task::spawn(async move {
         let mut rxbuf = Zeroizing::new(vec![0; 3000]);
         let mut txbuf = Zeroizing::new(vec![0; 3000]);
-        let ssh = SSHClient::new(&mut rxbuf, &mut txbuf)?;
+        let ssh = SSHClient::new(&mut rxbuf, &mut txbuf);
 
         // CmdlineClient implements the session logic for a commandline SSH client.
         let mut app =

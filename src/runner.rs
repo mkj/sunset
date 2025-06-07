@@ -81,9 +81,8 @@ impl<'a> Runner<'a, client::Client> {
     pub fn new_client(
         inbuf: &'a mut [u8],
         outbuf: &'a mut [u8],
-    ) -> Result<Runner<'a, client::Client>, Error> {
-        let conn = Conn::new_client()?;
-        Self::new(inbuf, outbuf, conn)
+    ) -> Runner<'a, client::Client> {
+        Self::new(inbuf, outbuf)
     }
 }
 
@@ -92,20 +91,15 @@ impl<'a> Runner<'a, server::Server> {
     pub fn new_server(
         inbuf: &'a mut [u8],
         outbuf: &'a mut [u8],
-    ) -> Result<Runner<'a, server::Server>, Error> {
-        let conn = Conn::new_server()?;
-        Self::new(inbuf, outbuf, conn)
+    ) -> Runner<'a, server::Server> {
+        Self::new(inbuf, outbuf)
     }
 }
 
 impl<'a, CS: CliServ> Runner<'a, CS> {
-    fn new(
-        inbuf: &'a mut [u8],
-        outbuf: &'a mut [u8],
-        conn: Conn<CS>,
-    ) -> Result<Runner<'a, CS>, Error> {
-        let runner = Runner {
-            conn,
+    pub fn new(inbuf: &'a mut [u8], outbuf: &'a mut [u8]) -> Runner<'a, CS> {
+        Runner {
+            conn: Conn::new(),
             traf_in: TrafIn::new(inbuf),
             traf_out: TrafOut::new(outbuf),
             keys: KeyState::new_cleartext(),
@@ -114,9 +108,7 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
             closed_input: false,
             resume_event: DispatchEvent::None,
             extra_resume_event: DispatchEvent::None,
-        };
-
-        Ok(runner)
+        }
     }
 
     /// Drives connection progress, handling received payload and queueing

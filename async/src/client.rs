@@ -21,10 +21,10 @@ pub struct SSHClient<'a> {
 }
 
 impl<'a> SSHClient<'a> {
-    pub fn new(inbuf: &'a mut [u8], outbuf: &'a mut [u8]) -> Result<Self> {
-        let runner = Runner::new_client(inbuf, outbuf)?;
+    pub fn new(inbuf: &'a mut [u8], outbuf: &'a mut [u8]) -> Self {
+        let runner = Runner::new_client(inbuf, outbuf);
         let sunset = AsyncSunset::new(runner);
-        Ok(Self { sunset })
+        Self { sunset }
     }
 
     /// Runs the session to completion.

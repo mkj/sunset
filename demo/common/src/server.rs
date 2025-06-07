@@ -69,7 +69,7 @@ async fn session(
     // SSH packets.
     let mut ssh_rxbuf = [0; 2000];
     let mut ssh_txbuf = [0; 1000];
-    let serv = SSHServer::new(&mut ssh_rxbuf, &mut ssh_txbuf)?;
+    let serv = SSHServer::new(&mut ssh_rxbuf, &mut ssh_txbuf);
 
     // Create the handler. DemoCommon is common handling (this file),
     // demo is the specific demo (std or picow).

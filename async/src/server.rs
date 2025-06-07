@@ -21,10 +21,10 @@ pub struct SSHServer<'a> {
 
 impl<'a> SSHServer<'a> {
     // May return an error if RNG fails
-    pub fn new(inbuf: &'a mut [u8], outbuf: &'a mut [u8]) -> Result<Self> {
-        let runner = Runner::new_server(inbuf, outbuf)?;
+    pub fn new(inbuf: &'a mut [u8], outbuf: &'a mut [u8]) -> Self {
+        let runner = Runner::new_server(inbuf, outbuf);
         let sunset = AsyncSunset::new(runner);
-        Ok(Self { sunset })
+        Self { sunset }
     }
 
     /// Runs the session to completion.
