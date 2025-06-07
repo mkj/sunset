@@ -179,6 +179,9 @@ impl<'a> TrafIn<'a> {
         // Used to calculate the size to return
         let mut r = buf;
 
+        trace!("fill_input {:02x?}", buf);
+        trace!("fill_input {:?}", self.state);
+
         // Fill the initial block from either Idle with input,
         // partial initial block
         if let Some(idx) = match self.state {
@@ -186,6 +189,7 @@ impl<'a> TrafIn<'a> {
             RxState::ReadInitial { idx } => Some(idx),
             _ => None,
         } {
+            trace!("fill_input idle idx {idx}");
             let need = (size_block - idx).clamp(0, r.len());
             let x;
             (x, r) = r.split_at(need);
@@ -196,6 +200,7 @@ impl<'a> TrafIn<'a> {
 
         // Have enough input now to decrypt the packet length
         if let RxState::ReadInitial { idx } = self.state {
+            trace!("fill_input readinit {idx}");
             if idx >= size_block {
                 let w = &mut self.buf[..size_block];
                 let total_len = keys.decrypt_first_block(w)?;
@@ -204,6 +209,10 @@ impl<'a> TrafIn<'a> {
                     // it were packet corruption/decryption failure
                     return Err(Error::BigPacket { size: total_len });
                 }
+                if total_len < size_block {
+                    return Err(Error::BadDecrypt);
+                }
+                trace!("fill_input set read  {idx} ex {total_len}");
                 self.state = RxState::Read { idx, expect: total_len }
             }
         }
@@ -211,6 +220,7 @@ impl<'a> TrafIn<'a> {
         // Know expected length, read until the end of the packet.
         // We have already validated that expect_len <= buf_size
         if let RxState::Read { ref mut idx, expect } = self.state {
+            trace!("expect {expect} idx {idx}");
             let need = (expect - *idx).min(r.len());
             let x;
             (x, r) = r.split_at(need);
@@ -228,6 +238,7 @@ impl<'a> TrafIn<'a> {
             let payload_len = keys.decrypt(w)?;
             self.state = RxState::InPayload { len: payload_len, seq }
         }
+        trace!("out");
 
         Ok(buf.len() - r.len())
     }
