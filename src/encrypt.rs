@@ -2,6 +2,7 @@
 
 #![cfg_attr(fuzzing, allow(dead_code))]
 #![cfg_attr(fuzzing, allow(unused_variables))]
+#![cfg_attr(feature = "fuzz-nocrypto", allow(dead_code))]
 
 #[allow(unused_imports)]
 use {
@@ -417,6 +418,7 @@ impl Keys {
         let (enc, rest) = buf.split_at_mut(len);
         let (mac, _) = rest.split_at_mut(size_integ);
 
+        #[cfg(not(feature = "fuzz-nocrypto"))]
         match self.integ_enc {
             IntegKey::ChaPoly => {}
             IntegKey::NoInteg => {}
@@ -429,6 +431,7 @@ impl Keys {
             }
         }
 
+        #[cfg(not(feature = "fuzz-nocrypto"))]
         match &mut self.enc {
             EncKey::ChaPoly(k) => k.encrypt(seq, enc, mac).trap()?,
             EncKey::Aes256Ctr(a) => {

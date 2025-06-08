@@ -70,3 +70,6 @@ pub use server::Server;
 
 // So that sshwire-derive can refer to ::sunset::sshwire
 extern crate self as sunset;
+
+#[cfg(not(fuzzing))]
+compile_error!("nocrypto branch is only for fuzzing");

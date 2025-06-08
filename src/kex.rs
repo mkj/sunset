@@ -1,5 +1,6 @@
 // TODO: for fixed_ names, remove once they're removed
 #![allow(non_upper_case_globals)]
+#![cfg_attr(feature = "fuzz-nocrypto", allow(dead_code))]
 #![cfg_attr(fuzzing, allow(dead_code))]
 #![cfg_attr(fuzzing, allow(unreachable_code))]
 #![cfg_attr(fuzzing, allow(unused_variables))]
@@ -17,6 +18,7 @@ use rand_core::{CryptoRng, OsRng, RngCore};
 use sha2::Sha256;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
+use crate::packets::Ed25519Sig;
 use crate::*;
 use encrypt::{Cipher, Integ, Keys};
 use event::{CliEventId, ServEventId};
@@ -673,10 +675,15 @@ impl SharedSecret {
 
         let k_s = Blob(hostkey.pubkey());
         trace!("sign kexreply h {}", ko.h.as_slice().hex_dump());
-        let sig = hostkey.sign(&ko.h.as_slice())?;
-        let sig: Signature = (&sig).into();
-        let sig = Blob(sig);
-        s.send(packets::KexDHReply { k_s, q_s, sig })
+        if cfg!(feature = "fuzz-nocrypto") {
+            let sig = Blob(Signature::Ed25519(Ed25519Sig { sig: BinString(&[]) }));
+            s.send(packets::KexDHReply { k_s, q_s, sig })
+        } else {
+            let sig = hostkey.sign(&ko.h.as_slice())?;
+            let sig: Signature = (&sig).into();
+            let sig = Blob(sig);
+            s.send(packets::KexDHReply { k_s, q_s, sig })
+        }
     }
 
     fn pubkey(&self) -> &[u8] {
@@ -785,11 +792,38 @@ impl core::fmt::Debug for KexCurve25519 {
     }
 }
 
+struct FuzzFakeRng;
+
+impl rand_core::RngCore for FuzzFakeRng {
+    fn next_u32(&mut self) -> u32 {
+        123
+    }
+    fn next_u64(&mut self) -> u64 {
+        self.next_u32() as u64
+    }
+    fn fill_bytes(&mut self, dest: &mut [u8]) {
+        dest.fill(8);
+    }
+
+    fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), rand_core::Error> {
+        self.fill_bytes(dest);
+        Ok(())
+    }
+}
+
+impl rand_core::CryptoRng for FuzzFakeRng {}
+
 impl KexCurve25519 {
     fn new() -> Result<Self> {
         let ours = x25519_dalek::EphemeralSecret::random_from_rng(OsRng);
-        let pubkey = x25519_dalek::PublicKey::from(&ours);
-        let pubkey = pubkey.to_bytes();
+        #[cfg(feature = "fuzz-nocrypto")]
+        let ours = x25519_dalek::EphemeralSecret::random_from_rng(FuzzFakeRng);
+        let pubkey = if cfg!(feature = "fuzz-nocrypto") {
+            [0u8; 32]
+        } else {
+            let pubkey = x25519_dalek::PublicKey::from(&ours);
+            pubkey.to_bytes()
+        };
         Ok(KexCurve25519 { ours: Some(ours), pubkey })
     }
 
@@ -810,7 +844,12 @@ impl KexCurve25519 {
         };
         let theirs: [u8; 32] = theirs.try_into().map_err(|_| Error::BadKex)?;
         let theirs = theirs.into();
-        let shsec = kex.ours.take().trap()?.diffie_hellman(&theirs);
+        let ours = kex.ours.take().trap()?;
+
+        #[cfg(feature = "fuzz-nocrypto")]
+        return Ok(KexOutput::new(&[0; 32], algos, kex_hash));
+
+        let shsec = ours.diffie_hellman(&theirs);
         Ok(KexOutput::new(shsec.as_bytes(), algos, kex_hash))
     }
 }

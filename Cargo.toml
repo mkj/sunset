@@ -81,6 +81,8 @@ arbitrary = ["dep:arbitrary", "std"]
 # See config.rs for details
 larger = []
 
+fuzz-nocrypto = []
+
 [dev-dependencies]
 # examples want std::error
 snafu = { version = "0.8", default-features = true }
