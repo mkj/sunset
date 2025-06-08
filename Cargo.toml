@@ -101,6 +101,9 @@ simplelog = { version = "0.12", features = ["test"] }
 # embassy-executor = { path = "/home/matt/3rd/rs/embassy-stable-sunset/embassy-executor" }
 # embassy-executor-macros = { path = "/home/matt/3rd/rs/embassy-stable-sunset/embassy-executor-macros" }
 
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(fuzzing)'] }
+
 # these are mostly applicable to picow, but can't hurt generally
 [profile.dev]
 debug = 2

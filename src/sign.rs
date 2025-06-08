@@ -1,3 +1,7 @@
+#![cfg_attr(fuzzing, allow(dead_code))]
+#![cfg_attr(fuzzing, allow(unreachable_code))]
+#![cfg_attr(fuzzing, allow(unused_variables))]
+
 #[allow(unused_imports)]
 use {
     crate::error::*,
@@ -72,6 +76,22 @@ impl SigType {
         }
     }
 
+    #[cfg(fuzzing)]
+    fn fuzz_fake_verify(&self, sig: &Signature) -> Result<()> {
+        let b = match &sig {
+            Signature::Ed25519(e) => e.sig.0,
+            #[cfg(feature = "rsa")]
+            Signature::RSA(e) => e.sig.0,
+            Signature::Unknown(_) => panic!(),
+        };
+
+        if b.get(..3) == Some(b"bad") {
+            Err(Error::BadSig)
+        } else {
+            Ok(())
+        }
+    }
+
     /// Returns `Ok(())` on success
     pub fn verify(
         &self,
@@ -94,7 +114,7 @@ impl SigType {
             return Err(Error::BadSig);
         }
 
-        match (self, pubkey, sig) {
+        let ret = match (self, pubkey, sig) {
             (SigType::Ed25519, PubKey::Ed25519(k), Signature::Ed25519(s)) => {
                 Self::verify_ed25519(k, msg, s)
             }
@@ -112,7 +132,12 @@ impl SigType {
                 );
                 Err(Error::BadSig)
             }
-        }
+        };
+
+        #[cfg(fuzzing)]
+        return self.fuzz_fake_verify(sig);
+
+        ret
     }
 
     fn verify_ed25519(
