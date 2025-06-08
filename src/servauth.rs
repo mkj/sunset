@@ -81,6 +81,12 @@ impl ServAuth {
         }
         debug_assert!(self.username.is_some());
 
+        if self.authed {
+            trace!("Success after already authed");
+            s.send(packets::UserauthSuccess {})?;
+            return Ok(DispatchEvent::None);
+        }
+
         let ev = match p.method {
             AuthMethod::Password(_) if self.method_password => {
                 DispatchEvent::ServEvent(ServEventId::PasswordAuth)
