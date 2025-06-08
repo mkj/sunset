@@ -364,7 +364,7 @@ impl<CS: CliServ> Conn<CS> {
                 Ok(Dispatched::default())
             }
             Err(e) => {
-                error!("Error decoding packet: {e}");
+                debug!("Error decoding packet: {e}");
                 Err(e)
             }
         }
@@ -408,8 +408,8 @@ impl<CS: CliServ> Conn<CS> {
         };
 
         if r.is_err() {
-            error!("Received unexpected packet {}", p.message_num() as u8);
-            debug!("state is {:?}", self.state);
+            debug!("Received unexpected packet {}", p.message_num() as u8);
+            trace!("state is {:?}", self.state);
         }
         r
     }
