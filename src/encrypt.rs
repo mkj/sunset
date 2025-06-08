@@ -1,5 +1,8 @@
 //! Handles encryption/decryption and framing a payload in a SSH packet.
 
+#![cfg_attr(fuzzing, allow(dead_code))]
+#![cfg_attr(fuzzing, allow(unused_variables))]
+
 #[allow(unused_imports)]
 use {
     crate::error::{Error, Result, TrapBug},
@@ -261,6 +264,10 @@ impl Keys {
             return Err(Error::bug());
         }
 
+        #[cfg(fuzzing)]
+        let len = u32::from_be_bytes(buf[..SSH_LENGTH_SIZE].try_into().unwrap());
+
+        #[cfg(not(fuzzing))]
         let len = match &mut self.dec {
             DecKey::ChaPoly(k) => k.packet_length(seq, buf).trap()?,
             DecKey::Aes256Ctr(a) => {
@@ -310,6 +317,7 @@ impl Keys {
 
         // ETM modes would check integrity here.
 
+        #[cfg(not(fuzzing))]
         match &mut self.dec {
             DecKey::ChaPoly(k) => {
                 k.decrypt(seq, data, mac).map_err(|_| Error::BadDecrypt)?;
@@ -321,6 +329,7 @@ impl Keys {
             DecKey::NoCipher => {}
         }
 
+        #[cfg(not(fuzzing))]
         match self.integ_dec {
             IntegKey::ChaPoly => {}
             IntegKey::NoInteg => {}

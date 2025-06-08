@@ -1,5 +1,9 @@
 // TODO: for fixed_ names, remove once they're removed
 #![allow(non_upper_case_globals)]
+#![cfg_attr(fuzzing, allow(dead_code))]
+#![cfg_attr(fuzzing, allow(unreachable_code))]
+#![cfg_attr(fuzzing, allow(unused_variables))]
+
 #[allow(unused_imports)]
 use {
     crate::error::{Error, Result, TrapBug},

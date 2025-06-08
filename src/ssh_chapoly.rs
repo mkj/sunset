@@ -1,3 +1,5 @@
+#![cfg_attr(fuzzing, allow(dead_code))]
+
 #[allow(unused_imports)]
 use {
     crate::error::*,
