@@ -27,6 +27,7 @@ pub(crate) fn write_version(buf: &mut [u8]) -> Result<usize> {
 }
 
 /// Parses and stores the remove SSH version string
+#[derive(Debug)]
 pub struct RemoteVersion {
     storage: [u8; MAX_REMOTE_VERSION_LEN],
     /// Parse state
@@ -126,12 +127,12 @@ impl RemoteVersion {
                     CR => {
                         let (s, _) = self.storage.split_at(*pos);
                         if !s.is_ascii() {
-                            return Err(Error::msg("bad remote version"));
+                            return Err(Error::NotSSH);
                         }
                         self.st = VersPars::HaveCR(*pos);
                     }
                     LF => {
-                        return Err(Error::msg("bad remote version"));
+                        return Err(Error::NotSSH);
                     }
                     _ => {
                         let w = self
@@ -145,7 +146,7 @@ impl RemoteVersion {
                 VersPars::HaveCR(len) => {
                     match b {
                         LF => self.st = VersPars::Done(len),
-                        _ => return Err(Error::msg("bad remote version")),
+                        _ => return Err(Error::NotSSH),
                     };
                 }
 

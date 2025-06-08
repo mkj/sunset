@@ -58,7 +58,7 @@ pub enum Error {
     /// Received a key with invalid structure, or too large.
     BadKeyFormat,
 
-    /// Remote peer isn't SSH
+    /// Remote peer isn't SSH 2.0
     NotSSH,
 
     /// Bad key format
