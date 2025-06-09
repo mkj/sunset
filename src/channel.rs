@@ -287,12 +287,22 @@ impl Channels {
         // Check validity before reserving a channel
         match &p.ty {
             ChannelOpenType::Unknown(u) => {
-                debug!("Rejecting unknown channel type '{u}'");
+                error!("Rejecting unknown channel type '{u}'");
                 return Err(ChanFail::SSH_OPEN_UNKNOWN_CHANNEL_TYPE.into());
             }
             ChannelOpenType::Session if self.is_client => {
                 trace!("dispatch not server");
                 return Err(error::SSHProto.build().into());
+            }
+            ChannelOpenType::ForwardedTcpip(_) => {
+                // TODO implement it
+                debug!("Rejecting forwarded tcp");
+                return Err(ChanFail::SSH_OPEN_UNKNOWN_CHANNEL_TYPE.into());
+            }
+            ChannelOpenType::DirectTcpip(_) => {
+                // TODO implement it
+                debug!("Rejecting direct tcp");
+                return Err(ChanFail::SSH_OPEN_UNKNOWN_CHANNEL_TYPE.into());
             }
             _ => (),
         }
@@ -310,10 +320,10 @@ impl Channels {
             }
             // ChannelOpenType::ForwardedTcpip(t) => b.open_tcp_forwarded(handle, t),
             // ChannelOpenType::DirectTcpip(t) => b.open_tcp_direct(handle, t),
-            ChannelOpenType::Unknown(_) => {
+            _ => {
+                // Checked above
                 unreachable!()
             }
-            _ => todo!(),
         }
     }
 
