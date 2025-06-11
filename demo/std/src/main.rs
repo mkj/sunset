@@ -92,7 +92,7 @@ impl DemoServer for StdDemo {
                 match ev {
                     ServEvent::SessionShell(a) => {
                         if let Some(ch) = common.sess.take() {
-                            debug_assert!(ch.num() == a.channel()?);
+                            debug_assert!(ch.num() == a.channel());
                             a.succeed()?;
                             let _ = chan_pipe.try_send(ch);
                         } else {

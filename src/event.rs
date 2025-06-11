@@ -508,23 +508,23 @@ impl Drop for ServFirstAuth<'_, '_> {
 pub struct ServOpenSession<'g, 'a> {
     runner: &'g mut ServRunner<'a>,
     done: bool,
-    ch: ChanNum,
+    num: ChanNum,
 }
 
 impl<'g, 'a> ServOpenSession<'g, 'a> {
-    fn new(runner: &'g mut ServRunner<'a>, ch: ChanNum) -> Self {
-        Self { runner, done: false, ch }
+    fn new(runner: &'g mut ServRunner<'a>, num: ChanNum) -> Self {
+        Self { runner, done: false, num }
     }
     pub fn accept(mut self) -> Result<ChanHandle> {
         self.done = true;
-        self.runner.resume_chanopen(self.ch, None)?;
-        Ok(ChanHandle(self.ch))
+        self.runner.resume_chanopen(self.num, None)?;
+        Ok(ChanHandle(self.num))
     }
 
     /// Does not need to be called explicitly, also occurs on drop without `accept()`
     pub fn reject(mut self, reason: ChanFail) -> Result<()> {
         self.done = true;
-        self.runner.resume_chanopen(self.ch, Some(reason))
+        self.runner.resume_chanopen(self.num, Some(reason))
     }
 }
 
@@ -533,7 +533,7 @@ impl Drop for ServOpenSession<'_, '_> {
     fn drop(&mut self) {
         if !self.done {
             if let Err(e) = self.runner.resume_chanopen(
-                self.ch,
+                self.num,
                 Some(ChanFail::SSH_OPEN_ADMINISTRATIVELY_PROHIBITED),
             ) {
                 trace!("Error for chanopen: {e}")
@@ -544,12 +544,13 @@ impl Drop for ServOpenSession<'_, '_> {
 
 pub struct ServShellRequest<'g, 'a> {
     runner: &'g mut Runner<'a, Server>,
+    num: ChanNum,
     done: bool,
 }
 
 impl<'g, 'a> ServShellRequest<'g, 'a> {
-    fn new(runner: &'g mut Runner<'a, Server>) -> Self {
-        Self { runner, done: false }
+    fn new(runner: &'g mut Runner<'a, Server>, num: ChanNum) -> Self {
+        Self { runner, num, done: false }
     }
     /// Indicate that the request succeeded.
     ///
@@ -574,8 +575,8 @@ impl<'g, 'a> ServShellRequest<'g, 'a> {
     ///
     /// This will correspond to a `ChanHandle::num()`
     /// from a previous [`ServOpenSession`] event.
-    pub fn channel(&self) -> Result<ChanNum> {
-        self.runner.fetch_reqchannel()
+    pub fn channel(&self) -> ChanNum {
+        self.num
     }
 
     // TODO: does the app care about wantreply?
@@ -594,12 +595,13 @@ impl Drop for ServShellRequest<'_, '_> {
 
 pub struct ServExecRequest<'g, 'a> {
     runner: &'g mut Runner<'a, Server>,
+    num: ChanNum,
     done: bool,
 }
 
 impl<'g, 'a> ServExecRequest<'g, 'a> {
-    fn new(runner: &'g mut Runner<'a, Server>) -> Self {
-        Self { runner, done: false }
+    fn new(runner: &'g mut Runner<'a, Server>, num: ChanNum) -> Self {
+        Self { runner, num, done: false }
     }
 
     /// Retrieve the command presented by the client.
@@ -634,8 +636,8 @@ impl<'g, 'a> ServExecRequest<'g, 'a> {
     ///
     /// This will correspond to a `ChanHandle::num()`
     /// from a previous [`ServOpenSession`] event.
-    pub fn channel(&self) -> Result<ChanNum> {
-        self.runner.fetch_reqchannel()
+    pub fn channel(&self) -> ChanNum {
+        self.num
     }
 
     // TODO: does the app care about wantreply?
@@ -657,12 +659,13 @@ impl Drop for ServExecRequest<'_, '_> {
 /// Placeholder, doesn't yet return the PTY information.
 pub struct ServPtyRequest<'g, 'a> {
     runner: &'g mut Runner<'a, Server>,
+    num: ChanNum,
     done: bool,
 }
 
 impl<'g, 'a> ServPtyRequest<'g, 'a> {
-    fn new(runner: &'g mut Runner<'a, Server>) -> Self {
-        Self { runner, done: false }
+    fn new(runner: &'g mut Runner<'a, Server>, num: ChanNum) -> Self {
+        Self { runner, num, done: false }
     }
 
     // TODO return PTY information to the caller
@@ -690,8 +693,8 @@ impl<'g, 'a> ServPtyRequest<'g, 'a> {
     ///
     /// This will correspond to a `ChanHandle::num()`
     /// from a previous [`ServOpenSession`] event.
-    pub fn channel(&self) -> Result<ChanNum> {
-        self.runner.fetch_reqchannel()
+    pub fn channel(&self) -> ChanNum {
+        self.num
     }
 
     // TODO: does the app care about wantreply?
@@ -719,11 +722,17 @@ pub(crate) enum ServEventId {
     },
     FirstAuth,
     OpenSession {
-        ch: ChanNum,
+        num: ChanNum,
     },
-    SessionShell,
-    SessionExec,
-    SessionPty,
+    SessionShell {
+        num: ChanNum,
+    },
+    SessionExec {
+        num: ChanNum,
+    },
+    SessionPty {
+        num: ChanNum,
+    },
     #[allow(unused)]
     Defunct,
     // TODO:
@@ -757,21 +766,21 @@ impl ServEventId {
                 debug_assert!(matches!(p, Some(Packet::UserauthRequest(_))));
                 Ok(ServEvent::FirstAuth(ServFirstAuth::new(runner)))
             }
-            Self::OpenSession { ch } => {
+            Self::OpenSession { num } => {
                 debug_assert!(matches!(p, Some(Packet::ChannelOpen(_))));
-                Ok(ServEvent::OpenSession(ServOpenSession::new(runner, ch)))
+                Ok(ServEvent::OpenSession(ServOpenSession::new(runner, num)))
             }
-            Self::SessionShell => {
+            Self::SessionShell { num } => {
                 debug_assert!(matches!(p, Some(Packet::ChannelRequest(_))));
-                Ok(ServEvent::SessionShell(ServShellRequest::new(runner)))
+                Ok(ServEvent::SessionShell(ServShellRequest::new(runner, num)))
             }
-            Self::SessionExec => {
+            Self::SessionExec { num } => {
                 debug_assert!(matches!(p, Some(Packet::ChannelRequest(_))));
-                Ok(ServEvent::SessionExec(ServExecRequest::new(runner)))
+                Ok(ServEvent::SessionExec(ServExecRequest::new(runner, num)))
             }
-            Self::SessionPty => {
+            Self::SessionPty { num } => {
                 debug_assert!(matches!(p, Some(Packet::ChannelRequest(_))));
-                Ok(ServEvent::SessionPty(ServPtyRequest::new(runner)))
+                Ok(ServEvent::SessionPty(ServPtyRequest::new(runner, num)))
             }
             Self::Defunct => Ok(ServEvent::Defunct),
         }
@@ -787,9 +796,9 @@ impl ServEventId {
             | Self::PasswordAuth
             | Self::PubkeyAuth { .. }
             | Self::OpenSession { .. }
-            | Self::SessionShell
-            | Self::SessionExec
-            | Self::SessionPty => true,
+            | Self::SessionShell { .. }
+            | Self::SessionExec { .. }
+            | Self::SessionPty { .. } => true,
         }
     }
 }
