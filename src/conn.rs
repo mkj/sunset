@@ -344,8 +344,6 @@ impl<CS: CliServ> Conn<CS> {
         s: &mut TrafSend,
     ) -> Result<Dispatched, Error> {
         // Parse the packet
-        trace!("Received\n{:#?}", payload.hex_dump());
-
         match self.packet(payload) {
             Ok(p) => {
                 let num = p.message_num() as u8;
@@ -365,6 +363,7 @@ impl<CS: CliServ> Conn<CS> {
             }
             Err(e) => {
                 debug!("Error decoding packet: {e}");
+                trace!("Input:\n{:#?}", payload.hex_dump());
                 Err(e)
             }
         }
