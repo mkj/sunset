@@ -128,10 +128,15 @@ impl ServAuth {
     ) -> Result<DispatchEvent> {
         // Extract the signature separately. The message for the signature
         // includes the auth packet without the signature part.
-        let sig = match &mut p.method {
-            AuthMethod::PubKey(m) => m.sig.take(),
+        let (key, sig) = match &mut p.method {
+            AuthMethod::PubKey(m) => (&m.pubkey.0, m.sig.take()),
             _ => return Err(Error::bug()),
         };
+
+        if let PubKey::Unknown(u) = key {
+            debug!("Unknown pubkey type {u}");
+            return Ok(DispatchEvent::None);
+        }
 
         if let Some(ref sig) = sig {
             // Real signature, validate it.
