@@ -714,18 +714,13 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
     }
 
     fn check_chanreq(prev_event: &DispatchEvent) {
-        debug_assert!(
-            matches!(
-                prev_event,
-                DispatchEvent::ServEvent(ServEventId::SessionShell { .. })
-            ) || matches!(
-                prev_event,
-                DispatchEvent::ServEvent(ServEventId::SessionExec { .. })
-            ) || matches!(
-                prev_event,
-                DispatchEvent::ServEvent(ServEventId::SessionPty { .. })
-            )
-        );
+        debug_assert!(matches!(
+            prev_event,
+            DispatchEvent::ServEvent(ServEventId::SessionShell { .. })
+                | DispatchEvent::ServEvent(ServEventId::SessionExec { .. })
+                | DispatchEvent::ServEvent(ServEventId::SessionSubsystem { .. })
+                | DispatchEvent::ServEvent(ServEventId::SessionPty { .. })
+        ));
     }
 
     pub(crate) fn resume_chanreq(&mut self, success: bool) -> Result<()> {

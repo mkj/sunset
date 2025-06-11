@@ -118,6 +118,10 @@ impl DemoCommon {
             ServEvent::PubkeyAuth(a) => self.handle_pubkey(a),
             ServEvent::OpenSession(a) => self.open_session(a),
             ServEvent::SessionPty(a) => a.succeed(),
+            ServEvent::SessionSubsystem(a) => {
+                info!("Ignored request for subsystem '{}'", a.command()?);
+                Ok(())
+            }
             ServEvent::Defunct
             | ServEvent::SessionShell(_)
             | ServEvent::SessionExec(_) => {
