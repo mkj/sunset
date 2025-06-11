@@ -368,6 +368,11 @@ impl Channels {
                 match ch.state {
                     ChanState::Opening => {
                         debug_assert!(ch.send.is_none());
+
+                        if ch.app_done {
+                            return Ok(DispatchEvent::None);
+                        }
+
                         ch.send = Some(ChanDir {
                             num: p.sender_num,
                             max_packet: p.max_packet as usize,
@@ -411,7 +416,10 @@ impl Channels {
                 trace!("new window {}", send.window);
             }
             Packet::ChannelData(p) => {
-                if let Some(len) = NonZeroUsize::new(p.data.0.len()) {
+                let ch = self.get(ChanNum(p.num))?;
+                if ch.app_done {
+                    trace!("Ignoring data for done channel");
+                } else if let Some(len) = NonZeroUsize::new(p.data.0.len()) {
                     // TODO check we are expecting input
                     let di =
                         DataIn { num: ChanNum(p.num), dt: ChanData::Normal, len };
@@ -421,10 +429,14 @@ impl Channels {
                 }
             }
             Packet::ChannelDataExt(p) => {
-                if !self.is_client || p.code != sshnames::SSH_EXTENDED_DATA_STDERR {
+                let is_client = self.is_client;
+                let ch = self.get_mut(ChanNum(p.num))?;
+                if ch.app_done {
+                    trace!("Ignoring data for done channel");
+                } else if !is_client || p.code != sshnames::SSH_EXTENDED_DATA_STDERR
+                {
                     // Discard the data, sunset can't handle this
                     debug!("Ignoring unexpected dt data, code {}", p.code);
-                    let ch = self.get_mut(ChanNum(p.num))?;
                     ch.finished_input(p.data.0.len());
                 } else {
                     if let Some(len) = NonZeroUsize::new(p.data.0.len()) {
@@ -749,10 +761,12 @@ impl Channel {
         s: &mut TrafSend,
         is_client: bool,
     ) -> DispatchEvent {
-        let r = if is_client {
-            self.dispatch_client_request(p, s)
-        } else {
-            self.dispatch_server_request(p, s)
+        let r = match (is_client, self.app_done) {
+            // Reject requests if the application has closed
+            // the channel. ChannelEOF is arbitrary.
+            (_, true) => Err(Error::ChannelEOF),
+            (true, _) => self.dispatch_client_request(p, s),
+            (false, _) => self.dispatch_server_request(p, s),
         };
 
         r.unwrap_or_else(|_| {
