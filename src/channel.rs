@@ -6,6 +6,7 @@ use {
     log::{debug, error, info, log, trace, warn},
 };
 
+use core::num::NonZeroUsize;
 use core::{marker::PhantomData, mem};
 
 use heapless::{Deque, String, Vec};
@@ -410,14 +411,14 @@ impl Channels {
                 trace!("new window {}", send.window);
             }
             Packet::ChannelData(p) => {
-                self.get(ChanNum(p.num))?;
-                // TODO check we are expecting input
-                let di = DataIn {
-                    num: ChanNum(p.num),
-                    dt: ChanData::Normal,
-                    len: p.data.0.len(),
-                };
-                ev = DispatchEvent::Data(di);
+                if let Some(len) = NonZeroUsize::new(p.data.0.len()) {
+                    // TODO check we are expecting input
+                    let di =
+                        DataIn { num: ChanNum(p.num), dt: ChanData::Normal, len };
+                    ev = DispatchEvent::Data(di);
+                } else {
+                    trace!("Zero length channeldata");
+                }
             }
             Packet::ChannelDataExt(p) => {
                 if !self.is_client || p.code != sshnames::SSH_EXTENDED_DATA_STDERR {
@@ -426,13 +427,17 @@ impl Channels {
                     let ch = self.get_mut(ChanNum(p.num))?;
                     ch.finished_input(p.data.0.len());
                 } else {
-                    // TODO check we are expecting input and dt is valid.
-                    let di = DataIn {
-                        num: ChanNum(p.num),
-                        dt: ChanData::Stderr,
-                        len: p.data.0.len(),
-                    };
-                    ev = DispatchEvent::Data(di);
+                    if let Some(len) = NonZeroUsize::new(p.data.0.len()) {
+                        // TODO check we are expecting input and dt is valid.
+                        let di = DataIn {
+                            num: ChanNum(p.num),
+                            dt: ChanData::Stderr,
+                            len,
+                        };
+                        ev = DispatchEvent::Data(di);
+                    } else {
+                        trace!("Zero length channeldataext");
+                    }
                 }
             }
             Packet::ChannelEof(p) => {
@@ -894,7 +899,8 @@ impl Channel {
 pub(crate) struct DataIn {
     pub num: ChanNum,
     pub dt: ChanData,
-    pub len: usize,
+    // Zero length data does nothing.
+    pub len: NonZeroUsize,
 }
 
 /// The result of a channel open request.

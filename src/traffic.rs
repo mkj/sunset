@@ -264,7 +264,7 @@ impl<'a> TrafIn<'a> {
                     chan: di.num,
                     dt: di.dt,
                     idx,
-                    len: idx + di.len,
+                    len: idx + di.len.get(),
                 };
                 Ok(())
             }
@@ -284,7 +284,7 @@ impl<'a> TrafIn<'a> {
             RxState::InChannelData { chan: c, dt: e, ref mut idx, len }
                 if (c, e) == (chan, dt) =>
             {
-                debug_assert!(len >= *idx);
+                debug_assert!(len > *idx);
                 let wlen = (len - *idx).min(buf.len());
                 buf[..wlen].copy_from_slice(&self.buf[*idx..*idx + wlen]);
                 *idx += wlen;
@@ -311,7 +311,7 @@ impl<'a> TrafIn<'a> {
             RxState::InChannelData { chan: c, dt, ref mut idx, len }
                 if c == chan =>
             {
-                debug_assert!(len >= *idx);
+                debug_assert!(len > *idx);
                 let wlen = (len - *idx).min(buf.len());
                 buf[..wlen].copy_from_slice(&self.buf[*idx..*idx + wlen]);
                 // info!("idx {} += wlen {} = {}", *idx, wlen, *idx+wlen);
