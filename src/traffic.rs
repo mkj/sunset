@@ -179,7 +179,6 @@ impl<'a> TrafIn<'a> {
         // Used to calculate the size to return
         let mut r = buf;
 
-        trace!("fill_input {:02x?}", buf);
         trace!("fill_input {:?}", self.state);
 
         // Fill the initial block from either Idle with input,
