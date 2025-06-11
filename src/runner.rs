@@ -702,26 +702,26 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
 
     pub(crate) fn resume_chanopen(
         &mut self,
-        ch: ChanNum,
+        num: ChanNum,
         failure: Option<ChanFail>,
     ) -> Result<()> {
-        self.resume(&DispatchEvent::ServEvent(ServEventId::OpenSession { ch }));
+        self.resume(&DispatchEvent::ServEvent(ServEventId::OpenSession { num }));
         self.traf_in.done_payload();
         let mut s = self.traf_out.sender(&mut self.keys);
-        self.conn.channels.resume_open(ch, failure, &mut s)
+        self.conn.channels.resume_open(num, failure, &mut s)
     }
 
     fn check_chanreq(prev_event: &DispatchEvent) {
         debug_assert!(
             matches!(
                 prev_event,
-                DispatchEvent::ServEvent(ServEventId::SessionShell)
+                DispatchEvent::ServEvent(ServEventId::SessionShell { .. })
             ) || matches!(
                 prev_event,
-                DispatchEvent::ServEvent(ServEventId::SessionExec)
+                DispatchEvent::ServEvent(ServEventId::SessionExec { .. })
             ) || matches!(
                 prev_event,
-                DispatchEvent::ServEvent(ServEventId::SessionPty)
+                DispatchEvent::ServEvent(ServEventId::SessionPty { .. })
             )
         );
     }
@@ -739,17 +739,8 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
         r
     }
 
-    // Returns the channel of a currently pending request
-    pub(crate) fn fetch_reqchannel(&self) -> Result<ChanNum> {
-        Self::check_chanreq(&self.resume_event);
-        let (payload, _seq) = self.traf_in.payload().trap()?;
-
-        let p = self.conn.packet(payload)?;
-        self.conn.channels.fetch_reqchannel(&p)
-    }
-
     pub(crate) fn fetch_servcommand(&self) -> Result<TextString> {
-        self.check_resume(&DispatchEvent::ServEvent(ServEventId::SessionExec));
+        Self::check_chanreq(&self.resume_event);
         let (payload, _seq) = self.traf_in.payload().trap()?;
         let p = self.conn.packet(payload)?;
         self.conn.channels.fetch_servcommand(&p)

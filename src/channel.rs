@@ -315,7 +315,7 @@ impl Channels {
         match &p.ty {
             ChannelOpenType::Session => {
                 Ok(DispatchEvent::ServEvent(ServEventId::OpenSession {
-                    ch: ch.num(),
+                    num: ch.num(),
                 }))
             }
             // ChannelOpenType::ForwardedTcpip(t) => b.open_tcp_forwarded(handle, t),
@@ -503,14 +503,6 @@ impl Channels {
             } else {
                 Ok(())
             }
-        } else {
-            Err(Error::bug())
-        }
-    }
-
-    pub fn fetch_reqchannel(&self, p: &Packet) -> Result<ChanNum> {
-        if let Packet::ChannelRequest(r) = p {
-            Ok(ChanNum(r.num))
         } else {
             Err(Error::bug())
         }
@@ -779,15 +771,16 @@ impl Channel {
             return Err(Error::SSHProtoUnsupported);
         }
 
+        let num = self.num();
         match &p.req {
             ChannelReqType::Shell => {
-                Ok(DispatchEvent::ServEvent(ServEventId::SessionShell))
+                Ok(DispatchEvent::ServEvent(ServEventId::SessionShell { num }))
             }
             ChannelReqType::Exec(_) => {
-                Ok(DispatchEvent::ServEvent(ServEventId::SessionExec))
+                Ok(DispatchEvent::ServEvent(ServEventId::SessionExec { num }))
             }
             ChannelReqType::Pty(_) => {
-                Ok(DispatchEvent::ServEvent(ServEventId::SessionPty))
+                Ok(DispatchEvent::ServEvent(ServEventId::SessionPty { num }))
             }
             _ => {
                 if let ChannelReqType::Unknown(u) = &p.req {
