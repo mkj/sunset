@@ -526,14 +526,17 @@ impl Channels {
     }
 
     pub fn fetch_servcommand<'p>(&self, p: &Packet<'p>) -> Result<TextString<'p>> {
-        if let Packet::ChannelRequest(ChannelRequest {
-            req: ChannelReqType::Exec(packets::Exec { command }),
-            ..
-        }) = p
-        {
-            Ok(command.clone())
-        } else {
-            Err(Error::bug())
+        match p {
+            Packet::ChannelRequest(ChannelRequest {
+                req: ChannelReqType::Exec(packets::Exec { command }),
+                ..
+            })
+            | Packet::ChannelRequest(ChannelRequest {
+                req:
+                    ChannelReqType::Subsystem(packets::Subsystem { subsystem: command }),
+                ..
+            }) => Ok(command.clone()),
+            _ => Err(Error::bug()),
         }
     }
 }
@@ -798,6 +801,9 @@ impl Channel {
             }
             ChannelReqType::Exec(_) => {
                 Ok(DispatchEvent::ServEvent(ServEventId::SessionExec { num }))
+            }
+            ChannelReqType::Subsystem(_) => {
+                Ok(DispatchEvent::ServEvent(ServEventId::SessionSubsystem { num }))
             }
             ChannelReqType::Pty(_) => {
                 Ok(DispatchEvent::ServEvent(ServEventId::SessionPty { num }))

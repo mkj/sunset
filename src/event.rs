@@ -291,9 +291,11 @@ pub enum ServEvent<'g, 'a> {
     /// Client requested to run a shell on a channel.
     SessionShell(ServShellRequest<'g, 'a>),
     /// Client requested to execute a command on a channel.
-    ///
-    /// TODO the actual command is missing here!
     SessionExec(ServExecRequest<'g, 'a>),
+    /// Client requested to execute a subsystem on a channel.
+    // Exec and Subsystem are similar enough they can use
+    // the same ServExecRequest.
+    SessionSubsystem(ServExecRequest<'g, 'a>),
     /// Client requested a PTY for the channel.
     ///
     /// TODO details
@@ -321,6 +323,7 @@ impl Debug for ServEvent<'_, '_> {
             Self::OpenSession(_) => "OpenSession",
             Self::SessionShell(_) => "SessionShell",
             Self::SessionExec(_) => "SessionExec",
+            Self::SessionSubsystem(_) => "SessionSubsystem",
             Self::SessionPty(_) => "SessionPty",
             Self::Defunct => "Defunct",
             Self::PollAgain => "PollAgain",
@@ -593,6 +596,7 @@ impl Drop for ServShellRequest<'_, '_> {
     }
 }
 
+/// A channel `exec` or `subsystem` request.
 pub struct ServExecRequest<'g, 'a> {
     runner: &'g mut Runner<'a, Server>,
     num: ChanNum,
@@ -730,6 +734,9 @@ pub(crate) enum ServEventId {
     SessionExec {
         num: ChanNum,
     },
+    SessionSubsystem {
+        num: ChanNum,
+    },
     SessionPty {
         num: ChanNum,
     },
@@ -778,6 +785,10 @@ impl ServEventId {
                 debug_assert!(matches!(p, Some(Packet::ChannelRequest(_))));
                 Ok(ServEvent::SessionExec(ServExecRequest::new(runner, num)))
             }
+            Self::SessionSubsystem { num } => {
+                debug_assert!(matches!(p, Some(Packet::ChannelRequest(_))));
+                Ok(ServEvent::SessionSubsystem(ServExecRequest::new(runner, num)))
+            }
             Self::SessionPty { num } => {
                 debug_assert!(matches!(p, Some(Packet::ChannelRequest(_))));
                 Ok(ServEvent::SessionPty(ServPtyRequest::new(runner, num)))
@@ -798,6 +809,7 @@ impl ServEventId {
             | Self::OpenSession { .. }
             | Self::SessionShell { .. }
             | Self::SessionExec { .. }
+            | Self::SessionSubsystem { .. }
             | Self::SessionPty { .. } => true,
         }
     }
