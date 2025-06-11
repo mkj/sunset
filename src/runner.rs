@@ -460,6 +460,8 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
     /// failing to call this may result in running out of channels.
     pub fn channel_done(&mut self, chan: ChanHandle) -> Result<()> {
         self.conn.channels.done(chan.0)?;
+        // Prevent giving any already-received data for this channel.
+        self.traf_in.discard_read_channel(chan.0);
         self.wake();
         Ok(())
     }
