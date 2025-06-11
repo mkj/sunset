@@ -177,7 +177,7 @@ impl Error {
 
     /// Like [`bug()`](Error::bug) but with a message
     ///
-    /// The message can be used instead of a code comment, is logged at `debug` level.
+    /// The message can be used instead of a code comment, is logged at `trace` level.
     #[cold]
     pub fn bug_fmt(args: Arguments) -> Error {
         // Easier to track the source of errors in development,
