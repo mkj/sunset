@@ -526,7 +526,7 @@ impl Channels {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub enum ChanType {
     Session,
     Tcp,
@@ -672,6 +672,7 @@ enum ChanState {
     PendingDone,
 }
 
+#[derive(Debug)]
 pub(crate) struct Channel {
     ty: ChanType,
     state: ChanState,
