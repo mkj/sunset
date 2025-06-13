@@ -65,7 +65,8 @@ embedded-io = { version = "0.6", optional = true }
 pretty-hex = { version = "0.4", default-features = false }
 
 [features]
-std = ["snafu/std", "snafu/backtrace", "ssh-key/alloc", "larger"]
+std = ["snafu/std", "ssh-key/alloc", "larger"]
+backtrace = ["snafu/backtrace"]
 rsa = ["dep:rsa", "ssh-key/rsa"]
 # allows conversion to/from OpenSSH key formats
 openssh-key = ["ssh-key"]
