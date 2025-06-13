@@ -60,6 +60,13 @@ impl<'de: 'a, 'a> SSHDecode<'de> for NameList<'a> {
     }
 }
 
+#[cfg(feature = "arbitrary")]
+impl<'arb: 'a, 'a> arbitrary::Arbitrary<'arb> for NameList<'a> {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'arb>) -> arbitrary::Result<Self> {
+        Self::single(u.arbitrary()?).map_err(|_| arbitrary::Error::IncorrectFormat)
+    }
+}
+
 /// Serialize the list of names with comma separators
 impl SSHEncode for &LocalNames {
     fn enc(&self, s: &mut dyn SSHSink) -> WireResult<()> {

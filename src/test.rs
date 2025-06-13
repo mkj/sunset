@@ -35,7 +35,9 @@ mod tests {
     #[test]
     fn roundtrip_kexinit() {
         let k = KexInit {
-            cookie: &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
+            cookie: KexCookie([
+                1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+            ]),
             kex: "kex".try_into().unwrap(),
             hostsig: "hostkey,another".try_into().unwrap(),
             cipher_c2s: "chacha20-poly1305@openssh.com,aes128-ctr"

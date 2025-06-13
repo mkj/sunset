@@ -13,6 +13,8 @@ use {
 use core::fmt;
 use core::fmt::{Debug, Display};
 
+#[cfg(feature = "arbitrary")]
+use arbitrary::Arbitrary;
 use heapless::String;
 use pretty_hex::PrettyHex;
 
@@ -33,8 +35,9 @@ use rsa::traits::PublicKeyParts;
 // This is mostly done with `#[sshwire(...)]` attributes.
 
 #[derive(Debug, SSHEncode, SSHDecode)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct KexInit<'a> {
-    pub cookie: &'a [u8; 16],
+    pub cookie: KexCookie,
     pub kex: NameList<'a>,
     /// A list of signature algorithms
     ///
@@ -53,16 +56,24 @@ pub struct KexInit<'a> {
     pub reserved: u32,
 }
 
+/// Cookie for a [`KexInit`]
+#[derive(Debug, SSHEncode, SSHDecode, Clone)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
+pub struct KexCookie(pub [u8; 16]);
+
 #[derive(Debug, SSHEncode, SSHDecode)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct NewKeys {}
 
 #[derive(Debug, SSHEncode, SSHDecode)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct Ignore<'a> {
     pub data: BinString<'a>,
 }
 
 /// Named to avoid clashing with [`fmt::Debug`]
 #[derive(Debug, SSHEncode, SSHDecode)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct DebugPacket<'a> {
     pub always_display: bool,
     pub message: TextString<'a>,
@@ -70,6 +81,7 @@ pub struct DebugPacket<'a> {
 }
 
 #[derive(Debug, SSHEncode, SSHDecode)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct Disconnect<'a> {
     pub reason: u32,
     pub desc: TextString<'a>,
@@ -77,16 +89,19 @@ pub struct Disconnect<'a> {
 }
 
 #[derive(Debug, SSHEncode, SSHDecode)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct Unimplemented {
     pub seq: u32,
 }
 
 #[derive(Debug, SSHEncode, SSHDecode)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct KexDHInit<'a> {
     pub q_c: BinString<'a>,
 }
 
 #[derive(Debug, SSHEncode, SSHDecode)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct KexDHReply<'a> {
     pub k_s: Blob<PubKey<'a>>,
     pub q_s: BinString<'a>,
@@ -94,11 +109,13 @@ pub struct KexDHReply<'a> {
 }
 
 #[derive(Debug, SSHEncode, SSHDecode)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct ServiceRequest<'a> {
     pub name: &'a str,
 }
 
 #[derive(Debug, SSHEncode, SSHDecode)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct ServiceAccept<'a> {
     pub name: &'a str,
 }
@@ -108,6 +125,7 @@ pub struct ServiceAccept<'a> {
 /// `ExtInfo` differs from most packet structs, it only tracks known extension types
 /// rather than an unknown-sized list.
 #[derive(Debug)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct ExtInfo<'a> {
     // Wire format is
     // byte       SSH_MSG_EXT_INFO (value 7)
@@ -153,6 +171,7 @@ impl SSHEncode for ExtInfo<'_> {
 }
 
 #[derive(Debug, SSHEncode, SSHDecode, Clone)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct UserauthRequest<'a> {
     pub username: TextString<'a>,
     pub service: &'a str,
@@ -161,6 +180,7 @@ pub struct UserauthRequest<'a> {
 
 /// The method-specific part of a [`UserauthRequest`].
 #[derive(Debug, SSHEncode, SSHDecode, Clone)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 #[sshwire(variant_prefix)]
 pub enum AuthMethod<'a> {
     #[sshwire(variant = SSH_AUTHMETHOD_PASSWORD)]
@@ -174,6 +194,7 @@ pub enum AuthMethod<'a> {
 }
 
 #[derive(Debug, SSHEncode)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 #[sshwire(no_variant_names)]
 pub enum Userauth60<'a> {
     PkOk(UserauthPkOk<'a>),
@@ -200,18 +221,21 @@ impl<'de: 'a, 'a> SSHDecode<'de> for Userauth60<'a> {
 }
 
 #[derive(Debug, SSHEncode, SSHDecode)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct UserauthPkOk<'a> {
     pub algo: &'a str,
     pub key: Blob<PubKey<'a>>,
 }
 
 #[derive(Debug, SSHEncode, SSHDecode)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct UserauthPwChangeReq<'a> {
     pub prompt: TextString<'a>,
     pub lang: TextString<'a>,
 }
 
 #[derive(SSHEncode, SSHDecode, Clone)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct MethodPassword<'a> {
     pub change: bool,
     pub password: TextString<'a>,
@@ -227,6 +251,7 @@ impl Debug for MethodPassword<'_> {
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct MethodPubKey<'a> {
     /// A signature algorithm name (not key algorithm name).
     pub sig_algo: &'a str,
@@ -280,21 +305,25 @@ impl<'de: 'a, 'a> SSHDecode<'de> for MethodPubKey<'a> {
 }
 
 #[derive(Debug, SSHEncode, SSHDecode)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct UserauthFailure<'a> {
     pub methods: NameList<'a>,
     pub partial: bool,
 }
 
 #[derive(Debug, SSHEncode, SSHDecode)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct UserauthSuccess {}
 
 #[derive(Debug, SSHEncode, SSHDecode)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct UserauthBanner<'a> {
     pub message: TextString<'a>,
     pub lang: TextString<'a>,
 }
 
 #[derive(SSHEncode, SSHDecode, Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 #[sshwire(variant_prefix)]
 pub enum PubKey<'a> {
     #[sshwire(variant = SSH_NAME_ED25519)]
@@ -362,6 +391,7 @@ impl TryFrom<&PubKey<'_>> for ssh_key::PublicKey {
 }
 
 #[derive(Debug, Clone, PartialEq, SSHEncode, SSHDecode)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct Ed25519PubKey {
     pub key: Blob<[u8; 32]>,
 }
@@ -409,6 +439,7 @@ impl Debug for RSAPubKey {
 }
 
 #[derive(Debug, SSHEncode, SSHDecode, Clone)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 #[sshwire(variant_prefix)]
 pub enum Signature<'a> {
     #[sshwire(variant = SSH_NAME_ED25519)]
@@ -479,17 +510,20 @@ impl<'a> From<&'a OwnedSig> for Signature<'a> {
 }
 
 #[derive(Debug, SSHEncode, SSHDecode, Clone)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct Ed25519Sig<'a> {
     pub sig: BinString<'a>,
 }
 
 #[cfg(feature = "rsa")]
 #[derive(Debug, SSHEncode, SSHDecode, Clone)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct RSASig<'a> {
     pub sig: BinString<'a>,
 }
 
 #[derive(Debug, SSHEncode, SSHDecode)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct GlobalRequest<'a> {
     #[sshwire(variant_name = req)]
     pub want_reply: bool,
@@ -497,6 +531,7 @@ pub struct GlobalRequest<'a> {
 }
 
 #[derive(Debug, SSHEncode, SSHDecode)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub enum GlobalRequestMethod<'a> {
     // #[sshwire(variant = "tcpip-forward")]
     // TcpipForward(TcipForward<'a>),
@@ -517,6 +552,7 @@ pub enum GlobalRequestMethod<'a> {
 // }
 
 #[derive(Debug, SSHEncode)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 #[sshwire(no_variant_names)]
 pub enum RequestSuccess {
     SuccessEmpty,
@@ -543,9 +579,11 @@ impl<'de> SSHDecode<'de> for RequestSuccess {
 // }
 
 #[derive(Debug, SSHEncode, SSHDecode)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct RequestFailure {}
 
 #[derive(Debug, SSHEncode, SSHDecode)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct ChannelOpen<'a> {
     // channel_type is implicit in ty below
     #[sshwire(variant_name = ty)]
@@ -556,6 +594,7 @@ pub struct ChannelOpen<'a> {
 }
 
 #[derive(Debug, SSHEncode, SSHDecode)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub enum ChannelOpenType<'a> {
     #[sshwire(variant = "session")]
     Session,
@@ -572,6 +611,7 @@ pub enum ChannelOpenType<'a> {
 }
 
 #[derive(Debug, SSHEncode, SSHDecode)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct ChannelOpenConfirmation {
     pub num: u32,
     pub sender_num: u32,
@@ -580,6 +620,7 @@ pub struct ChannelOpenConfirmation {
 }
 
 #[derive(Debug, SSHEncode, SSHDecode)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct ChannelOpenFailure<'a> {
     pub num: u32,
     pub reason: u32,
@@ -588,12 +629,14 @@ pub struct ChannelOpenFailure<'a> {
 }
 
 #[derive(Debug, SSHEncode, SSHDecode)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct ChannelWindowAdjust {
     pub num: u32,
     pub adjust: u32,
 }
 
 #[derive(Debug, SSHEncode, SSHDecode)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct ChannelData<'a> {
     pub num: u32,
     pub data: BinString<'a>,
@@ -605,6 +648,7 @@ impl ChannelData<'_> {
 }
 
 #[derive(Debug, SSHEncode, SSHDecode)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct ChannelDataExt<'a> {
     pub num: u32,
     pub code: u32,
@@ -617,26 +661,31 @@ impl ChannelDataExt<'_> {
 }
 
 #[derive(Debug, SSHEncode, SSHDecode)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct ChannelEof {
     pub num: u32,
 }
 
 #[derive(Debug, SSHEncode, SSHDecode)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct ChannelClose {
     pub num: u32,
 }
 
 #[derive(Debug, SSHEncode, SSHDecode)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct ChannelSuccess {
     pub num: u32,
 }
 
 #[derive(Debug, SSHEncode, SSHDecode)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct ChannelFailure {
     pub num: u32,
 }
 
 #[derive(Debug, SSHEncode, SSHDecode)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct ChannelRequest<'a> {
     pub num: u32,
 
@@ -650,6 +699,7 @@ pub struct ChannelRequest<'a> {
 ///
 /// Most are specified in [RFC4335](https://datatracker.ietf.org/doc/html/rfc4335)
 #[derive(Debug, SSHEncode, SSHDecode)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub enum ChannelReqType<'a> {
     #[sshwire(variant = "shell")]
     Shell,
@@ -682,11 +732,13 @@ pub enum ChannelReqType<'a> {
 }
 
 #[derive(Debug, SSHEncode, SSHDecode)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct Exec<'a> {
     pub command: TextString<'a>,
 }
 
 #[derive(Debug, SSHEncode, SSHDecode)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct Subsystem<'a> {
     pub subsystem: TextString<'a>,
 }
@@ -695,6 +747,7 @@ pub struct Subsystem<'a> {
 ///
 /// Note that most function arguments use [`channel::Pty`] rather than this struct.
 #[derive(Debug, SSHEncode, SSHDecode)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct PtyReq<'a> {
     pub term: TextString<'a>,
     pub cols: u32,
@@ -705,6 +758,7 @@ pub struct PtyReq<'a> {
 }
 
 #[derive(Debug, Clone, SSHEncode, SSHDecode)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct WinChange {
     pub cols: u32,
     pub rows: u32,
@@ -714,16 +768,19 @@ pub struct WinChange {
 
 /// A unix signal channel request
 #[derive(Debug, SSHEncode, SSHDecode)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct Signal<'a> {
     pub sig: &'a str,
 }
 
 #[derive(Debug, SSHEncode, SSHDecode)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct ExitStatus {
     pub status: u32,
 }
 
 #[derive(Debug, SSHEncode, SSHDecode, Clone)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct ExitSignal<'a> {
     pub signal: &'a str,
     pub core: bool,
@@ -732,12 +789,14 @@ pub struct ExitSignal<'a> {
 }
 
 #[derive(Debug, Clone, SSHEncode, SSHDecode)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct Break {
     /// Break length in milliseconds
     pub length: u32,
 }
 
 #[derive(Debug, SSHEncode, SSHDecode)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct ForwardedTcpip<'a> {
     pub address: TextString<'a>,
     pub port: u32,
@@ -746,6 +805,7 @@ pub struct ForwardedTcpip<'a> {
 }
 
 #[derive(Debug, SSHEncode, SSHDecode)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct DirectTcpip<'a> {
     pub address: TextString<'a>,
     pub port: u32,
@@ -786,6 +846,16 @@ impl Debug for Unknown<'_> {
     }
 }
 
+/// Always fails.
+///
+/// `Unknown` can't be SSHEncoded.
+#[cfg(feature = "arbitrary")]
+impl arbitrary::Arbitrary<'_> for Unknown<'_> {
+    fn arbitrary(_u: &mut arbitrary::Unstructured) -> arbitrary::Result<Self> {
+        Err(arbitrary::Error::IncorrectFormat)
+    }
+}
+
 /// State to be passed to decoding.
 /// Use this so the parser can select the correct enum variant to decode.
 #[derive(Default, Clone, Debug)]
@@ -817,6 +887,7 @@ macro_rules! messagetypes {
 
 
 #[derive(Debug)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 #[repr(u8)]
 #[allow(non_camel_case_types)]
 pub enum MessageNumber {
@@ -878,6 +949,20 @@ impl<'de: 'a, 'a> SSHDecode<'de> for Packet<'a> {
             // ...
             $(
             MessageNumber::$SSH_MESSAGE_NAME => Packet::$SpecificPacketVariant(SSHDecode::dec(s)?),
+            )*
+        };
+        Ok(p)
+    }
+}
+
+#[cfg(feature = "arbitrary")]
+impl<'arb: 'a, 'a> Arbitrary<'arb> for Packet<'a> {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'arb>) -> arbitrary::Result<Self> {
+        let ty: MessageNumber = u.arbitrary()?;
+        // Generate based on the message number
+        let p = match ty {
+            $(
+            MessageNumber::$SSH_MESSAGE_NAME => Packet::$SpecificPacketVariant(u.arbitrary()?),
             )*
         };
         Ok(p)

@@ -126,7 +126,8 @@ impl AgentClient {
     }
 
     async fn request(&mut self, r: AgentRequest<'_>) -> Result<AgentResponse> {
-        let b = sshwire::write_ssh_vec(&Blob(r))?;
+        let mut b = vec![];
+        sshwire::ssh_push_vec(&mut b, &Blob(r))?;
 
         trace!("agent request {:?}", b.hex_dump());
 

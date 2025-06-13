@@ -23,6 +23,7 @@ sunset-async = { path = "async", version = "0.2" }
 sunset-demo-common = { path = "demo/common" }
 
 portable-atomic = "1"
+arbitrary = { version = "1.4", features = ["derive_arbitrary"] }
 
 [dependencies]
 sunset-sshwire-derive = { workspace = true }
@@ -34,6 +35,8 @@ heapless = "0.8"
 
 # allows avoiding utf8 for SSH identifier names
 ascii = { version = "1.0", default-features = false }
+
+arbitrary = { workspace = true, optional = true }
 
 getrandom = "0.2"
 rand_core = { version = "0.6", default-features = false, features = ["getrandom"]}
@@ -72,6 +75,9 @@ rsa = ["dep:rsa", "ssh-key/rsa"]
 openssh-key = ["ssh-key"]
 # implements embedded_io::Error for sunset::Error
 embedded-io = ["dep:embedded-io"]
+
+# Arbitrary for fuzzing. std is required for derive(Arbitrary)
+arbitrary = ["dep:arbitrary", "std"]
 
 # Allocate larger buffers for things such as usernames.
 # See config.rs for details
