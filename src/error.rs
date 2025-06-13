@@ -21,10 +21,16 @@ use crate::channel::ChanNum;
 #[snafu(visibility(pub))]
 pub enum Error {
     /// Output buffer ran out of room
-    NoRoom { backtrace: Backtrace },
+    NoRoom {
+        #[cfg(feature = "backtrace")]
+        backtrace: Backtrace,
+    },
 
     /// Input buffer ran out
-    RanOut { backtrace: Backtrace },
+    RanOut {
+        #[cfg(feature = "backtrace")]
+        backtrace: Backtrace,
+    },
 
     /// Not a UTF-8 string
     BadString,
@@ -45,7 +51,10 @@ pub enum Error {
     BadNumber,
 
     /// Error in received SSH protocol. Will disconnect.
-    SSHProto { backtrace: Backtrace },
+    SSHProto {
+        #[cfg(feature = "backtrace")]
+        backtrace: Backtrace,
+    },
 
     /// Peer sent something we don't handle. Will disconnect.
     ///
@@ -85,6 +94,7 @@ pub enum Error {
     ///   (millions of times) and not released.
     // TODO: /// #[snafu(display("Failure from application: {msg}"))]
     BadUsage {
+        #[cfg(feature = "backtrace")]
         backtrace: snafu::Backtrace,
         // TODO
         // msg: &'static str,
@@ -114,7 +124,10 @@ pub enum Error {
 
     /// Received packet at a disallowed time.
     // TODO: this is kind of a subset of SSHProtoError, maybe not needed
-    PacketWrong { backtrace: Backtrace },
+    PacketWrong {
+        #[cfg(feature = "backtrace")]
+        backtrace: Backtrace,
+    },
     // #[snafu(display("Program bug {location}"))]
     // Bug { location: snafu::Location },
     #[snafu(display("No matching {algo} algorithm"))]
