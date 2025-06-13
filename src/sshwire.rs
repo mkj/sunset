@@ -20,6 +20,9 @@ use snafu::{prelude::*, Location};
 
 use ascii::{AsAsciiStr, AsciiChar, AsciiStr};
 
+#[cfg(feature = "arbitrary")]
+use arbitrary::{Arbitrary, Unstructured};
+
 use digest::Digest;
 
 use crate::*;
@@ -149,12 +152,12 @@ pub fn write_ssh(target: &mut [u8], value: &dyn SSHEncode) -> Result<usize> {
 }
 
 #[cfg(feature = "std")]
-pub fn write_ssh_vec(value: &dyn SSHEncode) -> Result<Vec<u8>> {
+pub fn ssh_push_vec(target: &mut Vec<u8>, value: &dyn SSHEncode) -> Result<()> {
+    let orig = target.len();
     let l = length_enc(value)? as usize;
-    let mut v = vec![0u8; l];
-    let l = write_ssh(&mut v, value)?;
-    debug_assert_eq!(l, v.len());
-    Ok(v)
+    target.resize(orig + l, 0);
+    write_ssh(&mut target[orig..], value)?;
+    Ok(())
 }
 
 /// Hashes the SSH wire format representation of `value`, with a `u32` length prefix.
@@ -180,7 +183,7 @@ pub fn hash_ser(
 }
 
 /// Returns `WireError::NoRoom` if larger than `u32`
-fn length_enc(value: &dyn SSHEncode) -> WireResult<u32> {
+pub fn length_enc(value: &dyn SSHEncode) -> WireResult<u32> {
     let mut s = EncodeLen { pos: 0 };
     value.enc(&mut s)?;
     s.pos.try_into().map_err(|_| WireError::NoRoom)
@@ -268,6 +271,7 @@ pub fn hash_mpint(hash_ctx: &mut dyn SSHWireDigestUpdate, m: &[u8]) {
 /// of the slice.
 /// Application API
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct BinString<'a>(pub &'a [u8]);
 
 impl AsRef<[u8]> for BinString<'_> {
@@ -319,6 +323,7 @@ impl<const N: usize> SSHEncode for heapless::String<N> {
 ///
 /// Application API
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct TextString<'a>(pub &'a [u8]);
 
 impl<'a> TextString<'a> {
@@ -389,6 +394,13 @@ impl<'de> SSHDecode<'de> for TextString<'de> {
 /// A wrapper for a `u32` length prefixed data structure `B`, such as a public key blob
 #[derive(PartialEq, Clone)]
 pub struct Blob<B>(pub B);
+
+#[cfg(feature = "arbitrary")]
+impl<'arb: 'a, 'a, B: Arbitrary<'arb>> Arbitrary<'arb> for Blob<B> {
+    fn arbitrary(u: &mut Unstructured<'arb>) -> arbitrary::Result<Self> {
+        Ok(Blob(Arbitrary::arbitrary(u)?))
+    }
+}
 
 impl<B> AsRef<B> for Blob<B> {
     fn as_ref(&self) -> &B {

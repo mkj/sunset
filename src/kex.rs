@@ -22,7 +22,7 @@ use encrypt::{Cipher, Integ, Keys};
 use event::{CliEventId, ServEventId};
 use ident::RemoteVersion;
 use namelist::{LocalNames, NameList};
-use packets::{Packet, PubKey, Signature};
+use packets::{KexCookie, Packet, PubKey, Signature};
 use sign::SigType;
 use sshnames::*;
 use sshwire::{hash_mpint, BinString, Blob};
@@ -123,8 +123,6 @@ pub(crate) enum Kex {
     /// but an error returned from Kex is not recoverable anyway).
     Taken,
 }
-
-type KexCookie = [u8; 16];
 
 #[derive(Debug)]
 pub(crate) struct KexHash {
@@ -270,8 +268,8 @@ impl Kex {
         if !matches!(self, Kex::Idle) {
             return Err(Error::bug());
         }
-        let mut our_cookie = [0u8; 16];
-        random::fill_random(our_cookie.as_mut_slice())?;
+        let mut our_cookie = KexCookie([0u8; 16]);
+        random::fill_random(our_cookie.0.as_mut_slice())?;
         s.send(Kex::make_kexinit(&our_cookie, conf))?;
         *self = Kex::KexInit { our_cookie };
         Ok(())
@@ -312,7 +310,7 @@ impl Kex {
         let kex_hash = KexHash::new(
             &algos,
             algo_conf,
-            our_cookie,
+            &our_cookie,
             remote_version,
             &remote_kexinit.into(),
         )?;
@@ -320,9 +318,9 @@ impl Kex {
         Ok(())
     }
 
-    fn make_kexinit<'a>(cookie: &'a KexCookie, conf: &'a AlgoConfig) -> Packet<'a> {
+    fn make_kexinit<'a>(cookie: &KexCookie, conf: &'a AlgoConfig) -> Packet<'a> {
         packets::KexInit {
-            cookie,
+            cookie: cookie.clone(),
             kex: (&conf.kexs).into(),
             hostsig: (&conf.hostsig).into(),
             cipher_c2s: (&conf.ciphers).into(),
@@ -789,9 +787,6 @@ impl core::fmt::Debug for KexCurve25519 {
 
 impl KexCurve25519 {
     fn new() -> Result<Self> {
-        let mut s = [0u8; 32];
-        random::fill_random(s.as_mut_slice())?;
-        // TODO: check that pure random bytes are OK
         let ours = x25519_dalek::EphemeralSecret::random_from_rng(OsRng);
         let pubkey = x25519_dalek::PublicKey::from(&ours);
         let pubkey = pubkey.to_bytes();
