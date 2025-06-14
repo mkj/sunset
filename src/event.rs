@@ -425,6 +425,14 @@ impl<'g, 'a> ServPubkeyAuth<'g, 'a> {
         self.runner.fetch_servpubkey()
     }
 
+    /// Whether this is an pubkey auth attempt.
+    ///
+    /// `real()` will be `false` for a pubkey key query (no signature attemp),
+    /// or `true` for the actual login attempt with signature.
+    pub fn real(&self) -> bool {
+        self.real_sig
+    }
+
     /// Accept the presented public key.
     pub fn allow(mut self) -> Result<()> {
         self.done = true;
