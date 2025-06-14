@@ -1,4 +1,7 @@
 //! SSH comma separated algorithm lists.
+//!
+//! Used when implementing protocol encoding/decoding, not
+//! required for general SSH session use.
 #[allow(unused_imports)]
 use {
     crate::error::{Error, Result},
@@ -18,6 +21,7 @@ use sshwire::{BinString, SSHDecode, SSHEncode, SSHSink, SSHSource, WireResult};
 // - key types
 // - signature types
 // - auth types
+
 /// Max count of LocalNames entries
 ///
 /// Current max is for kex, [curve25519, curve25519@libssh, ext-info, strictkex, kexguess2]
@@ -28,7 +32,7 @@ static EMPTY_LOCALNAMES: LocalNames = LocalNames::new();
 /// Used for remote name lists.
 ///
 /// Wire format is described in [RFC4251](https://tools.ietf.org/html/rfc4251) SSH Architecture "name-list"
-#[derive(SSHEncode, SSHDecode, Debug)]
+#[derive(SSHEncode, SSHDecode, Debug, Clone)]
 pub struct StringNames<'a>(pub &'a AsciiStr);
 
 /// A list of names, can only be encoded. Used for local name lists, comes
@@ -36,11 +40,11 @@ pub struct StringNames<'a>(pub &'a AsciiStr);
 ///
 /// Deliberately `'static` since it should only come from hardcoded local strings
 /// `SSH_NAME_*` in [`crate::sshnames`]. We don't validate string contents.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct LocalNames(pub Vec<&'static str, MAX_LOCAL_NAMES>);
 
 /// The general form that can store either representation
-#[derive(SSHEncode, Debug)]
+#[derive(SSHEncode, Debug, Clone)]
 #[sshwire(no_variant_names)]
 pub enum NameList<'a> {
     String(StringNames<'a>),
@@ -100,7 +104,7 @@ impl<'a> From<&'a LocalNames> for NameList<'a> {
     }
 }
 
-impl NameList<'_> {
+impl<'a> NameList<'a> {
     /// Returns the first name in this namelist that matches, based on SSH priority.
     ///
     /// The SSH client's list (which could be either remote or ours) is used
@@ -147,6 +151,15 @@ impl NameList<'_> {
     /// Returns an empty `Local` variant
     pub fn empty() -> Self {
         Self::Local(&EMPTY_LOCALNAMES)
+    }
+
+    /// Returns a `String` variant namelist with a single name.
+    ///
+    /// Useful for testing specific matches.
+    pub fn single(name: &'a str) -> Result<Self> {
+        AsciiStr::from_ascii(name.as_bytes())
+            .map_err(|_| Error::BadString)
+            .map(|n| Self::String(StringNames(n)))
     }
 }
 

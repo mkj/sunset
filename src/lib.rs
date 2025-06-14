@@ -20,6 +20,7 @@ pub mod sshwire;
 // exported so that some Channel error variants can be created with .fail().
 // perhaps the ones of interest should be expored separately.
 pub mod error;
+pub mod namelist;
 pub mod random;
 
 pub mod event;
@@ -28,7 +29,6 @@ mod conn;
 mod encrypt;
 mod ident;
 mod kex;
-mod namelist;
 mod sign;
 mod test;
 
