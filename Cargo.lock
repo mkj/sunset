@@ -2736,7 +2736,6 @@ dependencies = [
  "embassy-sync 0.7.0",
  "embedded-io-async",
  "log",
- "pin-utils",
  "portable-atomic",
  "sunset",
 ]

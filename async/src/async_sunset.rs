@@ -5,6 +5,7 @@ use core::future::{poll_fn, Future};
 use core::sync::atomic::AtomicBool;
 use core::sync::atomic::Ordering::{Relaxed, SeqCst};
 use core::task::{Context, Poll, Poll::Pending, Poll::Ready};
+use core::pin::pin;
 
 use embassy_futures::join;
 use embassy_futures::select::select;
@@ -14,8 +15,6 @@ use embassy_sync::mutex::{Mutex, MutexGuard};
 use embassy_sync::signal::Signal;
 use embassy_sync::waitqueue::WakerRegistration;
 use embedded_io_async::{BufRead, Read, Write};
-
-use pin_utils::pin_mut;
 
 use sunset::config::MAX_CHANNELS;
 use sunset::event::Event;
@@ -375,7 +374,7 @@ impl<'a, CS: CliServ> AsyncSunset<'a, CS> {
         poll_fn(|cx| {
             // Attempt to lock .inner
             let i = self.inner.lock();
-            pin_mut!(i);
+            let i = pin!(i);
             match i.poll(cx) {
                 Poll::Ready(mut inner) => f(&mut inner, cx),
                 Poll::Pending => {
@@ -391,7 +390,7 @@ impl<'a, CS: CliServ> AsyncSunset<'a, CS> {
         poll_fn(|cx| {
             // Attempt to lock .inner
             let i = self.inner.lock();
-            pin_mut!(i);
+            let i = pin!(i);
             let Ready(mut inner) = i.poll(cx) else {
                 return Pending;
             };
@@ -406,7 +405,7 @@ impl<'a, CS: CliServ> AsyncSunset<'a, CS> {
 
                 let res = {
                     let w = wsock.write(buf);
-                    pin_mut!(w);
+                    let w = pin!(w);
                     w.poll(cx)
                 };
 
@@ -557,7 +556,7 @@ impl<'a, CS: CliServ> ChanCore for AsyncSunset<'a, CS> {
     ) -> Poll<Result<()>> {
         // Attempt to lock .inner
         let i = self.inner.lock();
-        pin_mut!(i);
+        let i = pin!(i);
         let Ready(mut inner) = i.poll(cx) else {
             return Pending;
         };
@@ -581,7 +580,7 @@ impl<'a, CS: CliServ> ChanCore for AsyncSunset<'a, CS> {
     ) -> Poll<Result<usize>> {
         // Attempt to lock .inner
         let i = self.inner.lock();
-        pin_mut!(i);
+        let i = pin!(i);
         let Ready(mut inner) = i.poll(cx) else {
             return Pending;
         };
@@ -618,7 +617,7 @@ impl<'a, CS: CliServ> ChanCore for AsyncSunset<'a, CS> {
     ) -> Poll<Result<usize>> {
         // Attempt to lock .inner
         let i = self.inner.lock();
-        pin_mut!(i);
+        let i = pin!(i);
         let Ready(mut inner) = i.poll(cx) else {
             return Pending;
         };
@@ -650,7 +649,7 @@ impl<'a, CS: CliServ> ChanCore for AsyncSunset<'a, CS> {
     ) -> Poll<Result<()>> {
         // Attempt to lock .inner
         let i = self.inner.lock();
-        pin_mut!(i);
+        let i = pin!(i);
         let Ready(mut inner) = i.poll(cx) else {
             return Pending;
         };
