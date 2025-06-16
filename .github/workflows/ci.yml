@@ -4,15 +4,20 @@ name: ci
 on:
   pull_request:
   push:
-    branches:
-      - main
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
   all:
+    strategy:
+      matrix:
+        # 1.83 is an arbitrary minimum, tested to notice when it bumps
+        rust_version: [stable, nightly, 1.83]
     runs-on: ubuntu-latest
+    env:
+      RUSTUP_TOOLCHAIN: ${{ matrix.rust_version }}
     steps:
       - uses: actions/checkout@v4
 
@@ -25,16 +30,16 @@ jobs:
             testing/target
           # Save a unique cache each time
           # (https://github.com/actions/cache/blob/main/tips-and-workarounds.md#update-a-cache)
-          key: rust-cache1-${{ github.run_id }}
+          key: rust-cache1-${{ matrix.rust_version }}-${{ github.run_id }}
           # Load from the most recent match
           restore-keys: |
-            rust-cache1
+            rust-cache1-${{ matrix.rust_version }}
 
-      - name: build
+      - name: build ${{ matrix.rust_version }}
         run: ./testing/ci.sh
 
       - name: picow bloat
         uses: actions/upload-artifact@v4
         with:
-          name: picow-bloat
+          name: picow-bloat-${{ matrix.rust_version }}
           path: ci_out/picow-bloat.txt

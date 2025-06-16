@@ -25,6 +25,7 @@ if [ -z "$OFFLINE" ]; then
     cd demo/picow
     rustup target add thumbv6m-none-eabi
     )
+    rustup component add rustfmt
 fi
 
 cargo fmt --check
