@@ -2,10 +2,10 @@
 pub use log::{debug, error, info, log, trace, warn};
 
 use core::future::{poll_fn, Future};
+use core::pin::pin;
 use core::sync::atomic::AtomicBool;
 use core::sync::atomic::Ordering::{Relaxed, SeqCst};
 use core::task::{Context, Poll, Poll::Pending, Poll::Ready};
-use core::pin::pin;
 
 use embassy_futures::join;
 use embassy_futures::select::select;
