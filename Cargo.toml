@@ -29,7 +29,6 @@ arbitrary = { version = "1.4", features = ["derive_arbitrary"] }
 sunset-sshwire-derive = { workspace = true }
 
 snafu = { version = "0.8", default-features = false, features = ["rust_1_65"] }
-# TODO: check that log macro calls disappear in no_std builds
 log = { version = "0.4" }
 heapless = "0.8"
 
@@ -53,10 +52,9 @@ zeroize = { version = "1", default-features = false, features = ["derive"] }
 cipher = { version = "0.4", features = ["zeroize"] }
 subtle = { version = "2.4", default-features = false }
 # ed25519/x25519
-# fork allows hashing by parts (sign/verify from sshwire), and zeroize
-ed25519-dalek = { version = "2.0.0-rc.3", default-features = false, features = ["zeroize", "rand_core", "hazmat"] }
-x25519-dalek = { version = "2.0.0-rc.3", default-features = false, features = ["zeroize"] }
-curve25519-dalek = { version = "4.0.0", default-features = false, features = ["zeroize"] }
+ed25519-dalek = { version = "2.1", default-features = false, features = ["zeroize", "rand_core"] }
+x25519-dalek = { version = "2.0", default-features = false, features = ["zeroize"] }
+curve25519-dalek = { version = "4.1", default-features = false, features = ["zeroize"] }
 # p521 = { version = "0.13.2", default-features = false, features = ["ecdh", "ecdsa"] }
 rsa = { version = "0.9", default-features = false, optional = true, features = ["sha2"] }
 # TODO: getrandom feature is a workaround for missing ssh-key dependency with rsa. fixed in pending 0.6
@@ -89,11 +87,6 @@ snafu = { version = "0.8", default-features = true }
 anyhow = { version = "1.0" }
 pretty-hex = "0.4"
 simplelog = { version = "0.12", features = ["test"] }
-
-#[patch.crates-io]
-#curve25519-dalek = { git = "https://github.com/mkj/curve25519-dalek", branch = "sunset" }
-#ed25519-dalek = { git = "https://github.com/mkj/curve25519-dalek", branch = "sunset" }
-#x25519-dalek = { git = "https://github.com/mkj/curve25519-dalek", branch = "sunset" }
 
 # [patch.crates-io]
 # cyw43 = { path = "/home/matt/3rd/rs/embassy-stable-sunset/cyw43" }
@@ -142,6 +135,7 @@ debug-assertions = false
 opt-level = 0
 overflow-checks = false
 
+# fuzzing wants optimisation wiith debug assertions
 [profile.fuzz]
 inherits = "release"
 debug-assertions = true
