@@ -1,6 +1,6 @@
 [package]
 name = "sunset-async"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 repository = "https://github.com/mkj/sunset"
 categories = ["network-programming", "embedded", "no-std"]
@@ -14,7 +14,7 @@ embedded-io-async = "0.6"
 portable-atomic.workspace = true
 pin-utils = { version = "0.1" }
 
-sunset = { version = "0.2.0", path = "../", features = ["embedded-io"] }
+sunset = { workspace = true, features = ["embedded-io"] }
 
 log = { version = "0.4" }
 

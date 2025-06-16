@@ -2696,7 +2696,7 @@ checksum = "81cdd64d312baedb58e21336b31bc043b77e01cc99033ce76ef539f78e965ebc"
 
 [[package]]
 name = "sunset"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "aes",
  "anyhow",
@@ -2730,7 +2730,7 @@ dependencies = [
 
 [[package]]
 name = "sunset-async"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "embassy-futures",
  "embassy-sync 0.7.0",
@@ -2852,7 +2852,7 @@ dependencies = [
 
 [[package]]
 name = "sunset-stdasync"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "argh",
