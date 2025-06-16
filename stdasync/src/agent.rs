@@ -125,7 +125,7 @@ impl AgentClient {
         Ok(Self { conn, buf: vec![] })
     }
 
-    async fn request(&mut self, r: AgentRequest<'_>) -> Result<AgentResponse> {
+    async fn request(&mut self, r: AgentRequest<'_>) -> Result<AgentResponse<'_>> {
         let mut b = vec![];
         sshwire::ssh_push_vec(&mut b, &Blob(r))?;
 
@@ -135,7 +135,7 @@ impl AgentClient {
         self.response().await
     }
 
-    async fn response(&mut self) -> Result<AgentResponse> {
+    async fn response(&mut self) -> Result<AgentResponse<'_>> {
         let mut l = [0u8; 4];
         self.conn.read_exact(&mut l).await?;
         let l = u32::from_be_bytes(l) as usize;

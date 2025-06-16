@@ -287,7 +287,7 @@ impl SignKey {
         }
     }
 
-    pub fn pubkey(&self) -> PubKey {
+    pub fn pubkey(&self) -> PubKey<'_> {
         match self {
             SignKey::Ed25519(k) => {
                 let pubk = k.verifying_key().to_bytes();

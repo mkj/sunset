@@ -903,7 +903,7 @@ impl Channel {
     }
 
     /// Returns a window adjustment packet if required
-    fn check_window_adjust(&mut self) -> Result<Option<Packet>> {
+    fn check_window_adjust(&mut self) -> Result<Option<Packet<'_>>> {
         let num = self.send.as_mut().trap()?.num;
         if self.pending_adjust > self.full_window / 2 {
             let adjust = self.pending_adjust as u32;

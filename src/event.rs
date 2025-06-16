@@ -143,7 +143,7 @@ impl RequestSign<'_, '_> {
     pub fn key(&self) -> Result<&SignKey> {
         self.runner.fetch_agentsign_key()
     }
-    pub fn message(&self) -> Result<AuthSigMsg> {
+    pub fn message(&self) -> Result<AuthSigMsg<'_>> {
         self.runner.fetch_agentsign_msg()
     }
     pub fn signed(self, sig: &OwnedSig) -> Result<()> {
@@ -159,7 +159,7 @@ pub struct CheckHostkey<'g, 'a> {
 }
 
 impl CheckHostkey<'_, '_> {
-    pub fn hostkey(&self) -> Result<PubKey> {
+    pub fn hostkey(&self) -> Result<PubKey<'_>> {
         self.runner.fetch_checkhostkey()
     }
 
@@ -179,7 +179,7 @@ impl Banner<'_> {
         self.0.message.as_str()
     }
 
-    pub fn raw_banner(&self) -> TextString {
+    pub fn raw_banner(&self) -> TextString<'_> {
         self.0.message
     }
 }
@@ -383,11 +383,11 @@ impl<'g, 'a> ServPasswordAuth<'g, 'a> {
         self.runner.resume_servauth(false)
     }
 
-    pub fn raw_username(&self) -> Result<TextString> {
+    pub fn raw_username(&self) -> Result<TextString<'_>> {
         self.runner.fetch_servusername()
     }
 
-    pub fn raw_password(&self) -> Result<TextString> {
+    pub fn raw_password(&self) -> Result<TextString<'_>> {
         self.runner.fetch_servpassword()
     }
 }
@@ -421,7 +421,7 @@ impl<'g, 'a> ServPubkeyAuth<'g, 'a> {
     }
 
     /// Retrieve the public key presented by a client.
-    pub fn pubkey(&self) -> Result<PubKey> {
+    pub fn pubkey(&self) -> Result<PubKey<'_>> {
         self.runner.fetch_servpubkey()
     }
 
@@ -451,7 +451,7 @@ impl<'g, 'a> ServPubkeyAuth<'g, 'a> {
         self.runner.resume_servauth(false)
     }
 
-    pub fn raw_username(&self) -> Result<TextString> {
+    pub fn raw_username(&self) -> Result<TextString<'_>> {
         self.runner.fetch_servusername()
     }
 }
@@ -500,7 +500,7 @@ impl<'g, 'a> ServFirstAuth<'g, 'a> {
         self.runner.resume_servauth(false)
     }
 
-    pub fn raw_username(&self) -> Result<TextString> {
+    pub fn raw_username(&self) -> Result<TextString<'_>> {
         self.runner.fetch_servusername()
     }
 }
@@ -621,7 +621,7 @@ impl<'g, 'a> ServExecRequest<'g, 'a> {
         self.raw_command()?.as_str()
     }
 
-    pub fn raw_command(&self) -> Result<TextString> {
+    pub fn raw_command(&self) -> Result<TextString<'_>> {
         self.runner.fetch_servcommand()
     }
 

@@ -600,7 +600,7 @@ impl SharedSecret {
         }
     }
 
-    fn make_kexdhinit(&self) -> Result<Packet> {
+    fn make_kexdhinit(&self) -> Result<Packet<'_>> {
         let q_c = self.pubkey();
         let q_c = BinString(q_c);
         Ok(packets::KexDHInit { q_c }.into())

@@ -37,7 +37,7 @@ impl TakePipeStorage {
         Default::default()
     }
 
-    pub fn build(&mut self) -> TakePipe {
+    pub fn build(&mut self) -> TakePipe<'_> {
         let (fanout_r, fanout_w) = self.fanout.split();
         let (fanin_r, fanin_w) = self.fanin.split();
         TakePipe {

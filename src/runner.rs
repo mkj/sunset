@@ -193,7 +193,7 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
         CS::dispatch_into_event(self, disp.event)
     }
 
-    pub(crate) fn packet(&self) -> Result<Option<packets::Packet>> {
+    pub(crate) fn packet(&self) -> Result<Option<packets::Packet<'_>>> {
         if let Some((payload, _seq)) = self.traf_in.payload() {
             self.conn.packet(payload).map(|p| Some(p))
         } else {
@@ -507,12 +507,12 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
         Ok(CliSessionOpener { ch, s })
     }
 
-    pub(crate) fn fetch_cli_session_exit(&mut self) -> Result<CliSessionExit> {
+    pub(crate) fn fetch_cli_session_exit(&mut self) -> Result<CliSessionExit<'_>> {
         let (payload, _seq) = self.traf_in.payload().trap()?;
         self.conn.fetch_cli_session_exit(payload)
     }
 
-    pub(crate) fn fetch_cli_banner(&mut self) -> Result<event::Banner> {
+    pub(crate) fn fetch_cli_banner(&mut self) -> Result<event::Banner<'_>> {
         let (payload, _seq) = self.traf_in.payload().trap()?;
         self.conn.fetch_cli_banner(payload)
     }
@@ -606,7 +606,7 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
         cliauth.fetch_agentsign_key()
     }
 
-    pub(crate) fn fetch_agentsign_msg(&self) -> Result<AuthSigMsg> {
+    pub(crate) fn fetch_agentsign_msg(&self) -> Result<AuthSigMsg<'_>> {
         self.check_resume(&DispatchEvent::CliEvent(CliEventId::AgentSign));
         self.conn.fetch_agentsign_msg()
     }
@@ -650,18 +650,18 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
         Ok(())
     }
 
-    pub(crate) fn fetch_servusername(&self) -> Result<TextString> {
+    pub(crate) fn fetch_servusername(&self) -> Result<TextString<'_>> {
         let u = self.conn.server()?.auth.username.as_ref().trap()?;
         Ok(TextString(u.as_slice()))
     }
 
-    pub(crate) fn fetch_servpassword(&self) -> Result<TextString> {
+    pub(crate) fn fetch_servpassword(&self) -> Result<TextString<'_>> {
         self.check_resume(&DispatchEvent::ServEvent(ServEventId::PasswordAuth));
         let (payload, _seq) = self.traf_in.payload().trap()?;
         self.conn.fetch_servpassword(payload)
     }
 
-    pub(crate) fn fetch_servpubkey(&self) -> Result<PubKey> {
+    pub(crate) fn fetch_servpubkey(&self) -> Result<PubKey<'_>> {
         self.check_resume(&DispatchEvent::ServEvent(ServEventId::PubkeyAuth {
             real_sig: false,
         }));
@@ -736,7 +736,7 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
         r
     }
 
-    pub(crate) fn fetch_servcommand(&self) -> Result<TextString> {
+    pub(crate) fn fetch_servcommand(&self) -> Result<TextString<'_>> {
         Self::check_chanreq(&self.resume_event);
         let (payload, _seq) = self.traf_in.payload().trap()?;
         let p = self.conn.packet(payload)?;

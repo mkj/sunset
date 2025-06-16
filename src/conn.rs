@@ -578,7 +578,7 @@ impl<CS: CliServ> Conn<CS> {
         Ok((&mut cli.auth, &mut self.parse_ctx))
     }
 
-    pub(crate) fn fetch_agentsign_msg(&self) -> Result<AuthSigMsg> {
+    pub(crate) fn fetch_agentsign_msg(&self) -> Result<AuthSigMsg<'_>> {
         let cli = self.client()?;
         let sess_id = self.sess_id.as_ref().trap()?;
         cli.auth.fetch_agentsign_msg(sess_id)
