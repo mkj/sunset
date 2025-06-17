@@ -12,6 +12,3 @@ pub mod takepipe;
 pub use config::SSHConfig;
 pub use menu_buf::AsyncMenuBuf;
 pub use server::{listen, DemoCommon, DemoServer};
-
-// needed for derive
-use sunset::sshwire;

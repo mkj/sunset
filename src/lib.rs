@@ -67,3 +67,6 @@ pub use runner::Runner;
 pub use client::Client;
 pub use conn::CliServ;
 pub use server::Server;
+
+// So that sshwire-derive can refer to ::sunset::sshwire
+extern crate self as sunset;
