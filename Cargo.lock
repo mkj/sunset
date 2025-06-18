@@ -2835,6 +2835,7 @@ version = "0.1.0"
 dependencies = [
  "afl",
  "arbitrary",
+ "argh",
  "env_logger",
  "honggfuzz",
  "log",

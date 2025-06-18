@@ -1,4 +1,4 @@
-# Server fuzz target
+# `fuzz-server` target
 
 This uses fuzz input as the entire SSH input network stream.
 
@@ -29,36 +29,33 @@ is left to make mutations more reusable.
 `reformat-server.py` will convert an existing raw SSH network dump into the expected input
 format.
 
-## `Arbitrary` mode
+# `fuzz-arb-server` target
 
-Build wih `--features arbfuzz` and instead of taking a raw network stream as input,
-it will use the fuzz input to construct a stream of valid SSH protocol packets.
+`fuzz-arb-server` is similar to `fuzz-server`, but a stream of
+valid SSH protocol packets is crafted as the `data` input part.
 That implements [`Arbitrary`](https://docs.rs/arbitrary) on Sunset's `Packet` data structure,
-then uses the `sshwire` encoding mechanism.
-That is fed into the fuzz target as normal. 
+then uses the `sshwire` encoding mechanism. That is fed into the fuzz target as normal.
 
 This is quite efficient at finding new paths, since it only feeds real packets.
 It is not as comprehensive as fuzzing with pure random input, since it's
 constrained to normal SSH protocol.
 
-Don't mix `arbfuzz` and normal corpora as-is.
+`fuzz-arb-server --fuzzin destdir/` (built with `--feature nofuzz`) will write out 
+a corpus suitable for `fuzz-server`target.
 
-TODO add a flag to save an `arbfuzz` corpus as a raw network corpus.
+# Fuzz engines
 
-## Fuzz engines
+Targets work with afl-fuzz or honggfuzz. libfuzzer would be easy to add.
 
-This works with afl-fuzz or honggfuzz. libfuzzer would be easy to add.
-
-AFL seemed to give better results, but honggfuzz is simpler to run
-with lots of threads. Interleaving runs of both seems to sometimes
-work well if edges have stopped being found.
+AFL++ seemed to give better results, but honggfuzz is simpler to run
+with lots of threads. Interleaving runs of both seems to work well.
 
 ### afl-fuzz
 
 Install [`afl.rs`](https://github.com/rust-fuzz/afl.rs).
 
 ```
-RUSTFLAGS="-C target-cpu=native" cargo afl build --features afl --profile fuzz
+RUSTFLAGS="-C target-cpu=native" cargo afl build --features afl --profile fuzz --bins
 ```
 
 You can use `cargo afl run`, but multiple threads are easier with
@@ -106,5 +103,5 @@ RUST_LOG=trace ../target/debug/fuzz-server ~/tmp/crashes
 `cargo install cargo-llvm-cov`
 
 ```
-RUSTFLAGS="--cfg fuzzing" cargo llvm-cov run --features nofuzz --html --open ~/tmp/fuzzsunset/afl53/m_fuzz-server/queue
+RUSTFLAGS="--cfg fuzzing" cargo llvm-cov run --features nofuzz --html --open --bin fuzz-server ~/tmp/fuzzsunset/afl53/m_fuzz-server/queue
 ```
