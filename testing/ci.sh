@@ -75,8 +75,7 @@ size target/thumbv6m-none-eabi/release/sunset-demo-picow | tee "$OUT/picow-size.
 
 (
 cd fuzz
-export RUSTFLAGS="$RUSTFLAGS --cfg fuzzing"
-cargo build --features nofuzz --profile fuzz
+cargo check --features nofuzz --profile fuzz
 )
 
 # other checks

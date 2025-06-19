@@ -160,9 +160,10 @@ fn save_fuzzin(dest: &str, path: &Path, fuzzin: &[u8]) {
 }
 
 fn main() {
+    let args: Args = argh::from_env();
+    let _ = args;
     #[cfg(feature = "nofuzz")]
     {
-        let args: Args = argh::from_env();
         if let Some(fuzzdir) = &args.fuzzin {
             std::fs::create_dir_all(fuzzdir)
                 .expect(&format!("Failed creating {fuzzdir:?}"));
@@ -188,11 +189,11 @@ fn main() {
         {
             if let Some(fuzzdir) = &args.fuzzin {
                 let path = path.expect("nofuzz has paths");
-                save_fuzzin(&fuzzdir, path, &fuzzin);
+                save_fuzzin(fuzzdir, path, &fuzzin);
             }
             if let Some(rawdir) = &args.raw {
                 let path = path.expect("nofuzz has paths");
-                save_raw(&rawdir, path, &newinput.data.0);
+                save_raw(rawdir, path, &newinput.data.0);
             }
         }
         server::run(&fuzzin, ctx)

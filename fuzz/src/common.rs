@@ -112,6 +112,7 @@ where
     }
 }
 
+#[allow(unused)]
 fn check_error(r: Result<()>) {
     if let Err(e) = r {
         match e {
@@ -127,6 +128,7 @@ fn check_error(r: Result<()>) {
     }
 }
 
+#[allow(unused_variables)]
 pub fn run_main<F, CTX>(ctx: &CTX, run: F)
 where
     // afl uses catch_unwind so needs unwindsafe
