@@ -93,7 +93,7 @@ arguments and runs them all.
 It's useful for debugging crashes or getting coverage.
 
 ```
-RUSTFLAGS="--cfg fuzzing" cargo build --features nofuzz
+cargo build --features nofuzz
 
 RUST_LOG=trace ../target/debug/fuzz-server ~/tmp/crashes
 ```
@@ -103,5 +103,5 @@ RUST_LOG=trace ../target/debug/fuzz-server ~/tmp/crashes
 `cargo install cargo-llvm-cov`
 
 ```
-RUSTFLAGS="--cfg fuzzing" cargo llvm-cov run --features nofuzz --html --open --bin fuzz-server ~/tmp/fuzzsunset/afl53/m_fuzz-server/queue
+cargo llvm-cov run --features nofuzz --html --open --bin fuzz-server ~/tmp/fuzzsunset/afl53/m_fuzz-server/queue
 ```
