@@ -9,7 +9,7 @@ use {
 
 use tokio::net::TcpStream;
 
-use std::io::Read;
+use std::io::{BufWriter, Read};
 
 use sunset::*;
 use sunset_async::SSHClient;
@@ -266,6 +266,7 @@ fn setup_log(args: &Args, tz: UtcOffset) -> Result<()> {
     if let Some(tf) = args.tracefile.as_ref() {
         let w = std::fs::File::create(tf)
             .with_context(|| format!("Error opening {tf}"))?;
+        let w = BufWriter::new(w);
         logs.push(WriteLogger::new(LevelFilter::Trace, conf, w));
     }
 
