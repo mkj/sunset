@@ -10,6 +10,7 @@ use {
 use tokio::net::TcpStream;
 
 use std::io::{BufWriter, Read};
+use std::process::ExitCode;
 
 use sunset::*;
 use sunset_async::SSHClient;
@@ -24,23 +25,31 @@ use simplelog::*;
 use time::UtcOffset;
 
 #[tokio::main]
-async fn real_main(tz: UtcOffset) -> Result<()> {
+async fn real_main(tz: UtcOffset) -> Result<ExitCode> {
     let args = parse_args(tz)?;
     let exit_code = run(args).await?;
-    std::process::exit(exit_code)
+    Ok(exit_code.into())
 }
 
-fn main() {
+fn main() -> ExitCode {
     // Crates won't let us read from environment variables once
     // threading starts, so do it before tokio main.
     let tz = UtcOffset::current_local_offset().unwrap_or(UtcOffset::UTC);
 
-    if let Err(e) = real_main(tz) {
-        error!("Exit with error: {e}");
-    }
+    let ex = match real_main(tz) {
+        // exit_code returned from SSH session
+        Ok(exit_code) => exit_code,
+        Err(e) => {
+            error!("Exit with error: {e}");
+            ExitCode::FAILURE
+        }
+    };
+    trace!("Exit, status {ex:?}");
+    log::logger().flush();
+    ex
 }
 
-async fn run(args: Args) -> Result<i32> {
+async fn run(args: Args) -> Result<ExitCode> {
     trace!("tracing sunsetc. args {:?}", args);
     debug!("verbose sunsetc");
 
@@ -113,10 +122,14 @@ async fn run(args: Args) -> Result<i32> {
 
         let exit_code = tokio::select! {
             a = ssh_fut => {
-                a.map(|_| 1).context("SSH connection exited")?
+                a.map(|_| {
+                    trace!("SSH connection exited");
+                    ExitCode::FAILURE
+                }).context("SSH connection")?
             }
             a = session => {
-                a.context("client session exited")?
+                trace!("client session {a:?}");
+                a.context("client session")?
             }
         };
         Ok(exit_code)

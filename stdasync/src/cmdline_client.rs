@@ -1,3 +1,4 @@
+use embassy_futures::select::Either;
 use futures::pin_mut;
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
@@ -5,6 +6,7 @@ use sunset::event::CliEvent;
 
 use core::fmt::Debug;
 use core::str::FromStr;
+use std::process::ExitCode;
 
 use sunset::{sshnames, AuthSigMsg, OwnedSig, Pty, SignKey};
 use sunset::{Error, Result, Runner, SessionCommand};
@@ -226,7 +228,10 @@ impl CmdlineClient {
     ///
     /// Performs authentication, requests a shell or command, performs channel IO.
     /// Will return `Ok` after the session ends normally, or an error.
-    pub async fn run<'g: 'a, 'a>(&mut self, cli: &'g SSHClient<'a>) -> Result<i32> {
+    pub async fn run<'g: 'a, 'a>(
+        &mut self,
+        cli: &'g SSHClient<'a>,
+    ) -> Result<ExitCode> {
         let mut winch_signal = self
             .want_pty
             .then(|| signal(SignalKind::window_change()))
@@ -245,7 +250,7 @@ impl CmdlineClient {
             1,
         > = Channel::new();
 
-        let mut exit_code = 1i32;
+        let mut exit_code = ExitCode::SUCCESS;
 
         let prog_loop = async {
             loop {
@@ -319,12 +324,9 @@ impl CmdlineClient {
                     CliEvent::SessionExit(ex) => {
                         trace!("session exit {ex:?}");
                         if let sunset::CliSessionExit::Status(u) = ex {
-                            if u <= 255 {
-                                exit_code =
-                                    i8::from_be_bytes([(u & 0xff) as u8]) as i32;
-                            } else {
-                                exit_code = 1;
-                            }
+                            // waitpid() on Linux is limited to u8, so we
+                            // can't represent the u32 from the SSH protocol anyway.
+                            exit_code = ((u & 0xff) as u8).into();
                         }
                     }
                     CliEvent::Banner(b) => {
@@ -344,7 +346,10 @@ impl CmdlineClient {
             Self::chan_run(io, extin, pty).await
         };
 
-        embassy_futures::select::select(prog_loop, chanio).await;
+        match embassy_futures::select::select(prog_loop, chanio).await {
+            Either::First(e) => e?,
+            Either::Second(e) => e?,
+        }
 
         Ok(exit_code)
     }
