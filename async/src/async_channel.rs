@@ -10,10 +10,29 @@ use crate::*;
 use sunset::{ChanData, ChanNum, Result};
 
 /// Common implementation
-struct ChanIO<'g> {
+pub(crate) struct ChanIO<'g> {
     num: ChanNum,
     dt: ChanData,
     sunset: &'g dyn async_sunset::ChanCore,
+}
+
+impl<'g> ChanIO<'g> {
+    /// Create a new Normal ChanIO.
+    ///
+    /// Only to be called by add_channel(), which has already set
+    /// the initial refcount = 1.
+    pub(crate) fn new_normal(
+        num: ChanNum,
+        sunset: &'g dyn async_sunset::ChanCore,
+    ) -> Self {
+        Self { num, dt: ChanData::Normal, sunset }
+    }
+
+    pub(crate) fn clone_stderr(&self) -> Self {
+        let mut c = self.clone();
+        c.dt = ChanData::Stderr;
+        c
+    }
 }
 
 impl core::fmt::Debug for ChanIO<'_> {
@@ -37,6 +56,11 @@ impl Drop for ChanIO<'_> {
     }
 }
 
+// ChanIO implements Clone to share between ChanIn/ChanOut/ChanInOut.
+// There's only one waker for each of in/out/ext, so allowing clone
+// on the ChanInOut etc isn't desirable - having two instances polling
+// the same direction/dt will just result in churn between wakers if they're
+// in different tasks.
 impl Clone for ChanIO<'_> {
     fn clone(&self) -> Self {
         self.sunset.inc_chan(self.num);
@@ -67,36 +91,102 @@ impl Write for ChanIO<'_> {
 
 // Public wrappers for In only
 
-/// A standard bidirectional SSH channel
-#[derive(Debug)]
-pub struct ChanInOut<'g>(ChanIO<'g>);
-
-// Manual Clone since derive requires template parameters impl Clone.
-impl Clone for ChanInOut<'_> {
-    fn clone(&self) -> Self {
-        Self(self.0.clone())
-    }
-}
-
-/// An input-only SSH channel, such as stderr for a client
+/// An input-only SSH channel.
+///
+/// This is used as stderr for a client.
+///
+/// <div class="warning">
+///
+/// This must be read, otherwise the SSH session will block.
+///
+/// </div>
+///
+/// `Clone` is implemented for convenience, but only one instance each
+/// should be read from.
+/// Otherwise ordering will be arbitrary, and if competing readers or writers
+/// are in different tasks, there will be churn as they continually wake
+/// each other up. Simultaneous single-reader and single-writer is fine.
 #[derive(Debug, Clone)]
 pub struct ChanIn<'g>(ChanIO<'g>);
 
-#[derive(Debug, Clone)]
-/// An output-only SSH channel, such as stderr for a server
-pub struct ChanOut<'g>(ChanIO<'g>);
-
-impl<'g> ChanInOut<'g> {
-    // caller must have already incremented the refcount
-    pub(crate) fn new(
-        num: ChanNum,
-        dt: ChanData,
-        sunset: &'g dyn async_sunset::ChanCore,
-    ) -> Self {
-        Self(ChanIO { num, dt, sunset })
+impl<'g> ChanIn<'g> {
+    pub(crate) fn new(io: ChanIO<'g>) -> Self {
+        io.sunset.inc_read_chan(io.num, io.dt);
+        Self(io)
     }
 
-    /// A future that waits until the channel closes
+    /// Wait until the channel closes.
+    pub async fn until_closed(&self) -> Result<()> {
+        self.0.until_closed().await
+    }
+}
+
+impl Drop for ChanIn<'_> {
+    fn drop(&mut self) {
+        self.0.sunset.dec_read_chan(self.0.num, self.0.dt)
+    }
+}
+
+/// An output-only SSH channel.
+///
+/// This is used as stderr for a server, or can also be obtained using
+/// [`ChanInOut::split()`] for cases where a channel's input should
+/// be discarded.
+///
+/// `Clone` is implemented for convenience, but only one instance each
+/// should be read from or written to (this applies to `split()` instances too).
+/// Otherwise ordering will be arbitrary, and if competing readers or writers
+/// are in different tasks, there will be churn as they continually wake
+/// each other up. Simultaneous single-reader and single-writer is fine.
+#[derive(Debug, Clone)]
+pub struct ChanOut<'g>(ChanIO<'g>);
+
+impl<'g> ChanOut<'g> {
+    pub(crate) fn new(io: ChanIO<'g>) -> Self {
+        Self(io)
+    }
+
+    /// Wait until the channel closes.
+    pub async fn until_closed(&self) -> Result<()> {
+        self.0.until_closed().await
+    }
+}
+
+/// A bidirectional SSH channel.
+///
+/// Used as stdin/stdout for a shell/exec/subsystem.
+/// Represents other forwarded transports.
+///
+/// <div class="warning">
+///
+/// This must be read, otherwise the SSH session will block.
+/// If input isn't required, use [`split()`](Self::split) and
+/// discard the input half.
+///
+/// </div>
+///
+/// `Clone` is implemented for convenience, but only one instance each
+/// should be read from or written to (this applies to `split()` instances too).
+/// Otherwise ordering will be arbitrary, and if competing readers or writers
+/// are in different tasks, there will be churn as they continually wake
+/// each other up. Simultaneous single-reader and single-writer is fine.
+#[derive(Debug, Clone)]
+pub struct ChanInOut<'g>(ChanIO<'g>);
+
+impl<'g> ChanInOut<'g> {
+    pub(crate) fn new(io: ChanIO<'g>) -> Self {
+        io.sunset.inc_read_chan(io.num, io.dt);
+        Self(io)
+    }
+
+    /// Convert this into separate input and output.
+    ///
+    /// Note the warning above against simultaneous use and `Clone`.
+    pub fn split(&self) -> (ChanIn<'g>, ChanOut<'g>) {
+        (ChanIn::new(self.0.clone()), ChanOut::new(self.0.clone()))
+    }
+
+    /// Wait until the channel closes.
     pub async fn until_closed(&self) -> Result<()> {
         self.0.until_closed().await
     }
@@ -113,30 +203,9 @@ impl<'g> ChanInOut<'g> {
     }
 }
 
-impl<'g> ChanIn<'g> {
-    // caller must have already incremented the refcount
-    pub(crate) fn new(
-        num: ChanNum,
-        dt: ChanData,
-        sunset: &'g dyn async_sunset::ChanCore,
-    ) -> Self {
-        Self(ChanIO { num, dt, sunset })
-    }
-}
-
-impl<'g> ChanOut<'g> {
-    // caller must have already incremented the refcount
-    pub(crate) fn new(
-        num: ChanNum,
-        dt: ChanData,
-        sunset: &'g dyn async_sunset::ChanCore,
-    ) -> Self {
-        Self(ChanIO { num, dt, sunset })
-    }
-
-    /// A future that waits until the channel closes
-    pub async fn until_closed(&self) -> Result<()> {
-        self.0.until_closed().await
+impl Drop for ChanInOut<'_> {
+    fn drop(&mut self) {
+        self.0.sunset.dec_read_chan(self.0.num, self.0.dt)
     }
 }
 

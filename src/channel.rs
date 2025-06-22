@@ -7,11 +7,12 @@ use {
 };
 
 use core::num::NonZeroUsize;
+use core::task::Waker;
 use core::{marker::PhantomData, mem};
 
 use heapless::{Deque, String, Vec};
 
-use crate::*;
+use crate::{runner::set_waker, *};
 use config::*;
 use conn::DispatchEvent;
 use conn::Dispatched;
@@ -98,6 +99,14 @@ impl Channels {
             }
             _ => Ok(ch),
         }
+    }
+
+    pub fn _from_handle(&self, handle: &ChanHandle) -> &Channel {
+        self.get(handle.0).unwrap()
+    }
+
+    pub fn from_handle_mut(&mut self, handle: &ChanHandle) -> &mut Channel {
+        self.get_mut(handle.0).unwrap()
     }
 
     /// Must be called when an application has finished with a channel.
@@ -231,6 +240,22 @@ impl Channels {
         self.get(num).map_or(false, |c| c.valid_send(dt))
     }
 
+    /// Wake the channel with a ready input data packet.
+    pub fn wake_read(&mut self, num: ChanNum, dt: ChanData, is_client: bool) {
+        if let Ok(ch) = self.get_mut(num) {
+            ch.wake_read(dt, is_client);
+        } else {
+            debug_assert!(false, "wake_read bad channel");
+        }
+    }
+
+    /// Wake all ready output channels
+    pub fn wake_write(&mut self, is_client: bool) {
+        for ch in self.ch.iter_mut().filter_map(|c| c.as_mut()) {
+            ch.wake_write(None, is_client)
+        }
+    }
+
     pub(crate) fn term_window_change(
         &self,
         num: ChanNum,
@@ -358,6 +383,8 @@ impl Channels {
         s: &mut TrafSend,
     ) -> Result<DispatchEvent> {
         let mut ev = DispatchEvent::default();
+        let is_client = self.is_client;
+
         match packet {
             Packet::ChannelOpen(p) => {
                 ev = self.dispatch_open(&p, s)?;
@@ -411,9 +438,12 @@ impl Channels {
                 }
             }
             Packet::ChannelWindowAdjust(p) => {
-                let send = self.get_mut(ChanNum(p.num))?.send.as_mut().trap()?;
+                let chan = self.get_mut(ChanNum(p.num))?;
+                let send = chan.send.as_mut().trap()?;
                 send.window = send.window.saturating_add(p.adjust as usize);
                 trace!("new window {}", send.window);
+                // Wake any writers that might have been blocked.
+                chan.wake_write(None, is_client);
             }
             Packet::ChannelData(p) => {
                 let ch = self.get(ChanNum(p.num))?;
@@ -429,7 +459,6 @@ impl Channels {
                 }
             }
             Packet::ChannelDataExt(p) => {
-                let is_client = self.is_client;
                 let ch = self.get_mut(ChanNum(p.num))?;
                 if ch.app_done {
                     trace!("Ignoring data for done channel");
@@ -454,11 +483,12 @@ impl Channels {
             }
             Packet::ChannelEof(p) => {
                 let ch = self.get_mut(ChanNum(p.num))?;
-                ch.handle_eof(s)?;
+                ch.handle_eof(s, is_client)?;
             }
             Packet::ChannelClose(p) => {
+                let is_client = self.is_client;
                 let ch = self.get_mut(ChanNum(p.num))?;
-                ch.handle_close(s)?;
+                ch.handle_close(s, is_client)?;
             }
             Packet::ChannelRequest(p) => {
                 let is_client = self.is_client;
@@ -707,6 +737,13 @@ pub(crate) struct Channel {
     /// will only be removed from the list
     /// (allowing channel number re-use) if `app_done` is set
     app_done: bool,
+
+    // Wakers for notifying readyness. Usually used for async.
+    read_waker: Option<Waker>,
+    write_waker: Option<Waker>,
+    /// Will be a stderr read waker for a client, or stderr write waker for
+    /// a server.
+    ext_waker: Option<Waker>,
 }
 
 impl Channel {
@@ -726,6 +763,9 @@ impl Channel {
             pending_adjust: 0,
             full_window: config::DEFAULT_WINDOW,
             app_done: false,
+            read_waker: None,
+            write_waker: None,
+            ext_waker: None,
         }
     }
 
@@ -740,6 +780,58 @@ impl Channel {
     /// This is the channel number included in most sent packets.
     pub(crate) fn send_num(&self) -> Result<u32> {
         Ok(self.send.as_ref().trap()?.num)
+    }
+
+    pub fn set_read_waker(&mut self, dt: ChanData, is_client: bool, waker: &Waker) {
+        match dt {
+            ChanData::Normal => {
+                set_waker(&mut self.read_waker, waker);
+            }
+            ChanData::Stderr => {
+                if is_client {
+                    set_waker(&mut self.ext_waker, waker);
+                } else {
+                    debug_assert!(false, "server ext read waker");
+                }
+            }
+        }
+    }
+
+    pub fn set_write_waker(&mut self, dt: ChanData, is_client: bool, waker: &Waker) {
+        match dt {
+            ChanData::Normal => {
+                set_waker(&mut self.write_waker, waker);
+            }
+            ChanData::Stderr => {
+                if !is_client {
+                    set_waker(&mut self.ext_waker, waker);
+                } else {
+                    debug_assert!(false, "client ext write waker");
+                }
+            }
+        }
+    }
+
+    pub fn wake_read(&mut self, dt: ChanData, is_client: bool) {
+        match dt {
+            ChanData::Normal => {
+                self.read_waker.take().map(|w| w.wake());
+            }
+            ChanData::Stderr => {
+                if is_client {
+                    self.ext_waker.take().map(|w| w.wake());
+                }
+            }
+        }
+    }
+
+    pub fn wake_write(&mut self, dt: Option<ChanData>, is_client: bool) {
+        if dt == Some(ChanData::Normal) || dt == None {
+            self.read_waker.take().map(|w| w.wake());
+        }
+        if !is_client && (dt == Some(ChanData::Normal) || dt == None) {
+            self.ext_waker.take().map(|w| w.wake());
+        }
     }
 
     /// Returns an open confirmation reply packet to send.
@@ -855,11 +947,17 @@ impl Channel {
         }
     }
 
-    fn handle_eof(&mut self, s: &mut TrafSend) -> Result<()> {
+    fn handle_eof(&mut self, s: &mut TrafSend, is_client: bool) -> Result<()> {
         //TODO: check existing state?
         if !self.sent_eof {
             s.send(packets::ChannelEof { num: self.send_num()? })?;
             self.sent_eof = true;
+        }
+
+        // Wake readers on EOF
+        self.wake_read(ChanData::Normal, is_client);
+        if is_client {
+            self.wake_read(ChanData::Stderr, is_client);
         }
 
         self.state = ChanState::RecvEof;
@@ -867,12 +965,20 @@ impl Channel {
         Ok(())
     }
 
-    fn handle_close(&mut self, s: &mut TrafSend) -> Result<()> {
+    fn handle_close(&mut self, s: &mut TrafSend, is_client: bool) -> Result<()> {
         //TODO: check existing state?
         if !self.sent_close {
             s.send(packets::ChannelClose { num: self.send_num()? })?;
             self.sent_close = true;
         }
+
+        // Wake readers and writers on EOF
+        self.wake_read(ChanData::Normal, is_client);
+        if is_client {
+            self.wake_read(ChanData::Stderr, is_client);
+        }
+        self.wake_write(None, is_client);
+
         self.state = ChanState::RecvClose;
         Ok(())
     }

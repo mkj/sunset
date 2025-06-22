@@ -920,12 +920,11 @@ mod tests {
         // Returns Some(packet), or None if empty
         fn next(&mut self) -> Option<Packet<'static>> {
             // get output
-            let mut b = vec![0u8; 3000];
-            let l = self.traf_out.output(b.as_mut_slice());
-            assert!(l < b.len(), "Not enough space");
-            let b = &b[..l];
+            let b = self.traf_out.output_buf();
 
             self.buf.extend(b.iter());
+            let l = b.len();
+            self.traf_out.consume_output(l);
             let b = self.buf.make_contiguous();
 
             self.traf_in.done_payload();

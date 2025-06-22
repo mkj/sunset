@@ -138,16 +138,17 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
         }
 
         let mut disp = Dispatched::default();
-        let mut s = self.traf_out.sender(&mut self.keys);
 
         // Handle incoming packets
         if let Some((payload, seq)) = self.traf_in.payload() {
+            let mut s = self.traf_out.sender(&mut self.keys);
             disp = self.conn.handle_payload(payload, seq, &mut s)?;
 
             match disp.event {
                 DispatchEvent::Data(data_in) => {
                     // incoming channel data, we haven't finished with payload
-                    self.traf_in.set_read_channel_data(data_in)?;
+                    let (num, dt) = self.traf_in.set_read_channel_data(data_in)?;
+                    self.channel_wake_read(num, dt);
                     disp.event = DispatchEvent::None
                 }
                 DispatchEvent::CliEvent(_) | DispatchEvent::ServEvent(_) => {
@@ -172,6 +173,7 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
         // If there isn't any pending event for the application, run conn.progress()
         // (which may return other events).
         if disp.event.is_none() {
+            let mut s = self.traf_out.sender(&mut self.keys);
             disp = self.conn.progress(&mut s)?;
             trace!("prog disp {disp:?}");
             match disp.event {
@@ -220,14 +222,7 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
 
     /// Set a waker to be notified when [`input()`](Self::input) is ready to be called.
     pub fn set_input_waker(&mut self, waker: &Waker) {
-        if let Some(ref w) = self.input_waker {
-            if w.will_wake(waker) {
-                return;
-            }
-        }
-        if let Some(w) = self.input_waker.replace(waker.clone()) {
-            w.wake()
-        }
+        set_waker(&mut self.input_waker, waker)
     }
 
     /// Indicate that the input SSH tcp socket has closed
@@ -238,12 +233,11 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
 
     /// Write any pending output to the wire, returning the size written
     pub fn output(&mut self, buf: &mut [u8]) -> usize {
-        let r = self.traf_out.output(buf);
-        if !self.traf_out.is_output_pending() {
-            // State has changed
-            self.wake();
-        }
-        r
+        let out = self.output_buf();
+        let l = out.len().min(buf.len());
+        buf.copy_from_slice(&out[..l]);
+        self.consume_output(l);
+        l
     }
 
     /// Returns a buffer of output to send over the wire.
@@ -258,7 +252,13 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
 
     /// Indicate how many bytes were taken from `output_buf()`
     pub fn consume_output(&mut self, l: usize) {
+        trace!("consume_output {l}");
         self.traf_out.consume_output(l);
+        if !self.traf_out.is_output_pending() {
+            // All output has been consumed, space will now
+            // be available.
+            self.channel_wake_write();
+        }
         if !self.traf_out.is_output_pending() {
             // State has changed
             self.wake();
@@ -272,14 +272,8 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
 
     /// Set a waker to be notified when [`output()`](Self::output) will have pending data
     pub fn set_output_waker(&mut self, waker: &Waker) {
-        if let Some(ref w) = self.output_waker {
-            if w.will_wake(waker) {
-                return;
-            }
-        }
-        if let Some(w) = self.output_waker.replace(waker.clone()) {
-            w.wake()
-        }
+        trace!("set_output_waker");
+        set_waker(&mut self.output_waker, waker);
     }
 
     /// Indicate that the output SSH tcp socket has closed
@@ -329,6 +323,7 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
         let len = len.min(buf.len());
 
         let p = self.conn.channels.send_data(chan.0, dt, &buf[..len])?;
+        trace!("send_packet ch {:?} dt {:?} {}", chan.0, dt, len);
         self.traf_out.send_packet(p, &mut self.keys)?;
         self.wake();
         Ok(len)
@@ -466,6 +461,40 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
         Ok(())
     }
 
+    pub fn set_channel_read_waker(
+        &mut self,
+        ch: &ChanHandle,
+        dt: ChanData,
+        waker: &Waker,
+    ) {
+        self.conn.channels.from_handle_mut(ch).set_read_waker(
+            dt,
+            CS::is_client(),
+            waker,
+        )
+    }
+
+    pub fn set_channel_write_waker(
+        &mut self,
+        ch: &ChanHandle,
+        dt: ChanData,
+        waker: &Waker,
+    ) {
+        self.conn.channels.from_handle_mut(ch).set_write_waker(
+            dt,
+            CS::is_client(),
+            waker,
+        )
+    }
+
+    fn channel_wake_read(&mut self, num: ChanNum, dt: ChanData) {
+        self.conn.channels.wake_read(num, dt, CS::is_client())
+    }
+
+    fn channel_wake_write(&mut self) {
+        self.conn.channels.wake_write(CS::is_client())
+    }
+
     /// Send a terminal window size change report.
     ///
     /// Only call on a client session with a pty
@@ -517,13 +546,18 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
         self.conn.fetch_cli_banner(payload)
     }
 
+    // Wake SSH TCP socket input and output as required.
+    // Channel wakes happen elsewhere.
     fn wake(&mut self) {
+        trace!("wake");
         if self.is_input_ready() {
             trace!("wake ready_input, waker {:?}", self.input_waker);
             if let Some(w) = self.input_waker.take() {
                 trace!("wake input waker");
                 w.wake()
             }
+        } else {
+            trace!("no input ready");
         }
 
         if self.is_output_pending() {
@@ -533,6 +567,8 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
             } else {
                 trace!("no waker");
             }
+        } else {
+            trace!("no output pending")
         }
     }
 
@@ -742,6 +778,19 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
         let p = self.conn.packet(payload)?;
         self.conn.channels.fetch_servcommand(&p)
     }
+}
+
+/// Sets a waker, waking any existing waker
+pub(crate) fn set_waker(store_waker: &mut Option<Waker>, new_waker: &Waker) {
+    if let Some(w) = store_waker {
+        if w.will_wake(new_waker) {
+            // Avoid churn and clone() overhead if they both wake the same task
+            return;
+        }
+    }
+
+    store_waker.take().map(|w| w.wake());
+    *store_waker = Some(new_waker.clone())
 }
 
 /// Represents an open channel, owned by the application.

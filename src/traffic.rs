@@ -255,7 +255,10 @@ impl<'a> TrafIn<'a> {
     }
 
     /// Set channel data ready to be read.
-    pub fn set_read_channel_data(&mut self, di: channel::DataIn) -> Result<()> {
+    pub fn set_read_channel_data(
+        &mut self,
+        di: channel::DataIn,
+    ) -> Result<(ChanNum, ChanData)> {
         match self.state {
             RxState::InPayload { .. } => {
                 let idx = SSH_PAYLOAD_START + di.dt.packet_offset();
@@ -265,7 +268,7 @@ impl<'a> TrafIn<'a> {
                     idx,
                     len: idx + di.len.get(),
                 };
-                Ok(())
+                Ok((di.num, di.dt))
             }
             _ => Err(Error::bug()),
         }
@@ -387,6 +390,7 @@ impl<'a> TrafOut<'a> {
     }
 
     pub fn is_output_pending(&self) -> bool {
+        trace!("is_output_pending st {:?}", self.state);
         matches!(self.state, TxState::Write { .. })
     }
 
@@ -427,15 +431,6 @@ impl<'a> TrafOut<'a> {
         let len = ident::write_version(self.buf)?;
         self.state = TxState::Write { idx: 0, len };
         Ok(())
-    }
-
-    /// Write any pending output, returning the size written
-    pub fn output(&mut self, buf: &mut [u8]) -> usize {
-        let b = self.output_buf();
-        let wlen = buf.len().min(b.len());
-        buf[..wlen].copy_from_slice(&b[..wlen]);
-        self.consume_output(wlen);
-        wlen
     }
 
     pub fn output_buf(&mut self) -> &[u8] {

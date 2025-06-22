@@ -103,15 +103,15 @@ impl CmdlineClient {
         io_err: Option<ChanIn<'_>>,
         pty_guard: Option<RawPtyGuard>,
     ) -> Result<()> {
+        let (mut stdout, mut stdin) = io.split();
         // out
         let fo = async {
-            let mut io = io.clone();
             let mut so =
                 crate::stdout().map_err(|_| Error::msg("opening stdout failed"))?;
             loop {
                 // TODO buffers
                 let mut buf = [0u8; 1000];
-                let l = io.read(&mut buf).await?;
+                let l = stdout.read(&mut buf).await?;
                 if l == 0 {
                     break;
                 }
@@ -147,7 +147,6 @@ impl CmdlineClient {
 
         // in
         let fi = async {
-            let mut io = io.clone();
             let mut si =
                 crate::stdin().map_err(|_| Error::msg("opening stdin failed"))?;
             let mut esc =
@@ -169,9 +168,9 @@ impl CmdlineClient {
                         EscapeAction::None => (),
                         EscapeAction::Output { extra } => {
                             if let Some(e) = extra {
-                                io.write_all(&[e]).await?;
+                                stdin.write_all(&[e]).await?;
                             }
-                            io.write_all(buf).await?;
+                            stdin.write_all(buf).await?;
                         }
                         EscapeAction::Terminate => {
                             info!("Terminated");
@@ -195,7 +194,7 @@ impl CmdlineClient {
                         }
                     }
                 } else {
-                    io.write_all(buf).await?;
+                    stdin.write_all(buf).await?;
                 }
             }
             #[allow(unreachable_code)]
