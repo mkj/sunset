@@ -58,31 +58,22 @@ impl<'a> SSHServer<'a> {
 
     /// Returns a [`ChanInOut`] representing a channel.
     ///
-    /// For a shell this is stdin/stdout, for other channel types it is the only
-    /// data type.
     /// `ch` is the [`ChanHandle`] returned after accepting a [`ServEvent::OpenSession`] event.
+    /// If `stderr` is also needed, use [`stdio_stderr()`](Self::stdio_stderr) instead.
     pub async fn stdio(&self, ch: ChanHandle) -> Result<ChanInOut<'_>> {
-        let num = ch.num();
-        self.sunset.add_channel(ch, 1).await?;
-        Ok(ChanInOut::new(num, ChanData::Normal, &self.sunset))
+        Ok(ChanInOut::new(self.sunset.add_channel(ch).await?))
     }
 
     /// Retrieve the stdin/stdout/stderr streams.
     ///
-    /// If stderr is not required, use [`stdio()`][Self::stdio] instead to avoid needing to poll
-    /// the returned stderr.
-    /// The session will block until the streams are drained (they use the session buffer),
-    /// so they must be drained if used.
+    /// See [`stdio()`](Self::stdio).
     pub async fn stdio_stderr(
         &self,
         ch: ChanHandle,
     ) -> Result<(ChanInOut<'_>, ChanOut<'_>)> {
-        let num = ch.num();
-        self.sunset.add_channel(ch, 2).await?;
-        let i = ChanInOut::new(num, ChanData::Normal, &self.sunset);
-        let e = ChanOut::new(num, ChanData::Stderr, &self.sunset);
+        let io_normal = self.sunset.add_channel(ch).await?;
+        let e = ChanOut::new(io_normal.clone_stderr());
+        let i = ChanInOut::new(io_normal);
         Ok((i, e))
     }
-
-    // TODO: add stdio_stderr()
 }

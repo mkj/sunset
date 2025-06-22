@@ -4,8 +4,11 @@ pub use log::{debug, error, info, log, trace, warn};
 use core::future::{poll_fn, Future};
 use core::pin::pin;
 use core::sync::atomic::AtomicBool;
-use core::sync::atomic::Ordering::{Relaxed, SeqCst};
+use core::sync::atomic::Ordering::{AcqRel, Acquire, Relaxed};
 use core::task::{Context, Poll, Poll::Pending, Poll::Ready};
+
+// thumbv6m has no atomic usize add/sub.
+use portable_atomic::AtomicUsize;
 
 use embassy_futures::join;
 use embassy_futures::select::select;
@@ -13,11 +16,13 @@ use embassy_futures::select::select;
 use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex};
 use embassy_sync::mutex::{Mutex, MutexGuard};
 use embassy_sync::signal::Signal;
-use embassy_sync::waitqueue::WakerRegistration;
 use embedded_io_async::{BufRead, Read, Write};
 
+use crate::async_channel::ChanIO;
 use sunset::config::MAX_CHANNELS;
+use sunset::error::TrapBug;
 use sunset::event::Event;
+use sunset::ChanData::{Normal, Stderr};
 use sunset::{error, ChanData, ChanHandle, ChanNum, CliServ, Error, Result, Runner};
 
 #[cfg(feature = "multi-thread")]
@@ -27,24 +32,8 @@ pub type SunsetRawMutex = NoopRawMutex;
 
 pub type SunsetMutex<T> = Mutex<SunsetRawMutex, T>;
 
-#[derive(Debug)]
-struct Wakers {
-    chan_read: [WakerRegistration; MAX_CHANNELS],
-
-    chan_write: [WakerRegistration; MAX_CHANNELS],
-
-    /// Will be a stderr read waker for a client, or stderr write waker for
-    /// a server.
-    chan_ext: [WakerRegistration; MAX_CHANNELS],
-
-    // TODO: do we need a separate waker for this?
-    chan_close: [WakerRegistration; MAX_CHANNELS],
-}
-
 struct Inner<'a, CS: CliServ> {
     runner: Runner<'a, CS>,
-
-    wakers: Wakers,
 
     // May only be safely modified when the corresponding
     // `chan_refcounts` is zero.
@@ -55,17 +44,12 @@ impl<'a, CS: CliServ> Inner<'a, CS> {
     /// Helper to lookup the corresponding ChanHandle
     ///
     /// Returns split references that will be required by many callers
-    fn fetch(
-        &mut self,
-        num: ChanNum,
-    ) -> Result<(&mut Runner<'a, CS>, &ChanHandle, &mut Wakers)> {
+    fn fetch(&mut self, num: ChanNum) -> Result<(&mut Runner<'a, CS>, &ChanHandle)> {
         let h = self
             .chan_handles
             .get(num.0 as usize)
             .ok_or(Error::BadChannel { num })?;
-        h.as_ref()
-            .map(|ch| (&mut self.runner, ch, &mut self.wakers))
-            .ok_or_else(Error::bug)
+        h.as_ref().map(|ch| (&mut self.runner, ch)).ok_or_else(Error::bug)
     }
 }
 
@@ -108,9 +92,14 @@ pub(crate) struct AsyncSunset<'a, CS: CliServ> {
     // Refcount for `Inner::chan_handles`. Must be non-async so it can be
     // decremented on `ChanIn::drop()` etc.
     // The pending chan_refcount=0 handling occurs in the `progress()` loop.
-    //
-    // thumbv6m has no atomic usize add/sub.
-    chan_refcounts: [portable_atomic::AtomicUsize; MAX_CHANNELS],
+    chan_refcounts: [AtomicUsize; MAX_CHANNELS],
+
+    /// Refcount for Normal ChanIn or ChanInOut.
+    ///
+    /// Used to discard incoming data when none are remaining.
+    chan_norm_readcounts: [AtomicUsize; MAX_CHANNELS],
+    /// Refcount for Stderr ChanIn or ChanInOut.
+    chan_stderr_readcounts: [AtomicUsize; MAX_CHANNELS],
 }
 
 impl<CS: CliServ> core::fmt::Debug for AsyncSunset<'_, CS> {
@@ -127,13 +116,7 @@ impl<CS: CliServ> core::fmt::Debug for AsyncSunset<'_, CS> {
 
 impl<'a, CS: CliServ> AsyncSunset<'a, CS> {
     pub fn new(runner: Runner<'a, CS>) -> Self {
-        let wakers = Wakers {
-            chan_read: Default::default(),
-            chan_write: Default::default(),
-            chan_ext: Default::default(),
-            chan_close: Default::default(),
-        };
-        let inner = Inner { runner, wakers, chan_handles: Default::default() };
+        let inner = Inner { runner, chan_handles: Default::default() };
         let inner = Mutex::new(inner);
 
         let progress_notify = Signal::new();
@@ -143,6 +126,8 @@ impl<'a, CS: CliServ> AsyncSunset<'a, CS> {
             moribund: AtomicBool::new(false),
             progress_notify,
             chan_refcounts: Default::default(),
+            chan_norm_readcounts: Default::default(),
+            chan_stderr_readcounts: Default::default(),
             last_progress_idled: AtomicBool::new(false),
         }
     }
@@ -223,64 +208,18 @@ impl<'a, CS: CliServ> AsyncSunset<'a, CS> {
     }
 
     fn wake_progress(&self) {
+        trace!("wake_progress");
         self.progress_notify.signal(())
     }
 
-    fn wake_channels(&self, inner: &mut Inner<CS>) -> Result<()> {
-        // Read wakers
-        let w = &mut inner.wakers;
+    fn discard_channels(&self, inner: &mut Inner<CS>) -> Result<()> {
         if let Some((num, dt, _len)) = inner.runner.read_channel_ready() {
-            let waker = match dt {
-                ChanData::Normal => &mut w.chan_read[num.0 as usize],
-                ChanData::Stderr => &mut w.chan_ext[num.0 as usize],
-            };
-            if waker.occupied() {
-                waker.wake();
-            } else {
-                // No waker waiting for this packet, so drop it.
-                // This avoids the case where for example a client application
-                // is only reading from a Stdin ChanIn, but some data arrives
-                // over the write fore Stderr. Something needs to mark it done,
-                // since the session can't proceed until it's consumed.
-                if let Some(h) = &inner.chan_handles[num.0 as usize] {
-                    inner.runner.discard_read_channel(h)?
-                }
-            }
-        }
-
-        for (idx, c) in inner.chan_handles.iter().enumerate() {
-            let ch = if let Some(ch) = c.as_ref() { ch } else { continue };
-
-            // Write wakers
-
-            // TODO: if this is slow we could be smarter about aggregating dt vs standard,
-            // or handling the case of full out payload buffers.
-            if inner.runner.write_channel_ready(ch, ChanData::Normal)?.unwrap_or(0)
-                > 0
-            {
-                w.chan_write[idx].wake()
-            }
-
-            if !CS::is_client()
-                && inner
-                    .runner
-                    .write_channel_ready(ch, ChanData::Stderr)?
-                    .unwrap_or(0)
-                    > 0
-            {
-                w.chan_ext[idx].wake()
-            }
-
-            // TODO: do we want to keep waking it?
-            if inner.runner.is_channel_eof(ch) {
-                w.chan_read[idx].wake();
-                if CS::is_client() {
-                    w.chan_ext[idx].wake();
-                }
-            }
-
-            if inner.runner.is_channel_closed(ch) {
-                w.chan_close[idx].wake();
+            if !self.chan_readcount(num, dt).load(AcqRel) > 0 {
+                // There are no live ChanIn or ChanInOut for the num/dt,
+                // so nothing will read the channel.
+                // Discard the data so it doesn't block forever.
+                let ch = inner.chan_handles[num.0 as usize].as_ref().trap()?;
+                inner.runner.discard_read_channel(ch)?;
             }
         }
         Ok(())
@@ -296,7 +235,7 @@ impl<'a, CS: CliServ> AsyncSunset<'a, CS> {
         for (ch, count) in
             inner.chan_handles.iter_mut().zip(self.chan_refcounts.iter())
         {
-            let count = count.load(Relaxed);
+            let count = count.load(Acquire);
             if count > 0 {
                 debug_assert!(ch.is_some());
                 continue;
@@ -341,8 +280,8 @@ impl<'a, CS: CliServ> AsyncSunset<'a, CS> {
 
         // Drop deferred finished channels
         self.clear_refcounts(inner)?;
-        // Wake channels
-        self.wake_channels(inner)?;
+        // Discard unhandled input
+        self.discard_channels(inner)?;
 
         if self.moribund.load(Relaxed) {
             // if we're flushing, we exit once there is no progress
@@ -364,6 +303,15 @@ impl<'a, CS: CliServ> AsyncSunset<'a, CS> {
     {
         let mut inner = self.inner.lock().await;
         f(&mut inner.runner)
+    }
+
+    /// Fetch the relevant atomic counter
+    fn chan_readcount(&self, num: ChanNum, dt: ChanData) -> &AtomicUsize {
+        let counts = match dt {
+            Normal => &self.chan_norm_readcounts,
+            Stderr => &self.chan_stderr_readcounts,
+        };
+        &counts[num.0 as usize]
     }
 
     /// helper to perform a function on the `inner`, returning a `Poll` value
@@ -409,7 +357,7 @@ impl<'a, CS: CliServ> AsyncSunset<'a, CS> {
                     w.poll(cx)
                 };
 
-                return match res {
+                let r = match res {
                     Pending => Pending,
                     Ready(Ok(0)) => {
                         info!("socket EOF");
@@ -433,6 +381,10 @@ impl<'a, CS: CliServ> AsyncSunset<'a, CS> {
                         Ready(error::ChannelEOF.fail())
                     }
                 };
+                if r.is_pending() {
+                    inner.runner.set_output_waker(cx.waker());
+                }
+                return r;
             }
         })
         .await
@@ -462,27 +414,29 @@ impl<'a, CS: CliServ> AsyncSunset<'a, CS> {
 
     /// Adds a new channel handle provided by sunset core.
     ///
-    /// AsyncSunset will take ownership of the handle. An initial refcount
-    /// must be provided, this will match the number of ChanIO that
-    /// will be created. (A zero initial refcount would be prone to immediate
-    /// garbage collection).
+    /// AsyncSunset will take ownership of the handle.
+    ///
+    /// The channel will have an initial refcount of 1 for the
+    /// returned ChanIO.
+    /// chan_norm_readcounts and chan_stderr_readcounts are initially
+    /// 0, will be set by ChanIn or ChanInOut.
+    ///
     /// ChanIO will take care of `inc_chan()` on clone, `dec_chan()` on drop.
     pub(crate) async fn add_channel(
         &self,
         handle: ChanHandle,
-        init_refcount: usize,
-    ) -> Result<()> {
+    ) -> Result<ChanIO<'_>> {
         let mut inner = self.inner.lock().await;
-        let idx = handle.num().0 as usize;
+        let num = handle.num();
+        let idx = num.0 as usize;
         if inner.chan_handles[idx].is_some() {
             return error::Bug.fail();
         }
+        inner.chan_handles[idx] = Some(handle);
 
         debug_assert_eq!(self.chan_refcounts[idx].load(Relaxed), 0);
-
-        inner.chan_handles[idx] = Some(handle);
-        self.chan_refcounts[idx].store(init_refcount, Relaxed);
-        Ok(())
+        self.chan_refcounts[idx].store(1, Relaxed);
+        Ok(ChanIO::new_normal(num, self))
     }
 }
 
@@ -499,6 +453,8 @@ impl<'a, CS: CliServ> MaybeSend for AsyncSunset<'a, CS> {}
 pub(crate) trait ChanCore: MaybeSend {
     fn inc_chan(&self, num: ChanNum);
     fn dec_chan(&self, num: ChanNum);
+    fn inc_read_chan(&self, num: ChanNum, dt: ChanData);
+    fn dec_read_chan(&self, num: ChanNum, dt: ChanData);
 
     fn poll_until_channel_closed(
         &self,
@@ -531,20 +487,40 @@ pub(crate) trait ChanCore: MaybeSend {
 }
 
 impl<'a, CS: CliServ> ChanCore for AsyncSunset<'a, CS> {
+    /// Counts live ChanIO instances
     fn inc_chan(&self, num: ChanNum) {
-        let c = self.chan_refcounts[num.0 as usize].fetch_add(1, SeqCst);
+        // Relaxed is OK, doesn't perform any action until later decrement.
+        let c = self.chan_refcounts[num.0 as usize].fetch_add(1, Relaxed);
         debug_assert_ne!(c, 0);
         // overflow shouldn't be possible unless ChanIn etc is leaking
         debug_assert_ne!(c, usize::MAX);
     }
 
+    /// Counts live ChanIO instances
     fn dec_chan(&self, num: ChanNum) {
         // refcounts that hit zero will be cleaned up later in clear_refcounts()
-        let c = self.chan_refcounts[num.0 as usize].fetch_sub(1, SeqCst);
+        let c = self.chan_refcounts[num.0 as usize].fetch_sub(1, AcqRel);
         debug_assert_ne!(c, 0);
         if c == 1 {
             // refcount hit zero, progress() will clean it up
             // in an async context
+            self.wake_progress();
+        }
+    }
+
+    /// Counts live ChanIn or ChanInOut instances
+    fn inc_read_chan(&self, num: ChanNum, dt: ChanData) {
+        let c = self.chan_readcount(num, dt).fetch_add(1, AcqRel);
+        debug_assert_ne!(c, usize::MAX);
+    }
+
+    /// Counts live ChanIn or ChanInOut instances
+    fn dec_read_chan(&self, num: ChanNum, dt: ChanData) {
+        let c = self.chan_readcount(num, dt).fetch_sub(1, AcqRel);
+        debug_assert_ne!(c, 0);
+        if c == 1 {
+            // refcount hit zero, wake progress so that any data already
+            // pending will get discarded (by wake_channels()).
             self.wake_progress();
         }
     }
@@ -561,11 +537,12 @@ impl<'a, CS: CliServ> ChanCore for AsyncSunset<'a, CS> {
             return Pending;
         };
 
-        let (runner, h, wakers) = inner.fetch(num)?;
+        let (runner, h) = inner.fetch(num)?;
         if runner.is_channel_closed(h) {
             Poll::Ready(Ok(()))
         } else {
-            wakers.chan_close[num.0 as usize].register(cx.waker());
+            // read Normal is arbitrary, any read or write should get woken on close
+            runner.set_channel_read_waker(h, Normal, cx.waker());
             Poll::Pending
         }
     }
@@ -585,22 +562,19 @@ impl<'a, CS: CliServ> ChanCore for AsyncSunset<'a, CS> {
             return Pending;
         };
 
-        let (runner, h, wakers) = inner.fetch(num)?;
+        let (runner, h) = inner.fetch(num)?;
         let i = match runner.read_channel(h, dt, buf) {
             Ok(0) => {
                 // 0 bytes read, pending
-                match dt {
-                    ChanData::Normal => {
-                        wakers.chan_read[num.0 as usize].register(cx.waker());
-                    }
-                    ChanData::Stderr => {
-                        wakers.chan_ext[num.0 as usize].register(cx.waker());
-                    }
-                }
+                trace!("read ch {num:?} dt {dt:?} pending");
+                runner.set_channel_read_waker(h, dt, cx.waker());
                 Poll::Pending
             }
             Err(Error::ChannelEOF) => Poll::Ready(Ok(0)),
-            r => Poll::Ready(r),
+            r => {
+                trace!("read ready ch {num:?} dt {dt:?} {r:?}");
+                Poll::Ready(r)
+            }
         };
         if matches!(i, Poll::Ready(_)) {
             self.wake_progress()
@@ -622,20 +596,15 @@ impl<'a, CS: CliServ> ChanCore for AsyncSunset<'a, CS> {
             return Pending;
         };
 
-        let (runner, h, wakers) = inner.fetch(num)?;
+        let (runner, h) = inner.fetch(num)?;
         let l = runner.write_channel(h, dt, buf);
         if let Ok(0) = l {
             // 0 bytes written, pending
-            match dt {
-                ChanData::Normal => {
-                    wakers.chan_write[num.0 as usize].register(cx.waker());
-                }
-                ChanData::Stderr => {
-                    wakers.chan_ext[num.0 as usize].register(cx.waker());
-                }
-            }
+            trace!("write ch {num:?} dt {dt:?} pending");
+            runner.set_channel_read_waker(h, dt, cx.waker());
             Poll::Pending
         } else {
+            trace!("write ready ch {num:?} dt {dt:?} {l:?}");
             self.wake_progress();
             Poll::Ready(l)
         }
@@ -653,7 +622,7 @@ impl<'a, CS: CliServ> ChanCore for AsyncSunset<'a, CS> {
         let Ready(mut inner) = i.poll(cx) else {
             return Pending;
         };
-        let (runner, h, _) = inner.fetch(num)?;
+        let (runner, h) = inner.fetch(num)?;
         Poll::Ready(runner.term_window_change(h, winch))
     }
 }

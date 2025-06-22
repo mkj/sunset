@@ -5,7 +5,6 @@ use sunset::*;
 use crate::*;
 use async_channel::{ChanIn, ChanInOut};
 use async_sunset::{AsyncSunset, ProgressHolder};
-use sunset::ChanData;
 
 /// An async SSH client instance
 ///
@@ -56,24 +55,19 @@ impl<'a> SSHClient<'a> {
     }
 
     pub async fn open_session_nopty(&self) -> Result<(ChanInOut<'_>, ChanIn<'_>)> {
-        let chan =
+        let ch =
             self.sunset.with_runner(|runner| runner.open_client_session()).await?;
 
-        let num = chan.num();
-        self.sunset.add_channel(chan, 2).await?;
-
-        let cstd = ChanInOut::new(num, ChanData::Normal, &self.sunset);
-        let cerr = ChanIn::new(num, ChanData::Stderr, &self.sunset);
-        Ok((cstd, cerr))
+        let io_normal = self.sunset.add_channel(ch).await?;
+        let e = ChanIn::new(io_normal.clone_stderr());
+        let i = ChanInOut::new(io_normal);
+        Ok((i, e))
     }
 
     pub async fn open_session_pty(&self) -> Result<ChanInOut<'_>> {
-        let chan =
+        let ch =
             self.sunset.with_runner(|runner| runner.open_client_session()).await?;
 
-        let num = chan.num();
-        self.sunset.add_channel(chan, 1).await?;
-        let cstd = ChanInOut::new(num, ChanData::Normal, &self.sunset);
-        Ok(cstd)
+        Ok(ChanInOut::new(self.sunset.add_channel(ch).await?))
     }
 }
