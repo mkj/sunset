@@ -380,7 +380,7 @@ impl<CS: CliServ> Conn<CS> {
                     error::SSHProto.fail()
                 }
             }
-        } else if !matches!(self.kex, Kex::Idle) {
+        } else if !matches!(self.kex, Kex::Idle | Kex::KexInit { .. }) {
             // Normal KEX only allows certain packets
             match p.category() {
                 packets::Category::All => Ok(()),
