@@ -48,6 +48,13 @@ impl ChanIO<'_> {
     pub async fn until_closed(&self) -> Result<()> {
         poll_fn(|cx| self.sunset.poll_until_channel_closed(cx, self.num)).await
     }
+
+    pub async fn term_window_change(
+        &self,
+        winch: sunset::packets::WinChange,
+    ) -> Result<()> {
+        poll_fn(|cx| self.sunset.poll_term_window_change(cx, self.num, &winch)).await
+    }
 }
 
 impl Drop for ChanIO<'_> {
@@ -150,6 +157,16 @@ impl<'g> ChanOut<'g> {
     pub async fn until_closed(&self) -> Result<()> {
         self.0.until_closed().await
     }
+
+    /// Send a terminal size change notification
+    ///
+    /// Only applicable to client shell channels with a PTY
+    pub async fn term_window_change(
+        &self,
+        winch: sunset::packets::WinChange,
+    ) -> Result<()> {
+        self.0.term_window_change(winch).await
+    }
 }
 
 /// A bidirectional SSH channel.
@@ -198,8 +215,7 @@ impl<'g> ChanInOut<'g> {
         &self,
         winch: sunset::packets::WinChange,
     ) -> Result<()> {
-        poll_fn(|cx| self.0.sunset.poll_term_window_change(cx, self.0.num, &winch))
-            .await
+        self.0.term_window_change(winch).await
     }
 }
 
