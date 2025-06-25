@@ -428,6 +428,12 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
         // Avoid apps polling forever on a packet type that won't come
         dt.validate_send(CS::is_client())?;
 
+        if !self.conn.kex_is_idle() {
+            // Only KEX messages are allowed during key exchange,
+            // not data.
+            return Ok(Some(0));
+        }
+
         // minimum of buffer space and channel window available
         let payload_space = self.traf_out.send_allowed(&self.keys);
         // subtract space for packet headers prior to data

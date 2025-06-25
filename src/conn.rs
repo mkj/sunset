@@ -417,6 +417,10 @@ impl<CS: CliServ> Conn<CS> {
         self.sess_id.is_none()
     }
 
+    pub fn kex_is_idle(&self) -> bool {
+        matches!(self.kex, Kex::Idle)
+    }
+
     pub fn dispatch_packet(
         &mut self,
         packet: Packet,
