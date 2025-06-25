@@ -3,6 +3,7 @@ use futures::pin_mut;
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
 use sunset::event::CliEvent;
+use sunset::packets::WinChange;
 
 use core::fmt::Debug;
 use core::str::FromStr;
@@ -104,6 +105,8 @@ impl CmdlineClient {
         pty_guard: Option<RawPtyGuard>,
     ) -> Result<()> {
         let (mut stdout, mut stdin) = io.split();
+        let winso = stdin.clone();
+
         // out
         let fo = async {
             let mut so =
@@ -201,23 +204,31 @@ impl CmdlineClient {
             Ok::<_, sunset::Error>(())
         };
 
+        // Window resize signal
+        let fum = async {
+            // Only for PTYs
+            if pty_guard.is_some() {
+                let mut winch = signal(SignalKind::window_change())
+                    // OK unwrap: signal() shouldn't fail.
+                    .unwrap();
+                loop {
+                    winch.recv().await;
+                    if let Ok(winch) = win_size() {
+                        if let Err(e) = winso.term_window_change(winch).await {
+                            trace!("winch failed {e:?}");
+                        }
+                    }
+                }
+            } else {
+                futures::future::pending().await
+            }
+        };
+
         // output needs to complete when the channel is closed
         let fi = embassy_futures::select::select(fi, io.until_closed());
+        let fum = embassy_futures::select::select(fum, io.until_closed());
 
-        // let fo = fo.map(|x| {
-        //     error!("fo done {x:?}");
-        //     x
-        // });
-        // let fi = fi.map(|x| {
-        //     error!("fi done {x:?}");
-        //     x
-        // });
-        // let fe = fe.map(|x| {
-        //     error!("fe done {x:?}");
-        //     x
-        // });
-
-        let io_done = embassy_futures::join::join3(fe, fi, fo);
+        let io_done = embassy_futures::join::join4(fe, fi, fo, fum);
         let _ = embassy_futures::select::select(io_done, terminate.wait()).await;
         // TODO handle errors from the join?
         Ok(())
@@ -231,15 +242,6 @@ impl CmdlineClient {
         &mut self,
         cli: &'g SSHClient<'a>,
     ) -> Result<ExitCode> {
-        let mut winch_signal = self
-            .want_pty
-            .then(|| signal(SignalKind::window_change()))
-            .transpose()
-            .unwrap_or_else(|_| {
-                warn!("Couldn't watch for window change signals");
-                None
-            });
-
         let mut io = None;
         let mut extin = None;
 
@@ -253,12 +255,6 @@ impl CmdlineClient {
 
         let prog_loop = async {
             loop {
-                let winch_fut = Fuse::terminated();
-                pin_mut!(winch_fut);
-                if let Some(w) = winch_signal.as_mut() {
-                    winch_fut.set(w.recv().fuse());
-                }
-
                 let mut ph = ProgressHolder::new();
                 let ev = cli.progress(&mut ph).await?;
                 // Note that while ph is held, calls to cli will block.
