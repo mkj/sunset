@@ -128,7 +128,7 @@ async fn run(args: Args) -> Result<ExitCode> {
                 }).context("SSH connection")?
             }
             a = session => {
-                trace!("client session {a:?}");
+                trace!("client session {a:#?}");
                 a.context("client session")?
             }
         };

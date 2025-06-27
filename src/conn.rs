@@ -75,6 +75,8 @@ pub(crate) enum DispatchEvent {
     Data(channel::DataIn),
     CliEvent(event::CliEventId),
     ServEvent(event::ServEventId),
+    /// NewKeys was received, wake any output channels in case they were waiting.
+    KexDone,
     /// Connection state has changed, should poll again
     Progressed,
     /// No event
@@ -106,7 +108,7 @@ impl DispatchEvent {
     /// call the appropriate resume method.
     pub(crate) fn needs_resume(&self) -> bool {
         match self {
-            Self::None | Self::Data(_) | Self::Progressed => false,
+            Self::None | Self::Data(_) | Self::KexDone | Self::Progressed => false,
             Self::CliEvent(x) => x.needs_resume(),
             Self::ServEvent(x) => x.needs_resume(),
         }
@@ -187,7 +189,7 @@ impl CliServ for client::Client {
             DispatchEvent::None => Ok(Event::None),
             DispatchEvent::Progressed => Ok(Event::Progressed),
             // Events handled internally by Runner::progress()
-            DispatchEvent::Data(_) => Err(Error::bug()),
+            DispatchEvent::Data(_) | DispatchEvent::KexDone => Err(Error::bug()),
         }
     }
 }
@@ -219,7 +221,7 @@ impl CliServ for server::Server {
             DispatchEvent::None => Ok(Event::None),
             DispatchEvent::Progressed => Ok(Event::Progressed),
             // Events handled internally by Runner::progress()
-            DispatchEvent::Data(_) => Err(Error::bug()),
+            DispatchEvent::Data(_) | DispatchEvent::KexDone => Err(Error::bug()),
         }
     }
 }
@@ -463,6 +465,7 @@ impl<CS: CliServ> Conn<CS> {
             }
             Packet::NewKeys(_) => {
                 self.kex.handle_newkeys(&mut self.sess_id, s)?;
+                disp.event = DispatchEvent::KexDone;
             }
             Packet::ExtInfo(p) => {
                 if let Some(cli) = self.try_mut_client() {

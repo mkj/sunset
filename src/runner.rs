@@ -158,6 +158,12 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
                     // packets have been completed
                     self.traf_in.done_payload()
                 }
+                DispatchEvent::KexDone => {
+                    // Wake any channels that were paused during KEX
+                    self.channel_wake_write();
+                    self.traf_in.done_payload();
+                    disp.event = DispatchEvent::None;
+                }
                 // TODO, may get used later?
                 DispatchEvent::Progressed => return Err(Error::bug()),
             }
@@ -182,7 +188,9 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
                 | DispatchEvent::None
                 | DispatchEvent::Progressed => (),
                 // Don't expect data from conn.progress()
-                DispatchEvent::Data(_) => return Err(Error::bug()),
+                DispatchEvent::Data(_) | DispatchEvent::KexDone => {
+                    return Err(Error::bug())
+                }
             }
         }
 
@@ -256,11 +264,9 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
         self.traf_out.consume_output(l);
         if !self.traf_out.is_output_pending() {
             // All output has been consumed, space will now
-            // be available.
+            // be available. Wake any wakers that may have been waiting
+            // for space.
             self.channel_wake_write();
-        }
-        if !self.traf_out.is_output_pending() {
-            // State has changed
             self.wake();
         }
     }
