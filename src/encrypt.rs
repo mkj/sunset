@@ -790,8 +790,8 @@ mod tests {
                     SessId::from_slice(&Sha256::digest("some sessid".as_bytes()))
                         .unwrap();
                 let sharedkey = b"hello";
-                let ko = KexOutput::new_test(sharedkey, &algos, &h);
-                let ko_b = KexOutput::new_test(sharedkey, &algos, &h);
+                let ko = KexOutput::new_test(sharedkey, &h);
+                let ko_b = KexOutput::new_test(sharedkey, &h);
 
                 trace!("algos enc {algos:?}");
                 let newkeys = Keys::derive(ko, &sess_id, &algos).unwrap();
@@ -829,7 +829,7 @@ mod tests {
                 let sess_id =
                     SessId::from_slice(&Sha256::digest(b"some sessid")).unwrap();
                 let sharedkey = b"hello";
-                let ko = KexOutput::new_test(sharedkey, &algos, &h);
+                let ko = KexOutput::new_test(sharedkey, &h);
                 let newkeys = Keys::derive(ko, &sess_id, &algos).unwrap();
 
                 keys.rekey(newkeys);

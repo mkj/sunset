@@ -13,9 +13,14 @@ use {
 use core::fmt;
 
 use digest::Digest;
+#[cfg(feature = "mlkem")]
+use ml_kem::{
+    kem::{Decapsulate, Encapsulate, EncapsulationKey, Kem},
+    Ciphertext, EncodedSizeUser, KemCore, MlKem768, MlKem768Params,
+};
 use rand_core::{CryptoRng, OsRng, RngCore};
 use sha2::Sha256;
-use zeroize::{Zeroize, ZeroizeOnDrop};
+use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 use crate::*;
 use encrypt::{Cipher, Integ, Keys};
@@ -25,8 +30,9 @@ use namelist::{LocalNames, NameList};
 use packets::{KexCookie, Packet, PubKey, Signature};
 use sign::SigType;
 use sshnames::*;
-use sshwire::{hash_mpint, BinString, Blob};
-use sshwire::{hash_ser, hash_ser_length};
+use sshwire::{
+    hash_mpint, hash_ser, hash_ser_length, BinString, Blob, SSHWireDigestUpdate,
+};
 use traffic::TrafSend;
 
 // at present we only have curve25519 with sha256
@@ -36,8 +42,12 @@ pub type SessId = heapless::Vec<u8, MAX_SESSID>;
 use pretty_hex::PrettyHex;
 
 // TODO this will be configurable.
-const fixed_options_kex: &[&str] =
-    &[SSH_NAME_CURVE25519, SSH_NAME_CURVE25519_LIBSSH];
+const fixed_options_kex: &[&str] = &[
+    #[cfg(feature = "mlkem")]
+    SSH_NAME_MLKEM_X25519,
+    SSH_NAME_CURVE25519,
+    SSH_NAME_CURVE25519_LIBSSH,
+];
 
 /// Options that can't be negotiated
 const marker_only_kexs: &[&str] = &[
@@ -173,15 +183,13 @@ impl KexHash {
         Ok(kh)
     }
 
-    /// Fill everything except K.
-    fn prefinish(
-        &mut self,
-        host_key: &PubKey,
-        q_c: &[u8],
-        q_s: &[u8],
-    ) -> Result<()> {
-        hash_ser_length(&mut self.hash_ctx, host_key)?;
+    /// Hash the server signing public key
+    fn hash_hostkey(&mut self, host_key: &PubKey) -> Result<()> {
+        hash_ser_length(&mut self.hash_ctx, host_key)
+    }
 
+    /// Hash shared secret derivation q_c/q_s (aka e/f)
+    fn hash_pubkeys(&mut self, q_c: &[u8], q_s: &[u8]) -> Result<()> {
         // TODO: q_c and q_s need to be padded as mpint (extra 0x00 if high bit set)
         // for ecdsa and DH modes, but not for curve25519.
 
@@ -191,18 +199,35 @@ impl KexHash {
     }
 
     /// Compute the remainder of the hash, consuming KexHash
-    /// K should be provided as raw bytes, it will be padded as an mpint
-    /// internally.
-    fn finish(mut self, k: &[u8]) -> SessId {
-        hash_mpint(&mut self.hash_ctx, k);
+    fn finish(mut self, k: &KexKey) -> SessId {
+        k.hash(&mut self.hash_ctx);
         // OK unwrap, hash sized
         SessId::from_slice(&self.hash_ctx.finalize()).unwrap()
     }
 
     // Hashes a slice, with added u32 length prefix.
     fn hash_slice(&mut self, v: &[u8]) {
-        self.hash_ctx.update((v.len() as u32).to_be_bytes());
-        self.hash_ctx.update(v);
+        let _ = hash_ser(&mut self.hash_ctx, &BinString(v));
+    }
+}
+
+/// K shared secret from rfc4253.
+#[allow(unused)]
+enum KexKey<'a> {
+    /// curve25519 and older KEXes encode as a mpint
+    Mpint(&'a [u8]),
+    /// mlkem and sntrup hybrids encode as a SSH string
+    String(&'a [u8]),
+}
+
+impl<'a> KexKey<'a> {
+    fn hash(&self, hash_ctx: &mut impl SSHWireDigestUpdate) {
+        match self {
+            Self::Mpint(k) => hash_mpint(hash_ctx, k),
+            Self::String(k) => {
+                let _ = hash_ser(hash_ctx, &BinString(k));
+            }
+        }
     }
 }
 
@@ -296,7 +321,8 @@ impl Kex {
             return error::PacketWrong.fail();
         };
 
-        let algos = Self::algo_negotiation(is_client, &remote_kexinit, algo_conf)?;
+        let mut algos =
+            Self::algo_negotiation(is_client, &remote_kexinit, algo_conf)?;
         debug!("{algos}");
 
         if first_kex && algos.strict_kex && s.recv_seq() != 1 {
@@ -304,8 +330,7 @@ impl Kex {
             return error::PacketWrong.fail();
         }
         if is_client {
-            let p = algos.kex.make_kexdhinit()?;
-            s.send(p)?;
+            algos.kex.send_kexdhinit(s)?;
         }
         let kex_hash = KexHash::new(
             &algos,
@@ -572,13 +597,16 @@ impl Kex {
 #[derive(Debug, ZeroizeOnDrop)]
 pub(crate) enum SharedSecret {
     KexCurve25519(KexCurve25519),
-    // ECDH?
+    #[cfg(feature = "mlkem")]
+    KexMlkemX25519(KexMlkemX25519),
 }
 
 impl fmt::Display for SharedSecret {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let n = match self {
             Self::KexCurve25519(_) => SSH_NAME_CURVE25519,
+            #[cfg(feature = "mlkem")]
+            Self::KexMlkemX25519(_) => SSH_NAME_MLKEM_X25519,
         };
         write!(f, "{n}")
     }
@@ -590,20 +618,28 @@ impl SharedSecret {
             SSH_NAME_CURVE25519 | SSH_NAME_CURVE25519_LIBSSH => {
                 Ok(SharedSecret::KexCurve25519(KexCurve25519::new()?))
             }
+            #[cfg(feature = "mlkem")]
+            SSH_NAME_MLKEM_X25519 => {
+                Ok(SharedSecret::KexMlkemX25519(KexMlkemX25519::new()?))
+            }
             _ => Err(Error::bug()),
         }
     }
 
-    pub(crate) fn hash(&self) -> Sha256 {
-        match self {
-            SharedSecret::KexCurve25519(_) => Sha256::new(),
-        }
-    }
-
-    fn make_kexdhinit(&self) -> Result<Packet<'_>> {
-        let q_c = self.pubkey();
+    fn send_kexdhinit(&mut self, s: &mut TrafSend) -> Result<()> {
+        #[cfg(feature = "mlkem")]
+        let mlkem_bytes;
+        let q_c = match self {
+            Self::KexCurve25519(k) => k.pubkey(),
+            #[cfg(feature = "mlkem")]
+            Self::KexMlkemX25519(k) => {
+                mlkem_bytes = k.init_pubkey_arr_client();
+                &mlkem_bytes
+            }
+        };
         let q_c = BinString(q_c);
-        Ok(packets::KexDHInit { q_c }.into())
+        let p: Packet = packets::KexDHInit { q_c }.into();
+        s.send(p)
     }
 
     // client only
@@ -612,13 +648,17 @@ impl SharedSecret {
         mut kex_hash: KexHash,
         p: &packets::KexDHReply,
     ) -> Result<KexOutput> {
-        kex_hash.prefinish(&p.k_s.0, algos.kex.pubkey(), p.q_s.0)?;
+        kex_hash.hash_hostkey(&p.k_s.0)?;
         // consumes the sharedsecret private key in algos
-        let kex_out = match algos.kex {
-            SharedSecret::KexCurve25519(_) => {
-                KexCurve25519::secret(algos, p.q_s.0, kex_hash)?
+        let kex_out = match &mut algos.kex {
+            SharedSecret::KexCurve25519(k) => {
+                k.secret(p.q_s.0, kex_hash, algos.is_client)
             }
-        };
+            #[cfg(feature = "mlkem")]
+            SharedSecret::KexMlkemX25519(k) => {
+                k.secret_decap_client(p.q_s.0, kex_hash)
+            }
+        }?;
 
         // TODO: error message on signature failure.
         let h: &[u8] = kex_out.h.as_ref();
@@ -653,15 +693,23 @@ impl SharedSecret {
             error::BadUsage.build()
         })?;
 
-        kex_hash.prefinish(&hostkey.pubkey(), p.q_c.0, algos.kex.pubkey())?;
-        let (kex_out, kex_pub) = match algos.kex {
-            SharedSecret::KexCurve25519(_) => {
-                let kex_out = KexCurve25519::secret(algos, p.q_c.0, kex_hash)?;
-                (kex_out, algos.kex.pubkey())
+        kex_hash.hash_hostkey(&hostkey.pubkey())?;
+
+        #[cfg(feature = "mlkem")]
+        let mlkem_bytes;
+        let (kex_out, pubkey) = match &mut algos.kex {
+            SharedSecret::KexCurve25519(k) => {
+                (k.secret(p.q_c.0, kex_hash, algos.is_client)?, k.pubkey())
+            }
+            #[cfg(feature = "mlkem")]
+            SharedSecret::KexMlkemX25519(k) => {
+                let ko;
+                (ko, mlkem_bytes) = k.secret_encap_server(p.q_c.0, kex_hash)?;
+                (ko, mlkem_bytes.as_slice())
             }
         };
 
-        Self::send_kexdhreply(&kex_out, kex_pub, hostkey, s)?;
+        Self::send_kexdhreply(&kex_out, pubkey, hostkey, s)?;
         Ok(kex_out)
     }
 
@@ -680,12 +728,6 @@ impl SharedSecret {
         let sig: Signature = (&sig).into();
         let sig = Blob(sig);
         s.send(packets::KexDHReply { k_s, q_s, sig })
-    }
-
-    fn pubkey(&self) -> &[u8] {
-        match self {
-            SharedSecret::KexCurve25519(k) => k.pubkey(),
-        }
     }
 }
 
@@ -706,11 +748,15 @@ impl fmt::Debug for KexOutput {
 }
 
 impl KexOutput {
-    fn new(k: &[u8], algos: &Algos, kex_hash: KexHash) -> Self {
-        let h = kex_hash.finish(k);
+    /// Older algorithms define K shared secret to be a mpint.
+    /// mlkem and sntrup define it as a string.
+    fn new(k: KexKey, kex_hash: KexHash) -> Self {
+        let h = kex_hash.finish(&k);
 
-        let mut partial_hash = algos.kex.hash();
-        hash_mpint(&mut partial_hash, k);
+        // current kex all use sha256
+        let mut partial_hash = Sha256::new();
+
+        k.hash(&mut partial_hash);
         partial_hash.update(&h);
 
         KexOutput { h, partial_hash }
@@ -718,8 +764,8 @@ impl KexOutput {
 
     /// Constructor from a direct SessId
     #[cfg(test)]
-    pub fn new_test(k: &[u8], algos: &Algos, h: &SessId) -> Self {
-        let mut partial_hash = algos.kex.hash();
+    pub fn new_test(k: &[u8], h: &SessId) -> Self {
+        let mut partial_hash = Sha256::new();
         hash_mpint(&mut partial_hash, k);
         partial_hash.update(h);
 
@@ -800,21 +846,163 @@ impl KexCurve25519 {
         &self.pubkey
     }
 
-    fn secret(
-        algos: &mut Algos,
-        theirs: &[u8],
-        kex_hash: KexHash,
-    ) -> Result<KexOutput> {
-        #[allow(irrefutable_let_patterns)] // until we have other algos
-        let kex = if let SharedSecret::KexCurve25519(k) = &mut algos.kex {
-            k
-        } else {
-            return Err(Error::bug());
-        };
+    fn raw_secret(&mut self, theirs: &[u8]) -> Result<x25519_dalek::SharedSecret> {
         let theirs: [u8; 32] = theirs.try_into().map_err(|_| Error::BadKex)?;
         let theirs = theirs.into();
-        let shsec = kex.ours.take().trap()?.diffie_hellman(&theirs);
-        Ok(KexOutput::new(shsec.as_bytes(), algos, kex_hash))
+        Ok(self.ours.take().trap()?.diffie_hellman(&theirs))
+    }
+
+    fn secret(
+        &mut self,
+        theirs: &[u8],
+        mut kex_hash: KexHash,
+        is_client: bool,
+    ) -> Result<KexOutput> {
+        if is_client {
+            kex_hash.hash_pubkeys(self.pubkey(), theirs)?;
+        } else {
+            kex_hash.hash_pubkeys(theirs, self.pubkey())?;
+        }
+        let shsec = self.raw_secret(theirs)?;
+        Ok(KexOutput::new(KexKey::Mpint(shsec.as_bytes()), kex_hash))
+    }
+}
+
+#[derive(ZeroizeOnDrop)]
+#[cfg(feature = "mlkem")]
+pub(crate) struct KexMlkemX25519 {
+    ecdh: KexCurve25519,
+    // Initialised in `new()`, cleared after deriving the secret
+    mlkem_ours: Option<<Kem<MlKem768Params> as KemCore>::DecapsulationKey>,
+}
+
+#[cfg(feature = "mlkem")]
+impl core::fmt::Debug for KexMlkemX25519 {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        f.debug_struct("KexMlkemX25519")
+            .field("ours", &if self.mlkem_ours.is_some() { "Some" } else { "None" })
+            .field("ecdh", &self.ecdh)
+            .finish()
+    }
+}
+
+#[cfg(feature = "mlkem")]
+impl KexMlkemX25519 {
+    // Literals for readability, checked below.
+    const MLKEM768_CIPHERTEXT_SIZE: usize = 1088;
+    const MLKEM768_PUBKEY_SIZE: usize = 1184;
+    const X25519_PUBKEY_SIZE: usize = 32;
+    const PUBLICKEY_SIZE: usize =
+        Self::MLKEM768_PUBKEY_SIZE + Self::X25519_PUBKEY_SIZE;
+    const CIPHERTEXT_SIZE: usize =
+        Self::MLKEM768_CIPHERTEXT_SIZE + Self::X25519_PUBKEY_SIZE;
+
+    const _CHECK0: () = assert!(
+        Self::MLKEM768_PUBKEY_SIZE
+            == size_of::<ml_kem::Encoded::<EncapsulationKey::<MlKem768Params>>>()
+    );
+    const _CHECK1: () = assert!(
+        Self::MLKEM768_CIPHERTEXT_SIZE == size_of::<ml_kem::Ciphertext<MlKem768>>()
+    );
+
+    fn new() -> Result<Self> {
+        Ok(Self { ecdh: KexCurve25519::new()?, mlkem_ours: None })
+    }
+
+    /// Generates the publickey for a sent kexdhinit
+    fn init_pubkey_arr_client(&mut self) -> [u8; Self::PUBLICKEY_SIZE] {
+        debug_assert!(self.mlkem_ours.is_none());
+        // TODO does this construct in-place?
+        let (dk, _ek) = MlKem768::generate(&mut rand_core::OsRng);
+        let pubkey = self.pubkey_client(dk.encapsulation_key());
+        self.mlkem_ours = Some(dk);
+        pubkey
+    }
+
+    fn pubkey_client(
+        &mut self,
+        ek: &EncapsulationKey<MlKem768Params>,
+    ) -> [u8; Self::PUBLICKEY_SIZE] {
+        let mut out = [0u8; Self::PUBLICKEY_SIZE];
+        // Concatenate pq and ecdh.
+        // C_INIT = C_PK2 || C_PK1.  C_PK2 pq kem, C_PK1 ecdh
+        let (pq, ec) = out.split_at_mut(Self::MLKEM768_PUBKEY_SIZE);
+        let pq: &mut [u8; Self::MLKEM768_PUBKEY_SIZE] = pq.try_into().unwrap();
+        *pq = ek.as_bytes().into();
+        ec.copy_from_slice(self.ecdh.pubkey());
+        out
+    }
+
+    /// Generates the encapsulated ciphertext for a sent kexdhreply, and
+    /// derives the shared secret KexOutput.
+    fn secret_encap_server(
+        &mut self,
+        c_pk: &[u8],
+        mut kex_hash: KexHash,
+    ) -> Result<(KexOutput, [u8; Self::CIPHERTEXT_SIZE])> {
+        let mut ct_out = [0u8; Self::CIPHERTEXT_SIZE];
+
+        // C_INIT = C_PK2 || C_PK1.  C_PK2 pq kem, C_PK1 ecdh
+        let (pq_in, ec_in) = c_pk
+            .split_at_checked(Self::MLKEM768_PUBKEY_SIZE)
+            .ok_or_else(|| error::BadKex.build())?;
+
+        let ek = pq_in.try_into().map_err(|_| error::BadKex.build())?;
+        let ek = EncapsulationKey::<MlKem768Params>::from_bytes(ek);
+
+        // S_REPLY = S_CT2 || S_PK1.  S_CT2 pq kem, S_PK1 ecdh
+        let (pq, ec) = ct_out.split_at_mut(Self::MLKEM768_CIPHERTEXT_SIZE);
+        let pq: &mut [u8; Self::MLKEM768_CIPHERTEXT_SIZE] = pq.try_into().unwrap();
+        let enc = ek
+            .encapsulate(&mut rand_core::OsRng)
+            .map_err(|_| error::BadKex.build())?;
+        let (ct, pq_secret) = enc.into();
+        // TODO: check if this is another stack copy.
+        *pq = ct.into();
+        ec.copy_from_slice(self.ecdh.pubkey());
+
+        kex_hash.hash_pubkeys(c_pk, &ct_out)?;
+        Ok((self.derive_secret(&pq_secret, ec_in, kex_hash)?, ct_out))
+    }
+
+    fn secret_decap_client(
+        &mut self,
+        s_pk: &[u8],
+        mut kex_hash: KexHash,
+    ) -> Result<KexOutput> {
+        // S_REPLY = S_CT2 || S_PK1.  S_CT2 pq kem, S_PK1 ecdh
+        let (pq_in, ec_in) = s_pk
+            .split_at_checked(Self::MLKEM768_CIPHERTEXT_SIZE)
+            .ok_or_else(|| error::BadKex.build())?;
+
+        let ct: &Ciphertext<MlKem768> =
+            pq_in.try_into().map_err(|_| error::BadKex.build())?;
+        let dk = self.mlkem_ours.take().trap()?;
+        let pq_secret = dk.decapsulate(ct).map_err(|_| error::BadKex.build())?;
+
+        let ek = dk.encapsulation_key();
+        let c_pk = self.pubkey_client(ek);
+
+        kex_hash.hash_pubkeys(&c_pk, s_pk)?;
+        self.derive_secret(&pq_secret, ec_in, kex_hash)
+    }
+
+    // common code to derive a hybrid secret. the PQ KEM shared secret is already established,
+    // this derives the ecdh shared secret and combines them.
+    fn derive_secret(
+        &mut self,
+        pq_secret: &[u8],
+        ecdh_theirs: &[u8],
+        kex_hash: KexHash,
+    ) -> Result<KexOutput> {
+        let ec_secret = self.ecdh.raw_secret(ecdh_theirs)?;
+        // K = HASH(K_PQ || K_CL)
+        let mut combiner = sha2::Sha256::new();
+        combiner.update(pq_secret);
+        combiner.update(&ec_secret);
+        // TODO zeroize
+        let comb_sec = combiner.finalize();
+        Ok(KexOutput::new(KexKey::String(&comb_sec), kex_hash))
     }
 }
 
@@ -834,8 +1022,6 @@ mod tests {
 
     // TODO:
     // - test algo negotiation
-
-    use super::SSH_NAME_CURVE25519;
 
     #[test]
     fn test_name_match() {
@@ -946,11 +1132,21 @@ mod tests {
     // - kex rejection. is in conn though.
 
     #[test]
-    fn test_agree_kex_allow_key() {
-        #![allow(unused)]
+    fn test_each_kex() {
+        for name in fixed_options_kex {
+            test_kex_allow(name)
+        }
+    }
+
+    fn test_kex_allow(chosen_kex: &'static str) {
+        // #![allow(unused)]
         init_test_log();
-        let cli_conf = kex::AlgoConfig::new(true);
+        let mut cli_conf = kex::AlgoConfig::new(true);
         let serv_conf = kex::AlgoConfig::new(false);
+
+        // Use the tested kex algorithm
+        cli_conf.kexs = LocalNames::new();
+        cli_conf.kexs.0.push(chosen_kex).unwrap();
 
         // needs to be hardcoded because that's what we send.
         let mut s = Vec::from(crate::ident::OUR_VERSION);
@@ -1007,8 +1203,7 @@ mod tests {
 
         let ev = serv.handle_kexdhinit().unwrap();
         assert!(matches!(ev, DispatchEvent::ServEvent(ServEventId::Hostkeys)));
-        let e = serv
-            .resume_kexdhinit(&cli_dhinit, keys.as_slice(), &mut ts.sender())
+        serv.resume_kexdhinit(&cli_dhinit, keys.as_slice(), &mut ts.sender())
             .unwrap();
         let serv_dhrep = ts.next().unwrap();
         let serv_dhrep =
@@ -1018,7 +1213,7 @@ mod tests {
         let s = &mut tc.sender();
         let ev = cli.handle_kexdhreply();
         assert!(matches!(ev, DispatchEvent::CliEvent(CliEventId::Hostkey)));
-        let f = cli.resume_kexdhreply(&serv_dhrep, true, s);
+        cli.resume_kexdhreply(&serv_dhrep, true, s).unwrap();
         assert!(matches!(tc.next().unwrap(), Packet::NewKeys(_)));
         assert!(matches!(tc.next(), None));
 

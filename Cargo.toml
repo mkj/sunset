@@ -55,6 +55,7 @@ subtle = { version = "2.4", default-features = false }
 ed25519-dalek = { version = "2.1", default-features = false, features = ["zeroize", "rand_core"] }
 x25519-dalek = { version = "2.0", default-features = false, features = ["zeroize"] }
 curve25519-dalek = { version = "4.1", default-features = false, features = ["zeroize"] }
+ml-kem = { version = "0.2.1", default-features = false, features = ["zeroize"], optional = true }
 # p521 = { version = "0.13.2", default-features = false, features = ["ecdh", "ecdsa"] }
 rsa = { version = "0.9", default-features = false, optional = true, features = ["sha2"] }
 # TODO: getrandom feature is a workaround for missing ssh-key dependency with rsa. fixed in pending 0.6
@@ -66,9 +67,11 @@ embedded-io = { version = "0.6", optional = true }
 pretty-hex = { version = "0.4", default-features = false }
 
 [features]
-std = ["snafu/std", "ssh-key/alloc", "larger"]
+default = []
+std = ["snafu/std", "ssh-key/alloc", "larger", "mlkem"]
 backtrace = ["snafu/backtrace"]
 rsa = ["dep:rsa", "ssh-key/rsa"]
+mlkem = ["dep:ml-kem"]
 # allows conversion to/from OpenSSH key formats
 openssh-key = ["ssh-key"]
 # implements embedded_io::Error for sunset::Error
