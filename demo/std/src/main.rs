@@ -117,6 +117,12 @@ impl DemoServer for StdDemo {
             Ok::<_, Error>(())
         };
 
+        let prog_loop = async {
+            if let Err(e) = prog_loop.await {
+                warn!("Exited: {e:?}");
+            }
+        };
+
         let shell_loop = async {
             let ch = chan_pipe.receive().await;
 
