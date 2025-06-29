@@ -12,6 +12,8 @@ pub const SSH_PORT: u16 = 22;
 pub const SSH_NAME_CURVE25519: &str = "curve25519-sha256";
 /// An older alias prior to standardisation. Eventually could be removed
 pub const SSH_NAME_CURVE25519_LIBSSH: &str = "curve25519-sha256@libssh.org";
+/// [draft-ietf-sshm-mlkem-hybrid-kex](https://datatracker.ietf.org/doc/html/draft-ietf-sshm-mlkem-hybrid-kex)
+pub const SSH_NAME_MLKEM_X25519: &str = "mlkem768x25519-sha256";
 /// [RFC8308](https://tools.ietf.org/html/rfc8308) Extension Negotiation
 pub const SSH_NAME_EXT_INFO_S: &str = "ext-info-s";
 /// [RFC8308](https://tools.ietf.org/html/rfc8308) Extension Negotiation
