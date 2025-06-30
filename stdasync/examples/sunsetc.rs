@@ -53,6 +53,11 @@ async fn run(args: Args) -> Result<ExitCode> {
     trace!("tracing sunsetc. args {:?}", args);
     debug!("verbose sunsetc");
 
+    if args.version {
+        println!("sunsetc {}", env!("GIT_REV"));
+        return Ok(ExitCode::SUCCESS);
+    }
+
     if !args.cmd.is_empty() && args.subsystem.is_some() {
         bail!("can't have '-s subsystem' with a command")
     }
@@ -202,6 +207,10 @@ struct Args {
     #[argh(option, short = 'o')]
     /// extra options
     option: Vec<String>,
+
+    #[argh(switch)]
+    /// print version information
+    version: bool,
 }
 
 fn parse_args(tz: UtcOffset) -> Result<Args> {
