@@ -214,7 +214,7 @@ impl<'a, CS: CliServ> AsyncSunset<'a, CS> {
 
     fn discard_channels(&self, inner: &mut Inner<CS>) -> Result<()> {
         if let Some((num, dt, _len)) = inner.runner.read_channel_ready() {
-            if !self.chan_readcount(num, dt).load(AcqRel) > 0 {
+            if !self.chan_readcount(num, dt).load(Acquire) > 0 {
                 // There are no live ChanIn or ChanInOut for the num/dt,
                 // so nothing will read the channel.
                 // Discard the data so it doesn't block forever.
