@@ -623,7 +623,10 @@ impl SharedSecret {
         // TODO: error message on signature failure.
         let h: &[u8] = kex_out.h.as_ref();
         trace!("verify  h {}", h.hex_dump());
-        algos.hostsig.verify(&p.k_s.0, &h, &p.sig.0)?;
+        algos
+            .hostsig
+            .verify(&p.k_s.0, &h, &p.sig.0)
+            .inspect_err(|_| warn!("Bad host signature"))?;
         debug!("Hostkey signature is valid");
         Ok(kex_out)
     }
