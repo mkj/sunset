@@ -622,7 +622,7 @@ impl<'de, const N: usize> SSHDecode<'de> for heapless::String<N> {
 /// Like `digest::DynDigest` but simpler.
 ///
 /// Doesn't have any optional methods that depend on `alloc`.
-pub trait SSHWireDigestUpdate {
+pub trait SSHWireDigestUpdate: Debug {
     fn digest_update(&mut self, data: &[u8]);
 }
 
@@ -635,6 +635,30 @@ impl SSHWireDigestUpdate for sha2::Sha256 {
 impl SSHWireDigestUpdate for sha2::Sha512 {
     fn digest_update(&mut self, data: &[u8]) {
         self.update(data)
+    }
+}
+
+/// For debugging serialisation and packet formats, captures hashed content
+#[cfg(feature = "std")]
+#[derive(Debug)]
+#[allow(unused)]
+pub(crate) struct SSHWireDigestTrace<T: SSHWireDigestUpdate> {
+    pub inner: T,
+    pub store: Vec<u8>,
+}
+
+#[cfg(feature = "std")]
+impl<T: SSHWireDigestUpdate> SSHWireDigestUpdate for SSHWireDigestTrace<T> {
+    fn digest_update(&mut self, data: &[u8]) {
+        self.inner.digest_update(data);
+        self.store.extend_from_slice(data);
+    }
+}
+
+#[cfg(feature = "std")]
+impl<T: SSHWireDigestUpdate> From<T> for SSHWireDigestTrace<T> {
+    fn from(inner: T) -> Self {
+        Self { inner, store: Vec::new() }
     }
 }
 
