@@ -160,7 +160,7 @@ struct Args {
     identityfile: Vec<String>,
 
     #[argh(option)]
-    /// log to a file
+    /// log to a file. %p is replaced with the process ID.
     tracefile: Option<String>,
 
     #[argh(option, short = 'l')]
@@ -286,7 +286,16 @@ fn setup_log(args: &Args, tz: UtcOffset) -> Result<()> {
     )];
 
     if let Some(tf) = args.tracefile.as_ref() {
-        let w = std::fs::File::create(tf)
+        // %p replaced with pid
+        let mut tf = tf.clone();
+        if let Some(pid) = tf.find("%p") {
+            tf.replace_range(
+                pid..pid + "%p".len(),
+                &format!("{}", std::process::id()),
+            );
+        }
+
+        let w = std::fs::File::create(&tf)
             .with_context(|| format!("Error opening {tf}"))?;
         let w = BufWriter::new(w);
         logs.push(WriteLogger::new(LevelFilter::Trace, conf, w));
