@@ -470,7 +470,7 @@ impl<'de, B: SSHDecode<'de>> SSHDecode<'de> for Blob<B> {
 
 impl SSHEncode for u8 {
     fn enc(&self, s: &mut dyn SSHSink) -> WireResult<()> {
-        s.push(&[*self])
+        s.push(core::slice::from_ref(self))
     }
 }
 
@@ -541,7 +541,7 @@ impl<'de> SSHDecode<'de> for u8 {
         S: SSHSource<'de>,
     {
         let t = s.take(core::mem::size_of::<u8>())?;
-        Ok(u8::from_be_bytes(t.try_into().unwrap()))
+        Ok(t[0])
     }
 }
 

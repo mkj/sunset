@@ -924,11 +924,10 @@ impl SSHEncode for Packet<'_> {
             // ...
             $(
             Packet::$SpecificPacketVariant(p) => {
-                p.enc(s)?
+                p.enc(s)
             }
             )*
-        };
-        Ok(())
+        }
     }
 }
 
