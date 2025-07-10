@@ -10,7 +10,7 @@ use crate::sshnames::{SSH_SERVICE_CONNECTION, SSH_SERVICE_USERAUTH};
 use crate::*;
 use traffic::TrafSend;
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct Server {
     pub(crate) auth: ServAuth,
 }

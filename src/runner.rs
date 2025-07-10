@@ -84,6 +84,113 @@ impl<'a> Runner<'a, client::Client> {
     ) -> Runner<'a, client::Client> {
         Self::new(inbuf, outbuf)
     }
+
+    /// Send a break to a session channel
+    ///
+    /// `length` is in milliseconds, or
+    /// pass 0 as a default (to be interpreted by the remote implementation).
+    /// Otherwise length will be clamped to the range [500, 3000] ms.
+    /// Only call on a client session.
+    pub fn term_break(&mut self, chan: &ChanHandle, length: u32) -> Result<()> {
+        let mut s = self.traf_out.sender(&mut self.keys);
+        self.conn.channels.term_break(chan.0, length, &mut s)
+    }
+
+    pub(crate) fn fetch_cli_session_exit(&mut self) -> Result<CliSessionExit<'_>> {
+        let (payload, _seq) = self.traf_in.payload().trap()?;
+        self.conn.fetch_cli_session_exit(payload)
+    }
+
+    pub(crate) fn fetch_cli_banner(&mut self) -> Result<event::Banner<'_>> {
+        let (payload, _seq) = self.traf_in.payload().trap()?;
+        self.conn.fetch_cli_banner(payload)
+    }
+
+    pub(crate) fn cli_session_opener(
+        &mut self,
+        ch: ChanNum,
+    ) -> Result<CliSessionOpener<'_, 'a>> {
+        let ch = self.conn.channels.get(ch)?;
+        let s = self.traf_out.sender(&mut self.keys);
+
+        Ok(CliSessionOpener { ch, s })
+    }
+
+    pub(crate) fn resume_cliusername(&mut self, username: &str) -> Result<()> {
+        self.resume(&DispatchEvent::CliEvent(CliEventId::Username));
+        let mut s = self.traf_out.sender(&mut self.keys);
+        let (cliauth, _) = self.conn.mut_cliauth()?;
+        cliauth.resume_username(&mut s, username)?;
+        self.traf_in.done_payload();
+        Ok(())
+    }
+
+    pub(crate) fn resume_clipassword(
+        &mut self,
+        password: Option<&str>,
+    ) -> Result<()> {
+        self.resume(&DispatchEvent::CliEvent(CliEventId::Password));
+        self.traf_in.done_payload();
+        let mut s = self.traf_out.sender(&mut self.keys);
+        let (cliauth, ctx) = self.conn.mut_cliauth()?;
+        cliauth.resume_password(&mut s, password, ctx)?;
+        // assert that resume_password() returns error with none password.
+        // otherwise we might need to handle other events like with clipubkey
+        debug_assert!(password.is_some(), "no password");
+        Ok(())
+    }
+
+    pub(crate) fn resume_clipubkey(&mut self, key: Option<SignKey>) -> Result<()> {
+        self.resume(&DispatchEvent::CliEvent(CliEventId::Pubkey));
+        let mut s = self.traf_out.sender(&mut self.keys);
+        let (cliauth, ctx) = self.conn.mut_cliauth()?;
+        self.extra_resume_event = cliauth.resume_pubkey(&mut s, key, ctx)?;
+        if self.extra_resume_event.is_none() {
+            self.traf_in.done_payload();
+        }
+        Ok(())
+    }
+
+    pub(crate) fn fetch_agentsign_key(&self) -> Result<&SignKey> {
+        self.check_resume(&DispatchEvent::CliEvent(CliEventId::AgentSign));
+        let cliauth = self.conn.cliauth()?;
+        cliauth.fetch_agentsign_key()
+    }
+
+    pub(crate) fn fetch_agentsign_msg(&self) -> Result<AuthSigMsg<'_>> {
+        self.check_resume(&DispatchEvent::CliEvent(CliEventId::AgentSign));
+        self.conn.fetch_agentsign_msg()
+    }
+
+    pub(crate) fn resume_agentsign(&mut self, sig: Option<&OwnedSig>) -> Result<()> {
+        self.resume(&DispatchEvent::CliEvent(CliEventId::AgentSign));
+        let (cliauth, ctx) = self.conn.mut_cliauth()?;
+        let mut s = self.traf_out.sender(&mut self.keys);
+        self.extra_resume_event = cliauth.resume_agentsign(sig, ctx, &mut s)?;
+        if self.extra_resume_event.is_none() {
+            self.traf_in.done_payload();
+        }
+        Ok(())
+    }
+
+    pub(crate) fn resume_checkhostkey(&mut self, accept: bool) -> Result<()> {
+        self.resume(&DispatchEvent::CliEvent(CliEventId::Hostkey));
+
+        let (payload, _seq) = self.traf_in.payload().trap()?;
+        let mut s = self.traf_out.sender(&mut self.keys);
+
+        self.conn.resume_checkhostkey(payload, &mut s, accept)?;
+        self.traf_in.done_payload();
+        Ok(())
+    }
+
+    pub(crate) fn fetch_checkhostkey(&self) -> Result<PubKey<'_>> {
+        self.check_resume(&DispatchEvent::CliEvent(CliEventId::Hostkey));
+
+        let (payload, _seq) = self.traf_in.payload().trap()?;
+
+        self.conn.fetch_checkhostkey(payload)
+    }
 }
 
 impl<'a> Runner<'a, server::Server> {
@@ -93,6 +200,67 @@ impl<'a> Runner<'a, server::Server> {
         outbuf: &'a mut [u8],
     ) -> Runner<'a, server::Server> {
         Self::new(inbuf, outbuf)
+    }
+
+    pub(crate) fn resume_servhostkeys(&mut self, keys: &[&SignKey]) -> Result<()> {
+        self.resume(&DispatchEvent::ServEvent(ServEventId::Hostkeys));
+        let (payload, _seq) = self.traf_in.payload().trap()?;
+        let mut s = self.traf_out.sender(&mut self.keys);
+        self.conn.resume_servhostkeys(payload, &mut s, keys)?;
+        self.traf_in.done_payload();
+        Ok(())
+    }
+
+    pub(crate) fn fetch_servusername(&self) -> Result<TextString<'_>> {
+        let u = self.conn.server()?.auth.username.as_ref().trap()?;
+        Ok(TextString(u.as_slice()))
+    }
+
+    pub(crate) fn fetch_servpassword(&self) -> Result<TextString<'_>> {
+        self.check_resume(&DispatchEvent::ServEvent(ServEventId::PasswordAuth));
+        let (payload, _seq) = self.traf_in.payload().trap()?;
+        self.conn.fetch_servpassword(payload)
+    }
+
+    pub(crate) fn fetch_servpubkey(&self) -> Result<PubKey<'_>> {
+        self.check_resume(&DispatchEvent::ServEvent(ServEventId::PubkeyAuth {
+            real_sig: false,
+        }));
+        let (payload, _seq) = self.traf_in.payload().trap()?;
+        self.conn.fetch_servpubkey(payload)
+    }
+
+    pub(crate) fn resume_servauth(&mut self, allow: bool) -> Result<()> {
+        let prev_event = self.resume_event.take();
+        // auth packets have passwords
+        self.traf_in.zeroize_payload();
+        debug_assert!(
+            matches!(
+                prev_event,
+                DispatchEvent::ServEvent(ServEventId::PasswordAuth)
+            ) || matches!(
+                prev_event,
+                DispatchEvent::ServEvent(ServEventId::PubkeyAuth { .. })
+            ) || matches!(
+                prev_event,
+                DispatchEvent::ServEvent(ServEventId::FirstAuth)
+            )
+        );
+
+        let mut s = self.traf_out.sender(&mut self.keys);
+        self.conn.resume_servauth(allow, &mut s)
+    }
+
+    pub(crate) fn resume_servauth_pkok(&mut self) -> Result<()> {
+        self.resume(&DispatchEvent::ServEvent(ServEventId::PubkeyAuth {
+            real_sig: false,
+        }));
+
+        let (payload, _seq) = self.traf_in.payload().trap()?;
+        let mut s = self.traf_out.sender(&mut self.keys);
+        let r = self.conn.resume_servauth_pkok(payload, &mut s);
+        self.traf_in.done_payload();
+        r
     }
 }
 
@@ -519,43 +687,9 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
             let mut s = self.traf_out.sender(&mut self.keys);
             self.conn.channels.term_window_change(chan.0, winch, &mut s)
         } else {
-            error::BadChannelData.fail()
+            trace!("winch as server");
+            Err(Error::BadUsage {})
         }
-    }
-
-    /// Send a break to a session channel
-    ///
-    /// `length` is in milliseconds, or
-    /// pass 0 as a default (to be interpreted by the remote implementation).
-    /// Otherwise length will be clamped to the range [500, 3000] ms.
-    /// Only call on a client session.
-    pub fn term_break(&mut self, chan: &ChanHandle, length: u32) -> Result<()> {
-        if CS::is_client() {
-            let mut s = self.traf_out.sender(&mut self.keys);
-            self.conn.channels.term_break(chan.0, length, &mut s)
-        } else {
-            error::BadChannelData.fail()
-        }
-    }
-
-    pub(crate) fn cli_session_opener(
-        &mut self,
-        ch: ChanNum,
-    ) -> Result<CliSessionOpener<'_, 'a>> {
-        let ch = self.conn.channels.get(ch)?;
-        let s = self.traf_out.sender(&mut self.keys);
-
-        Ok(CliSessionOpener { ch, s })
-    }
-
-    pub(crate) fn fetch_cli_session_exit(&mut self) -> Result<CliSessionExit<'_>> {
-        let (payload, _seq) = self.traf_in.payload().trap()?;
-        self.conn.fetch_cli_session_exit(payload)
-    }
-
-    pub(crate) fn fetch_cli_banner(&mut self) -> Result<event::Banner<'_>> {
-        let (payload, _seq) = self.traf_in.payload().trap()?;
-        self.conn.fetch_cli_banner(payload)
     }
 
     // Wake SSH TCP socket input and output as required.
@@ -611,143 +745,6 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
 
     fn check_resume(&self, expect: &DispatchEvent) {
         self.check_resume_inner(expect, &self.resume_event)
-    }
-
-    pub(crate) fn resume_cliusername(&mut self, username: &str) -> Result<()> {
-        self.resume(&DispatchEvent::CliEvent(CliEventId::Username));
-        let mut s = self.traf_out.sender(&mut self.keys);
-        let (cliauth, _) = self.conn.mut_cliauth()?;
-        cliauth.resume_username(&mut s, username)?;
-        self.traf_in.done_payload();
-        Ok(())
-    }
-
-    pub(crate) fn resume_clipassword(
-        &mut self,
-        password: Option<&str>,
-    ) -> Result<()> {
-        self.resume(&DispatchEvent::CliEvent(CliEventId::Password));
-        self.traf_in.done_payload();
-        let mut s = self.traf_out.sender(&mut self.keys);
-        let (cliauth, ctx) = self.conn.mut_cliauth()?;
-        cliauth.resume_password(&mut s, password, ctx)?;
-        // assert that resume_password() returns error with none password.
-        // otherwise we might need to handle other events like with clipubkey
-        debug_assert!(password.is_some(), "no password");
-        Ok(())
-    }
-
-    pub(crate) fn resume_clipubkey(&mut self, key: Option<SignKey>) -> Result<()> {
-        self.resume(&DispatchEvent::CliEvent(CliEventId::Pubkey));
-        let mut s = self.traf_out.sender(&mut self.keys);
-        let (cliauth, ctx) = self.conn.mut_cliauth()?;
-        self.extra_resume_event = cliauth.resume_pubkey(&mut s, key, ctx)?;
-        if self.extra_resume_event.is_none() {
-            self.traf_in.done_payload();
-        }
-        Ok(())
-    }
-
-    pub(crate) fn fetch_agentsign_key(&self) -> Result<&SignKey> {
-        self.check_resume(&DispatchEvent::CliEvent(CliEventId::AgentSign));
-        let cliauth = self.conn.cliauth()?;
-        cliauth.fetch_agentsign_key()
-    }
-
-    pub(crate) fn fetch_agentsign_msg(&self) -> Result<AuthSigMsg<'_>> {
-        self.check_resume(&DispatchEvent::CliEvent(CliEventId::AgentSign));
-        self.conn.fetch_agentsign_msg()
-    }
-
-    pub(crate) fn resume_agentsign(&mut self, sig: Option<&OwnedSig>) -> Result<()> {
-        self.resume(&DispatchEvent::CliEvent(CliEventId::AgentSign));
-        let (cliauth, ctx) = self.conn.mut_cliauth()?;
-        let mut s = self.traf_out.sender(&mut self.keys);
-        self.extra_resume_event = cliauth.resume_agentsign(sig, ctx, &mut s)?;
-        if self.extra_resume_event.is_none() {
-            self.traf_in.done_payload();
-        }
-        Ok(())
-    }
-
-    pub(crate) fn resume_checkhostkey(&mut self, accept: bool) -> Result<()> {
-        self.resume(&DispatchEvent::CliEvent(CliEventId::Hostkey));
-
-        let (payload, _seq) = self.traf_in.payload().trap()?;
-        let mut s = self.traf_out.sender(&mut self.keys);
-
-        self.conn.resume_checkhostkey(payload, &mut s, accept)?;
-        self.traf_in.done_payload();
-        Ok(())
-    }
-
-    pub(crate) fn fetch_checkhostkey(&self) -> Result<PubKey<'_>> {
-        self.check_resume(&DispatchEvent::CliEvent(CliEventId::Hostkey));
-
-        let (payload, _seq) = self.traf_in.payload().trap()?;
-
-        self.conn.fetch_checkhostkey(payload)
-    }
-
-    pub(crate) fn resume_servhostkeys(&mut self, keys: &[&SignKey]) -> Result<()> {
-        self.resume(&DispatchEvent::ServEvent(ServEventId::Hostkeys));
-        let (payload, _seq) = self.traf_in.payload().trap()?;
-        let mut s = self.traf_out.sender(&mut self.keys);
-        self.conn.resume_servhostkeys(payload, &mut s, keys)?;
-        self.traf_in.done_payload();
-        Ok(())
-    }
-
-    pub(crate) fn fetch_servusername(&self) -> Result<TextString<'_>> {
-        let u = self.conn.server()?.auth.username.as_ref().trap()?;
-        Ok(TextString(u.as_slice()))
-    }
-
-    pub(crate) fn fetch_servpassword(&self) -> Result<TextString<'_>> {
-        self.check_resume(&DispatchEvent::ServEvent(ServEventId::PasswordAuth));
-        let (payload, _seq) = self.traf_in.payload().trap()?;
-        self.conn.fetch_servpassword(payload)
-    }
-
-    pub(crate) fn fetch_servpubkey(&self) -> Result<PubKey<'_>> {
-        self.check_resume(&DispatchEvent::ServEvent(ServEventId::PubkeyAuth {
-            real_sig: false,
-        }));
-        let (payload, _seq) = self.traf_in.payload().trap()?;
-        self.conn.fetch_servpubkey(payload)
-    }
-
-    pub(crate) fn resume_servauth(&mut self, allow: bool) -> Result<()> {
-        let prev_event = self.resume_event.take();
-        // auth packets have passwords
-        self.traf_in.zeroize_payload();
-        debug_assert!(
-            matches!(
-                prev_event,
-                DispatchEvent::ServEvent(ServEventId::PasswordAuth)
-            ) || matches!(
-                prev_event,
-                DispatchEvent::ServEvent(ServEventId::PubkeyAuth { .. })
-            ) || matches!(
-                prev_event,
-                DispatchEvent::ServEvent(ServEventId::FirstAuth)
-            )
-        );
-
-        let mut s = self.traf_out.sender(&mut self.keys);
-        self.conn.resume_servauth(allow, &mut s)
-    }
-
-    pub(crate) fn resume_servauth_pkok(&mut self) -> Result<()> {
-        self.resume(&DispatchEvent::ServEvent(ServEventId::PubkeyAuth {
-            real_sig: false,
-        }));
-
-        let (payload, _seq) = self.traf_in.payload().trap()?;
-        let mut s = self.traf_out.sender(&mut self.keys);
-        let r = self.conn.resume_servauth_pkok(payload, &mut s);
-        self.traf_in.done_payload();
-        r
     }
 
     pub(crate) fn resume_chanopen(

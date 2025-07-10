@@ -34,7 +34,7 @@ pub(crate) struct Conn<CS: CliServ> {
     state: ConnState,
 
     // State of any current Key Exchange
-    kex: Kex,
+    kex: Kex<CS>,
 
     sess_id: Option<SessId>,
 
@@ -438,7 +438,6 @@ impl<CS: CliServ> Conn<CS> {
             Packet::KexInit(k) => {
                 self.kex.handle_kexinit(
                     k,
-                    self.is_client(),
                     &self.algo_conf,
                     &self.remote_version,
                     self.is_first_kex(),
@@ -446,22 +445,10 @@ impl<CS: CliServ> Conn<CS> {
                 )?;
             }
             Packet::KexDHInit(_p) => {
-                if self.is_client() {
-                    // TODO: client/server validity checks should move somewhere more general
-                    trace!("kexdhinit not server");
-                    return error::SSHProto.fail();
-                }
-
                 disp.event = self.kex.handle_kexdhinit()?;
             }
             Packet::KexDHReply(_p) => {
-                if !self.is_client() {
-                    // TODO: client/server validity checks should move somewhere more general
-                    trace!("kexdhreply not server");
-                    return error::SSHProto.fail();
-                }
-
-                disp.event = self.kex.handle_kexdhreply();
+                disp.event = self.kex.handle_kexdhreply()?;
             }
             Packet::NewKeys(_) => {
                 self.kex.handle_newkeys(&mut self.sess_id, s)?;
@@ -572,7 +559,9 @@ impl<CS: CliServ> Conn<CS> {
         };
         Ok(disp)
     }
+}
 
+impl Conn<Client> {
     pub(crate) fn cliauth(&self) -> Result<&CliAuth> {
         let cli = self.client()?;
         Ok(&cli.auth)
@@ -607,7 +596,7 @@ impl<CS: CliServ> Conn<CS> {
                 return error::BadUsage.fail();
             }
 
-            self.kex.resume_kexdhreply(&p, self.is_first_kex(), s)
+            self.kex.resume_kexdhreply(&p, s)
         } else {
             Err(Error::bug())
         }
@@ -647,7 +636,9 @@ impl<CS: CliServ> Conn<CS> {
             Err(Error::bug())
         }
     }
+}
 
+impl Conn<Server> {
     pub(crate) fn resume_servhostkeys(
         &mut self,
         payload: &[u8],
@@ -658,7 +649,7 @@ impl<CS: CliServ> Conn<CS> {
 
         let packet = self.packet(payload)?;
         if let Packet::KexDHInit(p) = packet {
-            self.kex.resume_kexdhinit(&p, keys, s)
+            self.kex.resume_kexdhinit(&p, self.is_first_kex(), keys, s)
         } else {
             Err(Error::bug())
         }
@@ -681,7 +672,6 @@ impl<CS: CliServ> Conn<CS> {
             Err(Error::bug())
         }
     }
-
     pub(crate) fn fetch_servpubkey<'f>(
         &self,
         payload: &'f [u8],

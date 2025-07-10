@@ -478,6 +478,7 @@ pub(crate) trait ChanCore: MaybeSend {
         buf: &[u8],
     ) -> Poll<Result<usize>>;
 
+    // Client only
     fn poll_term_window_change(
         &self,
         cx: &mut Context,

@@ -26,6 +26,7 @@ use sshnames::*;
 use sshwire::{BinString, Blob};
 use traffic::TrafSend;
 
+#[derive(Debug)]
 enum AuthState {
     Unstarted,
     MethodQuery,
@@ -35,6 +36,7 @@ enum AuthState {
     Idle,
 }
 
+#[derive(Debug)]
 pub(crate) struct CliAuth {
     state: AuthState,
 

@@ -179,19 +179,21 @@ impl Keys {
         }
     }
 
-    pub fn derive(
+    pub fn new<CS: CliServ>(
         kex_out: kex::KexOutput,
         sess_id: &SessId,
-        algos: &kex::Algos,
-    ) -> Result<Self, Error> {
+        algos: &kex::Algos<CS>,
+    ) -> Self {
         let mut key = [0u8; MAX_KEY_LEN];
         let mut iv = [0u8; MAX_IV_LEN];
 
-        let [iv_e, iv_d, k_e, k_d, i_e, i_d] = if algos.is_client {
+        let [iv_e, iv_d, k_e, k_d, i_e, i_d] = if CS::is_client() {
             ['A', 'B', 'C', 'D', 'E', 'F']
         } else {
             ['B', 'A', 'D', 'C', 'F', 'E']
         };
+
+        // OK to unwrap here, have tests for all iv_len and key_len
 
         let enc = {
             let ci = kex_out.compute_key(
@@ -199,14 +201,14 @@ impl Keys {
                 algos.cipher_enc.iv_len(),
                 &mut iv,
                 sess_id,
-            )?;
+            );
             let ck = kex_out.compute_key(
                 k_e,
                 algos.cipher_enc.key_len(),
                 &mut key,
                 sess_id,
-            )?;
-            EncKey::from_cipher(&algos.cipher_enc, ck, ci)?
+            );
+            EncKey::from_cipher(&algos.cipher_enc, ck, ci).unwrap()
         };
 
         let dec = {
@@ -215,14 +217,14 @@ impl Keys {
                 algos.cipher_dec.iv_len(),
                 &mut iv,
                 sess_id,
-            )?;
+            );
             let ck = kex_out.compute_key(
                 k_d,
                 algos.cipher_dec.key_len(),
                 &mut key,
                 sess_id,
-            )?;
-            DecKey::from_cipher(&algos.cipher_dec, ck, ci)?
+            );
+            DecKey::from_cipher(&algos.cipher_dec, ck, ci).unwrap()
         };
 
         let integ_enc = {
@@ -231,8 +233,8 @@ impl Keys {
                 algos.integ_enc.key_len(),
                 &mut key,
                 sess_id,
-            )?;
-            IntegKey::from_integ(&algos.integ_enc, ck)?
+            );
+            IntegKey::from_integ(&algos.integ_enc, ck).unwrap()
         };
 
         let integ_dec = {
@@ -241,11 +243,11 @@ impl Keys {
                 algos.integ_dec.key_len(),
                 &mut key,
                 sess_id,
-            )?;
-            IntegKey::from_integ(&algos.integ_dec, ck)?
+            );
+            IntegKey::from_integ(&algos.integ_dec, ck).unwrap()
         };
 
-        Ok(Keys { enc, dec, integ_enc, integ_dec })
+        Keys { enc, dec, integ_enc, integ_dec }
     }
 
     /// Decrypts the first block in the buffer
@@ -676,6 +678,8 @@ impl IntegKey {
 
 #[cfg(test)]
 mod tests {
+    use core::marker::PhantomData;
+
     use crate::encrypt::*;
     use crate::error::Error;
     use crate::kex::KexOutput;
@@ -739,7 +743,7 @@ mod tests {
 
     // returns combinations of ciphers as Some(), as well as a single
     // None for no-cipher
-    fn algo_combos() -> impl Iterator<Item = Option<kex::Algos>> {
+    fn algo_combos() -> impl Iterator<Item = Option<kex::Algos<Client>>> {
         // TODO make this combinatorial
         // order is enc, dec
         const COMBOS: [(Cipher, Integ, Cipher, Integ); 4] = [
@@ -764,9 +768,9 @@ mod tests {
                     integ_enc: ie.clone(),
                     integ_dec: id.clone(),
                     discard_next: false,
-                    is_client: false,
                     send_ext_info: true,
                     strict_kex: false,
+                    _cs: PhantomData,
                 })
             })
             // and plaintext
@@ -780,7 +784,7 @@ mod tests {
         for mut algos in algo_combos() {
             let mut keys_enc = KeyState::new_cleartext();
             let mut keys_dec = KeyState::new_cleartext();
-            if let Some(ref mut algos) = algos {
+            if let Some(algos) = algos.take() {
                 // arbitrary keys
                 let h = SessId::from_slice(&Sha256::digest(
                     "some exchange hash".as_bytes(),
@@ -794,16 +798,14 @@ mod tests {
                 let ko_b = KexOutput::new_test(sharedkey, &h);
 
                 trace!("algos enc {algos:?}");
-                let newkeys = Keys::derive(ko, &sess_id, &algos).unwrap();
+                let newkeys = Keys::new(ko, &sess_id, &algos);
                 keys_enc.rekey(newkeys);
 
                 // client and server enc/dec keys are derived differently, we need them
                 // to match for this test
-                algos.is_client = !algos.is_client;
-                core::mem::swap(&mut algos.cipher_enc, &mut algos.cipher_dec);
-                core::mem::swap(&mut algos.integ_enc, &mut algos.integ_dec);
+                let algos = algos.test_swap_to_server();
                 trace!("algos dec {algos:?}");
-                let newkeys_b = Keys::derive(ko_b, &sess_id, &algos).unwrap();
+                let newkeys_b = Keys::new(ko_b, &sess_id, &algos);
                 keys_dec.rekey(newkeys_b);
             } else {
                 trace!("Trying cleartext");
@@ -830,7 +832,7 @@ mod tests {
                     SessId::from_slice(&Sha256::digest(b"some sessid")).unwrap();
                 let sharedkey = b"hello";
                 let ko = KexOutput::new_test(sharedkey, &h);
-                let newkeys = Keys::derive(ko, &sess_id, &algos).unwrap();
+                let newkeys = Keys::new(ko, &sess_id, &algos);
 
                 keys.rekey(newkeys);
                 trace!("algos {algos:?}");

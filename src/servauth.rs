@@ -19,6 +19,7 @@ use heapless::{String, Vec};
 /// `methods_` can be during runtime, though if they
 /// are changed after the auth process starts it's unknown
 /// if client implementations will handle varying auth methods correctly.
+#[derive(Debug)]
 pub(crate) struct ServAuth {
     pub authed: bool,
 

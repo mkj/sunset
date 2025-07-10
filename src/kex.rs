@@ -10,7 +10,7 @@ use {
     log::{debug, error, info, log, trace, warn},
 };
 
-use core::fmt;
+use core::{fmt, marker::PhantomData};
 
 use digest::Digest;
 #[cfg(feature = "mlkem")]
@@ -110,7 +110,7 @@ impl AlgoConfig {
 /// The current state of the Kex
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug)]
-pub(crate) enum Kex {
+pub(crate) enum Kex<CS: CliServ> {
     /// No key exchange in progress
     Idle,
 
@@ -121,9 +121,9 @@ pub(crate) enum Kex {
         our_cookie: KexCookie,
     },
     /// Waiting for KexDHInit (server) or KexDHReply (client)
-    KexDH { algos: Algos, kex_hash: KexHash },
+    KexDH { algos: Algos<CS>, kex_hash: KexHash },
     /// Waiting for NewKeys. `output` is new keys to take into use
-    NewKeys { output: KexOutput, algos: Algos },
+    NewKeys { output: KexOutput, algos: Algos<CS> },
 
     /// A transient state use internally to transition between other states.
     ///
@@ -142,8 +142,7 @@ pub(crate) struct KexHash {
 
 // kexhash state. progessively include version idents, kexinit payloads, hostsig, e/f, secret
 impl KexHash {
-    fn new(
-        algos: &Algos,
+    fn new<CS: CliServ>(
         algo_conf: &AlgoConfig,
         our_cookie: &KexCookie,
         remote_version: &RemoteVersion,
@@ -166,8 +165,8 @@ impl KexHash {
         let mut kh = KexHash { hash_ctx: Sha256::new() };
         let remote_version = remote_version.version().trap()?;
         // Recreate our own kexinit packet to hash.
-        let own_kexinit = Kex::make_kexinit(our_cookie, algo_conf);
-        if algos.is_client {
+        let own_kexinit = Kex::<CS>::make_kexinit(our_cookie, algo_conf);
+        if CS::is_client() {
             kh.hash_slice(ident::OUR_VERSION);
             kh.hash_slice(remote_version);
             hash_ser_length(&mut kh.hash_ctx, &own_kexinit)?;
@@ -233,7 +232,7 @@ impl<'a> KexKey<'a> {
 
 /// Records the chosen algorithms while key exchange proceeds
 #[derive(Debug)]
-pub(crate) struct Algos {
+pub(crate) struct Algos<CS: CliServ> {
     pub kex: SharedSecret,
     pub hostsig: SigType,
     pub cipher_enc: Cipher,
@@ -249,21 +248,19 @@ pub(crate) struct Algos {
     // for a server to guess a kexdhreply message - the signature will be wrong.
     pub discard_next: bool,
 
-    // avoid having to keep passing it separately, though this
-    // is global state.
-    pub is_client: bool,
-
     // whether the remote side supports ext-info
     pub send_ext_info: bool,
 
     // whether the remote side supports strict kex. will be ignored
     // for non-first KEX
     pub strict_kex: bool,
+
+    pub _cs: PhantomData<CS>,
 }
 
-impl fmt::Display for Algos {
+impl<CS: CliServ> fmt::Display for Algos<CS> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let (cc, cs, mc, ms) = if self.is_client {
+        let (cc, cs, mc, ms) = if CS::is_client() {
             (&self.cipher_enc, &self.cipher_dec, &self.integ_enc, &self.integ_dec)
         } else {
             (&self.cipher_dec, &self.cipher_enc, &self.integ_dec, &self.integ_enc)
@@ -274,7 +271,26 @@ impl fmt::Display for Algos {
     }
 }
 
-impl Kex {
+impl Algos<Client> {
+    #[cfg(test)]
+    pub fn test_swap_to_server(self) -> Algos<Server> {
+        Algos {
+            kex: self.kex,
+            hostsig: self.hostsig,
+            // Swap enc and dec
+            cipher_enc: self.cipher_dec,
+            cipher_dec: self.cipher_enc,
+            integ_enc: self.integ_dec,
+            integ_dec: self.integ_enc,
+            discard_next: self.discard_next,
+            send_ext_info: self.send_ext_info,
+            strict_kex: self.strict_kex,
+            _cs: PhantomData,
+        }
+    }
+}
+
+impl<CS: CliServ> Kex<CS> {
     pub fn new() -> Self {
         Kex::Idle
     }
@@ -295,7 +311,7 @@ impl Kex {
         }
         let mut our_cookie = KexCookie([0u8; 16]);
         random::fill_random(our_cookie.0.as_mut_slice())?;
-        s.send(Kex::make_kexinit(&our_cookie, conf))?;
+        s.send(Self::make_kexinit(&our_cookie, conf))?;
         *self = Kex::KexInit { our_cookie };
         Ok(())
     }
@@ -303,7 +319,6 @@ impl Kex {
     pub fn handle_kexinit(
         &mut self,
         remote_kexinit: packets::KexInit,
-        is_client: bool,
         algo_conf: &AlgoConfig,
         remote_version: &RemoteVersion,
         first_kex: bool,
@@ -321,19 +336,17 @@ impl Kex {
             return error::PacketWrong.fail();
         };
 
-        let mut algos =
-            Self::algo_negotiation(is_client, &remote_kexinit, algo_conf)?;
+        let mut algos = Self::algo_negotiation(&remote_kexinit, algo_conf)?;
         debug!("{algos}");
 
         if first_kex && algos.strict_kex && s.recv_seq() != 1 {
             debug!("kexinit has strict kex but wasn't first packet");
             return error::PacketWrong.fail();
         }
-        if is_client {
+        if CS::is_client() {
             algos.kex.send_kexdhinit(s)?;
         }
-        let kex_hash = KexHash::new(
-            &algos,
+        let kex_hash = KexHash::new::<CS>(
             algo_conf,
             &our_cookie,
             remote_version,
@@ -362,91 +375,6 @@ impl Kex {
         .into()
     }
 
-    pub fn handle_kexdhinit(&mut self) -> Result<DispatchEvent> {
-        if let Kex::KexDH { algos, .. } = self {
-            if algos.is_client {
-                return Err(Error::bug());
-            }
-
-            if algos.discard_next {
-                algos.discard_next = false;
-                // Ignore this packet
-                return Ok(DispatchEvent::None);
-            }
-        }
-
-        Ok(DispatchEvent::ServEvent(ServEventId::Hostkeys))
-    }
-
-    pub fn resume_kexdhinit(
-        &mut self,
-        p: &packets::KexDHInit,
-        keys: &[&SignKey],
-        s: &mut TrafSend,
-    ) -> Result<()> {
-        if let Kex::KexDH { mut algos, kex_hash } = self.take() {
-            let output =
-                SharedSecret::handle_kexdhinit(&mut algos, kex_hash, keys, p, s)?;
-            *self = Kex::NewKeys { output, algos };
-            s.send(packets::NewKeys {})?;
-            Ok(())
-        } else {
-            error::PacketWrong.fail()
-        }
-    }
-
-    // client only
-    pub fn handle_kexdhreply(&self) -> DispatchEvent {
-        DispatchEvent::CliEvent(event::CliEventId::Hostkey)
-    }
-
-    pub fn resume_kexdhreply(
-        &mut self,
-        p: &packets::KexDHReply,
-        first_kex: bool,
-        s: &mut TrafSend,
-    ) -> Result<()> {
-        trace!("resume");
-        if let Kex::KexDH { algos, .. } = self {
-            if !algos.is_client {
-                return Err(Error::bug());
-            }
-
-            if algos.discard_next {
-                algos.discard_next = false;
-                // Ignore this packet
-                return Ok(());
-            }
-        }
-
-        if let Kex::KexDH { mut algos, kex_hash } = self.take() {
-            let output = SharedSecret::handle_kexdhreply(&mut algos, kex_hash, p)?;
-            s.send(packets::NewKeys {})?;
-
-            if first_kex && algos.send_ext_info {
-                self.send_ext_info(s)?;
-            }
-
-            *self = Kex::NewKeys { output, algos };
-            Ok(())
-        } else {
-            error::PacketWrong.fail()
-        }
-    }
-
-    pub fn send_ext_info(&self, s: &mut TrafSend) -> Result<()> {
-        if cfg!(feature = "rsa") {
-            // OK unwrap: namelist has capacity
-            let algs = ([SSH_NAME_RSA_SHA256, SSH_NAME_ED25519].as_slice())
-                .try_into()
-                .unwrap();
-            let ext =
-                packets::ExtInfo { server_sig_algs: Some(NameList::Local(&algs)) };
-            s.send(ext)?;
-        }
-        Ok(())
-    }
-
     pub fn handle_newkeys(
         &mut self,
         sess_id: &mut Option<SessId>,
@@ -458,7 +386,7 @@ impl Kex {
 
             // The first KEX's H becomes the persistent sess_id
             let sess_id = sess_id.get_or_insert(output.h.clone());
-            let keys = Keys::derive(output, sess_id, &algos)?;
+            let keys = Keys::new(output, sess_id, &algos);
             if algos.strict_kex {
                 s.enable_strict_kex()
             }
@@ -472,17 +400,16 @@ impl Kex {
 
     /// Perform SSH algorithm negotiation
     fn algo_negotiation(
-        is_client: bool,
         p: &packets::KexInit,
         conf: &AlgoConfig,
-    ) -> Result<Algos> {
+    ) -> Result<Algos<CS>> {
         let kexguess2 = p.kex.has_algo(SSH_NAME_KEXGUESS2)?;
 
         // For each algorithm we select the first name in the client's
         // list that is also present in the server's list.
         let kex_method = p
             .kex
-            .first_match(is_client, &conf.kexs)?
+            .first_match(CS::is_client(), &conf.kexs)?
             .ok_or(Error::AlgoNoMatch { algo: "kex" })?;
 
         // Certain kex method names aren't actual algorithms, just markers.
@@ -500,7 +427,7 @@ impl Kex {
 
         // we only send MSG_EXT_INFO to a client, don't look
         // for SSH_NAME_EXT_INFO_S
-        let send_ext_info = if is_client {
+        let send_ext_info = if CS::is_client() {
             false
         } else {
             // OK unwrap: p.kex is a remote list
@@ -508,14 +435,17 @@ impl Kex {
         };
 
         // we always send strict-kex, so just check if the other had it
-        let other_strict =
-            if is_client { SSH_NAME_STRICT_KEX_S } else { SSH_NAME_STRICT_KEX_C };
+        let other_strict = if CS::is_client() {
+            SSH_NAME_STRICT_KEX_S
+        } else {
+            SSH_NAME_STRICT_KEX_C
+        };
         let strict_kex = p.kex.has_algo(other_strict).unwrap();
 
         debug!("hostsig {:?}    vs   {:?}", p.hostsig, conf.hostsig);
         let hostsig_method = p
             .hostsig
-            .first_match(is_client, &conf.hostsig)?
+            .first_match(CS::is_client(), &conf.hostsig)?
             .ok_or(Error::AlgoNoMatch { algo: "hostkey" })?;
         let hostsig = SigType::from_name(hostsig_method)?;
         let goodguess_hostkey = if kexguess2 {
@@ -528,14 +458,14 @@ impl Kex {
         let c2s = (&p.cipher_c2s, &p.mac_c2s, &p.comp_c2s);
         let s2c = (&p.cipher_s2c, &p.mac_s2c, &p.comp_s2c);
         let ((cipher_tx, mac_tx, comp_tx), (cipher_rx, mac_rx, comp_rx)) =
-            if is_client { (c2s, s2c) } else { (s2c, c2s) };
+            if CS::is_client() { (c2s, s2c) } else { (s2c, c2s) };
 
         let n = cipher_tx
-            .first_match(is_client, &conf.ciphers)?
+            .first_match(CS::is_client(), &conf.ciphers)?
             .ok_or(Error::AlgoNoMatch { algo: "encryption" })?;
         let cipher_enc = Cipher::from_name(n)?;
         let n = cipher_rx
-            .first_match(is_client, &conf.ciphers)?
+            .first_match(CS::is_client(), &conf.ciphers)?
             .ok_or(Error::AlgoNoMatch { algo: "encryption" })?;
         let cipher_dec = Cipher::from_name(n)?;
 
@@ -544,7 +474,7 @@ impl Kex {
             integ
         } else {
             let n = mac_tx
-                .first_match(is_client, &conf.macs)?
+                .first_match(CS::is_client(), &conf.macs)?
                 .ok_or(Error::AlgoNoMatch { algo: "mac" })?;
             Integ::from_name(n)?
         };
@@ -552,7 +482,7 @@ impl Kex {
             integ
         } else {
             let n = mac_rx
-                .first_match(is_client, &conf.macs)?
+                .first_match(CS::is_client(), &conf.macs)?
                 .ok_or(Error::AlgoNoMatch { algo: "mac" })?;
             Integ::from_name(n)?
         };
@@ -560,10 +490,10 @@ impl Kex {
         // Compression only matches "none", we don't need further handling
         // at the moment.
         comp_tx
-            .first_match(is_client, &conf.comps)?
+            .first_match(CS::is_client(), &conf.comps)?
             .ok_or(Error::AlgoNoMatch { algo: "compression" })?;
         comp_rx
-            .first_match(is_client, &conf.comps)?
+            .first_match(CS::is_client(), &conf.comps)?
             .ok_or(Error::AlgoNoMatch { algo: "compression" })?;
 
         // Ignore language fields at present. Unsure which implementations
@@ -579,9 +509,9 @@ impl Kex {
             integ_enc,
             integ_dec,
             discard_next,
-            is_client,
             send_ext_info,
             strict_kex,
+            _cs: PhantomData,
         })
     }
 
@@ -591,6 +521,100 @@ impl Kex {
             Kex::NewKeys { algos: Algos { strict_kex: true, .. }, .. } => true,
             _ => false,
         }
+    }
+
+    pub fn handle_kexdhreply(&self) -> Result<DispatchEvent> {
+        if !CS::is_client() {
+            trace!("kexdhreply not client");
+            return error::SSHProto.fail();
+        }
+        Ok(DispatchEvent::CliEvent(event::CliEventId::Hostkey))
+    }
+
+    pub fn handle_kexdhinit(&mut self) -> Result<DispatchEvent> {
+        if CS::is_client() {
+            trace!("kexdhinit not server");
+            return error::SSHProto.fail();
+        }
+
+        if let Kex::KexDH { algos, .. } = self {
+            if algos.discard_next {
+                algos.discard_next = false;
+                // Ignore this packet
+                return Ok(DispatchEvent::None);
+            }
+        }
+
+        Ok(DispatchEvent::ServEvent(ServEventId::Hostkeys))
+    }
+}
+
+impl Kex<Client> {
+    pub fn resume_kexdhreply(
+        &mut self,
+        p: &packets::KexDHReply,
+        s: &mut TrafSend,
+    ) -> Result<()> {
+        trace!("resume");
+        if let Kex::KexDH { algos, .. } = self {
+            if algos.discard_next {
+                algos.discard_next = false;
+                // Ignore this packet
+                return Ok(());
+            }
+        }
+
+        if let Kex::KexDH { mut algos, kex_hash } = self.take() {
+            let output = SharedSecret::handle_kexdhreply(&mut algos, kex_hash, p)?;
+            s.send(packets::NewKeys {})?;
+
+            // TODO could send ext_info here on first_kex
+
+            *self = Kex::NewKeys { output, algos };
+            Ok(())
+        } else {
+            error::PacketWrong.fail()
+        }
+    }
+}
+
+impl Kex<Server> {
+    pub fn resume_kexdhinit(
+        &mut self,
+        p: &packets::KexDHInit,
+        first_kex: bool,
+        keys: &[&SignKey],
+        s: &mut TrafSend,
+    ) -> Result<()> {
+        if let Kex::KexDH { mut algos, kex_hash } = self.take() {
+            let output =
+                SharedSecret::handle_kexdhinit(&mut algos, kex_hash, keys, p, s)?;
+            let ext_info = algos.send_ext_info;
+            *self = Kex::NewKeys { output, algos };
+            s.send(packets::NewKeys {})?;
+
+            if first_kex && ext_info {
+                self.send_ext_info(s)?;
+            }
+
+            Ok(())
+        } else {
+            error::PacketWrong.fail()
+        }
+    }
+
+    // Not inherently server-only, but no client use yet in sunset.
+    pub fn send_ext_info(&self, s: &mut TrafSend) -> Result<()> {
+        if cfg!(feature = "rsa") {
+            // OK unwrap: namelist has capacity
+            let algs = ([SSH_NAME_RSA_SHA256, SSH_NAME_ED25519].as_slice())
+                .try_into()
+                .unwrap();
+            let ext =
+                packets::ExtInfo { server_sig_algs: Some(NameList::Local(&algs)) };
+            s.send(ext)?;
+        }
+        Ok(())
     }
 }
 
@@ -644,16 +668,14 @@ impl SharedSecret {
 
     // client only
     fn handle_kexdhreply(
-        algos: &mut Algos,
+        algos: &mut Algos<Client>,
         mut kex_hash: KexHash,
         p: &packets::KexDHReply,
     ) -> Result<KexOutput> {
         kex_hash.hash_hostkey(&p.k_s.0)?;
         // consumes the sharedsecret private key in algos
         let kex_out = match &mut algos.kex {
-            SharedSecret::KexCurve25519(k) => {
-                k.secret(p.q_s.0, kex_hash, algos.is_client)
-            }
+            SharedSecret::KexCurve25519(k) => k.secret(p.q_s.0, kex_hash, true),
             #[cfg(feature = "mlkem")]
             SharedSecret::KexMlkemX25519(k) => {
                 k.secret_decap_client(p.q_s.0, kex_hash)
@@ -673,7 +695,7 @@ impl SharedSecret {
 
     // server only. consumes algos and kex_hash
     fn handle_kexdhinit(
-        algos: &mut Algos,
+        algos: &mut Algos<Server>,
         mut kex_hash: KexHash,
         keys: &[&SignKey],
         p: &packets::KexDHInit,
@@ -699,7 +721,7 @@ impl SharedSecret {
         let mlkem_bytes;
         let (kex_out, pubkey) = match &mut algos.kex {
             SharedSecret::KexCurve25519(k) => {
-                (k.secret(p.q_c.0, kex_hash, algos.is_client)?, k.pubkey())
+                (k.secret(p.q_c.0, kex_hash, false)?, k.pubkey())
             }
             #[cfg(feature = "mlkem")]
             SharedSecret::KexMlkemX25519(k) => {
@@ -779,10 +801,8 @@ impl KexOutput {
         len: usize,
         out: &'a mut [u8],
         sess_id: &SessId,
-    ) -> Result<&'a [u8], Error> {
-        if len > out.len() {
-            return Err(Error::bug());
-        }
+    ) -> &'a [u8] {
+        debug_assert!(len <= out.len());
         // TODO: will Sha256::output_size() become const?
         let hsz = Sha256::output_size();
         let w = &mut [0u8; 32];
@@ -813,7 +833,7 @@ impl KexOutput {
             hash_ctx.finalize_into(w.into());
             k2.copy_from_slice(&w[..k2.len()]);
         }
-        Ok(&out[..len])
+        &out[..len]
     }
 }
 
@@ -1175,24 +1195,10 @@ mod tests {
             if let Packet::KexInit(k) = serv_init { k } else { panic!() };
         assert!(ts.next().is_none());
 
-        serv.handle_kexinit(
-            cli_init,
-            false,
-            &serv_conf,
-            &version,
-            true,
-            &mut ts.sender(),
-        )
-        .unwrap();
-        cli.handle_kexinit(
-            serv_init,
-            true,
-            &cli_conf,
-            &version,
-            true,
-            &mut tc.sender(),
-        )
-        .unwrap();
+        serv.handle_kexinit(cli_init, &serv_conf, &version, true, &mut ts.sender())
+            .unwrap();
+        cli.handle_kexinit(serv_init, &cli_conf, &version, true, &mut tc.sender())
+            .unwrap();
 
         let cli_dhinit = tc.next().unwrap();
         let cli_dhinit =
@@ -1203,7 +1209,7 @@ mod tests {
 
         let ev = serv.handle_kexdhinit().unwrap();
         assert!(matches!(ev, DispatchEvent::ServEvent(ServEventId::Hostkeys)));
-        serv.resume_kexdhinit(&cli_dhinit, keys.as_slice(), &mut ts.sender())
+        serv.resume_kexdhinit(&cli_dhinit, true, keys.as_slice(), &mut ts.sender())
             .unwrap();
         let serv_dhrep = ts.next().unwrap();
         let serv_dhrep =
@@ -1211,9 +1217,9 @@ mod tests {
         assert!(matches!(ts.next().unwrap(), Packet::NewKeys(_)));
 
         let s = &mut tc.sender();
-        let ev = cli.handle_kexdhreply();
+        let ev = cli.handle_kexdhreply().unwrap();
         assert!(matches!(ev, DispatchEvent::CliEvent(CliEventId::Hostkey)));
-        cli.resume_kexdhreply(&serv_dhrep, true, s).unwrap();
+        cli.resume_kexdhreply(&serv_dhrep, s).unwrap();
         assert!(matches!(tc.next().unwrap(), Packet::NewKeys(_)));
         assert!(matches!(tc.next(), None));
 
@@ -1235,9 +1241,9 @@ mod tests {
         let sess_id = SessId::from_slice(&Sha256::digest(b"some sessid")).unwrap();
 
         let mut skeys = crate::encrypt::KeyState::new_cleartext();
-        skeys.rekey(Keys::derive(sout, &sess_id, &salgos).unwrap());
+        skeys.rekey(Keys::new(sout, &sess_id, &salgos));
         let mut ckeys = crate::encrypt::KeyState::new_cleartext();
-        ckeys.rekey(Keys::derive(cout, &sess_id, &calgos).unwrap());
+        ckeys.rekey(Keys::new(cout, &sess_id, &calgos));
 
         roundtrip(b"this", &mut skeys, &mut ckeys);
         roundtrip(&[13u8; 50], &mut ckeys, &mut skeys);

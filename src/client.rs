@@ -14,7 +14,7 @@ use sign::SignKey;
 use sshnames::*;
 use traffic::TrafSend;
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct Client {
     pub(crate) auth: CliAuth,
 }
