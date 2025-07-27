@@ -17,8 +17,6 @@ use poly1305::Poly1305;
 use subtle::ConstantTimeEq;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-use pretty_hex::PrettyHex;
-
 use crate::*;
 use encrypt::SSH_LENGTH_SIZE;
 
@@ -64,7 +62,7 @@ impl SSHChaPoly {
             buf[..SSH_LENGTH_SIZE].try_into().unwrap();
         let mut c = Self::cha20(&self.k1, seq);
         c.apply_keystream(&mut b);
-        trace!("packet_length {:?}", b.hex_dump());
+        trace!("packet_length {:02x?}", b);
         Ok(u32::from_be_bytes(b))
     }
 

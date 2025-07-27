@@ -39,8 +39,6 @@ use traffic::TrafSend;
 const MAX_SESSID: usize = 32;
 pub type SessId = heapless::Vec<u8, MAX_SESSID>;
 
-use pretty_hex::PrettyHex;
-
 // TODO this will be configurable.
 const fixed_options_kex: &[&str] = &[
     #[cfg(feature = "mlkem")]
@@ -704,7 +702,7 @@ impl SharedSecret {
 
         // TODO: error message on signature failure.
         let h: &[u8] = kex_out.h.as_ref();
-        trace!("verify  h {}", h.hex_dump());
+        trace!("verify  h {h:02x?}");
         algos
             .hostsig
             .verify(&p.k_s.0, &h, &p.sig.0)
@@ -765,7 +763,7 @@ impl SharedSecret {
         let q_s = BinString(kex_pub);
 
         let k_s = Blob(hostkey.pubkey());
-        trace!("sign kexreply h {}", ko.h.as_slice().hex_dump());
+        trace!("sign kexreply h {:02x?}", ko.h.as_slice());
         let sig = hostkey.sign(&ko.h.as_slice())?;
         let sig: Signature = (&sig).into();
         let sig = Blob(sig);
