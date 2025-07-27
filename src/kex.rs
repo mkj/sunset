@@ -23,7 +23,7 @@ use sha2::Sha256;
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 use crate::*;
-use encrypt::{Cipher, Integ, Keys};
+use encrypt::{Cipher, Integ, KeysRecv, KeysSend};
 use event::{CliEventId, ServEventId};
 use ident::RemoteVersion;
 use namelist::{LocalNames, NameList};
@@ -382,15 +382,10 @@ impl<CS: CliServ> Kex<CS> {
     ) -> Result<()> {
         if let Kex::NewKeys { output, algos } = self.take() {
             // We will have already sent our own NewKeys message if we reach thi
-            // state.
-
-            // The first KEX's H becomes the persistent sess_id
-            let sess_id = sess_id.get_or_insert(output.h.clone());
-            let keys = Keys::new(output, sess_id, &algos);
-            if algos.strict_kex {
-                s.enable_strict_kex()
-            }
-            s.rekey(keys);
+            // state, so can unwrap sess_id.
+            let sess_id = sess_id.as_ref().unwrap();
+            let dec = KeysRecv::new(&output, sess_id, &algos);
+            s.rekey_recv(dec);
             *self = Kex::Idle;
             Ok(())
         } else {
@@ -552,12 +547,34 @@ impl<CS: CliServ> Kex<CS> {
 
         Ok(DispatchEvent::ServEvent(ServEventId::Hostkeys))
     }
+
+    /// Send NewKeys and switch to next encryption key.
+    fn send_newkeys(
+        &mut self,
+        output: KexOutput,
+        algos: Algos<CS>,
+        sess_id: &mut Option<SessId>,
+        s: &mut TrafSend,
+    ) -> Result<()> {
+        debug_assert!(matches!(self, Self::Taken));
+
+        s.send(packets::NewKeys {})?;
+        // Switch to new encryption keys after sending NewKeys
+
+        // The first KEX's H becomes the persistent sess_id
+        let sess_id = sess_id.get_or_insert(output.h.clone());
+        let enc = KeysSend::new(&output, sess_id, &algos);
+        s.rekey_send(enc, algos.strict_kex);
+        *self = Kex::NewKeys { output, algos };
+        Ok(())
+    }
 }
 
 impl Kex<Client> {
     pub fn resume_kexdhreply(
         &mut self,
         p: &packets::KexDHReply,
+        sess_id: &mut Option<SessId>,
         s: &mut TrafSend,
     ) -> Result<()> {
         trace!("resume");
@@ -571,12 +588,8 @@ impl Kex<Client> {
 
         if let Kex::KexDH { mut algos, kex_hash } = self.take() {
             let output = SharedSecret::handle_kexdhreply(&mut algos, kex_hash, p)?;
-            s.send(packets::NewKeys {})?;
-
+            self.send_newkeys(output, algos, sess_id, s)
             // TODO could send ext_info here on first_kex
-
-            *self = Kex::NewKeys { output, algos };
-            Ok(())
         } else {
             // Already checked in handle_kexdhreply
             Err(Error::bug())
@@ -590,19 +603,19 @@ impl Kex<Server> {
         p: &packets::KexDHInit,
         first_kex: bool,
         keys: &[&SignKey],
+        sess_id: &mut Option<SessId>,
         s: &mut TrafSend,
     ) -> Result<()> {
         if let Kex::KexDH { mut algos, kex_hash } = self.take() {
+            let ext_info = algos.send_ext_info;
+
             let output =
                 SharedSecret::handle_kexdhinit(&mut algos, kex_hash, keys, p, s)?;
-            let ext_info = algos.send_ext_info;
-            *self = Kex::NewKeys { output, algos };
-            s.send(packets::NewKeys {})?;
+            self.send_newkeys(output, algos, sess_id, s)?;
 
             if first_kex && ext_info {
                 self.send_ext_info(s)?;
             }
-
             Ok(())
         } else {
             // Already checked in handle_kexdhinit
@@ -1037,7 +1050,7 @@ impl KexMlkemX25519 {
 mod tests {
     use pretty_hex::PrettyHex;
 
-    use crate::encrypt::{self, KeyState, SSH_PAYLOAD_START};
+    use crate::encrypt::{self, KeyState, KeysRecv, KeysSend, SSH_PAYLOAD_START};
     use crate::error::Error;
     use crate::ident::RemoteVersion;
     use crate::kex;
@@ -1214,10 +1227,19 @@ mod tests {
 
         assert!(ts.next().is_none());
 
+        let sess_id = SessId::from_slice(&Sha256::digest(b"some sessid")).unwrap();
+        let mut sess_id = Some(sess_id);
+
         let ev = serv.handle_kexdhinit().unwrap();
         assert!(matches!(ev, DispatchEvent::ServEvent(ServEventId::Hostkeys)));
-        serv.resume_kexdhinit(&cli_dhinit, true, keys.as_slice(), &mut ts.sender())
-            .unwrap();
+        serv.resume_kexdhinit(
+            &cli_dhinit,
+            true,
+            keys.as_slice(),
+            &mut sess_id,
+            &mut ts.sender(),
+        )
+        .unwrap();
         let serv_dhrep = ts.next().unwrap();
         let serv_dhrep =
             if let Packet::KexDHReply(k) = serv_dhrep { k } else { panic!() };
@@ -1226,7 +1248,7 @@ mod tests {
         let s = &mut tc.sender();
         let ev = cli.handle_kexdhreply().unwrap();
         assert!(matches!(ev, DispatchEvent::CliEvent(CliEventId::Hostkey)));
-        cli.resume_kexdhreply(&serv_dhrep, s).unwrap();
+        cli.resume_kexdhreply(&serv_dhrep, &mut sess_id, s).unwrap();
         assert!(matches!(tc.next().unwrap(), Packet::NewKeys(_)));
         assert!(matches!(tc.next(), None));
 
@@ -1245,12 +1267,19 @@ mod tests {
         assert_eq!(cout.h, sout.h);
 
         // roundtrip with the derived keys
-        let sess_id = SessId::from_slice(&Sha256::digest(b"some sessid")).unwrap();
+        let sess_id = &sess_id.unwrap();
 
         let mut skeys = crate::encrypt::KeyState::new_cleartext();
-        skeys.rekey(Keys::new(sout, &sess_id, &salgos));
+        let enc = KeysSend::new(&sout, &sess_id, &salgos);
+        let dec = KeysRecv::new(&sout, &sess_id, &salgos);
+        skeys.rekey_send(enc, true);
+        skeys.rekey_recv(dec);
+
         let mut ckeys = crate::encrypt::KeyState::new_cleartext();
-        ckeys.rekey(Keys::new(cout, &sess_id, &calgos));
+        let enc = KeysSend::new(&cout, &sess_id, &calgos);
+        let dec = KeysRecv::new(&cout, &sess_id, &calgos);
+        ckeys.rekey_send(enc, true);
+        ckeys.rekey_recv(dec);
 
         roundtrip(b"this", &mut skeys, &mut ckeys);
         roundtrip(&[13u8; 50], &mut ckeys, &mut skeys);

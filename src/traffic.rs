@@ -9,8 +9,9 @@ use {
 use zeroize::Zeroize;
 
 use crate::channel::{ChanData, ChanNum};
-use crate::encrypt::KeyState;
-use crate::encrypt::{SSH_LENGTH_SIZE, SSH_PAYLOAD_START};
+use crate::encrypt::{
+    KeyState, KeysRecv, KeysSend, SSH_LENGTH_SIZE, SSH_PAYLOAD_START,
+};
 use crate::ident::RemoteVersion;
 use crate::packets::Packet;
 use crate::*;
@@ -358,7 +359,7 @@ impl<'a> TrafOut<'a> {
         match p.category() {
             packets::Category::All | packets::Category::Kex => (), // OK cleartext
             _ => {
-                if keys.is_cleartext() {
+                if keys.is_send_cleartext() {
                     return Error::bug_msg("send cleartext");
                 }
             }
@@ -478,12 +479,12 @@ impl<'s, 'a> TrafSend<'s, 'a> {
         self.out.send_packet(p.into(), self.keys)
     }
 
-    pub fn rekey(&mut self, keys: encrypt::Keys) {
-        self.keys.rekey(keys)
+    pub fn rekey_send(&mut self, keys: KeysSend, strict_kex: bool) {
+        self.keys.rekey_send(keys, strict_kex)
     }
 
-    pub fn enable_strict_kex(&mut self) {
-        self.keys.enable_strict_kex()
+    pub fn rekey_recv(&mut self, keys: KeysRecv) {
+        self.keys.rekey_recv(keys)
     }
 
     pub fn send_version(&mut self) -> Result<(), Error> {

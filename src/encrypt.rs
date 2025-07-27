@@ -47,7 +47,8 @@ const MAX_KEY_LEN: usize = 64;
 /// is kept for the entire session.
 #[derive(Debug)]
 pub(crate) struct KeyState {
-    keys: Keys,
+    enc: KeysSend,
+    dec: KeysRecv,
     // Packet sequence numbers.
     // These reset on newkeys when strict kex is in effect.
     pub seq_encrypt: Wrapping<u32>,
@@ -60,7 +61,8 @@ impl KeyState {
     /// A brand new `KeyState` with no encryption, zero sequence numbers
     pub fn new_cleartext() -> Self {
         KeyState {
-            keys: Keys::new_cleartext(),
+            enc: KeysSend::new_cleartext(),
+            dec: KeysRecv::new_cleartext(),
             seq_encrypt: Wrapping(0),
             seq_decrypt: Wrapping(0),
             strict_kex: false,
@@ -68,25 +70,36 @@ impl KeyState {
         }
     }
 
-    pub fn is_cleartext(&self) -> bool {
-        matches!(self.keys.enc, EncKey::NoCipher)
-            || matches!(self.keys.dec, DecKey::NoCipher)
+    pub fn is_send_cleartext(&self) -> bool {
+        matches!(self.enc.cipher, EncKey::NoCipher)
     }
 
-    /// Updates with new keys
-    pub fn rekey(&mut self, keys: Keys) {
-        trace!("rekey");
-        self.keys = keys;
+    /// Updates with keys for sending.
+    pub fn rekey_send(&mut self, keys: KeysSend, enable_strict: bool) {
+        self.enc = keys;
+        if enable_strict && !self.done_first_kex {
+            self.strict_kex = true;
+        }
         self.done_first_kex = true;
         if self.strict_kex {
-            self.seq_decrypt = Wrapping(0);
             self.seq_encrypt = Wrapping(0);
         }
     }
 
-    pub fn enable_strict_kex(&mut self) {
-        if !self.done_first_kex {
-            self.strict_kex = true
+    /// Updates with keys for receiving.
+    ///
+    /// Should occur after rekey_send, since NewKeys should
+    /// have been sent prior to handling remote's NewKeys.
+    pub fn rekey_recv(&mut self, keys: KeysRecv) {
+        debug_assert!(
+            !matches!(self.enc.cipher, EncKey::NoCipher),
+            "Should have already performed rekey_enc"
+        );
+
+        self.dec = keys;
+        self.done_first_kex = true;
+        if self.strict_kex {
+            self.seq_decrypt = Wrapping(0);
         }
     }
 
@@ -98,7 +111,7 @@ impl KeyState {
     ///
     /// Returning the length.
     pub fn decrypt_first_block(&mut self, buf: &mut [u8]) -> Result<usize, Error> {
-        self.keys.decrypt_first_block(buf, self.seq_decrypt.0)
+        self.dec.decrypt_first_block(buf, self.seq_decrypt.0)
     }
 
     /// Decrypt and validate the remainder of the buffer.
@@ -106,7 +119,7 @@ impl KeyState {
     /// Decrypt bytes 4 onwards of the buffer and validate AEAD Tag or MAC.
     /// Ensures that the packet meets minimum length.
     pub fn decrypt(&mut self, buf: &mut [u8]) -> Result<usize, Error> {
-        let e = self.keys.decrypt(buf, self.seq_decrypt.0);
+        let e = self.dec.decrypt(buf, self.seq_decrypt.0);
         self.seq_decrypt += 1;
         e
     }
@@ -121,81 +134,44 @@ impl KeyState {
         payload_len: usize,
         buf: &mut [u8],
     ) -> Result<usize, Error> {
-        let e = self.keys.encrypt(payload_len, buf, self.seq_encrypt.0);
+        let e = self.enc.encrypt(payload_len, buf, self.seq_encrypt.0);
         self.seq_encrypt += 1;
         e
     }
 
     pub fn size_block_dec(&self) -> usize {
-        self.keys.dec.size_block()
+        self.dec.cipher.size_block()
     }
 
-    /// Returns the maximum payload that can fit in an available buffer
-    /// after header, encryption, padding, mac
     pub fn max_enc_payload(&self, total_avail: usize) -> usize {
-        // mac is independent of the rest
-        let total_avail = total_avail.saturating_sub(self.keys.integ_enc.size_out());
-
-        let overhead = SSH_LENGTH_SIZE + 1 + SSH_MIN_PADLEN;
-        let mut space = total_avail;
-
-        // multiple of block length
-        let enc_len = if self.keys.enc.is_aead() {
-            total_avail.saturating_sub(SSH_LENGTH_SIZE)
-        } else {
-            total_avail
-        };
-
-        // round down to block size
-        let extra_block = enc_len % self.keys.enc.size_block();
-        if extra_block != 0 {
-            space = space.saturating_sub(extra_block);
-        }
-
-        space.saturating_sub(overhead)
+        self.enc.max_enc_payload(total_avail)
     }
 }
 
-// Clone is required so we can clone() then drop the original in place,
-// avoiding issues with Option::take(). This could be revisited.
-#[derive(Debug, Clone, ZeroizeOnDrop)]
-pub(crate) struct Keys {
-    pub(crate) enc: EncKey,
-    pub(crate) dec: DecKey,
-
-    #[zeroize(skip)]
-    pub(crate) integ_enc: IntegKey,
-    #[zeroize(skip)]
-    pub(crate) integ_dec: IntegKey,
+#[derive(Debug)]
+pub(crate) struct KeysSend {
+    cipher: EncKey,
+    integ: IntegKey,
 }
 
-impl Keys {
+impl KeysSend {
     fn new_cleartext() -> Self {
-        Keys {
-            enc: EncKey::NoCipher,
-            dec: DecKey::NoCipher,
-            integ_enc: IntegKey::NoInteg,
-            integ_dec: IntegKey::NoInteg,
-        }
+        Self { cipher: EncKey::NoCipher, integ: IntegKey::NoInteg }
     }
 
     pub fn new<CS: CliServ>(
-        kex_out: kex::KexOutput,
+        kex_out: &kex::KexOutput,
         sess_id: &SessId,
         algos: &kex::Algos<CS>,
     ) -> Self {
         let mut key = [0u8; MAX_KEY_LEN];
         let mut iv = [0u8; MAX_IV_LEN];
 
-        let [iv_e, iv_d, k_e, k_d, i_e, i_d] = if CS::is_client() {
-            ['A', 'B', 'C', 'D', 'E', 'F']
-        } else {
-            ['B', 'A', 'D', 'C', 'F', 'E']
-        };
+        let [iv_e, k_e, i_e] =
+            if CS::is_client() { ['A', 'C', 'E'] } else { ['B', 'D', 'F'] };
 
         // OK to unwrap here, have tests for all iv_len and key_len
-
-        let enc = {
+        let cipher = {
             let ci = kex_out.compute_key(
                 iv_e,
                 algos.cipher_enc.iv_len(),
@@ -211,7 +187,154 @@ impl Keys {
             EncKey::from_cipher(&algos.cipher_enc, ck, ci).unwrap()
         };
 
-        let dec = {
+        let integ = {
+            let ck = kex_out.compute_key(
+                i_e,
+                algos.integ_enc.key_len(),
+                &mut key,
+                sess_id,
+            );
+            IntegKey::from_integ(&algos.integ_enc, ck).unwrap()
+        };
+
+        Self { cipher, integ }
+    }
+
+    /// Padding is required to meet
+    /// - minimum packet length
+    /// - minimum padding size,
+    /// - encrypted length being a multiple of block length
+    fn calc_encrypt_pad(&self, payload_len: usize) -> usize {
+        let size_block = self.cipher.size_block();
+        // aead ciphers don't include the initial length field in encrypted blocks
+        let len = 1
+            + payload_len
+            + if self.cipher.is_aead() { 0 } else { SSH_LENGTH_SIZE };
+
+        // round padding length upwards so that len is a multiple of block size
+        let mut padlen = size_block - len % size_block;
+
+        // need at least 4 bytes padding
+        if padlen < SSH_MIN_PADLEN {
+            padlen += size_block
+        }
+
+        padlen
+    }
+
+    /// Returns the maximum payload that can fit in an available buffer
+    /// after header, encryption, padding, mac
+    pub fn max_enc_payload(&self, total_avail: usize) -> usize {
+        // mac is independent of the rest
+        let total_avail = total_avail.saturating_sub(self.integ.size_out());
+
+        let overhead = SSH_LENGTH_SIZE + 1 + SSH_MIN_PADLEN;
+        let mut space = total_avail;
+
+        // multiple of block length
+        let enc_len = if self.cipher.is_aead() {
+            total_avail.saturating_sub(SSH_LENGTH_SIZE)
+        } else {
+            total_avail
+        };
+
+        // round down to block size
+        let extra_block = enc_len % self.cipher.size_block();
+        if extra_block != 0 {
+            space = space.saturating_sub(extra_block);
+        }
+
+        space.saturating_sub(overhead)
+    }
+
+    /// Encrypt a buffer in-place, adding packet size, padding, MAC etc.
+    /// Returns the total length.
+    /// Ensures that the packet meets minimum and other length requirements.
+    fn encrypt(
+        &mut self,
+        payload_len: usize,
+        buf: &mut [u8],
+        seq: u32,
+    ) -> Result<usize, Error> {
+        let size_block = self.cipher.size_block();
+        let size_integ = self.integ.size_out();
+        let padlen = self.calc_encrypt_pad(payload_len);
+        // len is everything except the MAC
+        let len = SSH_LENGTH_SIZE + 1 + payload_len + padlen;
+
+        if self.cipher.is_aead() {
+            debug_assert_eq!((len - SSH_LENGTH_SIZE) % size_block, 0);
+        } else {
+            debug_assert_eq!(len % size_block, 0);
+        };
+
+        if len + size_integ > buf.len() {
+            error!("Output buffer {} is too small for packet", buf.len());
+            return error::NoRoom.fail();
+        }
+
+        // write the length
+        let blen = ((len - SSH_LENGTH_SIZE) as u32).to_be_bytes();
+        buf[..SSH_LENGTH_SIZE].copy_from_slice(&blen);
+        // write random padding
+        buf[SSH_LENGTH_SIZE] = padlen as u8;
+        let pad_start = SSH_LENGTH_SIZE + 1 + payload_len;
+        debug_assert_eq!(pad_start + padlen, len);
+        random::fill_random(&mut buf[pad_start..pad_start + padlen])?;
+
+        let (enc, rest) = buf.split_at_mut(len);
+        let (mac, _) = rest.split_at_mut(size_integ);
+
+        match self.integ {
+            IntegKey::ChaPoly => {}
+            IntegKey::NoInteg => {}
+            IntegKey::HmacSha256(k) => {
+                let mut h = HmacSha256::new_from_slice(&k).trap()?;
+                h.update(&seq.to_be_bytes());
+                h.update(enc);
+                let result = h.finalize();
+                mac.copy_from_slice(&result.into_bytes());
+            }
+        }
+
+        match &mut self.cipher {
+            EncKey::ChaPoly(k) => k.encrypt(seq, enc, mac).trap()?,
+            EncKey::Aes256Ctr(a) => {
+                a.apply_keystream(enc);
+            }
+            EncKey::NoCipher => {}
+        }
+
+        // ETM integ modes would go here.
+
+        Ok(len + size_integ)
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct KeysRecv {
+    cipher: DecKey,
+    integ: IntegKey,
+}
+
+impl KeysRecv {
+    fn new_cleartext() -> Self {
+        Self { cipher: DecKey::NoCipher, integ: IntegKey::NoInteg }
+    }
+
+    pub fn new<CS: CliServ>(
+        kex_out: &kex::KexOutput,
+        sess_id: &SessId,
+        algos: &kex::Algos<CS>,
+    ) -> Self {
+        let mut key = [0u8; MAX_KEY_LEN];
+        let mut iv = [0u8; MAX_IV_LEN];
+
+        let [iv_d, k_d, i_d] =
+            if CS::is_client() { ['B', 'D', 'F'] } else { ['A', 'C', 'E'] };
+
+        // OK to unwrap here, have tests for all iv_len and key_len
+        let cipher = {
             let ci = kex_out.compute_key(
                 iv_d,
                 algos.cipher_dec.iv_len(),
@@ -227,17 +350,7 @@ impl Keys {
             DecKey::from_cipher(&algos.cipher_dec, ck, ci).unwrap()
         };
 
-        let integ_enc = {
-            let ck = kex_out.compute_key(
-                i_e,
-                algos.integ_enc.key_len(),
-                &mut key,
-                sess_id,
-            );
-            IntegKey::from_integ(&algos.integ_enc, ck).unwrap()
-        };
-
-        let integ_dec = {
+        let integ = {
             let ck = kex_out.compute_key(
                 i_d,
                 algos.integ_dec.key_len(),
@@ -247,7 +360,7 @@ impl Keys {
             IntegKey::from_integ(&algos.integ_dec, ck).unwrap()
         };
 
-        Keys { enc, dec, integ_enc, integ_dec }
+        Self { cipher, integ }
     }
 
     /// Decrypts the first block in the buffer
@@ -262,7 +375,7 @@ impl Keys {
         buf: &mut [u8],
         seq: u32,
     ) -> Result<usize, Error> {
-        if buf.len() < self.dec.size_block() {
+        if buf.len() < self.cipher.size_block() {
             return Err(Error::bug());
         }
 
@@ -270,7 +383,7 @@ impl Keys {
         let len = u32::from_be_bytes(buf[..SSH_LENGTH_SIZE].try_into().unwrap());
 
         #[cfg(not(fuzzing))]
-        let len = match &mut self.dec {
+        let len = match &mut self.cipher {
             DecKey::ChaPoly(k) => k.packet_length(seq, buf).trap()?,
             DecKey::Aes256Ctr(a) => {
                 a.apply_keystream(&mut buf[..16]);
@@ -282,7 +395,7 @@ impl Keys {
         };
 
         let total_len = len
-            .checked_add((SSH_LENGTH_SIZE + self.integ_dec.size_out()) as u32)
+            .checked_add((SSH_LENGTH_SIZE + self.integ.size_out()) as u32)
             .ok_or(Error::BadDecrypt)?;
 
         Ok(total_len as usize)
@@ -295,8 +408,8 @@ impl Keys {
     /// The first block_size bytes may have been already decrypted by
     /// [`decrypt_first_block`] depending on the cipher.
     fn decrypt(&mut self, buf: &mut [u8], seq: u32) -> Result<usize, Error> {
-        let size_block = self.dec.size_block();
-        let size_integ = self.integ_dec.size_out();
+        let size_block = self.cipher.size_block();
+        let size_integ = self.integ.size_out();
 
         if buf.len() < size_block + size_integ {
             debug!("Bad packet, {} smaller than block size", buf.len());
@@ -304,7 +417,7 @@ impl Keys {
         }
         // "MUST be a multiple of the cipher block size".
         // encrypted length for aead ciphers doesn't include the length prefix.
-        let sublength = if self.dec.is_aead() { SSH_LENGTH_SIZE } else { 0 };
+        let sublength = if self.cipher.is_aead() { SSH_LENGTH_SIZE } else { 0 };
         let len = buf.len() - size_integ - sublength;
 
         if len % size_block != 0 {
@@ -320,7 +433,7 @@ impl Keys {
         // ETM modes would check integrity here.
 
         #[cfg(not(fuzzing))]
-        match &mut self.dec {
+        match &mut self.cipher {
             DecKey::ChaPoly(k) => {
                 k.decrypt(seq, data, mac).map_err(|_| Error::BadDecrypt)?;
             }
@@ -332,7 +445,7 @@ impl Keys {
         }
 
         #[cfg(not(fuzzing))]
-        match self.integ_dec {
+        match self.integ {
             IntegKey::ChaPoly => {}
             IntegKey::NoInteg => {}
             IntegKey::HmacSha256(k) => {
@@ -358,90 +471,6 @@ impl Keys {
             })?;
 
         Ok(payload_len)
-    }
-
-    /// Padding is required to meet
-    /// - minimum packet length
-    /// - minimum padding size,
-    /// - encrypted length being a multiple of block length
-    fn calc_encrypt_pad(&self, payload_len: usize) -> usize {
-        let size_block = self.enc.size_block();
-        // aead ciphers don't include the initial length field in encrypted blocks
-        let len =
-            1 + payload_len + if self.enc.is_aead() { 0 } else { SSH_LENGTH_SIZE };
-
-        // round padding length upwards so that len is a multiple of block size
-        let mut padlen = size_block - len % size_block;
-
-        // need at least 4 bytes padding
-        if padlen < SSH_MIN_PADLEN {
-            padlen += size_block
-        }
-
-        padlen
-    }
-
-    /// Encrypt a buffer in-place, adding packet size, padding, MAC etc.
-    /// Returns the total length.
-    /// Ensures that the packet meets minimum and other length requirements.
-    fn encrypt(
-        &mut self,
-        payload_len: usize,
-        buf: &mut [u8],
-        seq: u32,
-    ) -> Result<usize, Error> {
-        let size_block = self.enc.size_block();
-        let size_integ = self.integ_enc.size_out();
-        let padlen = self.calc_encrypt_pad(payload_len);
-        // len is everything except the MAC
-        let len = SSH_LENGTH_SIZE + 1 + payload_len + padlen;
-
-        if self.enc.is_aead() {
-            debug_assert_eq!((len - SSH_LENGTH_SIZE) % size_block, 0);
-        } else {
-            debug_assert_eq!(len % size_block, 0);
-        };
-
-        if len + size_integ > buf.len() {
-            error!("Output buffer {} is too small for packet", buf.len());
-            return error::NoRoom.fail();
-        }
-
-        // write the length
-        let blen = ((len - SSH_LENGTH_SIZE) as u32).to_be_bytes();
-        buf[..SSH_LENGTH_SIZE].copy_from_slice(&blen);
-        // write random padding
-        buf[SSH_LENGTH_SIZE] = padlen as u8;
-        let pad_start = SSH_LENGTH_SIZE + 1 + payload_len;
-        debug_assert_eq!(pad_start + padlen, len);
-        random::fill_random(&mut buf[pad_start..pad_start + padlen])?;
-
-        let (enc, rest) = buf.split_at_mut(len);
-        let (mac, _) = rest.split_at_mut(size_integ);
-
-        match self.integ_enc {
-            IntegKey::ChaPoly => {}
-            IntegKey::NoInteg => {}
-            IntegKey::HmacSha256(k) => {
-                let mut h = HmacSha256::new_from_slice(&k).trap()?;
-                h.update(&seq.to_be_bytes());
-                h.update(enc);
-                let result = h.finalize();
-                mac.copy_from_slice(&result.into_bytes());
-            }
-        }
-
-        match &mut self.enc {
-            EncKey::ChaPoly(k) => k.encrypt(seq, enc, mac).trap()?,
-            EncKey::Aes256Ctr(a) => {
-                a.apply_keystream(enc);
-            }
-            EncKey::NoCipher => {}
-        }
-
-        // ETM integ modes would go here.
-
-        Ok(len + size_integ)
     }
 }
 
@@ -798,15 +827,19 @@ mod tests {
                 let ko_b = KexOutput::new_test(sharedkey, &h);
 
                 trace!("algos enc {algos:?}");
-                let newkeys = Keys::new(ko, &sess_id, &algos);
-                keys_enc.rekey(newkeys);
+                let enc = KeysSend::new(&ko, &sess_id, &algos);
+                keys_enc.rekey_send(enc, algos.strict_kex);
 
                 // client and server enc/dec keys are derived differently, we need them
                 // to match for this test
                 let algos = algos.test_swap_to_server();
                 trace!("algos dec {algos:?}");
-                let newkeys_b = Keys::new(ko_b, &sess_id, &algos);
-                keys_dec.rekey(newkeys_b);
+                // rekey_send here only because it's required
+                // before rekey_recv.
+                let e = KeysSend::new(&ko, &sess_id, &algos);
+                keys_dec.rekey_send(e, algos.strict_kex);
+                let dec = KeysRecv::new(&ko_b, &sess_id, &algos);
+                keys_dec.rekey_recv(dec);
             } else {
                 trace!("Trying cleartext");
             }
@@ -832,11 +865,13 @@ mod tests {
                     SessId::from_slice(&Sha256::digest(b"some sessid")).unwrap();
                 let sharedkey = b"hello";
                 let ko = KexOutput::new_test(sharedkey, &h);
-                let newkeys = Keys::new(ko, &sess_id, &algos);
+                let enc = KeysSend::new(&ko, &sess_id, &algos);
+                let dec = KeysRecv::new(&ko, &sess_id, &algos);
 
-                keys.rekey(newkeys);
+                keys.rekey_send(enc, algos.strict_kex);
+                keys.rekey_recv(dec);
                 trace!("algos {algos:?}");
-                trace!("integ {}", keys.keys.integ_enc.size_out());
+                trace!("integ {}", keys.enc.integ.size_out());
             } else {
                 trace!("cleartext");
             }
@@ -850,7 +885,7 @@ mod tests {
                     let l = keys.encrypt(p, &mut buf).unwrap();
                     trace!("i {i} p {p} l {l}");
                     assert!(l <= i);
-                    assert!(l >= i.saturating_sub(keys.keys.enc.size_block()));
+                    assert!(l >= i.saturating_sub(keys.enc.cipher.size_block()));
 
                     // check a larger payload would bump the packet size
                     let l = keys.encrypt(p + 1, &mut buf).unwrap();

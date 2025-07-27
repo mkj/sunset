@@ -596,7 +596,7 @@ impl Conn<Client> {
                 return error::BadUsage.fail();
             }
 
-            self.kex.resume_kexdhreply(&p, s)
+            self.kex.resume_kexdhreply(&p, &mut self.sess_id, s)
         } else {
             Err(Error::bug())
         }
@@ -649,7 +649,13 @@ impl Conn<Server> {
 
         let packet = self.packet(payload)?;
         if let Packet::KexDHInit(p) = packet {
-            self.kex.resume_kexdhinit(&p, self.is_first_kex(), keys, s)
+            self.kex.resume_kexdhinit(
+                &p,
+                self.is_first_kex(),
+                keys,
+                &mut self.sess_id,
+                s,
+            )
         } else {
             Err(Error::bug())
         }
