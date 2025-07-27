@@ -528,6 +528,9 @@ impl<CS: CliServ> Kex<CS> {
             trace!("kexdhreply not client");
             return error::SSHProto.fail();
         }
+        if !matches!(self, Kex::KexDH { .. }) {
+            return error::PacketWrong.fail();
+        }
         Ok(DispatchEvent::CliEvent(event::CliEventId::Hostkey))
     }
 
@@ -543,6 +546,8 @@ impl<CS: CliServ> Kex<CS> {
                 // Ignore this packet
                 return Ok(DispatchEvent::None);
             }
+        } else {
+            return error::PacketWrong.fail();
         }
 
         Ok(DispatchEvent::ServEvent(ServEventId::Hostkeys))
@@ -573,7 +578,8 @@ impl Kex<Client> {
             *self = Kex::NewKeys { output, algos };
             Ok(())
         } else {
-            error::PacketWrong.fail()
+            // Already checked in handle_kexdhreply
+            Err(Error::bug())
         }
     }
 }
@@ -599,7 +605,8 @@ impl Kex<Server> {
 
             Ok(())
         } else {
-            error::PacketWrong.fail()
+            // Already checked in handle_kexdhinit
+            Err(Error::bug())
         }
     }
 
