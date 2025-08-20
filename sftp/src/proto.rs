@@ -1,11 +1,12 @@
 use core::marker::PhantomData;
 
+use sunset::error;
+use sunset::error::Error as SunsetError;
 use sunset::packets::{MessageNumber, Packet};
 use sunset::sshwire::{
     BinString, SSHDecode, SSHEncode, SSHSink, SSHSource, TextString, WireError,
     WireResult,
 };
-use sunset::{Result, error};
 
 use sunset_sshwire_derive::{SSHDecode, SSHEncode};
 
@@ -134,8 +135,23 @@ pub struct Attrs {
     // TODO extensions
 }
 
-enum Error {
+#[derive(Debug)]
+pub enum Error {
     UnknownPacket { number: u8 },
+}
+
+pub type Result<T, E = Error> = core::result::Result<T, E>;
+
+impl From<Error> for SunsetError {
+    fn from(error: Error) -> SunsetError {
+        SunsetError::Custom {
+            msg: match error {
+                Error::UnknownPacket { number } => {
+                    format_args!("Unknown SFTP packet: {}", number)
+                }
+            },
+        }
+    }
 }
 
 macro_rules! sftpmessages {
