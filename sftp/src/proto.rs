@@ -221,9 +221,6 @@ impl<'de: 'a, 'a> SSHDecode<'de> for SftpPacket<'a> {
             // eg
             // MessageNumber::SSH_MSG_KEXINIT => Packet::KexInit(
             // ...
-            // Error: MessageNumber::$SSH_MESSAGE_NAME => Packet::$SpecificPacketVariant(SSHDecode::dec(s)?),
-            //                        ^^^^^^^^^^^^^^^^^ expected identifier
-            // Changed SSH_MESSAGE_NAME to SSH_FXP_NAME. I believe that this is the intended thing to do
             $(
             MessageNumber::$SSH_FXP_NAME => Packet::$SpecificPacketVariant(SSHDecode::dec(s)?),
             )*
