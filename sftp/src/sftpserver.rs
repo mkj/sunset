@@ -1,4 +1,4 @@
-use proto::{StatusCode, Attrs};
+use proto::{Attrs, StatusCode};
 
 pub type Result<T> = core::result::Result<T, StatusCode>;
 
@@ -10,12 +10,17 @@ trait SftpServer {
     type Handle;
 
     // TODO flags struct
-    async fn open(filename: &str, flags: u32, attrs: &Attrs) -> Result<Self::Handle>;
+    async fn open(filename: &str, flags: u32, attrs: &Attrs)
+    -> Result<Self::Handle>;
 
     /// Close either a file or directory handle
     async fn close(handle: &Self::Handle) -> Result<()>;
 
-    async fn read(handle: &Self::Handle, offset: u64, reply: &mut ReadReply) -> Result<()>;
+    async fn read(
+        handle: &Self::Handle,
+        offset: u64,
+        reply: &mut ReadReply,
+    ) -> Result<()>;
 
     async fn write(handle: &Self::Handle, offset: u64, buf: &[u8]) -> Result<()>;
 
@@ -29,7 +34,5 @@ pub struct ReadReply<'g, 'a> {
 }
 
 impl<'g, 'a> ReadReply<'g, 'a> {
-    pub async fn reply(self, data: &[u8]) {
-        
-    }
+    pub async fn reply(self, data: &[u8]) {}
 }
