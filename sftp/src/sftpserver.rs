@@ -36,3 +36,11 @@ pub struct ReadReply<'g, 'a> {
 impl<'g, 'a> ReadReply<'g, 'a> {
     pub async fn reply(self, data: &[u8]) {}
 }
+
+pub struct DirReply<'g, 'a> {
+    chan: ChanOut<'g, 'a>,
+}
+
+impl<'g, 'a> DirReply<'g, 'a> {
+    pub async fn reply(self, data: &[u8]) {}
+}
