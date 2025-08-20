@@ -93,7 +93,7 @@ pub struct ReqId(pub u32);
 #[derive(Debug, SSHEncode, SSHDecode)]
 #[repr(u8)]
 #[allow(non_camel_case_types)]
-enum StatusCode {
+pub enum StatusCode {
     SSH_FX_OK = 0,
     SSH_FX_EOF = 1,
     SSH_FX_NO_SUCH_FILE = 2,
