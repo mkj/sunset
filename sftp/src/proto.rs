@@ -149,7 +149,7 @@ macro_rules! sftpmessages {
     ) => {
 
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[repr(u8)]
 #[allow(non_camel_case_types)]
 pub enum SftpNum {
@@ -163,12 +163,12 @@ pub enum SftpNum {
 impl SftpNum {
     fn is_request(&self) -> bool {
         // TODO SSH_FXP_EXTENDED
-        (2..=99).contains(&(*self as u8))
+        (2..=99).contains(&(self.clone() as u8))
     }
 
     fn is_response(&self) -> bool {
         // TODO SSH_FXP_EXTENDED_REPLY
-        (100..=199).contains(&(*self as u8))
+        (100..=199).contains(&(self.clone() as u8))
     }
 }
 
