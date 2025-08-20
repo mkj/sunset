@@ -1,4 +1,5 @@
 use crate::proto::{Attrs, StatusCode};
+use core::marker::PhantomData;
 
 pub type Result<T> = core::result::Result<T, StatusCode>;
 
@@ -43,4 +44,10 @@ pub struct DirReply<'g, 'a> {
 
 impl<'g, 'a> DirReply<'g, 'a> {
     pub async fn reply(self, data: &[u8]) {}
+}
+
+// TODO: Implement correct Channel Out
+pub struct ChanOut<'g, 'a> {
+    _phantom_g: PhantomData<&'g ()>,
+    _phantom_a: PhantomData<&'a ()>,
 }
