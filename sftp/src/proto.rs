@@ -10,7 +10,7 @@ use sunset::{Result, error};
 use sunset_sshwire_derive::{SSHDecode, SSHEncode};
 
 // TODO is utf8 enough, or does this need to be an opaque binstring?
-#[derive(Debug)]
+#[derive(Debug, SSHEncode, SSHDecode)]
 pub struct Filename<'a>(TextString<'a>);
 
 #[derive(Debug, SSHEncode, SSHDecode)]
@@ -121,7 +121,7 @@ pub struct ExtPair<'a> {
     pub data: BinString<'a>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, SSHEncode, SSHDecode)]
 pub struct Attrs {
     // flags: u32, defines used attributes
     pub size: Option<u64>,
