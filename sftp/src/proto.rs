@@ -17,18 +17,17 @@ pub struct Filename<'a>(TextString<'a>);
 struct FileHandle<'a>(pub BinString<'a>);
 
 #[derive(Debug, SSHEncode, SSHDecode)]
-pub struct InitVersion<'a> {
+pub struct InitVersion {
     // No ReqId for SSH_FXP_INIT
     pub version: u32,
     // TODO variable number of ExtPair
-    pub _ext: &'a PhantomData<()>,
 }
 
 #[derive(Debug, SSHEncode, SSHDecode)]
 pub struct Open<'a> {
     pub filename: Filename<'a>,
     pub pflags: u32,
-    pub attrs: Attrs<'a>,
+    pub attrs: Attrs,
 }
 
 #[derive(Debug, SSHEncode, SSHDecode)]
@@ -75,6 +74,7 @@ pub struct Data<'a> {
 pub struct Name<'a> {
     pub count: u32,
     // TODO repeat NameEntry
+    _pd: &'a PhantomData<()>,
 }
 
 #[derive(Debug, SSHEncode, SSHDecode)]
@@ -83,7 +83,7 @@ pub struct NameEntry<'a> {
     /// longname is an undefined text line like "ls -l",
     /// SHOULD NOT be used.
     pub _longname: Filename<'a>,
-    pub attrs: Attrs<'a>,
+    pub attrs: Attrs,
 }
 
 #[derive(Debug, SSHEncode, SSHDecode, Clone, Copy)]
@@ -122,7 +122,7 @@ pub struct ExtPair<'a> {
 }
 
 #[derive(Debug)]
-pub struct Attrs<'a> {
+pub struct Attrs {
     // flags: u32, defines used attributes
     pub size: Option<u64>,
     pub uid: Option<u32>,
@@ -327,8 +327,8 @@ sftpmessages![
 
 // Message number ranges are also used by Sftpnum::is_request and is_response.
 
-(1, Init, InitVersion<'a>, SSH_FXP_INIT),
-(2, Version, InitVersion<'a>, SSH_FXP_VERSION),
+(1, Init, InitVersion, SSH_FXP_INIT),
+(2, Version, InitVersion, SSH_FXP_VERSION),
 
 // Requests
 (3, Open, Open<'a>, SSH_FXP_OPEN),
