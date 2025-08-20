@@ -1,4 +1,4 @@
-use proto::{Attrs, StatusCode};
+use crate::proto::{Attrs, StatusCode};
 
 pub type Result<T> = core::result::Result<T, StatusCode>;
 
