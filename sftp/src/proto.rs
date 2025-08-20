@@ -93,15 +93,25 @@ pub struct ReqId(pub u32);
 #[repr(u8)]
 #[allow(non_camel_case_types)]
 pub enum StatusCode {
+    #[sshwire(variant = "ssh_fx_ok")]
     SSH_FX_OK = 0,
+    #[sshwire(variant = "ssh_fx_eof")]
     SSH_FX_EOF = 1,
+    #[sshwire(variant = "ssh_fx_no_such_file")]
     SSH_FX_NO_SUCH_FILE = 2,
+    #[sshwire(variant = "ssh_fx_premission_denied")]
     SSH_FX_PERMISSION_DENIED = 3,
+    #[sshwire(variant = "ssh_fx_failure")]
     SSH_FX_FAILURE = 4,
+    #[sshwire(variant = "ssh_fx_bad_message")]
     SSH_FX_BAD_MESSAGE = 5,
+    #[sshwire(variant = "ssh_fx_no_connection")]
     SSH_FX_NO_CONNECTION = 6,
+    #[sshwire(variant = "ssh_fx_connection_lost")]
     SSH_FX_CONNECTION_LOST = 7,
+    #[sshwire(variant = "ssh_fx_unsupported")]
     SSH_FX_OP_UNSUPPORTED = 8,
+    #[sshwire(variant = "ssh_fx_unsupported")]
     Other(u8),
 }
 
