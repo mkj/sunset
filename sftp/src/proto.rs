@@ -1,7 +1,10 @@
 use core::marker::PhantomData;
 
-use sshwire::{BinString, TextString, SSHEncode, SSHDecode, SSHSource, SSHSink, WireResult, WireError};
-use sunset::{error, Result};
+use sshwire::{
+    BinString, SSHDecode, SSHEncode, SSHSink, SSHSource, TextString, WireError,
+    WireResult,
+};
+use sunset::{Result, error};
 
 // TODO is utf8 enough, or does this need to be an opaque binstring?
 #[derive(Debug)]
