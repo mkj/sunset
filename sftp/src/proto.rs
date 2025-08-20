@@ -1,9 +1,13 @@
 use core::marker::PhantomData;
 
-use sshwire::{
+use sunset::packets::{MessageNumber, Packet};
+use sunset::sshwire::{
     BinString, SSHDecode, SSHEncode, SSHSink, SSHSource, TextString, WireError,
     WireResult,
 };
+use sunset::{Result, error};
+
+use sunset_sshwire_derive::{SSHDecode, SSHEncode};
 use sunset::{Result, error};
 
 // TODO is utf8 enough, or does this need to be an opaque binstring?
