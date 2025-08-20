@@ -150,12 +150,12 @@ pub enum SftpNum {
 impl SftpNum {
     fn is_request(&self) -> bool {
         // TODO SSH_FXP_EXTENDED
-        (2..=99).contains(self as u8)
+        (2..=99).contains(*self as u8)
     }
 
     fn is_response(&self) -> bool {
         // TODO SSH_FXP_EXTENDED_REPLY
-        (100..=199).contains(self as u8)
+        (100..=199).contains(*self as u8)
     }
 }
 
