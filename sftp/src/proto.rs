@@ -104,7 +104,7 @@ pub enum StatusCode {
     SSH_FX_EOF = 1,
     #[sshwire(variant = "ssh_fx_no_such_file")]
     SSH_FX_NO_SUCH_FILE = 2,
-    #[sshwire(variant = "ssh_fx_premission_denied")]
+    #[sshwire(variant = "ssh_fx_permission_denied")]
     SSH_FX_PERMISSION_DENIED = 3,
     #[sshwire(variant = "ssh_fx_failure")]
     SSH_FX_FAILURE = 4,
@@ -116,7 +116,7 @@ pub enum StatusCode {
     SSH_FX_CONNECTION_LOST = 7,
     #[sshwire(variant = "ssh_fx_unsupported")]
     SSH_FX_OP_UNSUPPORTED = 8,
-    #[sshwire(variant = "ssh_fx_unsupported")]
+    #[sshwire(variant = "ssh_fx_other")]
     Other(u8),
 }
 
