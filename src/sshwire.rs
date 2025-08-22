@@ -486,6 +486,12 @@ impl SSHEncode for u32 {
     }
 }
 
+impl SSHEncode for u64 {
+    fn enc(&self, s: &mut dyn SSHSink) -> WireResult<()> {
+        s.push(&self.to_be_bytes())
+    }
+}
+
 // no length prefix
 impl SSHEncode for &[u8] {
     fn enc(&self, s: &mut dyn SSHSink) -> WireResult<()> {
@@ -552,6 +558,16 @@ impl<'de> SSHDecode<'de> for u32 {
     {
         let t = s.take(core::mem::size_of::<u32>())?;
         Ok(u32::from_be_bytes(t.try_into().unwrap()))
+    }
+}
+
+impl<'de> SSHDecode<'de> for u64 {
+    fn dec<S>(s: &mut S) -> WireResult<Self>
+    where
+        S: SSHSource<'de>,
+    {
+        let t = s.take(core::mem::size_of::<u64>())?;
+        Ok(u64::from_be_bytes(t.try_into().unwrap()))
     }
 }
 
