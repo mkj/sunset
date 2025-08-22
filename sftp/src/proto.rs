@@ -1,5 +1,3 @@
-use core::marker::PhantomData;
-
 use sunset::error;
 use sunset::error::Error as SunsetError;
 use sunset::packets::{MessageNumber, Packet};
@@ -52,12 +50,12 @@ pub struct Write<'a> {
 
 // Responses
 
-#[derive(Debug, SSHEncode, SSHDecode)]
-pub struct Status<'a> {
-    pub code: StatusCode,
-    pub message: TextString<'a>,
-    pub lang: TextString<'a>,
-}
+// #[derive(Debug, SSHEncode, SSHDecode)]
+// pub struct Status<'a> {
+//     pub code: StatusCode,
+//     pub message: TextString<'a>,
+//     pub lang: TextString<'a>,
+// }
 
 #[derive(Debug, SSHEncode, SSHDecode)]
 pub struct Handle<'a> {
@@ -72,10 +70,9 @@ pub struct Data<'a> {
 }
 
 #[derive(Debug, SSHEncode, SSHDecode)]
-pub struct Name<'a> {
+pub struct Name {
     pub count: u32,
     // TODO repeat NameEntry
-    _pd: &'a PhantomData<()>,
 }
 
 #[derive(Debug, SSHEncode, SSHDecode)]
