@@ -1,6 +1,6 @@
 use sunset::error;
 use sunset::error::Error as SunsetError;
-use sunset::packets::{MessageNumber, Packet};
+use sunset::packets::{MessageNumber, Packet, Unknown};
 use sunset::sshwire::{
     BinString, SSHDecode, SSHEncode, SSHSink, SSHSource, TextString, WireError,
     WireResult,
@@ -97,7 +97,7 @@ pub struct ReqId(pub u32);
 #[derive(Debug, SSHEncode, SSHDecode)]
 #[repr(u8)]
 #[allow(non_camel_case_types)]
-pub enum StatusCode {
+pub enum StatusCode<'a> {
     #[sshwire(variant = "ssh_fx_ok")]
     SSH_FX_OK = 0,
     #[sshwire(variant = "ssh_fx_eof")]
@@ -116,8 +116,9 @@ pub enum StatusCode {
     SSH_FX_CONNECTION_LOST = 7,
     #[sshwire(variant = "ssh_fx_unsupported")]
     SSH_FX_OP_UNSUPPORTED = 8,
-    #[sshwire(variant = "ssh_fx_other")]
-    Other(u8),
+    // #[sshwire(variant = "ssh_fx_other")]
+    #[sshwire(unknown)]
+    Other(Unknown<'a>),
 }
 
 #[derive(Debug, SSHEncode, SSHDecode)]
