@@ -119,7 +119,7 @@ pub struct ExtPair<'a> {
     pub data: BinString<'a>,
 }
 
-#[derive(Debug, SSHEncode, SSHDecode)]
+#[derive(Debug, Default)]
 pub struct Attrs {
     // flags: u32, defines used attributes
     pub size: Option<u64>,
@@ -132,10 +132,118 @@ pub struct Attrs {
     // TODO extensions
 }
 
-#[derive(Debug)]
-pub enum Error {
-    UnknownPacket { number: u8 },
+#[repr(u32)]
+#[allow(non_camel_case_types)]
+pub enum AttrsFlags {
+    SSH_FILEXFER_ATTR_SIZE = 0x01,
+    SSH_FILEXFER_ATTR_UIDGID = 0x02,
+    SSH_FILEXFER_ATTR_PERMISSIONS = 0x04,
+    SSH_FILEXFER_ATTR_ACMODTIME = 0x08,
+    SSH_FILEXFER_ATTR_EXTENDED = 0x80000000,
 }
+impl core::ops::AddAssign<AttrsFlags> for u32 {
+    fn add_assign(&mut self, other: AttrsFlags) {
+        *self |= other as u32;
+    }
+}
+
+impl core::ops::BitAnd<AttrsFlags> for u32 {
+    type Output = u32;
+
+    fn bitand(self, rhs: AttrsFlags) -> Self::Output {
+        self & rhs as u32
+    }
+}
+
+impl Attrs {
+    pub fn flags(&self) -> u32 {
+        let mut flags: u32 = 0;
+        if self.size.is_some() {
+            flags += AttrsFlags::SSH_FILEXFER_ATTR_SIZE
+        }
+        if self.uid.is_some() || self.gid.is_some() {
+            flags += AttrsFlags::SSH_FILEXFER_ATTR_UIDGID
+        }
+        if self.permissions.is_some() {
+            flags += AttrsFlags::SSH_FILEXFER_ATTR_PERMISSIONS
+        }
+        if self.atime.is_some() || self.mtime.is_some() {
+            flags += AttrsFlags::SSH_FILEXFER_ATTR_ACMODTIME
+        }
+        // TODO: Implement extensions
+        // if self.ext_count.is_some() {
+        //     flags += AttrsFlags::SSH_FILEXFER_ATTR_EXTENDED
+        // }
+
+        flags
+    }
+}
+
+impl SSHEncode for Attrs {
+    fn enc(&self, s: &mut dyn SSHSink) -> WireResult<()> {
+        self.flags().enc(s)?;
+
+        // IMPORTANT: Order matters in the encoding/decoding since it will be interpreted together with the flags
+        if let Some(value) = self.size.as_ref() {
+            value.enc(s)?
+        }
+        if let Some(value) = self.uid.as_ref() {
+            value.enc(s)?
+        }
+        if let Some(value) = self.gid.as_ref() {
+            value.enc(s)?
+        }
+        if let Some(value) = self.permissions.as_ref() {
+            value.enc(s)?
+        }
+        if let Some(value) = self.atime.as_ref() {
+            value.enc(s)?
+        }
+        if let Some(value) = self.mtime.as_ref() {
+            value.enc(s)?
+        }
+        // TODO: Implement extensions
+        // if let Some(value) = self.ext_count.as_ref() { value.enc(s)? }
+
+        Ok(())
+    }
+}
+
+impl<'de> SSHDecode<'de> for Attrs {
+    fn dec<S>(s: &mut S) -> WireResult<Self>
+    where
+        S: SSHSource<'de>,
+    {
+        let mut attrs = Attrs::default();
+        let flags = u32::dec(s)? as u32;
+        if flags & AttrsFlags::SSH_FILEXFER_ATTR_SIZE != 0 {
+            attrs.size = Some(u64::dec(s)?);
+        }
+        if flags & AttrsFlags::SSH_FILEXFER_ATTR_UIDGID != 0 {
+            attrs.uid = Some(u32::dec(s)?);
+            attrs.gid = Some(u32::dec(s)?);
+        }
+        if flags & AttrsFlags::SSH_FILEXFER_ATTR_PERMISSIONS != 0 {
+            attrs.permissions = Some(u32::dec(s)?);
+        }
+        if flags & AttrsFlags::SSH_FILEXFER_ATTR_ACMODTIME != 0 {
+            attrs.atime = Some(u32::dec(s)?);
+            attrs.mtime = Some(u32::dec(s)?);
+        }
+        // TODO: Implement extensions
+        // if flags & AttrsFlags::SSH_FILEXFER_ATTR_EXTENDED != 0{
+
+        //     todo!("Not implemented");
+        // }
+
+        Ok(attrs)
+    }
+}
+
+// #[derive(Debug)]
+// pub enum Error {
+//     UnknownPacket { number: u8 },
+// }
 
 // pub type Result<T, E = Error> = core::result::Result<T, E>;
 
