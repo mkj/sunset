@@ -140,19 +140,19 @@ pub enum Error {
     UnknownPacket { number: u8 },
 }
 
-pub type Result<T, E = Error> = core::result::Result<T, E>;
+// pub type Result<T, E = Error> = core::result::Result<T, E>;
 
-impl From<Error> for SunsetError {
-    fn from(error: Error) -> SunsetError {
-        SunsetError::Custom {
-            msg: match error {
-                Error::UnknownPacket { number } => {
-                    format_args!("Unknown SFTP packet: {}", number)
-                }
-            },
-        }
-    }
-}
+// impl From<Error> for SunsetError {
+//     fn from(error: Error) -> SunsetError {
+//         SunsetError::Custom {
+//             msg: match error {
+//                 Error::UnknownPacket { number } => {
+//                     format_args!("Unknown SFTP packet: {}", number)
+//                 }
+//             },
+//         }
+//     }
+// }
 
 // macro_rules! sftpmessages {
 //     (
