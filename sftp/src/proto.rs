@@ -84,6 +84,13 @@ pub struct NameEntry<'a> {
     pub attrs: Attrs,
 }
 
+#[derive(Debug, SSHEncode, SSHDecode)]
+pub struct ResponseAttributes {
+    pub attrs: Attrs,
+}
+
+// Requests/Responses data types
+
 #[derive(Debug, SSHEncode, SSHDecode, Clone, Copy)]
 pub struct ReqId(pub u32);
 
