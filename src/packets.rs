@@ -841,7 +841,7 @@ pub struct DirectTcpip<'a> {
 pub struct Unknown<'a>(pub &'a [u8]);
 
 impl<'a> Unknown<'a> {
-    fn new(u: &'a [u8]) -> Self {
+    pub fn new(u: &'a [u8]) -> Self {
         let u = Unknown(u);
         trace!("saw unknown variant \"{u}\"");
         u
@@ -882,7 +882,7 @@ pub struct ParseContext {
 
     // Set to true if an unknown variant is encountered.
     // Packet length checks should be omitted in that case.
-    pub(crate) seen_unknown: bool,
+    pub seen_unknown: bool,
 }
 
 impl ParseContext {
