@@ -72,18 +72,43 @@ pub struct Data<'a> {
 }
 
 #[derive(Debug, SSHEncode, SSHDecode)]
-pub struct Name {
-    pub count: u32,
-    // TODO repeat NameEntry
-}
-
-#[derive(Debug, SSHEncode, SSHDecode)]
 pub struct NameEntry<'a> {
     pub filename: Filename<'a>,
     /// longname is an undefined text line like "ls -l",
     /// SHOULD NOT be used.
     pub _longname: Filename<'a>,
     pub attrs: Attrs,
+}
+
+#[derive(Debug)]
+pub struct Name<'de>(pub Vec<NameEntry<'de>>);
+
+impl<'de> SSHDecode<'de> for Name<'de> {
+    fn dec<S>(s: &mut S) -> WireResult<Self>
+    where
+        S: SSHSource<'de>,
+    {
+        let count = u32::dec(s)? as usize;
+
+        let mut names = Vec::with_capacity(count);
+
+        for _ in 0..count {
+            names.push(NameEntry::dec(s)?);
+        }
+
+        Ok(Name(names))
+    }
+}
+
+impl SSHEncode for Name<'_> {
+    fn enc(&self, s: &mut dyn SSHSink) -> WireResult<()> {
+        (self.0.len() as u32).enc(s)?;
+
+        for element in self.0.iter() {
+            element.enc(s)?;
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, SSHEncode, SSHDecode)]
