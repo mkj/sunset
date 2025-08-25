@@ -15,6 +15,8 @@ pub struct Filename<'a>(TextString<'a>);
 #[derive(Debug, SSHEncode, SSHDecode)]
 struct FileHandle<'a>(pub BinString<'a>);
 
+/// The reference implementation we are working on is 3, this is, https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02
+const SFTP_VERSION: u32 = 3;
 #[derive(Debug, SSHEncode, SSHDecode)]
 pub struct InitVersion {
     // No ReqId for SSH_FXP_INIT
