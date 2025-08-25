@@ -477,7 +477,7 @@ macro_rules! sftpmessages {
 // }
 // )*
 
-// } } // macro
+} } // macro
 
 sftpmessages![
 
