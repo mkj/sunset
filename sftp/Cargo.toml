@@ -4,5 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+num_enum = {version = "0.7.4"}
 sunset = { version = "0.3.0", path = "../" }
 sunset-sshwire-derive = { version = "0.2", path = "../sshwire-derive" }
