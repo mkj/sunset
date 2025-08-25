@@ -1,3 +1,4 @@
+use num_enum::{FromPrimitive, TryFromPrimitive};
 use sunset::error;
 use sunset::error::Error as SunsetError;
 use sunset::packets::{MessageNumber, Packet, Unknown};
@@ -52,12 +53,12 @@ pub struct Write<'a> {
 
 // Responses
 
-// #[derive(Debug, SSHEncode, SSHDecode)]
-// pub struct Status<'a> {
-//     pub code: StatusCode,
-//     pub message: TextString<'a>,
-//     pub lang: TextString<'a>,
-// }
+#[derive(Debug, SSHEncode, SSHDecode)]
+pub struct Status<'a> {
+    pub code: StatusCode,
+    pub message: TextString<'a>,
+    pub lang: TextString<'a>,
+}
 
 #[derive(Debug, SSHEncode, SSHDecode)]
 pub struct Handle<'a> {
@@ -121,10 +122,10 @@ pub struct ResponseAttributes {
 #[derive(Debug, SSHEncode, SSHDecode, Clone, Copy)]
 pub struct ReqId(pub u32);
 
-#[derive(Debug, SSHEncode, SSHDecode)]
-#[repr(u8)]
+#[derive(Debug, FromPrimitive, SSHEncode)]
+#[repr(u32)]
 #[allow(non_camel_case_types)]
-pub enum StatusCode<'a> {
+pub enum StatusCode {
     #[sshwire(variant = "ssh_fx_ok")]
     SSH_FX_OK = 0,
     #[sshwire(variant = "ssh_fx_eof")]
@@ -143,9 +144,18 @@ pub enum StatusCode<'a> {
     SSH_FX_CONNECTION_LOST = 7,
     #[sshwire(variant = "ssh_fx_unsupported")]
     SSH_FX_OP_UNSUPPORTED = 8,
-    // #[sshwire(variant = "ssh_fx_other")]
     #[sshwire(unknown)]
-    Other(Unknown<'a>),
+    #[num_enum(catch_all)]
+    Other(u32),
+}
+
+impl<'de> SSHDecode<'de> for StatusCode {
+    fn dec<S>(s: &mut S) -> WireResult<Self>
+    where
+        S: SSHSource<'de>,
+    {
+        Ok(StatusCode::from(u32::dec(s)?))
+    }
 }
 
 #[derive(Debug, SSHEncode, SSHDecode)]
