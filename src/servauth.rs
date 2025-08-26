@@ -29,7 +29,6 @@ pub(crate) struct ServAuth {
     /// Username previously used, as an array of bytes
     pub username: Option<Vec<u8, { config::MAX_USERNAME }>>,
 
-    // TODO Add setters for methods in Runner/SSHServer creation.
     /// Whether to advertise password authentication and present it to the application
     ///
     /// Enabled by default
@@ -53,6 +52,12 @@ impl Default for ServAuth {
 }
 
 impl ServAuth {
+    /// Configure which authentication methods are allowed
+    pub fn set_auth_methods(&mut self, password: bool, pubkey: bool) {
+        self.method_password = password;
+        self.method_pubkey = pubkey;
+    }
+
     /// Returns an event for the app, or `DispatchEvent::None` if auth failure
     /// has been returned immediately.
     pub fn request(

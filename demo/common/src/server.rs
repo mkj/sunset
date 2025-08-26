@@ -163,14 +163,15 @@ impl DemoCommon {
         a.reject()
     }
 
-    fn handle_firstauth(&self, a: ServFirstAuth) -> Result<()> {
+    fn handle_firstauth(&mut self, mut a: ServFirstAuth) -> Result<()> {
         let username = a.username()?;
         if !self.is_admin(username) && self.config.console_noauth {
             info!("Allowing auth for user {username}");
             return a.allow();
         };
 
-        // a.pubkey().password()
+        // Explicitly enable password authentication
+        a.allow_password(true)?;
         Ok(())
     }
 

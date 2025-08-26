@@ -717,6 +717,16 @@ impl Conn<Server> {
         let p = self.packet(payload)?;
         self.server()?.auth.resume_pkok(p, s)
     }
+
+    pub(crate) fn set_auth_methods(
+        &mut self,
+        password: bool,
+        pubkey: bool,
+    ) -> Result<()> {
+        let auth = &mut self.mut_server()?.auth;
+        auth.set_auth_methods(password, pubkey);
+        Ok(())
+    }
 }
 
 #[cfg(test)]

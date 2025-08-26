@@ -383,6 +383,23 @@ impl<'g, 'a> ServPasswordAuth<'g, 'a> {
         self.runner.resume_servauth(false)
     }
 
+    /// Enable or disable password authentication for subsequent attempts
+    pub fn allow_password(&mut self, enabled: bool) -> Result<()> {
+        let (_, pubkey) = self.runner.get_auth_methods()?;
+        self.runner.set_auth_methods(enabled, pubkey)
+    }
+
+    /// Enable or disable public key authentication for subsequent attempts
+    pub fn allow_pubkey(&mut self, enabled: bool) -> Result<()> {
+        let (password, _) = self.runner.get_auth_methods()?;
+        self.runner.set_auth_methods(password, enabled)
+    }
+
+    /// Configure which authentication methods are allowed for subsequent attempts
+    pub fn set_auth_methods(&mut self, password: bool, pubkey: bool) -> Result<()> {
+        self.runner.set_auth_methods(password, pubkey)
+    }
+
     pub fn raw_username(&self) -> Result<TextString<'_>> {
         self.runner.fetch_servusername()
     }
@@ -451,6 +468,23 @@ impl<'g, 'a> ServPubkeyAuth<'g, 'a> {
         self.runner.resume_servauth(false)
     }
 
+    /// Enable or disable password authentication for subsequent attempts
+    pub fn allow_password(&mut self, enabled: bool) -> Result<()> {
+        let (_, pubkey) = self.runner.get_auth_methods()?;
+        self.runner.set_auth_methods(enabled, pubkey)
+    }
+
+    /// Enable or disable public key authentication for subsequent attempts
+    pub fn allow_pubkey(&mut self, enabled: bool) -> Result<()> {
+        let (password, _) = self.runner.get_auth_methods()?;
+        self.runner.set_auth_methods(password, enabled)
+    }
+
+    /// Configure which authentication methods are allowed for subsequent attempts
+    pub fn set_auth_methods(&mut self, password: bool, pubkey: bool) -> Result<()> {
+        self.runner.set_auth_methods(password, pubkey)
+    }
+
     pub fn raw_username(&self) -> Result<TextString<'_>> {
         self.runner.fetch_servusername()
     }
@@ -498,6 +532,23 @@ impl<'g, 'a> ServFirstAuth<'g, 'a> {
     pub fn reject(mut self) -> Result<()> {
         self.done = true;
         self.runner.resume_servauth(false)
+    }
+
+    /// Enable or disable password authentication for this session
+    pub fn allow_password(&mut self, enabled: bool) -> Result<()> {
+        let (_, pubkey) = self.runner.get_auth_methods()?;
+        self.runner.set_auth_methods(enabled, pubkey)
+    }
+
+    /// Enable or disable public key authentication for this session
+    pub fn allow_pubkey(&mut self, enabled: bool) -> Result<()> {
+        let (password, _) = self.runner.get_auth_methods()?;
+        self.runner.set_auth_methods(password, enabled)
+    }
+
+    /// Configure which authentication methods are allowed
+    pub fn set_auth_methods(&mut self, password: bool, pubkey: bool) -> Result<()> {
+        self.runner.set_auth_methods(password, pubkey)
     }
 
     pub fn raw_username(&self) -> Result<TextString<'_>> {
