@@ -262,6 +262,15 @@ impl<'a> Runner<'a, server::Server> {
         self.traf_in.done_payload();
         r
     }
+
+    pub(crate) fn set_auth_methods(&mut self, password: bool, pubkey: bool) -> Result<()> {
+        self.conn.set_auth_methods(password, pubkey)
+    }
+
+    pub(crate) fn get_auth_methods(&self) -> Result<(bool, bool)> {
+        let auth = &self.conn.server()?.auth;
+        Ok((auth.method_password, auth.method_pubkey))
+    }
 }
 
 impl<'a, CS: CliServ> Runner<'a, CS> {
