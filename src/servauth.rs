@@ -130,7 +130,12 @@ impl ServAuth {
         // Extract the signature separately. The message for the signature
         // includes the auth packet without the signature part.
         let (key, sig) = match &mut p.method {
-            AuthMethod::PubKey(m) => (&m.pubkey.0, m.sig.take()),
+            AuthMethod::PubKey(m) => {
+                let sig = m.sig.take();
+                // When we have a signature, we need to set force_sig=true so that the encoded message for verification has the boolean set correctly
+                m.force_sig = sig.is_some();
+                (&m.pubkey.0, sig)
+            }
             _ => return Err(Error::bug()),
         };
 
