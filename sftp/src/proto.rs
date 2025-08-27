@@ -374,6 +374,9 @@ macro_rules! sftpmessages {
         }
 
         /// Top level SSH packet enum
+        ///
+        /// It helps identifying the SFTP Packet type and handling it accordingly
+        /// This is done using the SFTP field type
         #[derive(Debug)]
         pub enum SftpPacket<'a> {
             // eg Open(Open<'a>),
@@ -382,46 +385,45 @@ macro_rules! sftpmessages {
             )*
         }
 
-// impl SSHEncode for SftpPacket<'_> {
-//     fn enc(&self, s: &mut dyn SSHSink) -> WireResult<()> {
-//         let t = self.message_num() as u8;
-//         t.enc(s)?;
-//         match self {
-//             // eg
-//             // Packet::KexInit(p) => {
-//             // ...
-//             $(
-//             Packet::$SpecificPacketVariant(p) => {
-//                 p.enc(s)?
-//             }
-//             )*
-//         };
-//         Ok(())
-//     }
-// }
+        impl SSHEncode for SftpPacket<'_> {
+            fn enc(&self, s: &mut dyn SSHSink) -> WireResult<()> {
+                let t = u8::from(self.sftp_num());
+                t.enc(s)?;
+                match self {
+                    // eg
+                    // SftpPacket::KexInit(p) => {
+                    // ...
+                    $(
+                    SftpPacket::$SpecificPacketVariant(p) => {
+                        p.enc(s)?
+                    }
+                    )*
+                };
+                Ok(())
+            }
+        }
 
-// impl<'de: 'a, 'a> SSHDecode<'de> for SftpPacket<'a> {
-//     fn dec<S>(s: &mut S) -> WireResult<Self>
-//     where S: SSHSource<'de> {
-//         let msg_num = u8::dec(s)?;
-//         let ty = MessageNumber::try_from(msg_num);
-//         let ty = match ty {
-//             Ok(t) => t,
-//             Err(_) => return Err(WireError::UnknownPacket { number: msg_num })
-//         };
+        impl<'de: 'a, 'a> SSHDecode<'de> for SftpPacket<'a>
+        where 'a: 'de,
+        {
+            fn dec<S>(s: &mut S) -> WireResult<Self>
+            where S: SSHSource<'de> {
+                let packet_type_number = u8::dec(s)?;
 
-//         // Decode based on the message number
-//         let p = match ty {
-//             // eg
-//             // MessageNumber::SSH_MSG_KEXINIT => Packet::KexInit(
-//             // ...
-//             $(
-//             MessageNumber::$SSH_FXP_NAME => Packet::$SpecificPacketVariant(SSHDecode::dec(s)?),
-//             )*
-//         };
-//         Ok(p)
-//     }
-// }
+                let packet_type = SftpNum::from(packet_type_number);
+
+                let decoded_packet = match packet_type {
+                    $(
+                        SftpNum::$SSH_FXP_NAME => {
+                            let inner_type = <$SpecificPacketType>::dec(s)?;
+                            SftpPacket::$SpecificPacketVariant(inner_type)
+                        },
+                    )*
+                    _ => return Err(WireError::UnknownPacket { number: packet_type_number })
+                };
+                Ok(decoded_packet)
+            }
+        }
 
         impl<'a> SftpPacket<'a> {
             /// Maps `SpecificPacketVariant` to `message_num`
