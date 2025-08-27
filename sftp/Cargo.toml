@@ -7,3 +7,4 @@ edition = "2024"
 num_enum = {version = "0.7.4"}
 sunset = { version = "0.3.0", path = "../" }
 sunset-sshwire-derive = { version = "0.2", path = "../sshwire-derive" }
+paste = "1.0"

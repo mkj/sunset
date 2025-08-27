@@ -18,9 +18,19 @@ struct FileHandle<'a>(pub BinString<'a>);
 
 /// The reference implementation we are working on is 3, this is, https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02
 const SFTP_VERSION: u32 = 3;
+
+/// The SFTP version of the client
 #[derive(Debug, SSHEncode, SSHDecode)]
-pub struct InitVersion {
+pub struct InitVersionClient {
     // No ReqId for SSH_FXP_INIT
+    pub version: u32,
+    // TODO variable number of ExtPair
+}
+
+/// The lowers SFTP version from the client and the server
+#[derive(Debug, SSHEncode, SSHDecode)]
+pub struct InitVersionLowest {
+    // No ReqId for SSH_FXP_VERSION
     pub version: u32,
     // TODO variable number of ExtPair
 }
@@ -306,60 +316,71 @@ pub type Result<T, E = Error> = core::result::Result<T, E>;
 
 macro_rules! sftpmessages {
     (
-        $( ( $message_num:literal,
+        $( ( $message_num:tt,
             $SpecificPacketVariant:ident,
             $SpecificPacketType:ty,
             $SSH_FXP_NAME:ident
             ),
              )*
     ) => {
-        #[derive(Debug, Clone)]
-        #[repr(u8)]
-        #[allow(non_camel_case_types)]
-        pub enum SftpNum {
-            // variants are eg
-            // SSH_FXP_OPEN = 3,
-            $(
-            $SSH_FXP_NAME = $message_num,
-            )*
+        paste::paste! {
+            #[derive(Debug, Clone, FromPrimitive, SSHEncode)]
+            #[repr(u8)]
+            #[allow(non_camel_case_types)]
+            pub enum SftpNum {
+                    // SSH_FXP_OPEN = 3,
+                    $(
+                    #[sshwire(variant = $SSH_FXP_NAME:lower)]
+                    $SSH_FXP_NAME = $message_num,
+                    )*
+                    #[sshwire(unknown)]
+                    #[num_enum(catch_all)]
+                    Other(u8),
+            }
+        } // paste
+
+        impl<'de> SSHDecode<'de> for SftpNum {
+            fn dec<S>(s: &mut S) -> WireResult<Self>
+            where
+                S: SSHSource<'de>,
+            {
+                Ok(SftpNum::from(u8::dec(s)?))
+            }
+        }
+
+        impl From<SftpNum> for u8{
+            fn from(sftp_num: SftpNum) -> u8 {
+                match sftp_num {
+                                $(
+                     SftpNum::$SSH_FXP_NAME => $message_num, // TODO: Fix this
+                    )*
+                    _ => 0 // Other, not in the enum definition
+
+                }
+            }
+
         }
 
         impl SftpNum {
             fn is_request(&self) -> bool {
                 // TODO SSH_FXP_EXTENDED
-                (2..=99).contains(&(self.clone() as u8))
+                (2..=99).contains(&(u8::from(self.clone())))
             }
 
             fn is_response(&self) -> bool {
                 // TODO SSH_FXP_EXTENDED_REPLY
-                (100..=199).contains(&(self.clone() as u8))
+                (100..=199).contains(&(u8::from(self.clone())))
             }
         }
 
-        impl TryFrom<u8> for SftpNum {
-            type Error = Error;
-            fn try_from(v: u8) -> Result<Self> {
-                match v {
-                    // eg
-                    // 3 => Ok(SftpNum::SSH_FXP_OPEN)
-                    $(
-                    $message_num => Ok(SftpNum::$SSH_FXP_NAME),
-                    )*
-                    _ => {
-                        Err(Error::UnknownPacket { number: v })
-                    }
-                }
-            }
+        /// Top level SSH packet enum
+        #[derive(Debug)]
+        pub enum SftpPacket<'a> {
+            // eg Open(Open<'a>),
+            $(
+            $SpecificPacketVariant($SpecificPacketType),
+            )*
         }
-
-        // /// Top level SSH packet enum
-        // #[derive(Debug)]
-        // pub enum SftpPacket<'a> {
-        //     // eg Open(Open<'a>),
-        //     $(
-        //     $SpecificPacketVariant($SpecificPacketType),
-        //     )*
-        // }
 
 // impl SSHEncode for SftpPacket<'_> {
 //     fn enc(&self, s: &mut dyn SSHSink) -> WireResult<()> {
@@ -402,21 +423,21 @@ macro_rules! sftpmessages {
 //     }
 // }
 
+        impl<'a> SftpPacket<'a> {
+            /// Maps `SpecificPacketVariant` to `message_num`
+            pub fn sftp_num(&self) -> SftpNum {
+                match self {
+                    // eg
+                    // SftpPacket::Open(_) => {
+                    // ..
+                    $(
+                    SftpPacket::$SpecificPacketVariant(_) => {
 
-
-// impl<'a> SftpPacket<'a> {
-//     pub fn sftp_num(&self) -> SftpNum {
-//         match self {
-//             // eg
-//             // SftpPacket::Open(_) => {
-//             // ..
-//             $(
-//             SftpPacket::$SpecificPacketVariant(_) => {
-//                 MessageNumber::$SSH_FXP_NAME
-//             }
-//             )*
-//         }
-//     }
+                        SftpNum::from($message_num as u8)
+                    }
+                    )*
+                }
+            }
 
 //     /// Encode a request.
 //     ///
@@ -479,13 +500,15 @@ macro_rules! sftpmessages {
 //     }
 // }
 
-// $(
-// impl<'a> From<$SpecificPacketType> for SftpPacket<'a> {
-//     fn from(s: $SpecificPacketType) -> SftpPacket<'a> {
-//         SftpPacket::$SpecificPacketVariant(s)
-//     }
-// }
-// )*
+        }
+
+$(
+impl<'a> From<$SpecificPacketType> for SftpPacket<'a> {
+    fn from(s: $SpecificPacketType) -> SftpPacket<'a> {
+        SftpPacket::$SpecificPacketVariant(s) //find me
+    }
+}
+)*
 
 } } // macro
 
@@ -493,18 +516,18 @@ sftpmessages![
 
 // Message number ranges are also used by Sftpnum::is_request and is_response.
 
-(1, Init, InitVersion, SSH_FXP_INIT),
-(2, Version, InitVersion, SSH_FXP_VERSION),
+(1, Init, InitVersionClient, SSH_FXP_INIT),
+    (2, Version, InitVersionLowest, SSH_FXP_VERSION),
+    // Requests
+    (3, Open, Open<'a>, SSH_FXP_OPEN),
+    (4, Close, Close<'a>, SSH_FXP_CLOSE),
+    (5, Read, Read<'a>, SSH_FXP_READ),
+    (6, Write, Write<'a>, SSH_FXP_WRITE),
 
-// Requests
-(3, Open, Open<'a>, SSH_FXP_OPEN),
-(4, Close, Close<'a>, SSH_FXP_CLOSE),
-(5, Read, Read<'a>, SSH_FXP_READ),
-
-// Responses
-(101, Status, Status<'a>, SSH_FXP_STATUS),
-(102, Handle, Handle<'a>, SSH_FXP_HANDLE),
-(103, Data, Data<'a>, SSH_FXP_DATA),
-(104, Name, Name<'a>, SSH_FXP_NAME),
+    // Responses
+    (101, Status, Status<'a>, SSH_FXP_STATUS),
+    (102, Handle, Handle<'a>, SSH_FXP_HANDLE),
+    (103, Data, Data<'a>, SSH_FXP_DATA),
+    (104, Name, Name<'a>, SSH_FXP_NAME),
 
 ];
