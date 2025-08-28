@@ -2892,6 +2892,7 @@ name = "sunset-sftp"
 version = "0.1.0"
 dependencies = [
  "num_enum 0.7.4",
+ "paste",
  "sunset",
  "sunset-sshwire-derive",
 ]
