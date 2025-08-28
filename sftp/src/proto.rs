@@ -1,8 +1,5 @@
 use num_enum::FromPrimitive;
 use paste::paste;
-use sunset::error;
-use sunset::error::Error as SunsetError;
-use sunset::packets::{MessageNumber, Packet, Unknown};
 use sunset::sshwire::{
     BinString, SSHDecode, SSHEncode, SSHSink, SSHSource, TextString, WireError,
     WireResult,
@@ -15,7 +12,7 @@ use sunset_sshwire_derive::{SSHDecode, SSHEncode};
 pub struct Filename<'a>(TextString<'a>);
 
 #[derive(Debug, SSHEncode, SSHDecode)]
-struct FileHandle<'a>(pub BinString<'a>);
+pub struct FileHandle<'a>(pub BinString<'a>);
 
 /// The reference implementation we are working on is 3, this is, https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02
 const SFTP_VERSION: u32 = 3;
@@ -295,25 +292,6 @@ impl<'de> SSHDecode<'de> for Attrs {
         Ok(attrs)
     }
 }
-
-#[derive(Debug)]
-pub enum Error {
-    UnknownPacket { number: u8 },
-}
-
-pub type Result<T, E = Error> = core::result::Result<T, E>;
-
-// impl From<Error> for SunsetError {
-//     fn from(error: Error) -> SunsetError {
-//         SunsetError::Custom {
-//             msg: match error {
-//                 Error::UnknownPacket { number } => {
-//                     format_args!("Unknown SFTP packet: {}", number)
-//                 }
-//             },
-//         }
-//     }
-// }
 
 macro_rules! sftpmessages {
     (
