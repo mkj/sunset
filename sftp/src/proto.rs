@@ -1,4 +1,5 @@
-use num_enum::{FromPrimitive, TryFromPrimitive};
+use num_enum::FromPrimitive;
+use paste::paste;
 use sunset::error;
 use sunset::error::Error as SunsetError;
 use sunset::packets::{MessageNumber, Packet, Unknown};
@@ -323,7 +324,7 @@ macro_rules! sftpmessages {
             ),
              )*
     ) => {
-        paste::paste! {
+        paste! {
             #[derive(Debug, Clone, FromPrimitive, SSHEncode)]
             #[repr(u8)]
             #[allow(non_camel_case_types)]
