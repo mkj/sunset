@@ -286,9 +286,6 @@ impl<'de> SSHDecode<'de> for Attrs {
         // TODO: Implement extensions
         // if flags & AttrsFlags::SSH_FILEXFER_ATTR_EXTENDED != 0{
 
-        //     todo!("Not implemented");
-        // }
-
         Ok(attrs)
     }
 }
@@ -331,7 +328,7 @@ macro_rules! sftpmessages {
             fn from(sftp_num: SftpNum) -> u8 {
                 match sftp_num {
                                 $(
-                     SftpNum::$SSH_FXP_NAME => $message_num, // TODO: Fix this
+                     SftpNum::$SSH_FXP_NAME => $message_num,
                     )*
                     _ => 0 // Other, not in the enum definition
 
@@ -425,7 +422,6 @@ macro_rules! sftpmessages {
             ///
             /// Used by a SFTP client. Does not include the length field.
             pub fn encode_request(&self, id: ReqId, s: &mut dyn SSHSink) -> WireResult<()> {
-                // TODO: handle the Error conversion
                 if !self.sftp_num().is_request() {
                     return Err(WireError::PacketWrong)
                     // return Err(Error::bug())
