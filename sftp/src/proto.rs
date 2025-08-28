@@ -404,8 +404,9 @@ macro_rules! sftpmessages {
             }
         }
 
-        impl<'de: 'a, 'a> SSHDecode<'de> for SftpPacket<'a>
-        where 'a: 'de,
+
+        impl<'a: 'de, 'de> SSHDecode<'de> for SftpPacket<'a>
+        where 'de: 'a // This implies that both lifetimes are equal
         {
             fn dec<S>(s: &mut S) -> WireResult<Self>
             where S: SSHSource<'de> {

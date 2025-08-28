@@ -5,6 +5,7 @@ use std::prelude::rust_2024::*;
 extern crate std;
 mod proto {
     use num_enum::FromPrimitive;
+    use paste::paste;
     use sunset::error;
     use sunset::error::Error as SunsetError;
     use sunset::packets::{MessageNumber, Packet, Unknown};
@@ -1272,7 +1273,10 @@ mod proto {
             Ok(())
         }
     }
-    impl<'de: 'a, 'a> SSHDecode<'de> for SftpPacket<'a> {
+    impl<'a: 'de, 'de> SSHDecode<'de> for SftpPacket<'a>
+    where
+        'de: 'a,
+    {
         fn dec<S>(s: &mut S) -> WireResult<Self>
         where
             S: SSHSource<'de>,
@@ -1280,43 +1284,43 @@ mod proto {
             let packet_type_number = u8::dec(s)?;
             let packet_type = SftpNum::from(packet_type_number);
             let decoded_packet = match packet_type {
-                SSH_FXP_INIT => {
+                SftpNum::SSH_FXP_INIT => {
                     let inner_type = <InitVersionClient>::dec(s)?;
                     SftpPacket::Init(inner_type)
                 }
-                SSH_FXP_VERSION => {
+                SftpNum::SSH_FXP_VERSION => {
                     let inner_type = <InitVersionLowest>::dec(s)?;
                     SftpPacket::Version(inner_type)
                 }
-                SSH_FXP_OPEN => {
+                SftpNum::SSH_FXP_OPEN => {
                     let inner_type = <Open<'a>>::dec(s)?;
                     SftpPacket::Open(inner_type)
                 }
-                SSH_FXP_CLOSE => {
+                SftpNum::SSH_FXP_CLOSE => {
                     let inner_type = <Close<'a>>::dec(s)?;
                     SftpPacket::Close(inner_type)
                 }
-                SSH_FXP_READ => {
+                SftpNum::SSH_FXP_READ => {
                     let inner_type = <Read<'a>>::dec(s)?;
                     SftpPacket::Read(inner_type)
                 }
-                SSH_FXP_WRITE => {
+                SftpNum::SSH_FXP_WRITE => {
                     let inner_type = <Write<'a>>::dec(s)?;
                     SftpPacket::Write(inner_type)
                 }
-                SSH_FXP_STATUS => {
+                SftpNum::SSH_FXP_STATUS => {
                     let inner_type = <Status<'a>>::dec(s)?;
                     SftpPacket::Status(inner_type)
                 }
-                SSH_FXP_HANDLE => {
+                SftpNum::SSH_FXP_HANDLE => {
                     let inner_type = <Handle<'a>>::dec(s)?;
                     SftpPacket::Handle(inner_type)
                 }
-                SSH_FXP_DATA => {
+                SftpNum::SSH_FXP_DATA => {
                     let inner_type = <Data<'a>>::dec(s)?;
                     SftpPacket::Data(inner_type)
                 }
-                SSH_FXP_NAME => {
+                SftpNum::SSH_FXP_NAME => {
                     let inner_type = <Name<'a>>::dec(s)?;
                     SftpPacket::Name(inner_type)
                 }
