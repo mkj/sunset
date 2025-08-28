@@ -443,66 +443,89 @@ macro_rules! sftpmessages {
                 }
             }
 
-//     /// Encode a request.
-//     ///
-//     /// Used by a SFTP client. Does not include the length field.
-//     pub fn encode_request(&self, id: ReqId, s: &mut dyn SSHSink) -> Result<()> {
-//         if !self.sftp_num().is_request() {
-//             return Err(Error::bug())
-//         }
+            /// Encode a request.
+            ///
+            /// Used by a SFTP client. Does not include the length field.
+            pub fn encode_request(&self, id: ReqId, s: &mut dyn SSHSink) -> WireResult<()> {
+                // TODO: handle the Error conversion
+                if !self.sftp_num().is_request() {
+                    return Err(WireError::PacketWrong)
+                    // return Err(Error::bug())
+                    // TODO: I understand that it would be a bad call of encode_response and
+                    // therefore a bug, bug Error::bug() is not compatible with WireResult
+                }
 
-//         // packet type
-//         self.sftp_num().enc(s)?;
-//         // request ID
-//         id.0.enc(s)?;
-//         // contents
-//         self.enc(s)
-//     }
+                // packet type
+                self.sftp_num().enc(s)?;
+                // request ID
+                id.0.enc(s)?;
+                // contents
+                self.enc(s)
+            }
 
-//     /// Decode a response.
-//     ///
-//     /// Used by a SFTP client. Does not include the length field.
-//     pub fn decode_response(s: &mut dyn SSHSource) -> WireResult<(ReqId, Self)> {
-//         let num = SftpNum::try_from(u8::dec(s)?)?;
+            /// Decode a response.
+            ///
+            /// Used by a SFTP client. Does not include the length field.
+            pub fn decode_response<'de, S>(s: &mut S) -> WireResult<(ReqId, Self)>
+                where
+                S: SSHSource<'de>,
+                'a: 'de, // 'a must outlive 'de and 'de must outlive 'a so they have matching lifetimes
+                'de: 'a
+            {
+                let num = SftpNum::from(u8::dec(s)?);
 
-//         if !num.is_response() {
-//             return error::SSHProto.fail();
-//         }
+                if !num.is_response() {
+                    return Err(WireError::PacketWrong)
+                    // return error::SSHProto.fail();
+                    // TODO: Not an error in the SSHProtocol rather the SFTP.
+                    // Maybe is time to define an SftpError
+                }
 
-//         let id = ReqId(u32::dec(s)?);
-//         Ok((id, Self::dec(s)))
-//     }
+                let id = ReqId(u32::dec(s)?);
+                Ok((id, Self::dec(s)?))
+            }
 
-//     /// Decode a request.
-//     ///
-//     /// Used by a SFTP server. Does not include the length field.
-//     pub fn decode_request(s: &mut dyn SSHSource) -> WireResult<(ReqId, Self)> {
-//         let num = SftpNum::try_from(u8::dec(s)?)?;
+            /// Decode a request.
+            ///
+            /// Used by a SFTP server. Does not include the length field.
+            pub fn decode_request<'de, S>(s: &mut S) -> WireResult<(ReqId, Self)>
+                where
+                S: SSHSource<'de>,
+                'a: 'de, // 'a must outlive 'de and 'de must outlive 'a so they have matching lifetimes
+                'de: 'a
+            {
+                let num = SftpNum::from(u8::dec(s)?);
 
-//         if !num.is_request() {
-//             return error::SSHProto.fail();
-//         }
+                if !num.is_request() {
+                    return Err(WireError::PacketWrong)
+                    // return error::SSHProto.fail();
+                    // TODO: Not an error in the SSHProtocol rather the SFTP.
+                    // Maybe is time to define an SftpError
+                }
 
-//         let id = ReqId(u32::dec(s)?);
-//         Ok((id, Self::dec(s)))
-//     }
+                let id = ReqId(u32::dec(s)?);
+                Ok((id, Self::dec(s)?))
+            }
 
-//     /// Encode a response.
-//     ///
-//     /// Used by a SFTP server. Does not include the length field.
-//     pub fn encode_response(&self, id: ReqId, s: &mut dyn SSHSink) -> Result<()> {
-//         if !self.sftp_num().is_response() {
-//             return Err(Error::bug())
-//         }
+            /// Encode a response.
+            ///
+            /// Used by a SFTP server. Does not include the length field.
+            pub fn encode_response(&self, id: ReqId, s: &mut dyn SSHSink) -> WireResult<()> {
 
-//         // packet type
-//         self.sftp_num().enc(s)?;
-//         // request ID
-//         id.0.enc(s)?;
-//         // contents
-//         self.enc(s)
-//     }
-// }
+                if !self.sftp_num().is_response() {
+                    return Err(WireError::PacketWrong)
+                    // return Err(Error::bug())
+                    // TODO: I understand that it would be a bad call of encode_response and
+                    // therefore a bug, bug Error::bug() is not compatible with WireResult
+                }
+
+                // packet type
+                self.sftp_num().enc(s)?;
+                // request ID
+                id.0.enc(s)?;
+                // contents
+                self.enc(s)
+            }
 
         }
 
@@ -533,5 +556,4 @@ sftpmessages![
     (102, Handle, Handle<'a>, SSH_FXP_HANDLE),
     (103, Data, Data<'a>, SSH_FXP_DATA),
     (104, Name, Name<'a>, SSH_FXP_NAME),
-
 ];
