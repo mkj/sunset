@@ -1349,6 +1349,60 @@ mod proto {
                 SftpPacket::Name(_) => SftpNum::from(104 as u8),
             }
         }
+        /// Encode a request.
+        ///
+        /// Used by a SFTP client. Does not include the length field.
+        pub fn encode_request(&self, id: ReqId, s: &mut dyn SSHSink) -> WireResult<()> {
+            if !self.sftp_num().is_request() {
+                return Err(WireError::PacketWrong);
+            }
+            self.sftp_num().enc(s)?;
+            id.0.enc(s)?;
+            self.enc(s)
+        }
+        /// Decode a response.
+        ///
+        /// Used by a SFTP client. Does not include the length field.
+        pub fn decode_response<'de, S>(s: &mut S) -> WireResult<(ReqId, Self)>
+        where
+            S: SSHSource<'de>,
+            'a: 'de,
+            'de: 'a,
+        {
+            let num = SftpNum::from(u8::dec(s)?);
+            if !num.is_response() {
+                return Err(WireError::PacketWrong);
+            }
+            let id = ReqId(u32::dec(s)?);
+            Ok((id, Self::dec(s)?))
+        }
+        /// Decode a request.
+        ///
+        /// Used by a SFTP server. Does not include the length field.
+        pub fn decode_request<'de, S>(s: &mut S) -> WireResult<(ReqId, Self)>
+        where
+            S: SSHSource<'de>,
+            'a: 'de,
+            'de: 'a,
+        {
+            let num = SftpNum::from(u8::dec(s)?);
+            if !num.is_request() {
+                return Err(WireError::PacketWrong);
+            }
+            let id = ReqId(u32::dec(s)?);
+            Ok((id, Self::dec(s)?))
+        }
+        /// Encode a response.
+        ///
+        /// Used by a SFTP server. Does not include the length field.
+        pub fn encode_response(&self, id: ReqId, s: &mut dyn SSHSink) -> WireResult<()> {
+            if !self.sftp_num().is_response() {
+                return Err(WireError::PacketWrong);
+            }
+            self.sftp_num().enc(s)?;
+            id.0.enc(s)?;
+            self.enc(s)
+        }
     }
     impl<'a> From<InitVersionClient> for SftpPacket<'a> {
         fn from(s: InitVersionClient) -> SftpPacket<'a> {
