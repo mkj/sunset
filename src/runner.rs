@@ -263,7 +263,11 @@ impl<'a> Runner<'a, server::Server> {
         r
     }
 
-    pub(crate) fn set_auth_methods(&mut self, password: bool, pubkey: bool) -> Result<()> {
+    pub(crate) fn set_auth_methods(
+        &mut self,
+        password: bool,
+        pubkey: bool,
+    ) -> Result<()> {
         self.conn.set_auth_methods(password, pubkey)
     }
 
