@@ -6,9 +6,6 @@ extern crate std;
 mod proto {
     use num_enum::FromPrimitive;
     use paste::paste;
-    use sunset::error;
-    use sunset::error::Error as SunsetError;
-    use sunset::packets::{MessageNumber, Packet, Unknown};
     use sunset::sshwire::{
         BinString, SSHDecode, SSHEncode, SSHSink, SSHSource, TextString, WireError,
         WireResult,
@@ -41,7 +38,7 @@ mod proto {
             Ok(Self(::sunset::sshwire::SSHDecode::dec(s)?))
         }
     }
-    struct FileHandle<'a>(pub BinString<'a>);
+    pub struct FileHandle<'a>(pub BinString<'a>);
     #[automatically_derived]
     impl<'a> ::core::fmt::Debug for FileHandle<'a> {
         #[inline]
@@ -502,15 +499,18 @@ mod proto {
             })
         }
     }
-    pub struct Name<'de>(pub Vec<NameEntry<'de>>);
+    pub struct Name<'a>(pub Vec<NameEntry<'a>>);
     #[automatically_derived]
-    impl<'de> ::core::fmt::Debug for Name<'de> {
+    impl<'a> ::core::fmt::Debug for Name<'a> {
         #[inline]
         fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
             ::core::fmt::Formatter::debug_tuple_field1_finish(f, "Name", &&self.0)
         }
     }
-    impl<'de> SSHDecode<'de> for Name<'de> {
+    impl<'a: 'de, 'de> SSHDecode<'de> for Name<'a>
+    where
+        'de: 'a,
+    {
         fn dec<S>(s: &mut S) -> WireResult<Self>
         where
             S: SSHSource<'de>,
@@ -523,7 +523,7 @@ mod proto {
             Ok(Name(names))
         }
     }
-    impl SSHEncode for Name<'_> {
+    impl<'a> SSHEncode for Name<'a> {
         fn enc(&self, s: &mut dyn SSHSink) -> WireResult<()> {
             (self.0.len() as u32).enc(s)?;
             for element in self.0.iter() {
@@ -930,26 +930,6 @@ mod proto {
             Ok(attrs)
         }
     }
-    pub enum Error {
-        UnknownPacket { number: u8 },
-    }
-    #[automatically_derived]
-    impl ::core::fmt::Debug for Error {
-        #[inline]
-        fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
-            match self {
-                Error::UnknownPacket { number: __self_0 } => {
-                    ::core::fmt::Formatter::debug_struct_field1_finish(
-                        f,
-                        "UnknownPacket",
-                        "number",
-                        &__self_0,
-                    )
-                }
-            }
-        }
-    }
-    pub type Result<T, E = Error> = core::result::Result<T, E>;
     #[repr(u8)]
     #[allow(non_camel_case_types)]
     pub enum SftpNum {
