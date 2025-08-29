@@ -90,9 +90,12 @@ pub struct NameEntry<'a> {
 }
 
 #[derive(Debug)]
-pub struct Name<'de>(pub Vec<NameEntry<'de>>);
+pub struct Name<'a>(pub Vec<NameEntry<'a>>);
 
-impl<'de> SSHDecode<'de> for Name<'de> {
+impl<'a: 'de, 'de> SSHDecode<'de> for Name<'a>
+where
+    'de: 'a,
+{
     fn dec<S>(s: &mut S) -> WireResult<Self>
     where
         S: SSHSource<'de>,
@@ -109,7 +112,7 @@ impl<'de> SSHDecode<'de> for Name<'de> {
     }
 }
 
-impl SSHEncode for Name<'_> {
+impl<'a> SSHEncode for Name<'a> {
     fn enc(&self, s: &mut dyn SSHSink) -> WireResult<()> {
         (self.0.len() as u32).enc(s)?;
 
