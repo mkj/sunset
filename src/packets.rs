@@ -27,6 +27,7 @@ use sshnames::*;
 use sshwire::{BinString, Blob, TextString};
 use sshwire::{SSHDecode, SSHEncode, SSHSink, SSHSource, WireError, WireResult};
 use sshwire::{SSHDecodeEnum, SSHEncodeEnum};
+use subtle::ConstantTimeEq;
 
 #[cfg(feature = "rsa")]
 use rsa::traits::PublicKeyParts;
@@ -360,6 +361,21 @@ impl PubKey<'_> {
             _ => false,
         };
         Ok(m)
+    }
+
+    #[cfg(feature = "openssh-key")]
+    pub fn fingerprint(
+        &self,
+        hash_alg: ssh_key::HashAlg,
+    ) -> Result<ssh_key::Fingerprint> {
+        let ssh_key: ssh_key::PublicKey = self.try_into()?;
+
+        Ok(ssh_key.fingerprint(hash_alg))
+    }
+
+    #[cfg(feature = "openssh-key")]
+    pub fn matches_fingerprint(&self, fp: &ssh_key::Fingerprint) -> Result<bool> {
+        Ok(self.fingerprint(fp.algorithm())?.as_bytes().ct_eq(fp.as_bytes()).into())
     }
 }
 

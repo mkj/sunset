@@ -10,6 +10,7 @@ use self::{
 use {
     crate::error::{Error, Result, TrapBug},
     log::{debug, error, info, log, trace, warn},
+    subtle::ConstantTimeEq,
 };
 
 use core::fmt::Debug;
@@ -362,6 +363,14 @@ impl<'g, 'a> ServPasswordAuth<'g, 'a> {
         self.raw_username()?.as_str()
     }
 
+    /// Perform a constant-time comparison of the user-presented username against a passed string.
+    pub fn matches_username(
+        &self,
+        username: impl core::convert::AsRef<str>,
+    ) -> Result<bool> {
+        Ok(self.username()?.as_bytes().ct_eq(username.as_ref().as_bytes()).into())
+    }
+
     /// Retrieve the password presented by the user.
     ///
     /// When comparing with an expected password or hash, take
@@ -369,6 +378,14 @@ impl<'g, 'a> ServPasswordAuth<'g, 'a> {
     /// by using [`subtle`](https://docs.rs/subtle/latest/subtle/) crate.
     pub fn password(&self) -> Result<&str> {
         self.raw_password()?.as_str()
+    }
+
+    /// Perform a constant-time comparison of the user-presented password against a passed string.
+    pub fn matches_password(
+        &self,
+        password: impl core::convert::AsRef<str>,
+    ) -> Result<bool> {
+        Ok(self.password()?.as_bytes().ct_eq(password.as_ref().as_bytes()).into())
     }
 
     /// Accept the presented password.
@@ -514,6 +531,14 @@ impl<'g, 'a> ServFirstAuth<'g, 'a> {
     /// Retrieve the username presented by the client.
     pub fn username(&self) -> Result<&str> {
         self.raw_username()?.as_str()
+    }
+
+    /// Perform a constant-time comparison of the user-presented username against a passed string.
+    pub fn matches_username(
+        &self,
+        username: impl core::convert::AsRef<str>,
+    ) -> Result<bool> {
+        Ok(self.username()?.as_bytes().ct_eq(username.as_ref().as_bytes()).into())
     }
 
     /// Allow the user to log in.
