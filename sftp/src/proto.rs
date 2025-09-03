@@ -62,6 +62,11 @@ pub struct Write<'a> {
 // Responses
 
 #[derive(Debug, SSHEncode, SSHDecode)]
+pub struct PathInfo<'a> {
+    pub path: TextString<'a>,
+}
+
+#[derive(Debug, SSHEncode, SSHDecode)]
 pub struct Status<'a> {
     pub code: StatusCode,
     pub message: TextString<'a>,
