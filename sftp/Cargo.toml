@@ -9,3 +9,4 @@ sunset-sshwire-derive = { version = "0.2", path = "../sshwire-derive" }
 
 num_enum = {version = "0.7.4"}
 paste = "1.0"
+log = "0.4"

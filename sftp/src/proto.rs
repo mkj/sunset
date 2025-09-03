@@ -7,6 +7,8 @@ use sunset::sshwire::{
 
 use sunset_sshwire_derive::{SSHDecode, SSHEncode};
 
+#[allow(unused_imports)]
+use log::{debug, error, info, log, trace, warn};
 // TODO is utf8 enough, or does this need to be an opaque binstring?
 #[derive(Debug, SSHEncode, SSHDecode)]
 pub struct Filename<'a>(TextString<'a>);
