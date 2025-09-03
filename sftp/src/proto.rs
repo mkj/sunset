@@ -180,6 +180,7 @@ pub struct ExtPair<'a> {
     pub data: BinString<'a>,
 }
 
+/// Files attributes to describe Files as SFTP v3 specification
 #[derive(Debug, Default)]
 pub struct Attrs {
     // flags: u32, defines used attributes
@@ -308,6 +309,7 @@ macro_rules! sftpmessages {
              )*
     ) => {
         paste! {
+            /// Represent a subset of the SFTP packet types defined by draft-ietf-secsh-filexfer-02
             #[derive(Debug, Clone, FromPrimitive, SSHEncode)]
             #[repr(u8)]
             #[allow(non_camel_case_types)]
