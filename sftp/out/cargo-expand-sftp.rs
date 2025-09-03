@@ -11,6 +11,8 @@ mod proto {
         WireResult,
     };
     use sunset_sshwire_derive::{SSHDecode, SSHEncode};
+    #[allow(unused_imports)]
+    use log::{debug, error, info, log, trace, warn};
     pub struct Filename<'a>(TextString<'a>);
     #[automatically_derived]
     impl<'a> ::core::fmt::Debug for Filename<'a> {
@@ -66,7 +68,7 @@ mod proto {
         }
     }
     /// The reference implementation we are working on is 3, this is, https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02
-    const SFTP_VERSION: u32 = 3;
+    pub const SFTP_VERSION: u32 = 3;
     /// The SFTP version of the client
     pub struct InitVersionClient {
         pub version: u32,
@@ -313,6 +315,41 @@ mod proto {
                 offset: field_offset,
                 data: field_data,
             })
+        }
+    }
+    pub struct PathInfo<'a> {
+        pub path: TextString<'a>,
+    }
+    #[automatically_derived]
+    impl<'a> ::core::fmt::Debug for PathInfo<'a> {
+        #[inline]
+        fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+            ::core::fmt::Formatter::debug_struct_field1_finish(
+                f,
+                "PathInfo",
+                "path",
+                &&self.path,
+            )
+        }
+    }
+    impl<'a> ::sunset::sshwire::SSHEncode for PathInfo<'a> {
+        fn enc(
+            &self,
+            s: &mut dyn ::sunset::sshwire::SSHSink,
+        ) -> ::sunset::sshwire::WireResult<()> {
+            ::sunset::sshwire::SSHEncode::enc(&self.path, s)?;
+            Ok(())
+        }
+    }
+    impl<'de, 'a> ::sunset::sshwire::SSHDecode<'de> for PathInfo<'a>
+    where
+        'de: 'a,
+    {
+        fn dec<S: ::sunset::sshwire::SSHSource<'de>>(
+            s: &mut S,
+        ) -> ::sunset::sshwire::WireResult<Self> {
+            let field_path = ::sunset::sshwire::SSHDecode::dec(s)?;
+            Ok(Self { path: field_path })
         }
     }
     pub struct Status<'a> {
@@ -795,6 +832,7 @@ mod proto {
             })
         }
     }
+    /// Files attributes to describe Files as SFTP v3 specification
     pub struct Attrs {
         pub size: Option<u64>,
         pub uid: Option<u32>,
@@ -930,6 +968,7 @@ mod proto {
             Ok(attrs)
         }
     }
+    /// Represent a subset of the SFTP packet types defined by draft-ietf-secsh-filexfer-02
     #[repr(u8)]
     #[allow(non_camel_case_types)]
     pub enum SftpNum {
@@ -945,6 +984,8 @@ mod proto {
         SSH_FXP_READ = 5,
         #[sshwire(variant = "ssh_fxp_write")]
         SSH_FXP_WRITE = 6,
+        #[sshwire(variant = "ssh_fxp_realpath")]
+        SSH_FXP_REALPATH = 16,
         #[sshwire(variant = "ssh_fxp_status")]
         SSH_FXP_STATUS = 101,
         #[sshwire(variant = "ssh_fxp_handle")]
@@ -981,6 +1022,9 @@ mod proto {
                 SftpNum::SSH_FXP_WRITE => {
                     ::core::fmt::Formatter::write_str(f, "SSH_FXP_WRITE")
                 }
+                SftpNum::SSH_FXP_REALPATH => {
+                    ::core::fmt::Formatter::write_str(f, "SSH_FXP_REALPATH")
+                }
                 SftpNum::SSH_FXP_STATUS => {
                     ::core::fmt::Formatter::write_str(f, "SSH_FXP_STATUS")
                 }
@@ -1015,6 +1059,7 @@ mod proto {
                 SftpNum::SSH_FXP_CLOSE => SftpNum::SSH_FXP_CLOSE,
                 SftpNum::SSH_FXP_READ => SftpNum::SSH_FXP_READ,
                 SftpNum::SSH_FXP_WRITE => SftpNum::SSH_FXP_WRITE,
+                SftpNum::SSH_FXP_REALPATH => SftpNum::SSH_FXP_REALPATH,
                 SftpNum::SSH_FXP_STATUS => SftpNum::SSH_FXP_STATUS,
                 SftpNum::SSH_FXP_HANDLE => SftpNum::SSH_FXP_HANDLE,
                 SftpNum::SSH_FXP_DATA => SftpNum::SSH_FXP_DATA,
@@ -1035,6 +1080,7 @@ mod proto {
             const SSH_FXP_CLOSE__num_enum_0__: u8 = 4;
             const SSH_FXP_READ__num_enum_0__: u8 = 5;
             const SSH_FXP_WRITE__num_enum_0__: u8 = 6;
+            const SSH_FXP_REALPATH__num_enum_0__: u8 = 16;
             const SSH_FXP_STATUS__num_enum_0__: u8 = 101;
             const SSH_FXP_HANDLE__num_enum_0__: u8 = 102;
             const SSH_FXP_DATA__num_enum_0__: u8 = 103;
@@ -1047,6 +1093,7 @@ mod proto {
                 SSH_FXP_CLOSE__num_enum_0__ => Self::SSH_FXP_CLOSE,
                 SSH_FXP_READ__num_enum_0__ => Self::SSH_FXP_READ,
                 SSH_FXP_WRITE__num_enum_0__ => Self::SSH_FXP_WRITE,
+                SSH_FXP_REALPATH__num_enum_0__ => Self::SSH_FXP_REALPATH,
                 SSH_FXP_STATUS__num_enum_0__ => Self::SSH_FXP_STATUS,
                 SSH_FXP_HANDLE__num_enum_0__ => Self::SSH_FXP_HANDLE,
                 SSH_FXP_DATA__num_enum_0__ => Self::SSH_FXP_DATA,
@@ -1076,6 +1123,7 @@ mod proto {
                 Self::SSH_FXP_CLOSE => {}
                 Self::SSH_FXP_READ => {}
                 Self::SSH_FXP_WRITE => {}
+                Self::SSH_FXP_REALPATH => {}
                 Self::SSH_FXP_STATUS => {}
                 Self::SSH_FXP_HANDLE => {}
                 Self::SSH_FXP_DATA => {}
@@ -1096,6 +1144,7 @@ mod proto {
                 Self::SSH_FXP_CLOSE => "ssh_fxp_close",
                 Self::SSH_FXP_READ => "ssh_fxp_read",
                 Self::SSH_FXP_WRITE => "ssh_fxp_write",
+                Self::SSH_FXP_REALPATH => "ssh_fxp_realpath",
                 Self::SSH_FXP_STATUS => "ssh_fxp_status",
                 Self::SSH_FXP_HANDLE => "ssh_fxp_handle",
                 Self::SSH_FXP_DATA => "ssh_fxp_data",
@@ -1124,15 +1173,19 @@ mod proto {
                 SftpNum::SSH_FXP_CLOSE => 4,
                 SftpNum::SSH_FXP_READ => 5,
                 SftpNum::SSH_FXP_WRITE => 6,
+                SftpNum::SSH_FXP_REALPATH => 16,
                 SftpNum::SSH_FXP_STATUS => 101,
                 SftpNum::SSH_FXP_HANDLE => 102,
                 SftpNum::SSH_FXP_DATA => 103,
                 SftpNum::SSH_FXP_NAME => 104,
-                _ => 0,
+                SftpNum::Other(number) => number,
             }
         }
     }
     impl SftpNum {
+        fn is_init(&self) -> bool {
+            (1..=1).contains(&(u8::from(self.clone())))
+        }
         fn is_request(&self) -> bool {
             (2..=99).contains(&(u8::from(self.clone())))
         }
@@ -1147,14 +1200,15 @@ mod proto {
     pub enum SftpPacket<'a> {
         Init(InitVersionClient),
         Version(InitVersionLowest),
-        Open(Open<'a>),
-        Close(Close<'a>),
-        Read(Read<'a>),
-        Write(Write<'a>),
-        Status(Status<'a>),
-        Handle(Handle<'a>),
-        Data(Data<'a>),
-        Name(Name<'a>),
+        Open(ReqId, Open<'a>),
+        Close(ReqId, Close<'a>),
+        Read(ReqId, Read<'a>),
+        Write(ReqId, Write<'a>),
+        PathInfo(ReqId, PathInfo<'a>),
+        Status(ReqId, Status<'a>),
+        Handle(ReqId, Handle<'a>),
+        Data(ReqId, Data<'a>),
+        Name(ReqId, Name<'a>),
     }
     #[automatically_derived]
     impl<'a> ::core::fmt::Debug for SftpPacket<'a> {
@@ -1175,60 +1229,76 @@ mod proto {
                         &__self_0,
                     )
                 }
-                SftpPacket::Open(__self_0) => {
-                    ::core::fmt::Formatter::debug_tuple_field1_finish(
+                SftpPacket::Open(__self_0, __self_1) => {
+                    ::core::fmt::Formatter::debug_tuple_field2_finish(
                         f,
                         "Open",
-                        &__self_0,
+                        __self_0,
+                        &__self_1,
                     )
                 }
-                SftpPacket::Close(__self_0) => {
-                    ::core::fmt::Formatter::debug_tuple_field1_finish(
+                SftpPacket::Close(__self_0, __self_1) => {
+                    ::core::fmt::Formatter::debug_tuple_field2_finish(
                         f,
                         "Close",
-                        &__self_0,
+                        __self_0,
+                        &__self_1,
                     )
                 }
-                SftpPacket::Read(__self_0) => {
-                    ::core::fmt::Formatter::debug_tuple_field1_finish(
+                SftpPacket::Read(__self_0, __self_1) => {
+                    ::core::fmt::Formatter::debug_tuple_field2_finish(
                         f,
                         "Read",
-                        &__self_0,
+                        __self_0,
+                        &__self_1,
                     )
                 }
-                SftpPacket::Write(__self_0) => {
-                    ::core::fmt::Formatter::debug_tuple_field1_finish(
+                SftpPacket::Write(__self_0, __self_1) => {
+                    ::core::fmt::Formatter::debug_tuple_field2_finish(
                         f,
                         "Write",
-                        &__self_0,
+                        __self_0,
+                        &__self_1,
                     )
                 }
-                SftpPacket::Status(__self_0) => {
-                    ::core::fmt::Formatter::debug_tuple_field1_finish(
+                SftpPacket::PathInfo(__self_0, __self_1) => {
+                    ::core::fmt::Formatter::debug_tuple_field2_finish(
+                        f,
+                        "PathInfo",
+                        __self_0,
+                        &__self_1,
+                    )
+                }
+                SftpPacket::Status(__self_0, __self_1) => {
+                    ::core::fmt::Formatter::debug_tuple_field2_finish(
                         f,
                         "Status",
-                        &__self_0,
+                        __self_0,
+                        &__self_1,
                     )
                 }
-                SftpPacket::Handle(__self_0) => {
-                    ::core::fmt::Formatter::debug_tuple_field1_finish(
+                SftpPacket::Handle(__self_0, __self_1) => {
+                    ::core::fmt::Formatter::debug_tuple_field2_finish(
                         f,
                         "Handle",
-                        &__self_0,
+                        __self_0,
+                        &__self_1,
                     )
                 }
-                SftpPacket::Data(__self_0) => {
-                    ::core::fmt::Formatter::debug_tuple_field1_finish(
+                SftpPacket::Data(__self_0, __self_1) => {
+                    ::core::fmt::Formatter::debug_tuple_field2_finish(
                         f,
                         "Data",
-                        &__self_0,
+                        __self_0,
+                        &__self_1,
                     )
                 }
-                SftpPacket::Name(__self_0) => {
-                    ::core::fmt::Formatter::debug_tuple_field1_finish(
+                SftpPacket::Name(__self_0, __self_1) => {
+                    ::core::fmt::Formatter::debug_tuple_field2_finish(
                         f,
                         "Name",
-                        &__self_0,
+                        __self_0,
+                        &__self_1,
                     )
                 }
             }
@@ -1241,14 +1311,42 @@ mod proto {
             match self {
                 SftpPacket::Init(p) => p.enc(s)?,
                 SftpPacket::Version(p) => p.enc(s)?,
-                SftpPacket::Open(p) => p.enc(s)?,
-                SftpPacket::Close(p) => p.enc(s)?,
-                SftpPacket::Read(p) => p.enc(s)?,
-                SftpPacket::Write(p) => p.enc(s)?,
-                SftpPacket::Status(p) => p.enc(s)?,
-                SftpPacket::Handle(p) => p.enc(s)?,
-                SftpPacket::Data(p) => p.enc(s)?,
-                SftpPacket::Name(p) => p.enc(s)?,
+                SftpPacket::Open(id, p) => {
+                    id.enc(s)?;
+                    p.enc(s)?
+                }
+                SftpPacket::Close(id, p) => {
+                    id.enc(s)?;
+                    p.enc(s)?
+                }
+                SftpPacket::Read(id, p) => {
+                    id.enc(s)?;
+                    p.enc(s)?
+                }
+                SftpPacket::Write(id, p) => {
+                    id.enc(s)?;
+                    p.enc(s)?
+                }
+                SftpPacket::PathInfo(id, p) => {
+                    id.enc(s)?;
+                    p.enc(s)?
+                }
+                SftpPacket::Status(id, p) => {
+                    id.enc(s)?;
+                    p.enc(s)?
+                }
+                SftpPacket::Handle(id, p) => {
+                    id.enc(s)?;
+                    p.enc(s)?
+                }
+                SftpPacket::Data(id, p) => {
+                    id.enc(s)?;
+                    p.enc(s)?
+                }
+                SftpPacket::Name(id, p) => {
+                    id.enc(s)?;
+                    p.enc(s)?
+                }
             };
             Ok(())
         }
@@ -1273,36 +1371,49 @@ mod proto {
                     SftpPacket::Version(inner_type)
                 }
                 SftpNum::SSH_FXP_OPEN => {
+                    let req_id = <ReqId>::dec(s)?;
                     let inner_type = <Open<'a>>::dec(s)?;
-                    SftpPacket::Open(inner_type)
+                    SftpPacket::Open(req_id, inner_type)
                 }
                 SftpNum::SSH_FXP_CLOSE => {
+                    let req_id = <ReqId>::dec(s)?;
                     let inner_type = <Close<'a>>::dec(s)?;
-                    SftpPacket::Close(inner_type)
+                    SftpPacket::Close(req_id, inner_type)
                 }
                 SftpNum::SSH_FXP_READ => {
+                    let req_id = <ReqId>::dec(s)?;
                     let inner_type = <Read<'a>>::dec(s)?;
-                    SftpPacket::Read(inner_type)
+                    SftpPacket::Read(req_id, inner_type)
                 }
                 SftpNum::SSH_FXP_WRITE => {
+                    let req_id = <ReqId>::dec(s)?;
                     let inner_type = <Write<'a>>::dec(s)?;
-                    SftpPacket::Write(inner_type)
+                    SftpPacket::Write(req_id, inner_type)
+                }
+                SftpNum::SSH_FXP_REALPATH => {
+                    let req_id = <ReqId>::dec(s)?;
+                    let inner_type = <PathInfo<'a>>::dec(s)?;
+                    SftpPacket::PathInfo(req_id, inner_type)
                 }
                 SftpNum::SSH_FXP_STATUS => {
+                    let req_id = <ReqId>::dec(s)?;
                     let inner_type = <Status<'a>>::dec(s)?;
-                    SftpPacket::Status(inner_type)
+                    SftpPacket::Status(req_id, inner_type)
                 }
                 SftpNum::SSH_FXP_HANDLE => {
+                    let req_id = <ReqId>::dec(s)?;
                     let inner_type = <Handle<'a>>::dec(s)?;
-                    SftpPacket::Handle(inner_type)
+                    SftpPacket::Handle(req_id, inner_type)
                 }
                 SftpNum::SSH_FXP_DATA => {
+                    let req_id = <ReqId>::dec(s)?;
                     let inner_type = <Data<'a>>::dec(s)?;
-                    SftpPacket::Data(inner_type)
+                    SftpPacket::Data(req_id, inner_type)
                 }
                 SftpNum::SSH_FXP_NAME => {
+                    let req_id = <ReqId>::dec(s)?;
                     let inner_type = <Name<'a>>::dec(s)?;
-                    SftpPacket::Name(inner_type)
+                    SftpPacket::Name(req_id, inner_type)
                 }
                 _ => {
                     return Err(WireError::UnknownPacket {
@@ -1319,14 +1430,15 @@ mod proto {
             match self {
                 SftpPacket::Init(_) => SftpNum::from(1 as u8),
                 SftpPacket::Version(_) => SftpNum::from(2 as u8),
-                SftpPacket::Open(_) => SftpNum::from(3 as u8),
-                SftpPacket::Close(_) => SftpNum::from(4 as u8),
-                SftpPacket::Read(_) => SftpNum::from(5 as u8),
-                SftpPacket::Write(_) => SftpNum::from(6 as u8),
-                SftpPacket::Status(_) => SftpNum::from(101 as u8),
-                SftpPacket::Handle(_) => SftpNum::from(102 as u8),
-                SftpPacket::Data(_) => SftpNum::from(103 as u8),
-                SftpPacket::Name(_) => SftpNum::from(104 as u8),
+                SftpPacket::Open(_, _) => SftpNum::from(3 as u8),
+                SftpPacket::Close(_, _) => SftpNum::from(4 as u8),
+                SftpPacket::Read(_, _) => SftpNum::from(5 as u8),
+                SftpPacket::Write(_, _) => SftpNum::from(6 as u8),
+                SftpPacket::PathInfo(_, _) => SftpNum::from(16 as u8),
+                SftpPacket::Status(_, _) => SftpNum::from(101 as u8),
+                SftpPacket::Handle(_, _) => SftpNum::from(102 as u8),
+                SftpPacket::Data(_, _) => SftpNum::from(103 as u8),
+                SftpPacket::Name(_, _) => SftpNum::from(104 as u8),
             }
         }
         /// Encode a request.
@@ -1356,21 +1468,22 @@ mod proto {
             let id = ReqId(u32::dec(s)?);
             Ok((id, Self::dec(s)?))
         }
-        /// Decode a request.
+        /// Decode a request. Includes Init
         ///
-        /// Used by a SFTP server. Does not include the length field.
-        pub fn decode_request<'de, S>(s: &mut S) -> WireResult<(ReqId, Self)>
+        /// Used by a SFTP server. Does not include the length field. If the request does not have id (Initialisation)
+        pub fn decode_request<'de, S>(s: &mut S) -> WireResult<(Option<ReqId>, Self)>
         where
             S: SSHSource<'de>,
             'a: 'de,
             'de: 'a,
         {
             let num = SftpNum::from(u8::dec(s)?);
-            if !num.is_request() {
+            if (!num.is_request() && !num.is_init()) {
                 return Err(WireError::PacketWrong);
             }
-            let id = ReqId(u32::dec(s)?);
-            Ok((id, Self::dec(s)?))
+            let maybe_id = if num.is_init() { None } else { Some(ReqId(u32::dec(s)?)) };
+            let sftp_packet = Self::dec(s)?;
+            Ok((maybe_id, sftp_packet))
         }
         /// Encode a response.
         ///
@@ -1394,44 +1507,294 @@ mod proto {
             SftpPacket::Version(s)
         }
     }
+    /// **Warning**: No Sequence Id can be infered from a Packet Type
     impl<'a> From<Open<'a>> for SftpPacket<'a> {
         fn from(s: Open<'a>) -> SftpPacket<'a> {
-            SftpPacket::Open(s)
+            {
+                {
+                    let lvl = ::log::Level::Warn;
+                    if lvl <= ::log::STATIC_MAX_LEVEL && lvl <= ::log::max_level() {
+                        ::log::__private_api::log(
+                            { ::log::__private_api::GlobalLogger },
+                            format_args!(
+                                "Casting from {0:?} to SftpPacket cannot set Request Id",
+                                "ssh_fxp_open",
+                            ),
+                            lvl,
+                            &(
+                                "sunset_sftp::proto",
+                                "sunset_sftp::proto",
+                                ::log::__private_api::loc(),
+                            ),
+                            (),
+                        );
+                    }
+                }
+            };
+            SftpPacket::Open(ReqId(0), s)
         }
     }
+    /// **Warning**: No Sequence Id can be infered from a Packet Type
     impl<'a> From<Close<'a>> for SftpPacket<'a> {
         fn from(s: Close<'a>) -> SftpPacket<'a> {
-            SftpPacket::Close(s)
+            {
+                {
+                    let lvl = ::log::Level::Warn;
+                    if lvl <= ::log::STATIC_MAX_LEVEL && lvl <= ::log::max_level() {
+                        ::log::__private_api::log(
+                            { ::log::__private_api::GlobalLogger },
+                            format_args!(
+                                "Casting from {0:?} to SftpPacket cannot set Request Id",
+                                "ssh_fxp_close",
+                            ),
+                            lvl,
+                            &(
+                                "sunset_sftp::proto",
+                                "sunset_sftp::proto",
+                                ::log::__private_api::loc(),
+                            ),
+                            (),
+                        );
+                    }
+                }
+            };
+            SftpPacket::Close(ReqId(0), s)
         }
     }
+    /// **Warning**: No Sequence Id can be infered from a Packet Type
     impl<'a> From<Read<'a>> for SftpPacket<'a> {
         fn from(s: Read<'a>) -> SftpPacket<'a> {
-            SftpPacket::Read(s)
+            {
+                {
+                    let lvl = ::log::Level::Warn;
+                    if lvl <= ::log::STATIC_MAX_LEVEL && lvl <= ::log::max_level() {
+                        ::log::__private_api::log(
+                            { ::log::__private_api::GlobalLogger },
+                            format_args!(
+                                "Casting from {0:?} to SftpPacket cannot set Request Id",
+                                "ssh_fxp_read",
+                            ),
+                            lvl,
+                            &(
+                                "sunset_sftp::proto",
+                                "sunset_sftp::proto",
+                                ::log::__private_api::loc(),
+                            ),
+                            (),
+                        );
+                    }
+                }
+            };
+            SftpPacket::Read(ReqId(0), s)
         }
     }
+    /// **Warning**: No Sequence Id can be infered from a Packet Type
     impl<'a> From<Write<'a>> for SftpPacket<'a> {
         fn from(s: Write<'a>) -> SftpPacket<'a> {
-            SftpPacket::Write(s)
+            {
+                {
+                    let lvl = ::log::Level::Warn;
+                    if lvl <= ::log::STATIC_MAX_LEVEL && lvl <= ::log::max_level() {
+                        ::log::__private_api::log(
+                            { ::log::__private_api::GlobalLogger },
+                            format_args!(
+                                "Casting from {0:?} to SftpPacket cannot set Request Id",
+                                "ssh_fxp_write",
+                            ),
+                            lvl,
+                            &(
+                                "sunset_sftp::proto",
+                                "sunset_sftp::proto",
+                                ::log::__private_api::loc(),
+                            ),
+                            (),
+                        );
+                    }
+                }
+            };
+            SftpPacket::Write(ReqId(0), s)
         }
     }
+    /// **Warning**: No Sequence Id can be infered from a Packet Type
+    impl<'a> From<PathInfo<'a>> for SftpPacket<'a> {
+        fn from(s: PathInfo<'a>) -> SftpPacket<'a> {
+            {
+                {
+                    let lvl = ::log::Level::Warn;
+                    if lvl <= ::log::STATIC_MAX_LEVEL && lvl <= ::log::max_level() {
+                        ::log::__private_api::log(
+                            { ::log::__private_api::GlobalLogger },
+                            format_args!(
+                                "Casting from {0:?} to SftpPacket cannot set Request Id",
+                                "ssh_fxp_realpath",
+                            ),
+                            lvl,
+                            &(
+                                "sunset_sftp::proto",
+                                "sunset_sftp::proto",
+                                ::log::__private_api::loc(),
+                            ),
+                            (),
+                        );
+                    }
+                }
+            };
+            SftpPacket::PathInfo(ReqId(0), s)
+        }
+    }
+    /// **Warning**: No Sequence Id can be infered from a Packet Type
     impl<'a> From<Status<'a>> for SftpPacket<'a> {
         fn from(s: Status<'a>) -> SftpPacket<'a> {
-            SftpPacket::Status(s)
+            {
+                {
+                    let lvl = ::log::Level::Warn;
+                    if lvl <= ::log::STATIC_MAX_LEVEL && lvl <= ::log::max_level() {
+                        ::log::__private_api::log(
+                            { ::log::__private_api::GlobalLogger },
+                            format_args!(
+                                "Casting from {0:?} to SftpPacket cannot set Request Id",
+                                "ssh_fxp_status",
+                            ),
+                            lvl,
+                            &(
+                                "sunset_sftp::proto",
+                                "sunset_sftp::proto",
+                                ::log::__private_api::loc(),
+                            ),
+                            (),
+                        );
+                    }
+                }
+            };
+            SftpPacket::Status(ReqId(0), s)
         }
     }
+    /// **Warning**: No Sequence Id can be infered from a Packet Type
     impl<'a> From<Handle<'a>> for SftpPacket<'a> {
         fn from(s: Handle<'a>) -> SftpPacket<'a> {
-            SftpPacket::Handle(s)
+            {
+                {
+                    let lvl = ::log::Level::Warn;
+                    if lvl <= ::log::STATIC_MAX_LEVEL && lvl <= ::log::max_level() {
+                        ::log::__private_api::log(
+                            { ::log::__private_api::GlobalLogger },
+                            format_args!(
+                                "Casting from {0:?} to SftpPacket cannot set Request Id",
+                                "ssh_fxp_handle",
+                            ),
+                            lvl,
+                            &(
+                                "sunset_sftp::proto",
+                                "sunset_sftp::proto",
+                                ::log::__private_api::loc(),
+                            ),
+                            (),
+                        );
+                    }
+                }
+            };
+            SftpPacket::Handle(ReqId(0), s)
         }
     }
+    /// **Warning**: No Sequence Id can be infered from a Packet Type
     impl<'a> From<Data<'a>> for SftpPacket<'a> {
         fn from(s: Data<'a>) -> SftpPacket<'a> {
-            SftpPacket::Data(s)
+            {
+                {
+                    let lvl = ::log::Level::Warn;
+                    if lvl <= ::log::STATIC_MAX_LEVEL && lvl <= ::log::max_level() {
+                        ::log::__private_api::log(
+                            { ::log::__private_api::GlobalLogger },
+                            format_args!(
+                                "Casting from {0:?} to SftpPacket cannot set Request Id",
+                                "ssh_fxp_data",
+                            ),
+                            lvl,
+                            &(
+                                "sunset_sftp::proto",
+                                "sunset_sftp::proto",
+                                ::log::__private_api::loc(),
+                            ),
+                            (),
+                        );
+                    }
+                }
+            };
+            SftpPacket::Data(ReqId(0), s)
         }
     }
+    /// **Warning**: No Sequence Id can be infered from a Packet Type
     impl<'a> From<Name<'a>> for SftpPacket<'a> {
         fn from(s: Name<'a>) -> SftpPacket<'a> {
-            SftpPacket::Name(s)
+            {
+                {
+                    let lvl = ::log::Level::Warn;
+                    if lvl <= ::log::STATIC_MAX_LEVEL && lvl <= ::log::max_level() {
+                        ::log::__private_api::log(
+                            { ::log::__private_api::GlobalLogger },
+                            format_args!(
+                                "Casting from {0:?} to SftpPacket cannot set Request Id",
+                                "ssh_fxp_name",
+                            ),
+                            lvl,
+                            &(
+                                "sunset_sftp::proto",
+                                "sunset_sftp::proto",
+                                ::log::__private_api::loc(),
+                            ),
+                            (),
+                        );
+                    }
+                }
+            };
+            SftpPacket::Name(ReqId(0), s)
         }
     }
 }
+mod sftpserver {
+    use crate::proto::{Attrs, StatusCode};
+    use core::marker::PhantomData;
+    pub type Result<T> = core::result::Result<T, StatusCode>;
+    /// All trait functions are optional in the SFTP protocol.
+    /// Some less core operations have a Provided implementation returning
+    /// returns `SSH_FX_OP_UNSUPPORTED`. Common operations must be implemented,
+    /// but may return `Err(StatusCode::SSH_FX_OP_UNSUPPORTED)`.
+    pub trait SftpServer {
+        type Handle;
+        async fn open(filename: &str, flags: u32, attrs: &Attrs) -> Result<Self::Handle>;
+        /// Close either a file or directory handle
+        async fn close(handle: &Self::Handle) -> Result<()>;
+        async fn read(
+            handle: &Self::Handle,
+            offset: u64,
+            reply: &mut ReadReply,
+        ) -> Result<()>;
+        async fn write(handle: &Self::Handle, offset: u64, buf: &[u8]) -> Result<()>;
+        async fn opendir(dir: &str) -> Result<Self::Handle>;
+        async fn readdir(handle: &Self::Handle, reply: &mut DirReply) -> Result<()>;
+    }
+    pub struct ReadReply<'g, 'a> {
+        chan: ChanOut<'g, 'a>,
+    }
+    impl<'g, 'a> ReadReply<'g, 'a> {
+        pub async fn reply(self, data: &[u8]) {}
+    }
+    pub struct DirReply<'g, 'a> {
+        chan: ChanOut<'g, 'a>,
+    }
+    impl<'g, 'a> DirReply<'g, 'a> {
+        pub async fn reply(self, data: &[u8]) {}
+    }
+    pub struct ChanOut<'g, 'a> {
+        _phantom_g: PhantomData<&'g ()>,
+        _phantom_a: PhantomData<&'a ()>,
+    }
+}
+pub use sftpserver::DirReply;
+pub use sftpserver::ReadReply;
+pub use sftpserver::Result;
+pub use sftpserver::SftpServer;
+pub use proto::Attrs;
+pub use proto::SFTP_VERSION;
+pub use proto::SftpNum;
+pub use proto::SftpPacket;
