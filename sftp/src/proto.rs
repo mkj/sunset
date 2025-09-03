@@ -340,7 +340,8 @@ macro_rules! sftpmessages {
                                 $(
                      SftpNum::$SSH_FXP_NAME => $message_num,
                     )*
-                    _ => 0 // Other, not in the enum definition
+
+                    SftpNum::Other(number) => number // Other, not in the enum definition
 
                 }
             }
