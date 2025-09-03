@@ -15,7 +15,7 @@ pub struct Filename<'a>(TextString<'a>);
 pub struct FileHandle<'a>(pub BinString<'a>);
 
 /// The reference implementation we are working on is 3, this is, https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02
-const SFTP_VERSION: u32 = 3;
+pub const SFTP_VERSION: u32 = 3;
 
 /// The SFTP version of the client
 #[derive(Debug, SSHEncode, SSHDecode)]

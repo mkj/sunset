@@ -7,7 +7,7 @@ pub type Result<T> = core::result::Result<T, StatusCode>;
 /// Some less core operations have a Provided implementation returning
 /// returns `SSH_FX_OP_UNSUPPORTED`. Common operations must be implemented,
 /// but may return `Err(StatusCode::SSH_FX_OP_UNSUPPORTED)`.
-trait SftpServer {
+pub trait SftpServer {
     type Handle;
 
     // TODO flags struct
