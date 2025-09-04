@@ -399,12 +399,13 @@ macro_rules! sftpmessages {
 
             fn is_request(&self) -> bool {
                 // TODO SSH_FXP_EXTENDED
-                (2..=99).contains(&(u8::from(self.clone())))
+                (3..=20).contains(&(u8::from(self.clone())))
             }
 
             fn is_response(&self) -> bool {
                 // TODO SSH_FXP_EXTENDED_REPLY
-                (100..=199).contains(&(u8::from(self.clone())))
+                (100..=105).contains(&(u8::from(self.clone())))
+                ||(2..=2).contains(&(u8::from(self.clone())))
             }
         }
 
