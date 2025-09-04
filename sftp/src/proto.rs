@@ -573,9 +573,11 @@ macro_rules! sftpmessages {
             }
 
 
-            /// Decode a request. Includes Init
+            /// Decode a request. Includes Initialization packets
             ///
-            /// Used by a SFTP server. Does not include the length field. If the request does not have id (Initialisation)
+            /// Used by a SFTP server. Does not include the length field.
+            ///
+            /// It will fail if the received packet is a response
             pub fn decode_request<'de, S>(s: &mut S) -> WireResult<(Self)>
                 where
                 S: SSHSource<'de>,
@@ -583,41 +585,22 @@ macro_rules! sftpmessages {
                 'de: 'a
             {
 
-                // let sftp_packet = Self::dec(s)?;
-                // if (!sftp_packet.sftp_num().is_request()
-                //     && !sftp_packet.sftp_num().is_init())
-                // {return Err(WireError::PacketWrong)}
+                let sftp_packet = Self::dec(s)? ;
 
-                // let maybe_id = if sftp_packet.sftp_num().is_init(){
-                //     None
-                // } else{
+                if (!sftp_packet.sftp_num().is_request()
+                    && !sftp_packet.sftp_num().is_init())
+                {
+                    return Err(WireError::PacketWrong)
+                }
 
-                //     Some(ReqId(u32::dec(s)?))
-                // };
-
-                // let num = SftpNum::from(u8::dec(s)?);
-
-                // if (!num.is_request()
-                //     && !num.is_init())
-                // {return Err(WireError::PacketWrong)}
-
-
-                // let maybe_id = if num.is_init(){
-                //     None
-                // } else{
-
-                //     Some(ReqId(u32::dec(s)?))
-                // };
-
-                let inner_sftp_packet = Self::dec(s)? ;
-                // let sftp_packet = Self::dec(s)?;
-
-                Ok( inner_sftp_packet)
+                Ok( sftp_packet)
             }
 
             /// Encode a response.
             ///
             /// Used by a SFTP server. Does not include the length field.
+            ///
+            /// Fails if the encoded SFTP Packet is not a response
             pub fn encode_response(&self, id: ReqId, s: &mut dyn SSHSink) -> WireResult<()> {
 
                 if !self.sftp_num().is_response() {
