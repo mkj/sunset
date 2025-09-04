@@ -2,11 +2,14 @@ mod proto;
 mod sftpserver;
 
 pub use sftpserver::DirReply;
+pub use sftpserver::ItemHandle;
 pub use sftpserver::ReadReply;
-pub use sftpserver::Result;
+pub use sftpserver::SftpHandler;
+pub use sftpserver::SftpResult;
 pub use sftpserver::SftpServer;
 
 pub use proto::Attrs;
-pub use proto::SFTP_VERSION;
-pub use proto::SftpNum;
-pub use proto::SftpPacket;
+pub use proto::Filename;
+pub use proto::Name;
+pub use proto::NameEntry;
+pub use proto::PathInfo;
