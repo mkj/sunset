@@ -13,6 +13,12 @@ use log::{debug, error, info, log, trace, warn};
 #[derive(Debug, SSHEncode, SSHDecode)]
 pub struct Filename<'a>(TextString<'a>);
 
+impl<'a> From<&'a str> for Filename<'a> {
+    fn from(s: &'a str) -> Self {
+        Filename(TextString(s.as_bytes()))
+    }
+}
+
 #[derive(Debug, SSHEncode, SSHDecode)]
 pub struct FileHandle<'a>(pub BinString<'a>);
 
