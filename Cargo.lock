@@ -2871,6 +2871,7 @@ dependencies = [
  "sunset",
  "sunset-async",
  "sunset-demo-common",
+ "sunset-sftp",
 ]
 
 [[package]]
@@ -2915,6 +2916,7 @@ dependencies = [
 name = "sunset-sftp"
 version = "0.1.0"
 dependencies = [
+ "log",
  "num_enum 0.7.4",
  "paste",
  "sunset",
