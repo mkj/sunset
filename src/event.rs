@@ -367,8 +367,11 @@ impl<'g, 'a> ServPasswordAuth<'g, 'a> {
     pub fn matches_username(
         &self,
         username: impl core::convert::AsRef<str>,
-    ) -> Result<bool> {
-        Ok(self.username()?.as_bytes().ct_eq(username.as_ref().as_bytes()).into())
+    ) -> bool {
+        match self.username() {
+            Ok(u) => u.as_bytes().ct_eq(username.as_ref().as_bytes()).into(),
+            _ => false,
+        }
     }
 
     /// Retrieve the password presented by the user.
@@ -567,8 +570,11 @@ impl<'g, 'a> ServFirstAuth<'g, 'a> {
     pub fn matches_username(
         &self,
         username: impl core::convert::AsRef<str>,
-    ) -> Result<bool> {
-        Ok(self.username()?.as_bytes().ct_eq(username.as_ref().as_bytes()).into())
+    ) -> bool {
+        match self.username() {
+            Ok(u) => u.as_bytes().ct_eq(username.as_ref().as_bytes()).into(),
+            _ => false,
+        }
     }
 
     /// Allow the user to log in.
