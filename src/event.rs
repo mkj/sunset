@@ -400,19 +400,31 @@ impl<'g, 'a> ServPasswordAuth<'g, 'a> {
         self.runner.resume_servauth(false)
     }
 
-    /// Enable or disable password authentication for subsequent attempts
-    pub fn allow_password(&mut self, enabled: bool) -> Result<()> {
+    /// Enable or disable password authentication for subsequent attempts.
+    ///
+    /// # Caution
+    /// Enabling or disabling authentication methods based on username can
+    /// unintentionally enable user enumeration attacks.
+    pub fn enable_password_auth(&mut self, enabled: bool) -> Result<()> {
         let (_, pubkey) = self.runner.get_auth_methods()?;
         self.runner.set_auth_methods(enabled, pubkey)
     }
 
-    /// Enable or disable public key authentication for subsequent attempts
-    pub fn allow_pubkey(&mut self, enabled: bool) -> Result<()> {
+    /// Enable or disable public key authentication for subsequent attempts.
+    ///
+    /// # Caution
+    /// Enabling or disabling authentication methods based on username can
+    /// unintentionally enable user enumeration attacks.
+    pub fn enable_pubkey_auth(&mut self, enabled: bool) -> Result<()> {
         let (password, _) = self.runner.get_auth_methods()?;
         self.runner.set_auth_methods(password, enabled)
     }
 
-    /// Configure which authentication methods are allowed for subsequent attempts
+    /// Configure which authentication methods are allowed for subsequent attempts.
+    ///
+    /// # Caution
+    /// Enabling or disabling authentication methods based on username can
+    /// unintentionally enable user enumeration attacks.
     pub fn set_auth_methods(&mut self, password: bool, pubkey: bool) -> Result<()> {
         self.runner.set_auth_methods(password, pubkey)
     }
@@ -485,19 +497,31 @@ impl<'g, 'a> ServPubkeyAuth<'g, 'a> {
         self.runner.resume_servauth(false)
     }
 
-    /// Enable or disable password authentication for subsequent attempts
-    pub fn allow_password(&mut self, enabled: bool) -> Result<()> {
+    /// Enable or disable password authentication for subsequent attempts.
+    ///
+    /// # Caution
+    /// Enabling or disabling authentication methods based on username can
+    /// unintentionally enable user enumeration attacks.
+    pub fn enable_password_auth(&mut self, enabled: bool) -> Result<()> {
         let (_, pubkey) = self.runner.get_auth_methods()?;
         self.runner.set_auth_methods(enabled, pubkey)
     }
 
-    /// Enable or disable public key authentication for subsequent attempts
-    pub fn allow_pubkey(&mut self, enabled: bool) -> Result<()> {
+    /// Enable or disable public key authentication for subsequent attempts.
+    ///
+    /// # Caution
+    /// Enabling or disabling authentication methods based on username can
+    /// unintentionally enable user enumeration attacks.
+    pub fn enable_pubkey_auth(&mut self, enabled: bool) -> Result<()> {
         let (password, _) = self.runner.get_auth_methods()?;
         self.runner.set_auth_methods(password, enabled)
     }
 
-    /// Configure which authentication methods are allowed for subsequent attempts
+    /// Configure which authentication methods are allowed for subsequent attempts.
+    ///
+    /// # Caution
+    /// Enabling or disabling authentication methods based on username can
+    /// unintentionally enable user enumeration attacks.
     pub fn set_auth_methods(&mut self, password: bool, pubkey: bool) -> Result<()> {
         self.runner.set_auth_methods(password, pubkey)
     }
@@ -559,19 +583,31 @@ impl<'g, 'a> ServFirstAuth<'g, 'a> {
         self.runner.resume_servauth(false)
     }
 
-    /// Enable or disable password authentication for this session
-    pub fn allow_password(&mut self, enabled: bool) -> Result<()> {
+    /// Enable or disable password authentication for this session.
+    ///
+    /// # Caution
+    /// Enabling or disabling authentication methods based on username can
+    /// unintentionally enable user enumeration attacks.
+    pub fn enable_password_auth(&mut self, enabled: bool) -> Result<()> {
         let (_, pubkey) = self.runner.get_auth_methods()?;
         self.runner.set_auth_methods(enabled, pubkey)
     }
 
-    /// Enable or disable public key authentication for this session
-    pub fn allow_pubkey(&mut self, enabled: bool) -> Result<()> {
+    /// Enable or disable public key authentication for this session.
+    ///
+    /// # Caution
+    /// Enabling or disabling authentication methods based on username can
+    /// unintentionally enable user enumeration attacks.
+    pub fn enable_pubkey_auth(&mut self, enabled: bool) -> Result<()> {
         let (password, _) = self.runner.get_auth_methods()?;
         self.runner.set_auth_methods(password, enabled)
     }
 
-    /// Configure which authentication methods are allowed
+    /// Configure which authentication methods are allowed.
+    ///
+    /// # Caution
+    /// Enabling or disabling authentication methods based on username can
+    /// unintentionally enable user enumeration attacks.
     pub fn set_auth_methods(&mut self, password: bool, pubkey: bool) -> Result<()> {
         self.runner.set_auth_methods(password, pubkey)
     }

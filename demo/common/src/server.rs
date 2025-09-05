@@ -171,7 +171,7 @@ impl DemoCommon {
         };
 
         // Explicitly enable password authentication
-        a.allow_password(true)?;
+        a.enable_password_auth(true)?;
         Ok(())
     }
 
