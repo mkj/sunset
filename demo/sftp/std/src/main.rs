@@ -1,6 +1,14 @@
+use sunset::*;
+use sunset_async::{ProgressHolder, SSHServer, SunsetMutex, SunsetRawMutex};
+use sunset_sftp::SftpHandler;
+
+pub(crate) use sunset_demo_common as demo_common;
+
+use demo_common::{DemoCommon, DemoServer, SSHConfig};
+
+use crate::demosftpserver::DemoSftpServer;
+
 use embedded_io_async::{Read, Write};
-#[allow(unused_imports)]
-use log::{debug, error, info, log, trace, warn};
 
 use embassy_executor::Spawner;
 use embassy_net::{Stack, StackResources, StaticConfigV4};
@@ -12,12 +20,10 @@ use embassy_futures::select::select;
 use embassy_net_tuntap::TunTapDevice;
 use embassy_sync::channel::Channel;
 
-use sunset::*;
-use sunset_async::{ProgressHolder, SSHServer, SunsetMutex, SunsetRawMutex};
+#[allow(unused_imports)]
+use log::{debug, error, info, log, trace, warn};
 
-pub(crate) use sunset_demo_common as demo_common;
-
-use demo_common::{DemoCommon, DemoServer, SSHConfig};
+mod demosftpserver;
 
 const NUM_LISTENERS: usize = 4;
 // +1 for dhcp
