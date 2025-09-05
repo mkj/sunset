@@ -1,7 +1,8 @@
-use crate::proto::{Attrs, StatusCode};
+use crate::proto::{Attrs, Name, StatusCode};
+
 use core::marker::PhantomData;
 
-pub type Result<T> = core::result::Result<T, StatusCode>;
+pub type SftpResult<T> = core::result::Result<T, StatusCode>;
 
 /// All trait functions are optional in the SFTP protocol.
 /// Some less core operations have a Provided implementation returning
