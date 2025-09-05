@@ -381,6 +381,9 @@ impl<'g, 'a> ServPasswordAuth<'g, 'a> {
     }
 
     /// Perform a constant-time comparison of the user-presented password against a passed string.
+    /// # Caution
+    /// This is better than a naive comparison, but passwords should be hashed and stored using a
+    /// platform-appropriate password hashing function. Consider bcrypt, argon2, or pbkdf2.
     pub fn matches_password(
         &self,
         password: impl core::convert::AsRef<str>,
