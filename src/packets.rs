@@ -372,11 +372,6 @@ impl PubKey<'_> {
 
         Ok(ssh_key.fingerprint(hash_alg))
     }
-
-    #[cfg(feature = "openssh-key")]
-    pub fn matches_fingerprint(&self, fp: &ssh_key::Fingerprint) -> Result<bool> {
-        Ok(self.fingerprint(fp.algorithm())?.as_bytes().ct_eq(fp.as_bytes()).into())
-    }
 }
 
 // ssh_key::PublicKey is used for known_hosts comparisons
