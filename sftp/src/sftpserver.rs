@@ -12,23 +12,30 @@ pub trait SftpServer {
     type Handle;
 
     // TODO flags struct
-    async fn open(filename: &str, flags: u32, attrs: &Attrs)
-    -> Result<Self::Handle>;
+    async fn open(
+        filename: &str,
+        flags: u32,
+        attrs: &Attrs,
+    ) -> SftpResult<Self::Handle>;
 
     /// Close either a file or directory handle
-    async fn close(handle: &Self::Handle) -> Result<()>;
+    async fn close(handle: &Self::Handle) -> SftpResult<()>;
 
     async fn read(
         handle: &Self::Handle,
         offset: u64,
         reply: &mut ReadReply,
-    ) -> Result<()>;
+    ) -> SftpResult<()>;
 
-    async fn write(handle: &Self::Handle, offset: u64, buf: &[u8]) -> Result<()>;
+    async fn write(handle: &Self::Handle, offset: u64, buf: &[u8])
+    -> SftpResult<()>;
 
-    async fn opendir(dir: &str) -> Result<Self::Handle>;
+    async fn opendir(dir: &str) -> SftpResult<Self::Handle>;
 
-    async fn readdir(handle: &Self::Handle, reply: &mut DirReply) -> Result<()>;
+    async fn readdir(handle: &Self::Handle, reply: &mut DirReply) -> SftpResult<()>;
+
+    /// Provides the real path of the directory specified
+    async fn realpath(dir: &str) -> SftpResult<Name<'_>>;
 }
 
 pub struct ReadReply<'g, 'a> {
@@ -51,4 +58,9 @@ impl<'g, 'a> DirReply<'g, 'a> {
 pub struct ChanOut<'g, 'a> {
     _phantom_g: PhantomData<&'g ()>,
     _phantom_a: PhantomData<&'a ()>,
+}
+
+#[derive(Debug)]
+pub struct ItemHandle {
+    client_opaque_handle: String,
 }
