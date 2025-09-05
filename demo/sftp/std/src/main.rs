@@ -88,7 +88,7 @@ impl DemoServer for StdDemo {
     async fn run(&self, serv: &SSHServer<'_>, mut common: DemoCommon) -> Result<()> {
         let chan_pipe = Channel::<SunsetRawMutex, ChanHandle, 1>::new();
 
-        let prog_loop = async {
+        let prog_loop_inner = async {
             loop {
                 let mut ph = ProgressHolder::new();
                 let ev = serv.progress(&mut ph).await?;
@@ -130,43 +130,41 @@ impl DemoServer for StdDemo {
         };
 
         let prog_loop = async {
-            if let Err(e) = prog_loop.await {
-                warn!("Exited: {e:?}");
+            info!("prog_loop started");
+            if let Err(e) = prog_loop_inner.await {
+                warn!("Prog Loop Exited: {e:?}");
+                return Err(e);
             }
+            Ok(())
         };
 
         let sftp_loop = async {
             let ch = chan_pipe.receive().await;
-            info!("This is the sftp loop");
-            // After this you are likely to receive an SSH_FXP_INIT
+            info!("SFTP loop has received a channel handle");
+
             let mut stdio = serv.stdio(ch).await?;
+            let mut buffer_in = [0u8; 1000];
+            let mut buffer_out = [0u8; 1000];
+
+            let mut sftp_handler =
+                SftpHandler::<DemoSftpServer>::new(&buffer_in, &mut buffer_out);
 
             loop {
-                let mut b = [0u8; 200];
-                let lr = stdio.read(&mut b).await?;
-                if lr == 0 {
-                    break;
-                }
-                let b = &mut b[..lr];
-                info!("received '{:?}'", b);
+                let lr = stdio.read(&mut buffer_in).await?;
+                debug!("SFTP <---- received: {:?}", &buffer_in[0..lr]);
 
-                // First packet received! [0, 0, 0, 5, 1, 0, 0, 0, 3], meaning:
-                // Len (u32): [0, 0, 0, 5] 5 bytes
-                // Type (u8): [1] SSH_FXP_INIT
-                // Version (u32): [0, 0, 0, 3]] version 3
-                // So we need to answer 5 SSH_FXP_VERSION 3
-                // [0, 0, 0, 5, 2, 0, 0, 0, 3]
-                let hardcoded_version_r: Vec<u8> = vec![0, 0, 0, 5, 2, 0, 0, 0, 3];
-                info!("sending '{:?}'", hardcoded_version_r);
+                let lw =
+                    sftp_handler.process(&buffer_in[0..lr], &mut buffer_out).await?;
 
-                stdio.write(hardcoded_version_r.as_slice()).await?;
+                stdio.write(&mut buffer_out[0..lw]).await?;
+                debug!("SFTP ----> Sent: {:?}", &buffer_out[0..lw]);
             }
-
             Ok::<_, Error>(())
         };
 
-        select(prog_loop, sftp_loop).await;
-        todo!()
+        let selected = select(prog_loop, sftp_loop).await;
+        error!("Selected finished: {:?}", selected);
+        todo!("Loop terminated: {:?}", selected)
     }
 }
 
@@ -183,14 +181,16 @@ async fn listen(
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     env_logger::builder()
-        .filter_level(log::LevelFilter::Trace)
-        // .filter_module("sunset::runner", log::LevelFilter::Info)
+        .filter_level(log::LevelFilter::Debug)
+        .filter_module("sunset::runner", log::LevelFilter::Info)
         .filter_module("sunset::traffic", log::LevelFilter::Info)
         .filter_module("sunset::encrypt", log::LevelFilter::Info)
-        // .filter_module("sunset::conn", log::LevelFilter::Info)
-        // .filter_module("sunset_async::async_sunset", log::LevelFilter::Info)
+        .filter_module("sunset::conn", log::LevelFilter::Info)
+        .filter_module("sunset::kex", log::LevelFilter::Info)
+        .filter_module("sunset_async::async_sunset", log::LevelFilter::Info)
         .filter_module("async_io", log::LevelFilter::Info)
         .filter_module("polling", log::LevelFilter::Info)
+        .filter_module("embassy_net", log::LevelFilter::Info)
         .format_timestamp_nanos()
         .init();
 
