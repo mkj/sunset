@@ -14,7 +14,7 @@ jobs:
     strategy:
       matrix:
         # 1.83 is an arbitrary minimum, tested to notice when it bumps
-        rust_version: [stable, nightly, 1.83]
+        rust_version: [stable, nightly, 1.85]
     runs-on: ubuntu-latest
     env:
       RUSTUP_TOOLCHAIN: ${{ matrix.rust_version }}

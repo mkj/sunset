@@ -13,6 +13,7 @@ members = [
     "demo/picow",
     "demo/std", "fuzz",
     "sftp",
+    "demo/sftp/std",
     "stdasync",
     # workspace.dependencies paths are automatic
 ]
