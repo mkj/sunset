@@ -387,8 +387,11 @@ impl<'g, 'a> ServPasswordAuth<'g, 'a> {
     pub fn matches_password(
         &self,
         password: impl core::convert::AsRef<str>,
-    ) -> Result<bool> {
-        Ok(self.password()?.as_bytes().ct_eq(password.as_ref().as_bytes()).into())
+    ) -> bool {
+        match self.password() {
+            Ok(p) => p.as_bytes().ct_eq(password.as_ref().as_bytes()).into(),
+            _ => false,
+        }
     }
 
     /// Accept the presented password.
