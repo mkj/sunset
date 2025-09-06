@@ -5,9 +5,10 @@ use crate::sftpserver::{ItemHandle, SftpServer};
 
 use sunset::sshwire::{SSHDecode, SSHSink, SSHSource, WireError, WireResult};
 
+use core::marker::PhantomData;
+use core::u32;
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
-use std::marker::PhantomData;
 
 #[derive(Default, Debug)]
 pub struct SftpSource<'de> {
