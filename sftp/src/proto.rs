@@ -18,6 +18,12 @@ impl<'a> From<&'a str> for Filename<'a> {
     }
 }
 
+impl<'a> Filename<'a> {
+    pub fn as_str(&self) -> Result<&'a str, WireError> {
+        core::str::from_utf8(self.0.0).map_err(|_| WireError::BadString)
+    }
+}
+
 #[derive(Debug, SSHEncode, SSHDecode)]
 pub struct FileHandle<'a>(pub BinString<'a>);
 
