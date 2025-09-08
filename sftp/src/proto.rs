@@ -24,7 +24,7 @@ impl<'a> Filename<'a> {
     }
 }
 
-#[derive(Debug, SSHEncode, SSHDecode)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, SSHEncode, SSHDecode)]
 pub struct FileHandle<'a>(pub BinString<'a>);
 
 /// The reference implementation we are working on is 3, this is, https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02
@@ -86,7 +86,7 @@ pub struct Status<'a> {
     pub lang: TextString<'a>,
 }
 
-#[derive(Debug, SSHEncode, SSHDecode)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, SSHEncode, SSHDecode)]
 pub struct Handle<'a> {
     pub handle: FileHandle<'a>,
 }
