@@ -606,7 +606,7 @@ macro_rules! sftpmessages {
             /// Used by a SFTP server. Does not include the length field.
             ///
             /// Fails if the encoded SFTP Packet is not a response
-            pub fn encode_response(&self, id: ReqId, s: &mut dyn SSHSink) -> WireResult<()> {
+            pub fn encode_response(&self, s: &mut dyn SSHSink) -> WireResult<()> {
 
                 if !self.sftp_num().is_response() {
                     return Err(WireError::PacketWrong)
@@ -615,11 +615,6 @@ macro_rules! sftpmessages {
                     // therefore a bug, bug Error::bug() is not compatible with WireResult
                 }
 
-                // packet type
-                self.sftp_num().enc(s)?;
-                // request ID
-                id.0.enc(s)?;
-                // contents
                 self.enc(s)
             }
 
