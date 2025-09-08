@@ -10,39 +10,63 @@ pub type SftpOpResult<T> = core::result::Result<T, StatusCode>;
 /// returns `SSH_FX_OP_UNSUPPORTED`. Common operations must be implemented,
 /// but may return `Err(StatusCode::SSH_FX_OP_UNSUPPORTED)`.
 pub trait SftpServer {
-    // type Handle: Into<FileHandle> + TryFrom<FileHandle> + Debug;
     type Handle<'a>: Into<FileHandle<'a>> + TryFrom<FileHandle<'a>> + Debug + Copy;
 
-    // TODO flags struct
+    /// Opens a file or directory for reading/writing
     async fn open<'a>(
+        &mut self,
         filename: &str,
         attrs: &Attrs,
-    ) -> SftpOpResult<Self::Handle<'a>>;
+    ) -> SftpOpResult<Self::Handle<'a>> {
+        log::error!("SftpServer Open operation not defined");
+        Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
+    }
 
     /// Close either a file or directory handle
-    async fn close<'a>(handle: &Self::Handle<'a>) -> SftpOpResult<()>;
+    async fn close<'a>(&mut self, handle: &Self::Handle<'a>) -> SftpOpResult<()> {
+        log::error!("SftpServer Close operation not defined");
+        Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
+    }
 
     async fn read<'a>(
+        &mut self,
         handle: &Self::Handle<'a>,
         offset: u64,
         reply: &mut ReadReply,
-    ) -> SftpOpResult<()>;
+    ) -> SftpOpResult<()> {
+        log::error!("SftpServer Read operation not defined");
+        Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
+    }
 
     async fn write<'a>(
+        &mut self,
         handle: &Self::Handle<'a>,
         offset: u64,
         buf: &[u8],
-    ) -> SftpOpResult<()>;
+    ) -> SftpOpResult<()> {
+        log::error!("SftpServer Write operation not defined");
+        Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
+    }
 
-    async fn opendir<'a>(dir: &str) -> SftpOpResult<Self::Handle<'a>>;
+    async fn opendir<'a>(&mut self, dir: &str) -> SftpOpResult<Self::Handle<'a>> {
+        log::error!("SftpServer OpenDir operation not defined");
+        Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
+    }
 
     async fn readdir<'a>(
+        &mut self,
         handle: &Self::Handle<'a>,
         reply: &mut DirReply,
-    ) -> SftpOpResult<()>;
+    ) -> SftpOpResult<()> {
+        log::error!("SftpServer ReadDir operation not defined");
+        Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
+    }
 
     /// Provides the real path of the directory specified
-    async fn realpath(dir: &str) -> SftpOpResult<Name<'_>>;
+    async fn realpath(&mut self, dir: &str) -> SftpOpResult<Name<'_>> {
+        log::error!("SftpServer RealPath operation not defined");
+        Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
+    }
 }
 
 pub struct ReadReply<'g, 'a> {
