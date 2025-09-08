@@ -142,7 +142,6 @@ where
 
         let mut sink = SftpSink::new(buffer_out);
 
-        // TODO: Handle gracesfully unknow packets
         match SftpPacket::decode_request(&mut source) {
             Ok(request) => {
                 info!("received request: {:?}", request);
@@ -150,12 +149,12 @@ where
             }
             Err(e) => match e {
                 WireError::UnknownPacket { number } => {
-                    warn!("Unsuported Packet Number {:?} {:?}", number, e);
+                    warn!("Error decoding SFTP Packet:{:?}", e);
                     push_unsuported(ReqId(u32::MAX), &mut sink)?;
                 }
                 _ => {
-                    error!("Could not decode the request: {:?}", e);
-                    return Err(e);
+                    error!("Error decoding SFTP Packet: {:?}", e);
+                    push_unsuported(ReqId(u32::MAX), &mut sink)?;
                 }
             },
         };
@@ -172,7 +171,9 @@ where
         T: SftpServer,
     {
         if !self.initialized && !matches!(request, SftpPacket::Init(_)) {
-            return Err(WireError::SSHProto); // TODO: Start using the SFTP Errors
+            push_general_failure(ReqId(u32::MAX), "Not Initialized", sink)?;
+            error!("Request sent before init: {:?}", request);
+            return Ok(());
         }
         match request {
             SftpPacket::Init(_) => {
@@ -241,6 +242,25 @@ fn push_unsuported(req_id: ReqId, sink: &mut SftpSink<'_>) -> Result<(), WireErr
             lang: "EN".into(),
         },
     );
+    debug!("Pushing a unsupported status message: {:?}", response);
+    response.encode_response(sink)?;
+    Ok(())
+}
+
+fn push_general_failure(
+    req_id: ReqId,
+    msg: &'static str,
+    sink: &mut SftpSink<'_>,
+) -> Result<(), WireError> {
+    let response = SftpPacket::Status(
+        req_id,
+        Status {
+            code: StatusCode::SSH_FX_FAILURE,
+            message: msg.into(),
+            lang: "EN".into(),
+        },
+    );
+    debug!("Pushing a general failure status message: {:?}", response);
     response.encode_response(sink)?;
     Ok(())
 }
