@@ -219,7 +219,7 @@ where
                                 lang: "EN".into(),
                             },
                         );
-                        response.encode_request(req_id, sink)?;
+                        response.encode_response(sink)?;
                         info!("Sending '{:?}'", response);
                     }
                 };
