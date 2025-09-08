@@ -583,7 +583,7 @@ macro_rules! sftpmessages {
             /// Used by a SFTP server. Does not include the length field.
             ///
             /// It will fail if the received packet is a response
-            pub fn decode_request<'de, S>(s: &mut S) -> WireResult<(Self)>
+            pub fn decode_request<'de, S>(s: &mut S) -> WireResult<Self>
                 where
                 S: SSHSource<'de>,
                 'a: 'de, // 'a must outlive 'de and 'de must outlive 'a so they have matching lifetimes
