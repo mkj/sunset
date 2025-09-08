@@ -1,7 +1,8 @@
 use crate::proto::{
-    InitVersionLowest, ReqId, SFTP_VERSION, SftpPacket, Status, StatusCode,
+    self, FileHandle, InitVersionLowest, ReqId, SFTP_VERSION, SftpPacket, Status,
+    StatusCode,
 };
-use crate::sftpserver::{ItemHandle, SftpServer};
+use crate::sftpserver::SftpServer;
 
 use sunset::sshwire::{SSHDecode, SSHSink, SSHSource, WireError, WireResult};
 
@@ -62,8 +63,7 @@ impl<'g> SftpSink<'g> {
     const LENG_FIELD_LEN: usize = 4; // TODO: Move it to a better location
 
     pub fn new(s: &'g mut [u8]) -> Self {
-        SftpSink { buffer: s, index: 0 }
-        // SftpSink { buffer: s, index: SftpSink::LENG_FIELD_LEN }
+        SftpSink { buffer: s, index: Self::LENG_FIELD_LEN }
     }
 
     /// Finalise the buffer by prepending the payload size and returning
@@ -91,26 +91,27 @@ impl<'g> SSHSink for SftpSink<'g> {
         if v.len() + self.index > self.buffer.len() {
             return Err(WireError::NoRoom);
         }
+        trace!("Sink index: {:}", self.index);
         v.iter().for_each(|val| {
             self.buffer[self.index] = *val;
             self.index += 1;
         });
-        {}
+        trace!("Sink new index: {:}", self.index);
         Ok(())
     }
 }
 
-#[derive(Debug)]
-pub struct SftpHandler<T>
+#[derive(Debug, Clone)]
+pub struct SftpHandler<'a, T>
 where
     T: SftpServer,
 {
     server_type: PhantomData<T>,
-    handle_list: Vec<ItemHandle>,
+    handle_list: Vec<FileHandle<'a>>,
     initialized: bool,
 }
 
-impl<T> SftpHandler<T>
+impl<'a, T> SftpHandler<'a, T>
 where
     T: SftpServer,
 {
@@ -142,21 +143,37 @@ where
         let mut sink = SftpSink::new(buffer_out);
 
         // TODO: Handle gracesfully unknow packets
-        let request = match SftpPacket::decode_request(&mut source) {
+        match SftpPacket::decode_request(&mut source) {
             Ok(request) => {
                 info!("received request: {:?}", request);
-                request
+                self.process_known_request(&mut sink, request).await?;
             }
-            Err(e) => {
-                warn!("Could not decode the request: {:?}", e);
-                return Err(e);
-            }
+            Err(e) => match e {
+                WireError::UnknownPacket { number } => {
+                    warn!("Unsuported Packet Number {:?} {:?}", number, e);
+                    push_unsuported(ReqId(u32::MAX), &mut sink)?;
+                }
+                _ => {
+                    error!("Could not decode the request: {:?}", e);
+                    return Err(e);
+                }
+            },
         };
 
+        Ok(sink.finalise())
+    }
+
+    async fn process_known_request(
+        &mut self,
+        sink: &mut SftpSink<'_>,
+        request: SftpPacket<'_>,
+    ) -> Result<(), WireError>
+    where
+        T: SftpServer,
+    {
         if !self.initialized && !matches!(request, SftpPacket::Init(_)) {
             return Err(WireError::SSHProto); // TODO: Start using the SFTP Errors
         }
-
         match request {
             SftpPacket::Init(_) => {
                 // TODO: Do a real check, provide the lowest version or return an error if the client cannot handle the server SFTP_VERSION
@@ -165,7 +182,7 @@ where
 
                 info!("Sending '{:?}'", version);
 
-                version.encode_response(ReqId(0), &mut sink)?;
+                version.encode_response(sink)?;
 
                 self.initialized = true;
             }
@@ -179,21 +196,51 @@ where
 
                 let response = SftpPacket::Name(req_id, a_name);
 
-                response.encode_response(req_id, &mut sink)?;
+                response.encode_response(sink)?;
+            }
+            SftpPacket::Open(req_id, open) => {
+                match T::open(open.filename.as_str()?, &open.attrs).await {
+                    Ok(handle) => {
+                        self.handle_list.push(handle.into());
+                        let response = SftpPacket::Handle(
+                            req_id,
+                            proto::Handle { handle: handle.into() },
+                        );
+                        response.encode_response(sink)?;
+                        info!("Sending '{:?}'", response);
+                    }
+                    Err(status_code) => {
+                        let response = SftpPacket::Status(
+                            req_id,
+                            Status {
+                                code: status_code,
+                                message: "".into(),
+                                lang: "EN".into(),
+                            },
+                        );
+                        response.encode_request(req_id, sink)?;
+                        info!("Sending '{:?}'", response);
+                    }
+                };
+                // push_unsuported(req_id, sink)?;
             }
             _ => {
-                let response = SftpPacket::Status(
-                    ReqId(0),
-                    Status {
-                        code: StatusCode::SSH_FX_OP_UNSUPPORTED,
-                        message: "Not implemented".into(),
-                        lang: "EN".into(),
-                    },
-                );
-                response.encode_response(ReqId(0), &mut sink)?;
+                push_unsuported(ReqId(0), sink)?;
             }
         };
-
-        Ok(sink.finalise())
+        Ok(())
     }
+}
+
+fn push_unsuported(req_id: ReqId, sink: &mut SftpSink<'_>) -> Result<(), WireError> {
+    let response = SftpPacket::Status(
+        req_id,
+        Status {
+            code: StatusCode::SSH_FX_OP_UNSUPPORTED,
+            message: "Not implemented".into(),
+            lang: "EN".into(),
+        },
+    );
+    response.encode_response(sink)?;
+    Ok(())
 }
