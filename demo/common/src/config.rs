@@ -178,7 +178,7 @@ where
         let ad = Ipv4Address::from_bits(ad);
         let prefix = SSHDecode::dec(s)?;
         if prefix > 32 {
-            // emabassy panics, so test it here
+            // embassy panics, so test it here
             return Err(WireError::PacketWrong);
         }
         let gw: Option<u32> = dec_option(s)?;

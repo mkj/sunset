@@ -76,7 +76,6 @@ mlkem = ["dep:ml-kem"]
 openssh-key = ["ssh-key"]
 # implements embedded_io::Error for sunset::Error
 embedded-io = ["dep:embedded-io"]
-
 # Arbitrary for fuzzing. std is required for derive(Arbitrary)
 arbitrary = ["dep:arbitrary", "std"]
 

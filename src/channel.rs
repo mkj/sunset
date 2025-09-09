@@ -569,6 +569,27 @@ impl Channels {
             _ => Err(Error::bug()),
         }
     }
+
+    pub fn fetch_env_name<'p>(&self, p: &Packet<'p>) -> Result<TextString<'p>> {
+        match p {
+            Packet::ChannelRequest(ChannelRequest {
+                req: ChannelReqType::Environment(packets::Environment { name, .. }),
+                ..
+            }) => Ok(name.clone()),
+            _ => Err(Error::bug()),
+        }
+    }
+
+    pub fn fetch_env_value<'p>(&self, p: &Packet<'p>) -> Result<TextString<'p>> {
+        match p {
+            Packet::ChannelRequest(ChannelRequest {
+                req:
+                    ChannelReqType::Environment(packets::Environment { name: _, value }),
+                ..
+            }) => Ok(value.clone()),
+            _ => Err(Error::bug()),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -899,6 +920,9 @@ impl Channel {
             }
             ChannelReqType::Pty(_) => {
                 Ok(DispatchEvent::ServEvent(ServEventId::SessionPty { num }))
+            }
+            ChannelReqType::Environment(_) => {
+                Ok(DispatchEvent::ServEvent(ServEventId::Environment { num }))
             }
             _ => {
                 if let ChannelReqType::Unknown(u) = &p.req {
