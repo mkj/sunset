@@ -900,6 +900,9 @@ impl Channel {
             ChannelReqType::Pty(_) => {
                 Ok(DispatchEvent::ServEvent(ServEventId::SessionPty { num }))
             }
+            ChannelReqType::Environment(_) => {
+                Ok(DispatchEvent::ServEvent(ServEventId::Environment { num }))
+            }
             _ => {
                 if let ChannelReqType::Unknown(u) = &p.req {
                     warn!("Unknown channel req type \"{}\"", u)
