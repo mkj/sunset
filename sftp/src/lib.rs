@@ -1,5 +1,4 @@
 mod proto;
-mod sftperror;
 mod sftphandle;
 mod sftpserver;
 

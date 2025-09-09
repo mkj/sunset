@@ -172,8 +172,9 @@ async fn sftp_server_loop(
     ch: ChanHandle,
 ) -> Result<(), Error> {
     let mut stdio = serv.stdio(ch).await?;
-    let mut sftp_handler =
-        SftpHandler::<DemoSftpServer>::new(&buffer_in, &mut buffer_out);
+    let mut file_server = DemoSftpServer::new("user".to_string());
+
+    let mut sftp_handler = SftpHandler::new(&mut file_server);
     Ok(loop {
         let lr = stdio.read(&mut buffer_in).await?;
         debug!("SFTP <---- received: {:?}", &buffer_in[0..lr]);

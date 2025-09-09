@@ -1,6 +1,5 @@
 use crate::proto::{Attrs, FileHandle, Name, StatusCode};
 
-use core::fmt::Debug;
 use core::marker::PhantomData;
 
 pub type SftpOpResult<T> = core::result::Result<T, StatusCode>;
@@ -9,62 +8,79 @@ pub type SftpOpResult<T> = core::result::Result<T, StatusCode>;
 /// Some less core operations have a Provided implementation returning
 /// returns `SSH_FX_OP_UNSUPPORTED`. Common operations must be implemented,
 /// but may return `Err(StatusCode::SSH_FX_OP_UNSUPPORTED)`.
-pub trait SftpServer {
-    type Handle<'a>: Into<FileHandle<'a>> + TryFrom<FileHandle<'a>> + Debug + Copy;
+pub trait SftpServer<'a> {
+    // type Handle<'a>: Into<FileHandle<'a>> + TryFrom<FileHandle<'a>> + Debug + Copy;
 
     /// Opens a file or directory for reading/writing
-    async fn open<'a>(
+    fn open(
         &mut self,
         filename: &str,
         attrs: &Attrs,
-    ) -> SftpOpResult<Self::Handle<'a>> {
-        log::error!("SftpServer Open operation not defined");
+    ) -> SftpOpResult<FileHandle<'_>> {
+        log::error!(
+            "SftpServer Open operation not defined: filename = {:?}, attrs = {:?}",
+            filename,
+            attrs
+        );
         Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
     }
 
     /// Close either a file or directory handle
-    async fn close<'a>(&mut self, handle: &Self::Handle<'a>) -> SftpOpResult<()> {
-        log::error!("SftpServer Close operation not defined");
+    fn close(&mut self, handle: &FileHandle) -> SftpOpResult<()> {
+        log::error!("SftpServer Close operation not defined: handle = {:?}", handle);
+
         Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
     }
 
-    async fn read<'a>(
+    fn read(
         &mut self,
-        handle: &Self::Handle<'a>,
+        handle: &FileHandle,
         offset: u64,
-        reply: &mut ReadReply,
+        reply: &mut ReadReply<'_, '_>,
     ) -> SftpOpResult<()> {
-        log::error!("SftpServer Read operation not defined");
+        log::error!(
+            "SftpServer Read operation not defined: handle = {:?}, offset = {:?}",
+            handle,
+            offset
+        );
         Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
     }
 
-    async fn write<'a>(
+    fn write(
         &mut self,
-        handle: &Self::Handle<'a>,
+        handle: &FileHandle,
         offset: u64,
         buf: &[u8],
     ) -> SftpOpResult<()> {
-        log::error!("SftpServer Write operation not defined");
+        log::error!(
+            "SftpServer Write operation: handle = {:?}, offset = {:?}, buf = {:?}",
+            handle,
+            offset,
+            String::from_utf8(buf.to_vec())
+        );
+        Ok(())
+    }
+
+    fn opendir(&mut self, dir: &str) -> SftpOpResult<FileHandle<'_>> {
+        log::error!("SftpServer OpenDir operation not defined: dir = {:?}", dir);
         Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
     }
 
-    async fn opendir<'a>(&mut self, dir: &str) -> SftpOpResult<Self::Handle<'a>> {
-        log::error!("SftpServer OpenDir operation not defined");
-        Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
-    }
-
-    async fn readdir<'a>(
+    fn readdir(
         &mut self,
-        handle: &Self::Handle<'a>,
-        reply: &mut DirReply,
+        handle: &FileHandle,
+        reply: &mut DirReply<'_, '_>,
     ) -> SftpOpResult<()> {
-        log::error!("SftpServer ReadDir operation not defined");
+        log::error!(
+            "SftpServer ReadDir operation not defined: handle = {:?}",
+            handle
+        );
         Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
     }
 
     /// Provides the real path of the directory specified
-    async fn realpath(&mut self, dir: &str) -> SftpOpResult<Name<'_>> {
-        log::error!("SftpServer RealPath operation not defined");
+    fn realpath(&mut self, dir: &str) -> SftpOpResult<Name<'_>> {
+        log::error!("SftpServer RealPath operation not defined: dir = {:?}", dir);
         Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
     }
 }
@@ -74,7 +90,7 @@ pub struct ReadReply<'g, 'a> {
 }
 
 impl<'g, 'a> ReadReply<'g, 'a> {
-    pub async fn reply(self, data: &[u8]) {}
+    pub fn reply(self, data: &[u8]) {}
 }
 
 pub struct DirReply<'g, 'a> {
@@ -82,7 +98,7 @@ pub struct DirReply<'g, 'a> {
 }
 
 impl<'g, 'a> DirReply<'g, 'a> {
-    pub async fn reply(self, data: &[u8]) {}
+    pub fn reply(self, data: &[u8]) {}
 }
 
 // TODO: Implement correct Channel Out
