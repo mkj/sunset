@@ -6,7 +6,6 @@ use crate::sftpserver::SftpServer;
 
 use sunset::sshwire::{SSHDecode, SSHSink, SSHSource, WireError, WireResult};
 
-use core::marker::PhantomData;
 use core::u32;
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
@@ -101,26 +100,18 @@ impl<'g> SSHSink for SftpSink<'g> {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct SftpHandler<'a, T>
-where
-    T: SftpServer,
-{
-    server_type: PhantomData<T>,
-    handle_list: Vec<FileHandle<'a>>,
+//#[derive(Debug, Clone)]
+pub struct SftpHandler<'a> {
+    file_server: &'a mut dyn SftpServer<'a>,
     initialized: bool,
 }
 
-impl<'a, T> SftpHandler<'a, T>
-where
-    T: SftpServer,
-{
-    pub fn new(buffer_in: &[u8], buffer_out: &mut [u8]) -> Self {
-        SftpHandler {
-            server_type: PhantomData,
-            handle_list: vec![],
-            initialized: false,
-        }
+impl<'a> SftpHandler<'a> {
+    pub fn new(
+        file_server: &'a mut impl SftpServer<'a>,
+        // max_file_handlers: u32
+    ) -> Self {
+        SftpHandler { file_server, initialized: false }
     }
 
     /// Decodes the buffer_in request, process the request delegating operations to an Struct implementing SftpServer,
@@ -148,13 +139,13 @@ where
                 self.process_known_request(&mut sink, request).await?;
             }
             Err(e) => match e {
-                WireError::UnknownPacket { number } => {
+                WireError::UnknownPacket { number: _ } => {
                     warn!("Error decoding SFTP Packet:{:?}", e);
-                    push_unsuported(ReqId(u32::MAX), &mut sink)?;
+                    push_unsupported(ReqId(u32::MAX), &mut sink)?;
                 }
                 _ => {
                     error!("Error decoding SFTP Packet: {:?}", e);
-                    push_unsuported(ReqId(u32::MAX), &mut sink)?;
+                    push_unsupported(ReqId(u32::MAX), &mut sink)?;
                 }
             },
         };
@@ -166,10 +157,7 @@ where
         &mut self,
         sink: &mut SftpSink<'_>,
         request: SftpPacket<'_>,
-    ) -> Result<(), WireError>
-    where
-        T: SftpServer,
-    {
+    ) -> Result<(), WireError> {
         if !self.initialized && !matches!(request, SftpPacket::Init(_)) {
             push_general_failure(ReqId(u32::MAX), "Not Initialized", sink)?;
             error!("Request sent before init: {:?}", request);
@@ -189,20 +177,19 @@ where
             }
             SftpPacket::PathInfo(req_id, path_info) => {
                 let a_name =
-                    T::realpath(path_info.path.as_str().expect(
-                        "Could not deref and the errors are not harmonised",
-                    ))
-                    .await
-                    .expect("Could not deref and the errors are not harmonised");
+                    self.file_server
+                        .realpath(path_info.path.as_str().expect(
+                            "Could not deref and the errors are not harmonized",
+                        ))
+                        .expect("Could not deref and the errors are not harmonized");
 
                 let response = SftpPacket::Name(req_id, a_name);
 
                 response.encode_response(sink)?;
             }
             SftpPacket::Open(req_id, open) => {
-                match T::open(open.filename.as_str()?, &open.attrs).await {
+                match self.file_server.open(open.filename.as_str()?, &open.attrs) {
                     Ok(handle) => {
-                        self.handle_list.push(handle.into());
                         let response = SftpPacket::Handle(
                             req_id,
                             proto::Handle { handle: handle.into() },
@@ -211,29 +198,61 @@ where
                         info!("Sending '{:?}'", response);
                     }
                     Err(status_code) => {
-                        let response = SftpPacket::Status(
-                            req_id,
-                            Status {
-                                code: status_code,
-                                message: "".into(),
-                                lang: "EN".into(),
-                            },
-                        );
-                        response.encode_response(sink)?;
-                        info!("Sending '{:?}'", response);
+                        error!("Open failed: {:?}", status_code);
+                        push_general_failure(req_id, "", sink)?;
                     }
                 };
-                // push_unsuported(req_id, sink)?;
+            }
+            SftpPacket::Write(req_id, write) => {
+                match self.file_server.write(
+                    &write.handle,
+                    write.offset,
+                    write.data.as_ref(),
+                ) {
+                    Ok(_) => push_ok(req_id, sink)?,
+                    Err(e) => {
+                        error!("SFTP write thrown: {:?}", e);
+                        push_general_failure(req_id, "error writing ", sink)?
+                    }
+                };
+            }
+            SftpPacket::Close(req_id, close) => {
+                match self.file_server.close(&close.handle) {
+                    Ok(_) => push_ok(req_id, sink)?,
+                    Err(e) => {
+                        error!("SFTP Close thrown: {:?}", e);
+                        push_general_failure(req_id, "", sink)?
+                    }
+                }
             }
             _ => {
-                push_unsuported(ReqId(0), sink)?;
+                push_unsupported(ReqId(0), sink)?;
             }
         };
         Ok(())
     }
 }
 
-fn push_unsuported(req_id: ReqId, sink: &mut SftpSink<'_>) -> Result<(), WireError> {
+#[inline]
+fn push_ok(req_id: ReqId, sink: &mut SftpSink<'_>) -> Result<(), WireError> {
+    let response = SftpPacket::Status(
+        req_id,
+        Status {
+            code: StatusCode::SSH_FX_OK,
+            message: "".into(),
+            lang: "EN".into(),
+        },
+    );
+    debug!("Pushing an OK status message: {:?}", response);
+    response.encode_response(sink)?;
+    Ok(())
+}
+
+#[inline]
+fn push_unsupported(
+    req_id: ReqId,
+    sink: &mut SftpSink<'_>,
+) -> Result<(), WireError> {
     let response = SftpPacket::Status(
         req_id,
         Status {
@@ -247,6 +266,7 @@ fn push_unsuported(req_id: ReqId, sink: &mut SftpSink<'_>) -> Result<(), WireErr
     Ok(())
 }
 
+#[inline]
 fn push_general_failure(
     req_id: ReqId,
     msg: &'static str,
