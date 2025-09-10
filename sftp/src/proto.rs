@@ -8,6 +8,30 @@ use sunset_sshwire_derive::{SSHDecode, SSHEncode};
 use log::{debug, error, info, log, trace, warn};
 use num_enum::FromPrimitive;
 use paste::paste;
+
+/// SFTP Minimum packet length is 9 bytes corresponding with `SSH_FXP_INIT`
+pub const SFTP_MINIMUM_PACKET_LEN: usize = 9;
+
+/// SFTP packets have the packet type after a u32 length field
+pub const SFTP_FIELD_ID_INDEX: usize = 4;
+/// SFTP packets ID length is 1 byte
+pub const SFTP_FIELD_ID_LEN: usize = 1;
+/// SFTP packets start with the length field
+pub const SFTP_FIELD_LEN_INDEX: usize = 0;
+/// SFTP packets length field us u32
+pub const SFTP_FIELD_LEN_LENGTH: usize = 4;
+
+// SSH_FXP_WRITE SFTP Packet definition used to decode long packets that do not fit in one buffer
+
+/// SFTP SSH_FXP_WRITE Packet cannot be shorter than this (len:4+pnum:1+rid:4+hand:4+0+data:4+0 bytes = 17 bytes) [draft-ietf-secsh-filexfer-02](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#autoid-10)
+pub const SFTP_MINIMUM_WRITE_PACKET_LEN: usize = 17;
+
+/// SFTP SSH_FXP_WRITE Packet request id field index  [draft-ietf-secsh-filexfer-02](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#autoid-10)
+pub const SFTP_WRITE_REQID_INDEX: usize = 5;
+
+/// SFTP SSH_FXP_WRITE Packet handle field index  [draft-ietf-secsh-filexfer-02](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#autoid-10)
+pub const SFTP_WRITE_HANDLE_INDEX: usize = 9;
+
 // TODO is utf8 enough, or does this need to be an opaque binstring?
 #[derive(Debug, SSHEncode, SSHDecode)]
 pub struct Filename<'a>(TextString<'a>);
@@ -590,15 +614,22 @@ macro_rules! sftpmessages {
                 'de: 'a
             {
 
-                let sftp_packet = Self::dec(s)? ;
+                // let sftp_packet = Self::dec(s)?;
+                match Self::dec(s) {
+                    Ok(sftp_packet)=> {
+                        if (!sftp_packet.sftp_num().is_request()
+                            && !sftp_packet.sftp_num().is_init())
+                        {
+                            Err(WireError::PacketWrong)
+                        }else{
+                            Ok(sftp_packet)
 
-                if (!sftp_packet.sftp_num().is_request()
-                    && !sftp_packet.sftp_num().is_init())
-                {
-                    return Err(WireError::PacketWrong)
+                        }
+                    },
+                    Err(e) => {
+                        Err(e)
+                    }
                 }
-
-                Ok(sftp_packet)
             }
 
             /// Encode a response.
