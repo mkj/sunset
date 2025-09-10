@@ -144,10 +144,33 @@ impl DemoServer for StdDemo {
 
                 info!("SFTP loop has received a channel handle {:?}", ch.num());
 
-                let buffer_in = [0u8; 1000];
-                let buffer_out = [0u8; 1000];
+                let mut buffer_in = [0u8; 512];
+                let mut buffer_out = [0u8; 512];
 
-                match sftp_server_loop(serv, buffer_in, buffer_out, ch).await {
+                match {
+                    let mut stdio = serv.stdio(ch).await?;
+                    let mut file_server = DemoSftpServer::new("user".to_string());
+
+                    let mut sftp_handler =
+                        SftpHandler::new(&mut file_server, buffer_in.len());
+                    loop {
+                        let lr = stdio.read(&mut buffer_in).await?;
+                        trace!("SFTP <---- received: {:?}", &buffer_in[0..lr]);
+                        if lr == 0 {
+                            debug!("client disconnected");
+                            break;
+                        }
+
+                        let lw = sftp_handler
+                            .process(&buffer_in[0..lr], &mut buffer_out)
+                            .await?;
+                        if lw > 0 {
+                            stdio.write(&mut buffer_out[0..lw]).await?;
+                            trace!("SFTP ----> Sent: {:?}", &buffer_out[0..lw]);
+                        }
+                    }
+                    Ok::<_, Error>(())
+                } {
                     Ok(_) => {
                         warn!("sftp server loop finished gracefully");
                     }
@@ -163,31 +186,6 @@ impl DemoServer for StdDemo {
         error!("Selected finished: {:?}", selected);
         todo!("Loop terminated: {:?}", selected)
     }
-}
-
-async fn sftp_server_loop(
-    serv: &SSHServer<'_>,
-    mut buffer_in: [u8; 1000],
-    mut buffer_out: [u8; 1000],
-    ch: ChanHandle,
-) -> Result<(), Error> {
-    let mut stdio = serv.stdio(ch).await?;
-    let mut file_server = DemoSftpServer::new("user".to_string());
-
-    let mut sftp_handler = SftpHandler::new(&mut file_server);
-    Ok(loop {
-        let lr = stdio.read(&mut buffer_in).await?;
-        debug!("SFTP <---- received: {:?}", &buffer_in[0..lr]);
-        if lr == 0 {
-            debug!("client disconnected");
-            return Ok(());
-        }
-
-        let lw = sftp_handler.process(&buffer_in[0..lr], &mut buffer_out).await?;
-
-        stdio.write(&mut buffer_out[0..lw]).await?;
-        debug!("SFTP ----> Sent: {:?}", &buffer_out[0..lw]);
-    })
 }
 
 // TODO: pool_size should be NUM_LISTENERS but needs a literal
