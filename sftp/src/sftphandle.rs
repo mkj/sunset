@@ -1,6 +1,7 @@
 use crate::proto::{
-    self, FileHandle, InitVersionLowest, ReqId, SFTP_VERSION, SftpPacket, Status,
-    StatusCode,
+    self, Handle, InitVersionLowest, ReqId, SFTP_FIELD_ID_INDEX,
+    SFTP_FIELD_LEN_INDEX, SFTP_FIELD_LEN_LENGTH, SFTP_MINIMUM_PACKET_LEN,
+    SFTP_VERSION, SFTP_WRITE_REQID_INDEX, SftpNum, SftpPacket, Status, StatusCode,
 };
 use crate::sftpserver::SftpServer;
 
@@ -9,7 +10,10 @@ use sunset::sshwire::{SSHDecode, SSHSink, SSHSource, WireError, WireResult};
 use core::u32;
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
+use std::usize;
 
+/// This implementation is an extension of the SSHSource interface to handle some challenges with SFTP packets
+///
 #[derive(Default, Debug)]
 pub struct SftpSource<'de> {
     pub buffer: &'de [u8],
@@ -19,7 +23,7 @@ pub struct SftpSource<'de> {
 impl<'de> SSHSource<'de> for SftpSource<'de> {
     fn take(&mut self, len: usize) -> sunset::sshwire::WireResult<&'de [u8]> {
         if len + self.index > self.buffer.len() {
-            return Err(WireError::NoRoom);
+            return Err(WireError::RanOut);
         }
         let original_index = self.index;
         let slice = &self.buffer[self.index..self.index + len];
@@ -42,15 +46,80 @@ impl<'de> SSHSource<'de> for SftpSource<'de> {
     }
 }
 
-// // This implementation is an extension of the SSHSource interface.
-// impl<'de> SftpSource<'de> {
-//     /// Rewinds the index back to the initial byte
-//     ///
-//     /// In case of an error deserialising the SSHSource it allows reprocesing the buffer from start
-//     pub fn rewind(&mut self) -> () {
-//         self.index = 0;
-//     }
-// }
+impl<'de> SftpSource<'de> {
+    pub fn new(buffer: &'de [u8]) -> Self {
+        SftpSource { buffer: buffer, index: 0 }
+    }
+
+    /// Rewinds the index back to the initial byte
+    ///
+    /// In case of an error deserializing the SSHSource it allows reprocessing the buffer from start
+    pub fn rewind(&mut self) -> () {
+        self.index = 0;
+    }
+
+    /// Peaks the buffer for packet type. This does not advance the reading index
+    ///
+    /// Useful to observe the packet fields in special conditions where a `dec(s)` would fail
+    ///
+    /// **Warning**: will only work in well formed packets, in other case the result will contain garbage
+    fn peak_packet_type(&self) -> WireResult<SftpNum> {
+        // const SFTP_ID_BUFFER_INDEX: usize = 4; // All SFTP packet have the packet type after a u32 length field
+        // const SFTP_MINIMUM_LENGTH: usize = 9; // Corresponds to a minimal SSH_FXP_INIT packet
+        if self.buffer.len() < SFTP_MINIMUM_PACKET_LEN {
+            Err(WireError::PacketWrong)
+        } else {
+            Ok(SftpNum::from(self.buffer[SFTP_FIELD_ID_INDEX]))
+        }
+    }
+
+    /// Peaks the buffer for packet length. This does not advance the reading index
+    ///
+    /// Useful to observe the packet fields in special conditions where a `dec(s)` would fail
+    ///
+    /// **Warning**: will only work in well formed packets, in other case the result will contain garbage
+    fn peak_packet_len(&self) -> WireResult<u32> {
+        if self.buffer.len() < SFTP_MINIMUM_PACKET_LEN {
+            Err(WireError::PacketWrong)
+        } else {
+            let mut raw_bytes = [0u8; 4];
+            raw_bytes.copy_from_slice(
+                &self.buffer[SFTP_FIELD_LEN_INDEX
+                    ..SFTP_FIELD_LEN_INDEX + SFTP_FIELD_LEN_LENGTH],
+            );
+
+            Ok(u32::from_be_bytes(raw_bytes))
+        }
+    }
+
+    /// Assuming that the buffer contains a Write request packet, Peaks the buffer for the handle length. This does not advance the reading index
+    ///
+    /// Useful to observe the packet fields in special conditions where a `dec(s)` would fail
+    ///
+    /// **Warning**: will only work in well formed write packets, in other case the result will contain garbage
+    fn peak_write_handle_offset_n_data_len(
+        &mut self,
+    ) -> WireResult<(Handle<'_>, ReqId, u64, u32)> {
+        if self.buffer.len() < SFTP_MINIMUM_PACKET_LEN {
+            Err(WireError::PacketWrong)
+        } else {
+            let prev_index = self.index;
+            self.index = SFTP_WRITE_REQID_INDEX;
+            let req_id = ReqId::dec(self)?;
+            let handle = Handle::dec(self)?;
+            let offset = u64::dec(self)?;
+            let data_len = u32::dec(self)?;
+
+            self.index = prev_index;
+
+            debug!(
+                "Request ID = {:?}, Handle = {:?}, offset = {:?}, data length = {:?}, ",
+                req_id, handle, offset, data_len
+            );
+            Ok((handle, req_id, offset, data_len))
+        }
+    }
+}
 
 #[derive(Default)]
 pub struct SftpSink<'g> {
@@ -59,21 +128,19 @@ pub struct SftpSink<'g> {
 }
 
 impl<'g> SftpSink<'g> {
-    const LENG_FIELD_LEN: usize = 4; // TODO: Move it to a better location
-
     pub fn new(s: &'g mut [u8]) -> Self {
-        SftpSink { buffer: s, index: Self::LENG_FIELD_LEN }
+        SftpSink { buffer: s, index: SFTP_FIELD_LEN_LENGTH }
     }
 
     /// Finalise the buffer by prepending the payload size and returning
     ///
     /// Returns the final index in the buffer as a reference for the space used
     pub fn finalise(&mut self) -> usize {
-        if self.index <= SftpSink::LENG_FIELD_LEN {
+        if self.index <= SFTP_FIELD_LEN_LENGTH {
             warn!("SftpSink trying to terminate it before pushing data");
             return 0;
         } // size is 0
-        let used_size = (self.index - 4) as u32;
+        let used_size = (self.index - SFTP_FIELD_LEN_LENGTH) as u32;
 
         used_size
             .to_be_bytes()
@@ -103,15 +170,27 @@ impl<'g> SSHSink for SftpSink<'g> {
 //#[derive(Debug, Clone)]
 pub struct SftpHandler<'a> {
     file_server: &'a mut dyn SftpServer<'a>,
+    buffer_in_len: usize,
     initialized: bool,
+    long_packet: bool,
 }
 
 impl<'a> SftpHandler<'a> {
     pub fn new(
         file_server: &'a mut impl SftpServer<'a>,
-        // max_file_handlers: u32
+        buffer_len: usize, // max_file_handlers: u32
     ) -> Self {
-        SftpHandler { file_server, initialized: false }
+        if buffer_len < 256 {
+            warn!(
+                "Buffer length too small, must be at least 256 bytes. You are in uncharted territory"
+            )
+        }
+        SftpHandler {
+            file_server,
+            buffer_in_len: buffer_len,
+            long_packet: false,
+            initialized: false,
+        }
     }
 
     /// Decodes the buffer_in request, process the request delegating operations to an Struct implementing SftpServer,
@@ -121,15 +200,17 @@ impl<'a> SftpHandler<'a> {
         buffer_in: &[u8],
         buffer_out: &mut [u8],
     ) -> WireResult<usize> {
-        if buffer_in.len() < 4 {
+        let in_len = buffer_in.len();
+        debug!("Received {:} bytes to process", in_len);
+        if !self.long_packet & in_len.lt(&SFTP_MINIMUM_PACKET_LEN) {
             return Err(WireError::PacketWrong);
         }
 
-        let mut source = SftpSource { buffer: buffer_in, index: 0 };
+        let mut source = SftpSource::new(buffer_in);
         trace!("Source content: {:?}", source);
 
         let packet_length = u32::dec(&mut source)?;
-        trace!("Packet field lenght content: {}", packet_length);
+        trace!("Packet field length content: {}", packet_length);
 
         let mut sink = SftpSink::new(buffer_out);
 
@@ -139,6 +220,40 @@ impl<'a> SftpHandler<'a> {
                 self.process_known_request(&mut sink, request).await?;
             }
             Err(e) => match e {
+                WireError::RanOut => {
+                    warn!(
+                        "RanOut for the SFTP Packet in the source buffer: {:?}",
+                        e
+                    );
+                    source.rewind(); // Not strictly required
+                    let packet_total_length = source.peak_packet_len()?;
+                    let packet_type = source.peak_packet_type()?;
+                    match packet_type {
+                        SftpNum::SSH_FXP_WRITE => {
+                            self.long_packet = true;
+                            let (file_handle, req_id, offset, data_len) =
+                                source.peak_write_handle_offset_n_data_len()?;
+                            warn!(
+                                "We got a long Write packet. Excellent! total len = {:?}, type = {:?}, req_id = {:?}, handle = {:?}, offset = {:?}, data_len = {:?}",
+                                packet_total_length,
+                                packet_type,
+                                req_id,
+                                file_handle,
+                                offset,
+                                data_len
+                            );
+                        }
+                        _ => {
+                            error!(
+                                "We do not know how to handle this long packet: {:?}",
+                                packet_type
+                            );
+                            todo!(
+                                " Push a general failure with the request ID and RanOut comment"
+                            );
+                        }
+                    };
+                }
                 WireError::UnknownPacket { number: _ } => {
                     warn!("Error decoding SFTP Packet:{:?}", e);
                     push_unsupported(ReqId(u32::MAX), &mut sink)?;
