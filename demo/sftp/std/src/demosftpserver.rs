@@ -8,7 +8,7 @@ use sunset_sftp::{
 use log::{debug, error, info, log, trace, warn};
 
 pub struct DemoSftpServer {
-    valid_handlers: Vec<String>,
+    valid_handlers: Vec<String>, // TODO: Obscure the handlers
     user_path: String,
 }
 

@@ -2,6 +2,12 @@ use crate::proto::{Attrs, FileHandle, Name, StatusCode};
 
 use core::marker::PhantomData;
 
+// TODO: enforce it and do checks for the FileHandle so it properly obscure the file path and user.
+//       Hint: In stateful server this can be done with a hash function and a dictionary
+/// Used during storage of file handle data for long SFTP Write requests
+/// Must be observed by SftpServer handle implementations
+pub const FILE_HANDLE_MAX_LEN: usize = 256;
+
 pub type SftpOpResult<T> = core::result::Result<T, StatusCode>;
 
 /// All trait functions are optional in the SFTP protocol.

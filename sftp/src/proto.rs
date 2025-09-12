@@ -593,8 +593,7 @@ macro_rules! sftpmessages {
                 if !num.is_response() {
                     return Err(WireError::PacketWrong)
                     // return error::SSHProto.fail();
-                    // TODO: Not an error in the SSHProtocol rather the SFTP.
-                    // Maybe is time to define an SftpError
+                    // TODO: Not an error in the SSHProtocol rather the SFTP Protocol.
                 }
 
                 let id = ReqId(u32::dec(s)?);
