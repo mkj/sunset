@@ -36,7 +36,6 @@ async fn net_task(mut runner: embassy_net::Runner<'static, TunTapDevice>) -> ! {
 
 #[embassy_executor::task]
 async fn main_task(spawner: Spawner) {
-    // TODO config
     let opt_tap0 = "tap0";
     let ip4 = "192.168.69.2";
     let cir = 24;
