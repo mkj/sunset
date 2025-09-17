@@ -148,10 +148,11 @@ impl DemoServer for StdDemo {
 
                 match {
                     let mut stdio = serv.stdio(ch).await?;
-                    let mut file_server = DemoSftpServer::new("user".to_string());
+                    let mut file_server = DemoSftpServer::new(
+                        "./demo/sftp/std/testing/out/".to_string(),
+                    );
 
-                    let mut sftp_handler =
-                        SftpHandler::new(&mut file_server, buffer_in.len());
+                    let mut sftp_handler = SftpHandler::new(&mut file_server);
                     loop {
                         let lr = stdio.read(&mut buffer_in).await?;
                         trace!("SFTP <---- received: {:?}", &buffer_in[0..lr]);

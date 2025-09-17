@@ -37,7 +37,7 @@ pub trait SftpServer<'a> {
         &mut self,
         obscured_file_handle: &ObscuredFileHandle,
         offset: u64,
-        reply: &mut ReadReply<'_, '_>,
+        _reply: &mut ReadReply<'_, '_>,
     ) -> SftpOpResult<()> {
         log::error!(
             "SftpServer Read operation not defined: handle = {:?}, offset = {:?}",
@@ -70,7 +70,7 @@ pub trait SftpServer<'a> {
     fn readdir(
         &mut self,
         obscured_file_handle: &ObscuredFileHandle,
-        reply: &mut DirReply<'_, '_>,
+        _reply: &mut DirReply<'_, '_>,
     ) -> SftpOpResult<()> {
         log::error!(
             "SftpServer ReadDir operation not defined: handle = {:?}",
@@ -86,20 +86,22 @@ pub trait SftpServer<'a> {
     }
 }
 
+// TODO: Define this
 pub struct ReadReply<'g, 'a> {
     chan: ChanOut<'g, 'a>,
 }
 
 impl<'g, 'a> ReadReply<'g, 'a> {
-    pub fn reply(self, data: &[u8]) {}
+    pub fn reply(self, _data: &[u8]) {}
 }
 
+// TODO: Define this
 pub struct DirReply<'g, 'a> {
     chan: ChanOut<'g, 'a>,
 }
 
 impl<'g, 'a> DirReply<'g, 'a> {
-    pub fn reply(self, data: &[u8]) {}
+    pub fn reply(self, _data: &[u8]) {}
 }
 
 // TODO: Implement correct Channel Out

@@ -5,10 +5,12 @@ use sunset_sftp::{
 
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
+use std::{fs::File, os::unix::fs::FileExt};
 
 struct PrivateFileHandler {
     file_path: String,
     permissions: Option<u32>,
+    file: File,
 }
 
 impl PathFinder for PrivateFileHandler {
@@ -18,18 +20,16 @@ impl PathFinder for PrivateFileHandler {
 }
 
 pub struct DemoSftpServer {
-    user_path: String,
+    base_path: String,
     handlers_manager: HandleManager<PrivateFileHandler>,
 }
 
 impl DemoSftpServer {
-    pub fn new(user: String) -> Self {
-        DemoSftpServer {
-            user_path: format!("/{}/", user.clone()),
-            handlers_manager: HandleManager::new(),
-        }
+    pub fn new(base_path: String) -> Self {
+        DemoSftpServer { base_path, handlers_manager: HandleManager::new() }
     }
 }
+
 impl SftpServer<'_> for DemoSftpServer {
     // Mocking an Open operation. Will not check for permissions
     fn open(
@@ -44,11 +44,31 @@ impl SftpServer<'_> for DemoSftpServer {
             return Err(StatusCode::SSH_FX_PERMISSION_DENIED);
         }
 
+        let poxit_attr = attrs
+            .permissions
+            .as_ref()
+            .ok_or(StatusCode::SSH_FX_PERMISSION_DENIED)?;
+        let can_write = poxit_attr & 0o222 > 0;
+        let can_read = poxit_attr & 0o444 > 0;
+        debug!(
+            "File open for read/write access: can_read={:?}, can_write={:?}",
+            can_read, can_write
+        );
+
+        let file = File::options()
+            .read(can_read)
+            .write(can_write)
+            .create(true)
+            .open(filename)
+            .map_err(|_| StatusCode::SSH_FX_FAILURE)?;
+
         let fh = self.handlers_manager.create_handle(PrivateFileHandler {
             file_path: filename.into(),
             permissions: attrs.permissions,
+            file,
         });
-        warn!(
+
+        debug!(
             "Filename \"{:?}\" will have the obscured file handle: {:?}",
             filename, fh
         );
@@ -59,7 +79,7 @@ impl SftpServer<'_> for DemoSftpServer {
     fn realpath(&mut self, dir: &str) -> SftpOpResult<Name<'_>> {
         debug!("finding path for: {:?}", dir);
         Ok(Name(vec![NameEntry {
-            filename: Filename::from(self.user_path.as_str()),
+            filename: Filename::from(self.base_path.as_str()),
             _longname: Filename::from(""),
             attrs: Attrs {
                 size: None,
@@ -84,6 +104,7 @@ impl SftpServer<'_> for DemoSftpServer {
                 "SftpServer Close operation on {:?} was successful",
                 handle.file_path
             );
+            drop(handle.file); // Not really required but illustrative
             Ok(())
         } else {
             error!(
@@ -113,13 +134,27 @@ impl SftpServer<'_> for DemoSftpServer {
             return Err(StatusCode::SSH_FX_PERMISSION_DENIED);
         };
 
-        log::debug!(
+        log::trace!(
             "SftpServer Write operation: handle = {:?}, filepath = {:?}, offset = {:?}, buf = {:?}",
             obscured_file_handle,
             private_file_handle.file_path,
             offset,
             String::from_utf8(buf.to_vec())
         );
+        let bytes_written = private_file_handle
+            .file
+            .write_at(buf, offset)
+            .map_err(|_| StatusCode::SSH_FX_FAILURE)?;
+
+        log::debug!(
+            "SftpServer Write operation: handle = {:?}, filepath = {:?}, offset = {:?}, buffer length = {:?}, bytes written = {:?}",
+            obscured_file_handle,
+            private_file_handle.file_path,
+            offset,
+            buf.len(),
+            bytes_written
+        );
+
         Ok(())
     }
 

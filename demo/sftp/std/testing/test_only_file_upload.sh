@@ -32,7 +32,7 @@ put ./64kB_random
 bye
 EOF
 
-
+diff ./64kB_random ./out/64kB_random
 if [ $? -eq 0 ]; then
     echo "PASS"
 else
@@ -41,5 +41,6 @@ fi
 
 echo "Cleaning up local files..."
 rm -f ./*_random
+rm -f ./out/*_random
 
 echo "Upload test completed."
