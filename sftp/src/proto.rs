@@ -15,7 +15,7 @@ pub const SFTP_MINIMUM_PACKET_LEN: usize = 9;
 /// SFTP packets have the packet type after a u32 length field
 pub const SFTP_FIELD_ID_INDEX: usize = 4;
 /// SFTP packets ID length is 1 byte
-pub const SFTP_FIELD_ID_LEN: usize = 1;
+// pub const SFTP_FIELD_ID_LEN: usize = 1;
 /// SFTP packets start with the length field
 pub const SFTP_FIELD_LEN_INDEX: usize = 0;
 /// SFTP packets length field us u32
@@ -24,13 +24,13 @@ pub const SFTP_FIELD_LEN_LENGTH: usize = 4;
 // SSH_FXP_WRITE SFTP Packet definition used to decode long packets that do not fit in one buffer
 
 /// SFTP SSH_FXP_WRITE Packet cannot be shorter than this (len:4+pnum:1+rid:4+hand:4+0+data:4+0 bytes = 17 bytes) [draft-ietf-secsh-filexfer-02](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#autoid-10)
-pub const SFTP_MINIMUM_WRITE_PACKET_LEN: usize = 17;
+// pub const SFTP_MINIMUM_WRITE_PACKET_LEN: usize = 17;
 
 /// SFTP SSH_FXP_WRITE Packet request id field index  [draft-ietf-secsh-filexfer-02](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#autoid-10)
 pub const SFTP_WRITE_REQID_INDEX: usize = 5;
 
 /// SFTP SSH_FXP_WRITE Packet handle field index  [draft-ietf-secsh-filexfer-02](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#autoid-10)
-pub const SFTP_WRITE_HANDLE_INDEX: usize = 9;
+// pub const SFTP_WRITE_HANDLE_INDEX: usize = 9;
 
 // TODO is utf8 enough, or does this need to be an opaque binstring?
 #[derive(Debug, SSHEncode, SSHDecode)]

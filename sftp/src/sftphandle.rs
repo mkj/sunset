@@ -20,7 +20,6 @@ use std::usize;
 struct PartialWriteRequestTracker {
     req_id: ReqId,
     obscure_file_handle: ObscuredFileHandle, // TODO: Change the file handle in SftpServer functions signature so it has a sort fixed length handle.
-    data_len: u32,
     remain_data_len: u32,
     remain_data_offset: u64,
 }
@@ -29,18 +28,15 @@ impl PartialWriteRequestTracker {
     pub fn new(
         req_id: ReqId,
         obscure_file_handle: ObscuredFileHandle,
-        data_len: u32,
         remain_data_len: u32,
         remain_data_offset: u64,
     ) -> WireResult<Self> {
-        let mut ret = PartialWriteRequestTracker {
+        Ok(PartialWriteRequestTracker {
             req_id,
             obscure_file_handle: obscure_file_handle,
-            data_len,
             remain_data_len,
             remain_data_offset,
-        };
-        Ok(ret)
+        })
     }
 
     pub fn get_file_handle(&self) -> ObscuredFileHandle {
@@ -100,25 +96,6 @@ impl<'de> SftpSource<'de> {
         }
     }
 
-    /// Peaks the buffer for packet length. This does not advance the reading index
-    ///
-    /// Useful to observe the packet fields in special conditions where a `dec(s)` would fail
-    ///
-    /// **Warning**: will only work in well formed packets, in other case the result will contain garbage
-    fn peak_packet_len(&self) -> WireResult<u32> {
-        if self.buffer.len() < SFTP_MINIMUM_PACKET_LEN {
-            Err(WireError::PacketWrong)
-        } else {
-            let mut raw_bytes = [0u8; 4];
-            raw_bytes.copy_from_slice(
-                &self.buffer[SFTP_FIELD_LEN_INDEX
-                    ..SFTP_FIELD_LEN_INDEX + SFTP_FIELD_LEN_LENGTH],
-            );
-
-            Ok(u32::from_be_bytes(raw_bytes))
-        }
-    }
-
     /// Assuming that the buffer contains a Write request packet initial bytes, Peaks the buffer for the handle length. This does not advance the reading index
     ///
     /// Useful to observe the packet fields in special conditions where a `dec(s)` would fail
@@ -164,7 +141,6 @@ impl<'de> SftpSource<'de> {
                 req_id,
                 ObscuredFileHandle::from_filehandle(&file_handle)
                     .ok_or(WireError::BadString)?,
-                data_len,
                 remain_data_len,
                 remain_data_offset,
             )?;
@@ -229,38 +205,28 @@ impl<'g> SSHSink for SftpSink<'g> {
 
 //#[derive(Debug, Clone)]
 pub struct SftpHandler<'a> {
+    /// The local SFTP File server implementing the basic SFTP requests defined by `SftpServer`
     file_server: &'a mut dyn SftpServer<'a>,
-    ///
-    buffer_in_len: usize,
+
     /// Once the client and the server have verified the agreed SFTP version the session is initialized
     initialized: bool,
-    // /// Use to process SFTP packets that have been received partially and the remaining is expected in successive buffers
-    // long_packet: bool,
+
     /// Use to process SFTP Write packets that have been received partially and the remaining is expected in successive buffers  
     partial_write_request_tracker: Option<PartialWriteRequestTracker>,
 }
 
 impl<'a> SftpHandler<'a> {
-    pub fn new(
-        file_server: &'a mut impl SftpServer<'a>,
-        buffer_len: usize, // max_file_handlers: u32
-    ) -> Self {
-        if buffer_len < 256 {
-            warn!(
-                "Buffer length too small, must be at least 256 bytes. You are in uncharted territory"
-            )
-        }
+    pub fn new(file_server: &'a mut impl SftpServer<'a>) -> Self {
         SftpHandler {
             file_server,
-            buffer_in_len: buffer_len,
-            // long_packet: false,
+
             initialized: false,
             partial_write_request_tracker: None,
         }
     }
 
     /// Decodes the buffer_in request, process the request delegating operations to an Struct implementing SftpServer,
-    /// serialises an answer in buffer_out and return the length usedd in buffer_out
+    /// serializes an answer in buffer_out and return the length used in buffer_out
     pub async fn process(
         &mut self,
         buffer_in: &[u8],
