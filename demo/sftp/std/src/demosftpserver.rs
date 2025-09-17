@@ -1,22 +1,32 @@
-use sunset::sshwire::BinString;
 use sunset_sftp::{
-    Attrs, DirReply, FileHandle, Filename, Name, NameEntry, ReadReply, SftpOpResult,
-    SftpServer, StatusCode,
+    Attrs, DirReply, Filename, HandleManager, Name, NameEntry, ObscuredFileHandle,
+    PathFinder, ReadReply, SftpOpResult, SftpServer, StatusCode,
 };
 
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
 
+struct PrivateFileHandler {
+    file_path: String,
+    permissions: Option<u32>,
+}
+
+impl PathFinder for PrivateFileHandler {
+    fn matches_path(&self, path: &str) -> bool {
+        self.file_path.as_str().eq_ignore_ascii_case(path)
+    }
+}
+
 pub struct DemoSftpServer {
-    valid_handlers: Vec<String>, // TODO: Obscure the handlers
     user_path: String,
+    handlers_manager: HandleManager<PrivateFileHandler>,
 }
 
 impl DemoSftpServer {
     pub fn new(user: String) -> Self {
         DemoSftpServer {
-            valid_handlers: vec![],
             user_path: format!("/{}/", user.clone()),
+            handlers_manager: HandleManager::new(),
         }
     }
 }
@@ -25,18 +35,24 @@ impl SftpServer<'_> for DemoSftpServer {
     fn open(
         &mut self,
         filename: &str,
-        _attrs: &Attrs,
-    ) -> SftpOpResult<FileHandle<'_>> {
-        if self.valid_handlers.contains(&filename.to_string()) {
+        attrs: &Attrs,
+    ) -> SftpOpResult<ObscuredFileHandle> {
+        debug!("Open file: filename = {:?}, attributes = {:?}", filename, attrs);
+
+        if self.handlers_manager.is_open(filename) {
             warn!("File {:?} already open, won't allow it", filename);
             return Err(StatusCode::SSH_FX_PERMISSION_DENIED);
         }
 
-        self.valid_handlers.push(filename.to_string());
+        let fh = self.handlers_manager.create_handle(PrivateFileHandler {
+            file_path: filename.into(),
+            permissions: attrs.permissions,
+        });
+        warn!(
+            "Filename \"{:?}\" will have the obscured file handle: {:?}",
+            filename, fh
+        );
 
-        let fh = FileHandle(BinString(
-            self.valid_handlers.last().expect("just pushed an element").as_bytes(),
-        ));
         Ok(fh)
     }
 
@@ -57,73 +73,83 @@ impl SftpServer<'_> for DemoSftpServer {
         }]))
     }
 
-    fn close(&mut self, handle: &FileHandle) -> SftpOpResult<()> {
-        let initial_count = self.valid_handlers.len();
-        if initial_count == 0 {
-            log::error!(
-                "SftpServer Close operation with no handles stored: handle = {:?}",
-                handle
-            );
-            return Err(StatusCode::SSH_FX_FAILURE);
-        }
-
-        let filename =
-            String::from_utf8(handle.0.as_ref().to_vec()).unwrap_or("".into());
-
-        if !self.valid_handlers.contains(&filename) {
-            log::error!(
-                "SftpServer Close operation could not match an stored handler: handle = {:?}",
-                handle
-            );
-            return Err(StatusCode::SSH_FX_FAILURE);
-        }
-        self.valid_handlers.retain(|handler| handler.ne(&filename));
-        log::debug!("SftpServer Close operation on {:?} was successful", filename);
-        Ok(())
-    }
-
-    fn read(
+    fn close(
         &mut self,
-        handle: &FileHandle,
-        offset: u64,
-        reply: &mut ReadReply<'_, '_>,
+        obscure_file_handle: &ObscuredFileHandle,
     ) -> SftpOpResult<()> {
-        log::error!(
-            "SftpServer Read operation not defined: handle = {:?}, offset = {:?}",
-            handle,
-            offset
-        );
-        Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
+        if let Some(handle) =
+            self.handlers_manager.remove_handle(obscure_file_handle)
+        {
+            debug!(
+                "SftpServer Close operation on {:?} was successful",
+                handle.file_path
+            );
+            Ok(())
+        } else {
+            error!(
+                "SftpServer Close operation on handle {:?} failed",
+                obscure_file_handle
+            );
+            Err(StatusCode::SSH_FX_FAILURE)
+        }
     }
 
     fn write(
         &mut self,
-        handle: &FileHandle,
+        obscured_file_handle: &ObscuredFileHandle,
         offset: u64,
         buf: &[u8],
     ) -> SftpOpResult<()> {
+        let private_file_handle = self
+            .handlers_manager
+            .get_handle_value_as_ref(obscured_file_handle)
+            .ok_or(StatusCode::SSH_FX_FAILURE)?;
+
+        let permissions_poxit = (private_file_handle
+            .permissions
+            .ok_or(StatusCode::SSH_FX_PERMISSION_DENIED))?;
+
+        if (permissions_poxit & 0o222) == 0 {
+            return Err(StatusCode::SSH_FX_PERMISSION_DENIED);
+        };
+
         log::debug!(
-            "SftpServer Write operation: handle = {:?}, offset = {:?}, buf = {:?}",
-            handle,
+            "SftpServer Write operation: handle = {:?}, filepath = {:?}, offset = {:?}, buf = {:?}",
+            obscured_file_handle,
+            private_file_handle.file_path,
             offset,
             String::from_utf8(buf.to_vec())
         );
         Ok(())
     }
 
-    fn opendir(&mut self, dir: &str) -> SftpOpResult<FileHandle<'_>> {
+    fn read(
+        &mut self,
+        obscured_file_handle: &ObscuredFileHandle,
+        offset: u64,
+        _reply: &mut ReadReply<'_, '_>,
+    ) -> SftpOpResult<()> {
+        log::error!(
+            "SftpServer Read operation not defined: handle = {:?}, offset = {:?}",
+            obscured_file_handle,
+            offset
+        );
+        Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
+    }
+
+    fn opendir(&mut self, dir: &str) -> SftpOpResult<ObscuredFileHandle> {
         log::error!("SftpServer OpenDir operation not defined: dir = {:?}", dir);
         Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
     }
 
     fn readdir(
         &mut self,
-        handle: &FileHandle,
-        reply: &mut DirReply<'_, '_>,
+        obscured_file_handle: &ObscuredFileHandle,
+        _reply: &mut DirReply<'_, '_>,
     ) -> SftpOpResult<()> {
         log::error!(
             "SftpServer ReadDir operation not defined: handle = {:?}",
-            handle
+            obscured_file_handle
         );
         Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
     }

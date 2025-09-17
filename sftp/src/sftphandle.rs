@@ -1,10 +1,10 @@
-use crate::FileHandle;
 use crate::proto::{
     self, InitVersionLowest, ReqId, SFTP_FIELD_ID_INDEX, SFTP_FIELD_LEN_INDEX,
     SFTP_FIELD_LEN_LENGTH, SFTP_MINIMUM_PACKET_LEN, SFTP_VERSION,
     SFTP_WRITE_REQID_INDEX, SftpNum, SftpPacket, Status, StatusCode,
 };
-use crate::sftpserver::{FILE_HANDLE_MAX_LEN, SftpServer};
+use crate::sftpserver::SftpServer;
+use crate::{FileHandle, ObscuredFileHandle};
 
 use sunset::sshwire::{
     BinString, SSHDecode, SSHSink, SSHSource, WireError, WireResult,
@@ -19,8 +19,7 @@ use std::usize;
 #[derive(Debug)]
 struct PartialWriteRequestTracker {
     req_id: ReqId,
-    file_handle: [u8; FILE_HANDLE_MAX_LEN], // TODO: Change the file handle in SftpServer functions signature so it has a sort fixed length handle.
-    file_handle_len: usize,
+    obscure_file_handle: ObscuredFileHandle, // TODO: Change the file handle in SftpServer functions signature so it has a sort fixed length handle.
     data_len: u32,
     remain_data_len: u32,
     remain_data_offset: u64,
@@ -29,31 +28,23 @@ struct PartialWriteRequestTracker {
 impl PartialWriteRequestTracker {
     pub fn new(
         req_id: ReqId,
-        file_handle: &FileHandle<'_>,
+        obscure_file_handle: ObscuredFileHandle,
         data_len: u32,
         remain_data_len: u32,
         remain_data_offset: u64,
     ) -> WireResult<Self> {
-        let handle_data = file_handle.0.as_ref();
-        if handle_data.len() > FILE_HANDLE_MAX_LEN {
-            return Err(WireError::PacketWrong); // Handle too large
-        }
         let mut ret = PartialWriteRequestTracker {
             req_id,
-            file_handle: [0u8; FILE_HANDLE_MAX_LEN],
-            file_handle_len: handle_data.len(),
+            obscure_file_handle: obscure_file_handle,
             data_len,
             remain_data_len,
             remain_data_offset,
         };
-        ret.file_handle[..ret.file_handle_len]
-            .copy_from_slice(file_handle.0.as_ref());
-
         Ok(ret)
     }
 
-    pub fn get_file_handle(&self) -> FileHandle<'_> {
-        FileHandle(BinString(&self.file_handle[..self.file_handle_len]))
+    pub fn get_file_handle(&self) -> ObscuredFileHandle {
+        self.obscure_file_handle.clone()
     }
 }
 
@@ -136,7 +127,7 @@ impl<'de> SftpSource<'de> {
     fn get_packet_partial_write_content_and_tracker(
         &mut self,
     ) -> WireResult<(
-        FileHandle<'de>,
+        ObscuredFileHandle,
         ReqId,
         u64,
         BinString<'de>,
@@ -149,6 +140,11 @@ impl<'de> SftpSource<'de> {
             self.index = SFTP_WRITE_REQID_INDEX;
             let req_id = ReqId::dec(self)?;
             let file_handle = FileHandle::dec(self)?;
+
+            let obscured_file_handle =
+                ObscuredFileHandle::from_binstring(&file_handle.0)
+                    .ok_or(WireError::BadString)?;
+
             let offset = u64::dec(self)?;
             let data_len = u32::dec(self)?;
 
@@ -166,13 +162,14 @@ impl<'de> SftpSource<'de> {
 
             let write_tracker = PartialWriteRequestTracker::new(
                 req_id,
-                &file_handle,
+                ObscuredFileHandle::from_filehandle(&file_handle)
+                    .ok_or(WireError::BadString)?,
                 data_len,
                 remain_data_len,
                 remain_data_offset,
             )?;
 
-            Ok((file_handle, req_id, offset, data_in_buffer, write_tracker))
+            Ok((obscured_file_handle, req_id, offset, data_in_buffer, write_tracker))
         }
     }
 
@@ -283,11 +280,12 @@ impl<'a> SftpHandler<'a> {
                 write_tracker
             );
             if in_len > write_tracker.remain_data_len as usize {
+                // TODO: Investigate if we are receiving one packet and the beginning of the next one
                 error!(
                     "There is too much data in the buffer! {:?} > than max expected {:?}",
                     in_len, write_tracker.remain_data_len
                 );
-                return Err(WireError::PacketWrong); // TODO: Handle this error instead of failing
+                return Err(WireError::PacketWrong); // TODO: Handle this error instead of failing.
             }
 
             let current_write_offset = write_tracker.remain_data_offset;
@@ -299,16 +297,16 @@ impl<'a> SftpHandler<'a> {
             write_tracker.remain_data_offset += data_in_buffer_len as u64;
             write_tracker.remain_data_len -= data_in_buffer_len;
 
-            let file_handle = write_tracker.get_file_handle();
+            let obscure_file_handle = write_tracker.get_file_handle();
             debug!(
-                "Processing successive chunks of a long write packet. Writing : file_handle = {:?}, write_offset = {:?}, data = {:?}, data remaining = {:?}",
-                file_handle,
+                "Processing successive chunks of a long write packet. Writing : obscure_file_handle = {:?}, write_offset = {:?}, data = {:?}, data remaining = {:?}",
+                obscure_file_handle,
                 current_write_offset,
                 data_in_buffer,
                 write_tracker.remain_data_len
             );
             match self.file_server.write(
-                &file_handle,
+                &obscure_file_handle,
                 current_write_offset,
                 data_in_buffer.as_ref(),
             ) {
@@ -374,7 +372,7 @@ impl<'a> SftpHandler<'a> {
                                 );
                                 trace!(
                                     "handle = {:?}, req_id = {:?}, offset = {:?}, data_in_buffer = {:?}, write_tracker = {:?}",
-                                    file_handle,
+                                    file_handle, // This file_handle will be the one facilitated by the demosftpserver, this is, an obscured file handle
                                     req_id,
                                     offset,
                                     data_in_buffer,
@@ -405,7 +403,7 @@ impl<'a> SftpHandler<'a> {
                                     ReqId(u32::MAX),
                                     "Unsupported Request: Too long",
                                     &mut sink,
-                                );
+                                )?;
                             }
                         };
                     }
@@ -460,10 +458,12 @@ impl<'a> SftpHandler<'a> {
             }
             SftpPacket::Open(req_id, open) => {
                 match self.file_server.open(open.filename.as_str()?, &open.attrs) {
-                    Ok(handle) => {
+                    Ok(obscured_file_handle) => {
                         let response = SftpPacket::Handle(
                             req_id,
-                            proto::Handle { handle: handle.into() },
+                            proto::Handle {
+                                handle: obscured_file_handle.to_filehandle(),
+                            },
                         );
                         response.encode_response(sink)?;
                         info!("Sending '{:?}'", response);
@@ -476,7 +476,8 @@ impl<'a> SftpHandler<'a> {
             }
             SftpPacket::Write(req_id, write) => {
                 match self.file_server.write(
-                    &write.handle,
+                    &ObscuredFileHandle::from_filehandle(&write.handle)
+                        .ok_or(WireError::BadString)?,
                     write.offset,
                     write.data.as_ref(),
                 ) {
@@ -488,7 +489,10 @@ impl<'a> SftpHandler<'a> {
                 };
             }
             SftpPacket::Close(req_id, close) => {
-                match self.file_server.close(&close.handle) {
+                match self.file_server.close(
+                    &ObscuredFileHandle::from_filehandle(&close.handle)
+                        .ok_or(WireError::BadString)?,
+                ) {
                     Ok(_) => push_ok(req_id, sink)?,
                     Err(e) => {
                         error!("SFTP Close thrown: {:?}", e);
