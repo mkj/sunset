@@ -1,3 +1,4 @@
+mod obscured_file_handle;
 mod proto;
 mod sftphandle;
 mod sftpserver;
@@ -8,6 +9,8 @@ pub use sftpserver::SftpOpResult;
 pub use sftpserver::SftpServer;
 
 pub use sftphandle::SftpHandler;
+
+pub use obscured_file_handle::{HandleManager, ObscuredFileHandle, PathFinder};
 
 pub use proto::Attrs;
 pub use proto::FileHandle;

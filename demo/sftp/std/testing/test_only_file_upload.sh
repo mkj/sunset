@@ -26,9 +26,9 @@ echo "============="
 # put ./4kB_random
 # put ./16kB_random
 # put ./1MB_random
+# put ./MaxMaybe_random
 sftp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR ${REMOTE_USER}@${REMOTE_HOST} << EOF
 put ./64kB_random
-put ./MaxMaybe_random
 bye
 EOF
 

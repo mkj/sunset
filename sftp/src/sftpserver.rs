@@ -1,12 +1,9 @@
-use crate::proto::{Attrs, FileHandle, Name, StatusCode};
+use crate::{
+    ObscuredFileHandle,
+    proto::{Attrs, Name, StatusCode},
+};
 
 use core::marker::PhantomData;
-
-// TODO: enforce it and do checks for the FileHandle so it properly obscure the file path and user.
-//       Hint: In stateful server this can be done with a hash function and a dictionary
-/// Used during storage of file handle data for long SFTP Write requests
-/// Must be observed by SftpServer handle implementations
-pub const FILE_HANDLE_MAX_LEN: usize = 256;
 
 pub type SftpOpResult<T> = core::result::Result<T, StatusCode>;
 
@@ -15,14 +12,12 @@ pub type SftpOpResult<T> = core::result::Result<T, StatusCode>;
 /// returns `SSH_FX_OP_UNSUPPORTED`. Common operations must be implemented,
 /// but may return `Err(StatusCode::SSH_FX_OP_UNSUPPORTED)`.
 pub trait SftpServer<'a> {
-    // type Handle<'a>: Into<FileHandle<'a>> + TryFrom<FileHandle<'a>> + Debug + Copy;
-
     /// Opens a file or directory for reading/writing
     fn open(
-        &mut self,
+        &'_ mut self,
         filename: &str,
         attrs: &Attrs,
-    ) -> SftpOpResult<FileHandle<'_>> {
+    ) -> SftpOpResult<ObscuredFileHandle> {
         log::error!(
             "SftpServer Open operation not defined: filename = {:?}, attrs = {:?}",
             filename,
@@ -32,7 +27,7 @@ pub trait SftpServer<'a> {
     }
 
     /// Close either a file or directory handle
-    fn close(&mut self, handle: &FileHandle) -> SftpOpResult<()> {
+    fn close(&mut self, handle: &ObscuredFileHandle) -> SftpOpResult<()> {
         log::error!("SftpServer Close operation not defined: handle = {:?}", handle);
 
         Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
@@ -40,13 +35,13 @@ pub trait SftpServer<'a> {
 
     fn read(
         &mut self,
-        handle: &FileHandle,
+        obscured_file_handle: &ObscuredFileHandle,
         offset: u64,
         reply: &mut ReadReply<'_, '_>,
     ) -> SftpOpResult<()> {
         log::error!(
             "SftpServer Read operation not defined: handle = {:?}, offset = {:?}",
-            handle,
+            obscured_file_handle,
             offset
         );
         Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
@@ -54,32 +49,32 @@ pub trait SftpServer<'a> {
 
     fn write(
         &mut self,
-        handle: &FileHandle,
+        obscured_file_handle: &ObscuredFileHandle,
         offset: u64,
         buf: &[u8],
     ) -> SftpOpResult<()> {
         log::error!(
             "SftpServer Write operation: handle = {:?}, offset = {:?}, buf = {:?}",
-            handle,
+            obscured_file_handle,
             offset,
             String::from_utf8(buf.to_vec())
         );
         Ok(())
     }
 
-    fn opendir(&mut self, dir: &str) -> SftpOpResult<FileHandle<'_>> {
+    fn opendir(&mut self, dir: &str) -> SftpOpResult<ObscuredFileHandle> {
         log::error!("SftpServer OpenDir operation not defined: dir = {:?}", dir);
         Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
     }
 
     fn readdir(
         &mut self,
-        handle: &FileHandle,
+        obscured_file_handle: &ObscuredFileHandle,
         reply: &mut DirReply<'_, '_>,
     ) -> SftpOpResult<()> {
         log::error!(
             "SftpServer ReadDir operation not defined: handle = {:?}",
-            handle
+            obscured_file_handle
         );
         Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
     }
