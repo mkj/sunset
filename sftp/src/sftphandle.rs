@@ -1,7 +1,7 @@
 use crate::proto::{
-    self, InitVersionLowest, ReqId, SFTP_FIELD_ID_INDEX, SFTP_FIELD_LEN_INDEX,
-    SFTP_FIELD_LEN_LENGTH, SFTP_MINIMUM_PACKET_LEN, SFTP_VERSION,
-    SFTP_WRITE_REQID_INDEX, SftpNum, SftpPacket, Status, StatusCode,
+    self, InitVersionLowest, ReqId, SFTP_FIELD_ID_INDEX, SFTP_FIELD_LEN_LENGTH,
+    SFTP_MINIMUM_PACKET_LEN, SFTP_VERSION, SFTP_WRITE_REQID_INDEX, SftpNum,
+    SftpPacket, Status, StatusCode,
 };
 use crate::sftpserver::SftpServer;
 use crate::{FileHandle, ObscuredFileHandle};
@@ -96,6 +96,24 @@ impl<'de> SftpSource<'de> {
         }
     }
 
+    /// Peaks the buffer for packet type adding an offset. This does not advance the reading index
+    ///
+    /// Useful to observe the packet fields in special conditions where a `dec(s)` would fail
+    ///
+    /// **Warning**: This might only work in special conditions, such as those where the , in other case the result will contain garbage
+    fn peak_packet_type_with_offset(
+        &self,
+        starting_offset: usize,
+    ) -> WireResult<SftpNum> {
+        // const SFTP_ID_BUFFER_INDEX: usize = 4; // All SFTP packet have the packet type after a u32 length field
+        // const SFTP_MINIMUM_LENGTH: usize = 9; // Corresponds to a minimal SSH_FXP_INIT packet
+        if self.buffer.len() < SFTP_MINIMUM_PACKET_LEN {
+            Err(WireError::PacketWrong)
+        } else {
+            Ok(SftpNum::from(self.buffer[starting_offset + SFTP_FIELD_ID_INDEX]))
+        }
+    }
+
     /// Assuming that the buffer contains a Write request packet initial bytes, Peaks the buffer for the handle length. This does not advance the reading index
     ///
     /// Useful to observe the packet fields in special conditions where a `dec(s)` would fail
@@ -149,11 +167,18 @@ impl<'de> SftpSource<'de> {
         }
     }
 
-    /// Used to decode the whole SSHSource as a single BinString
+    /// Used to decode the whole SSHSource as a single BinString ignoring the len field
     ///
     /// It will not use the first four bytes as u32 for length, instead it will use the length of the data received and use it to set the length of the returned BinString.
     fn dec_all_as_binstring(&mut self) -> WireResult<BinString<'_>> {
         Ok(BinString(self.take(self.buffer.len())?))
+    }
+
+    /// Used to decode a slice of SSHSource as a single BinString ignoring the len field
+    ///
+    /// It will not use the first four bytes as u32 for length, instead it will use the length of the data received and use it to set the length of the returned BinString.
+    fn dec_as_binstring(&mut self, len: usize) -> WireResult<BinString<'_>> {
+        Ok(BinString(self.take(len)?))
     }
 }
 
@@ -242,39 +267,44 @@ impl<'a> SftpHandler<'a> {
 
         if let Some(mut write_tracker) = self.partial_write_request_tracker.take() {
             trace!(
-                "Processing successive chunks of a long write packet . Stored data: {:?}",
+                "Processing successive chunks of a long write packet. Stored data: {:?}",
                 write_tracker
             );
+
+            let usable_data = in_len.min(write_tracker.remain_data_len as usize);
+
             if in_len > write_tracker.remain_data_len as usize {
                 // TODO: Investigate if we are receiving one packet and the beginning of the next one
+                let sftp_num = source.peak_packet_type_with_offset(
+                    write_tracker.remain_data_len as usize,
+                )?;
                 error!(
-                    "There is too much data in the buffer! {:?} > than max expected {:?}",
-                    in_len, write_tracker.remain_data_len
+                    "There is too much data in the buffer! {:?} > than expected {:?}. There is a trailing packet in buffer: {:?}",
+                    in_len, write_tracker.remain_data_len, sftp_num
                 );
-                return Err(WireError::PacketWrong); // TODO: Handle this error instead of failing.
-            }
+            };
 
-            let current_write_offset = write_tracker.remain_data_offset;
-            let data_in_buffer = source.dec_all_as_binstring()?;
+            let data_segment = source.dec_as_binstring(usable_data)?;
 
             // TODO: Do proper casting with checks u32::try_from(data_in_buffer.0.len())
-            let data_in_buffer_len = data_in_buffer.0.len() as u32;
+            let data_segment_len = data_segment.0.len() as u32;
 
-            write_tracker.remain_data_offset += data_in_buffer_len as u64;
-            write_tracker.remain_data_len -= data_in_buffer_len;
+            let current_write_offset = write_tracker.remain_data_offset;
+            write_tracker.remain_data_offset += data_segment_len as u64;
+            write_tracker.remain_data_len -= data_segment_len;
 
             let obscure_file_handle = write_tracker.get_file_handle();
             debug!(
-                "Processing successive chunks of a long write packet. Writing : obscure_file_handle = {:?}, write_offset = {:?}, data = {:?}, data remaining = {:?}",
+                "Processing successive chunks of a long write packet. Writing : obscure_file_handle = {:?}, write_offset = {:?}, data_segment = {:?}, data remaining = {:?}",
                 obscure_file_handle,
                 current_write_offset,
-                data_in_buffer,
+                data_segment,
                 write_tracker.remain_data_len
             );
             match self.file_server.write(
                 &obscure_file_handle,
                 current_write_offset,
-                data_in_buffer.as_ref(),
+                data_segment.as_ref(),
             ) {
                 Ok(_) => {
                     if write_tracker.remain_data_len > 0 {
