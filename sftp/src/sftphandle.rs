@@ -1,14 +1,13 @@
+use crate::OpaqueFileHandle;
 use crate::proto::{
-    self, InitVersionLowest, ReqId, SFTP_FIELD_ID_INDEX, SFTP_FIELD_LEN_LENGTH,
-    SFTP_MINIMUM_PACKET_LEN, SFTP_VERSION, SFTP_WRITE_REQID_INDEX, SftpNum,
+    self, InitVersionLowest, ReqId, SFTP_MINIMUM_PACKET_LEN, SFTP_VERSION, SftpNum,
     SftpPacket, Status, StatusCode,
 };
 use crate::sftpserver::SftpServer;
-use crate::{FileHandle, ObscuredFileHandle};
+use crate::sftpsink::SftpSink;
+use crate::sftpsource::SftpSource;
 
-use sunset::sshwire::{
-    BinString, SSHDecode, SSHSink, SSHSource, WireError, WireResult,
-};
+use sunset::sshwire::{SSHDecode, WireError, WireResult};
 
 use core::u32;
 #[allow(unused_imports)]
@@ -17,17 +16,17 @@ use std::usize;
 
 /// Used to keep record of a long SFTP Write request that does not fit in receiving buffer and requires processing in batches
 #[derive(Debug)]
-struct PartialWriteRequestTracker {
+pub struct PartialWriteRequestTracker<T: OpaqueFileHandle> {
     req_id: ReqId,
-    obscure_file_handle: ObscuredFileHandle, // TODO: Change the file handle in SftpServer functions signature so it has a sort fixed length handle.
+    obscure_file_handle: T,
     remain_data_len: u32,
     remain_data_offset: u64,
 }
 
-impl PartialWriteRequestTracker {
+impl<T: OpaqueFileHandle> PartialWriteRequestTracker<T> {
     pub fn new(
         req_id: ReqId,
-        obscure_file_handle: ObscuredFileHandle,
+        obscure_file_handle: T,
         remain_data_len: u32,
         remain_data_offset: u64,
     ) -> WireResult<Self> {
@@ -39,212 +38,35 @@ impl PartialWriteRequestTracker {
         })
     }
 
-    pub fn get_file_handle(&self) -> ObscuredFileHandle {
+    pub fn get_file_handle(&self) -> T {
         self.obscure_file_handle.clone()
     }
 }
 
-/// SftpSource implements SSHSource and also extra functions to handle some challenges with long SFTP packets in constrained environments
-#[derive(Default, Debug)]
-pub struct SftpSource<'de> {
-    pub buffer: &'de [u8],
-    pub index: usize,
-}
-
-impl<'de> SSHSource<'de> for SftpSource<'de> {
-    // Original take
-    fn take(&mut self, len: usize) -> sunset::sshwire::WireResult<&'de [u8]> {
-        if len + self.index > self.buffer.len() {
-            return Err(WireError::RanOut);
-        }
-        let original_index = self.index;
-        let slice = &self.buffer[self.index..self.index + len];
-        self.index += len;
-        trace!(
-            "slice returned: {:?}. original index {:?}, new index: {:?}",
-            slice, original_index, self.index
-        );
-        Ok(slice)
-    }
-
-    fn remaining(&self) -> usize {
-        self.buffer.len() - self.index
-    }
-
-    fn ctx(&mut self) -> &mut sunset::packets::ParseContext {
-        todo!("Which context for sftp?");
-    }
-}
-
-impl<'de> SftpSource<'de> {
-    pub fn new(buffer: &'de [u8]) -> Self {
-        SftpSource { buffer: buffer, index: 0 }
-    }
-
-    /// Peaks the buffer for packet type. This does not advance the reading index
-    ///
-    /// Useful to observe the packet fields in special conditions where a `dec(s)` would fail
-    ///
-    /// **Warning**: will only work in well formed packets, in other case the result will contain garbage
-    fn peak_packet_type(&self) -> WireResult<SftpNum> {
-        // const SFTP_ID_BUFFER_INDEX: usize = 4; // All SFTP packet have the packet type after a u32 length field
-        // const SFTP_MINIMUM_LENGTH: usize = 9; // Corresponds to a minimal SSH_FXP_INIT packet
-        if self.buffer.len() < SFTP_MINIMUM_PACKET_LEN {
-            Err(WireError::PacketWrong)
-        } else {
-            Ok(SftpNum::from(self.buffer[SFTP_FIELD_ID_INDEX]))
-        }
-    }
-
-    /// Peaks the buffer for packet type adding an offset. This does not advance the reading index
-    ///
-    /// Useful to observe the packet fields in special conditions where a `dec(s)` would fail
-    ///
-    /// **Warning**: This might only work in special conditions, such as those where the , in other case the result will contain garbage
-    fn peak_packet_type_with_offset(
-        &self,
-        starting_offset: usize,
-    ) -> WireResult<SftpNum> {
-        // const SFTP_ID_BUFFER_INDEX: usize = 4; // All SFTP packet have the packet type after a u32 length field
-        // const SFTP_MINIMUM_LENGTH: usize = 9; // Corresponds to a minimal SSH_FXP_INIT packet
-        if self.buffer.len() < SFTP_MINIMUM_PACKET_LEN {
-            Err(WireError::PacketWrong)
-        } else {
-            Ok(SftpNum::from(self.buffer[starting_offset + SFTP_FIELD_ID_INDEX]))
-        }
-    }
-
-    /// Assuming that the buffer contains a Write request packet initial bytes, Peaks the buffer for the handle length. This does not advance the reading index
-    ///
-    /// Useful to observe the packet fields in special conditions where a `dec(s)` would fail
-    ///
-    /// **Warning**: will only work in well formed write packets, in other case the result will contain garbage
-    fn get_packet_partial_write_content_and_tracker(
-        &mut self,
-    ) -> WireResult<(
-        ObscuredFileHandle,
-        ReqId,
-        u64,
-        BinString<'de>,
-        PartialWriteRequestTracker,
-    )> {
-        if self.buffer.len() < SFTP_MINIMUM_PACKET_LEN {
-            Err(WireError::PacketWrong)
-        } else {
-            let prev_index = self.index;
-            self.index = SFTP_WRITE_REQID_INDEX;
-            let req_id = ReqId::dec(self)?;
-            let file_handle = FileHandle::dec(self)?;
-
-            let obscured_file_handle =
-                ObscuredFileHandle::from_binstring(&file_handle.0)
-                    .ok_or(WireError::BadString)?;
-
-            let offset = u64::dec(self)?;
-            let data_len = u32::dec(self)?;
-
-            let data_len_in_buffer = self.buffer.len() - self.index;
-            let data_in_buffer = BinString(self.take(data_len_in_buffer)?);
-
-            self.index = prev_index;
-
-            let remain_data_len = data_len - data_len_in_buffer as u32;
-            let remain_data_offset = offset + data_len_in_buffer as u64;
-            trace!(
-                "Request ID = {:?}, Handle = {:?}, offset = {:?}, data length in buffer = {:?}, data in current buffer {:?} ",
-                req_id, file_handle, offset, data_len_in_buffer, data_in_buffer
-            );
-
-            let write_tracker = PartialWriteRequestTracker::new(
-                req_id,
-                ObscuredFileHandle::from_filehandle(&file_handle)
-                    .ok_or(WireError::BadString)?,
-                remain_data_len,
-                remain_data_offset,
-            )?;
-
-            Ok((obscured_file_handle, req_id, offset, data_in_buffer, write_tracker))
-        }
-    }
-
-    /// Used to decode the whole SSHSource as a single BinString ignoring the len field
-    ///
-    /// It will not use the first four bytes as u32 for length, instead it will use the length of the data received and use it to set the length of the returned BinString.
-    fn dec_all_as_binstring(&mut self) -> WireResult<BinString<'_>> {
-        Ok(BinString(self.take(self.buffer.len())?))
-    }
-
-    /// Used to decode a slice of SSHSource as a single BinString ignoring the len field
-    ///
-    /// It will not use the first four bytes as u32 for length, instead it will use the length of the data received and use it to set the length of the returned BinString.
-    fn dec_as_binstring(&mut self, len: usize) -> WireResult<BinString<'_>> {
-        Ok(BinString(self.take(len)?))
-    }
-}
-
-#[derive(Default)]
-pub struct SftpSink<'g> {
-    pub buffer: &'g mut [u8],
-    index: usize,
-}
-
-impl<'g> SftpSink<'g> {
-    pub fn new(s: &'g mut [u8]) -> Self {
-        SftpSink { buffer: s, index: SFTP_FIELD_LEN_LENGTH }
-    }
-
-    /// Finalise the buffer by prepending the payload size and returning
-    ///
-    /// Returns the final index in the buffer as a reference for the space used
-    pub fn finalize(&mut self) -> usize {
-        if self.index <= SFTP_FIELD_LEN_LENGTH {
-            warn!("SftpSink trying to terminate it before pushing data");
-            return 0;
-        } // size is 0
-        let used_size = (self.index - SFTP_FIELD_LEN_LENGTH) as u32;
-
-        used_size
-            .to_be_bytes()
-            .iter()
-            .enumerate()
-            .for_each(|(i, v)| self.buffer[i] = *v);
-
-        self.index
-    }
-}
-
-impl<'g> SSHSink for SftpSink<'g> {
-    fn push(&mut self, v: &[u8]) -> sunset::sshwire::WireResult<()> {
-        if v.len() + self.index > self.buffer.len() {
-            return Err(WireError::NoRoom);
-        }
-        trace!("Sink index: {:}", self.index);
-        v.iter().for_each(|val| {
-            self.buffer[self.index] = *val;
-            self.index += 1;
-        });
-        trace!("Sink new index: {:}", self.index);
-        Ok(())
-    }
-}
-
 //#[derive(Debug, Clone)]
-pub struct SftpHandler<'a> {
+pub struct SftpHandler<'a, T, S>
+where
+    T: OpaqueFileHandle,
+    S: SftpServer<'a, T>,
+{
     /// The local SFTP File server implementing the basic SFTP requests defined by `SftpServer`
-    file_server: &'a mut dyn SftpServer<'a>,
+    file_server: &'a mut S,
 
     /// Once the client and the server have verified the agreed SFTP version the session is initialized
     initialized: bool,
 
     /// Use to process SFTP Write packets that have been received partially and the remaining is expected in successive buffers  
-    partial_write_request_tracker: Option<PartialWriteRequestTracker>,
+    partial_write_request_tracker: Option<PartialWriteRequestTracker<T>>,
 }
 
-impl<'a> SftpHandler<'a> {
-    pub fn new(file_server: &'a mut impl SftpServer<'a>) -> Self {
+impl<'a, T, S> SftpHandler<'a, T, S>
+where
+    T: OpaqueFileHandle,
+    S: SftpServer<'a, T>,
+{
+    pub fn new(file_server: &'a mut S) -> Self {
         SftpHandler {
             file_server,
-
             initialized: false,
             partial_write_request_tracker: None,
         }
@@ -274,7 +96,7 @@ impl<'a> SftpHandler<'a> {
             let usable_data = in_len.min(write_tracker.remain_data_len as usize);
 
             if in_len > write_tracker.remain_data_len as usize {
-                // TODO: Investigate if we are receiving one packet and the beginning of the next one
+                // This is because we are receiving one packet and the beginning of the next one
                 let sftp_num = source.peak_packet_type_with_offset(
                     write_tracker.remain_data_len as usize,
                 )?;
@@ -454,11 +276,11 @@ impl<'a> SftpHandler<'a> {
             }
             SftpPacket::Open(req_id, open) => {
                 match self.file_server.open(open.filename.as_str()?, &open.attrs) {
-                    Ok(obscured_file_handle) => {
+                    Ok(opaque_file_handle) => {
                         let response = SftpPacket::Handle(
                             req_id,
                             proto::Handle {
-                                handle: obscured_file_handle.to_filehandle(),
+                                handle: opaque_file_handle.into_file_handle(),
                             },
                         );
                         response.encode_response(sink)?;
@@ -472,8 +294,7 @@ impl<'a> SftpHandler<'a> {
             }
             SftpPacket::Write(req_id, write) => {
                 match self.file_server.write(
-                    &ObscuredFileHandle::from_filehandle(&write.handle)
-                        .ok_or(WireError::BadString)?,
+                    &T::try_from(&write.handle)?,
                     write.offset,
                     write.data.as_ref(),
                 ) {
@@ -485,10 +306,7 @@ impl<'a> SftpHandler<'a> {
                 };
             }
             SftpPacket::Close(req_id, close) => {
-                match self.file_server.close(
-                    &ObscuredFileHandle::from_filehandle(&close.handle)
-                        .ok_or(WireError::BadString)?,
-                ) {
+                match self.file_server.close(&T::try_from(&close.handle)?) {
                     Ok(_) => push_ok(req_id, sink)?,
                     Err(e) => {
                         error!("SFTP Close thrown: {:?}", e);

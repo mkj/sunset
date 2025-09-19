@@ -6,7 +6,10 @@ pub(crate) use sunset_demo_common as demo_common;
 
 use demo_common::{DemoCommon, DemoServer, SSHConfig};
 
-use crate::demosftpserver::DemoSftpServer;
+use crate::{
+    demoopaquefilehandle::DemoOpaqueFileHandle,
+    demosftpserver::{DemoSftpServer, PrivateFileHandler},
+};
 
 use embedded_io_async::{Read, Write};
 
@@ -23,6 +26,8 @@ use embassy_sync::channel::Channel;
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
 
+mod demofilehandlemanager;
+mod demoopaquefilehandle;
 mod demosftpserver;
 
 const NUM_LISTENERS: usize = 4;
@@ -152,7 +157,11 @@ impl DemoServer for StdDemo {
                         "./demo/sftp/std/testing/out/".to_string(),
                     );
 
-                    let mut sftp_handler = SftpHandler::new(&mut file_server);
+                    let mut sftp_handler =
+                        SftpHandler::<
+                            DemoOpaqueFileHandle,
+                            DemoSftpServer<DemoOpaqueFileHandle, PrivateFileHandler>,
+                        >::new(&mut file_server);
                     loop {
                         let lr = stdio.read(&mut buffer_in).await?;
                         trace!("SFTP <---- received: {:?}", &buffer_in[0..lr]);
