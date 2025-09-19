@@ -104,9 +104,9 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
 
     fn close(
         &mut self,
-        obscure_file_handle: &DemoOpaqueFileHandle,
+        opaque_file_handle: &DemoOpaqueFileHandle,
     ) -> SftpOpResult<()> {
-        if let Some(handle) = self.handlers_manager.remove(obscure_file_handle) {
+        if let Some(handle) = self.handlers_manager.remove(opaque_file_handle) {
             debug!(
                 "SftpServer Close operation on {:?} was successful",
                 handle.file_path
@@ -116,7 +116,7 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
         } else {
             error!(
                 "SftpServer Close operation on handle {:?} failed",
-                obscure_file_handle
+                opaque_file_handle
             );
             Err(StatusCode::SSH_FX_FAILURE)
         }
@@ -124,13 +124,13 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
 
     fn write(
         &mut self,
-        obscured_file_handle: &DemoOpaqueFileHandle,
+        opaque_file_handle: &DemoOpaqueFileHandle,
         offset: u64,
         buf: &[u8],
     ) -> SftpOpResult<()> {
         let private_file_handle = self
             .handlers_manager
-            .get_private_as_ref(obscured_file_handle)
+            .get_private_as_ref(opaque_file_handle)
             .ok_or(StatusCode::SSH_FX_FAILURE)?;
 
         let permissions_poxit = (private_file_handle
@@ -143,7 +143,7 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
 
         log::trace!(
             "SftpServer Write operation: handle = {:?}, filepath = {:?}, offset = {:?}, buf = {:?}",
-            obscured_file_handle,
+            opaque_file_handle,
             private_file_handle.file_path,
             offset,
             String::from_utf8(buf.to_vec())
@@ -155,7 +155,7 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
 
         log::debug!(
             "SftpServer Write operation: handle = {:?}, filepath = {:?}, offset = {:?}, buffer length = {:?}, bytes written = {:?}",
-            obscured_file_handle,
+            opaque_file_handle,
             private_file_handle.file_path,
             offset,
             buf.len(),
@@ -167,13 +167,13 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
 
     fn read(
         &mut self,
-        obscured_file_handle: &DemoOpaqueFileHandle,
+        opaque_file_handle: &DemoOpaqueFileHandle,
         offset: u64,
         _reply: &mut ReadReply<'_, '_>,
     ) -> SftpOpResult<()> {
         log::error!(
             "SftpServer Read operation not defined: handle = {:?}, offset = {:?}",
-            obscured_file_handle,
+            opaque_file_handle,
             offset
         );
         Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
@@ -186,12 +186,12 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
 
     fn readdir(
         &mut self,
-        obscured_file_handle: &DemoOpaqueFileHandle,
+        opaque_file_handle: &DemoOpaqueFileHandle,
         _reply: &mut DirReply<'_, '_>,
     ) -> SftpOpResult<()> {
         log::error!(
             "SftpServer ReadDir operation not defined: handle = {:?}",
-            obscured_file_handle
+            opaque_file_handle
         );
         Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
     }
