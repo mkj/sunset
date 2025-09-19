@@ -1,21 +1,36 @@
 use sunset_sftp::{FileHandle, OpaqueFileHandle};
 
+use sunset::sshwire::{BinString, WireError};
+
+use core::hash::Hasher;
+
+use fnv::FnvHasher;
+
+const HASH_LEN: usize = 4;
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
-pub struct DemoOpaqueFileHandle {}
+pub(crate) struct DemoOpaqueFileHandle {
+    tiny_hash: [u8; HASH_LEN],
+}
 
 impl OpaqueFileHandle for DemoOpaqueFileHandle {
     fn new(seed: &str) -> Self {
-        todo!("Add some logic to create a hash form the &str from {:}", seed)
+        let mut hasher = FnvHasher::default();
+        hasher.write(seed.as_bytes());
+        DemoOpaqueFileHandle { tiny_hash: (hasher.finish() as u32).to_be_bytes() }
     }
 
     fn try_from(file_handle: &FileHandle<'_>) -> sunset::sshwire::WireResult<Self> {
-        todo!(
-            "Add some logic to handle the the conversion try_from {:?}",
-            file_handle
-        )
+        if !file_handle.0 .0.len().eq(&core::mem::size_of::<DemoOpaqueFileHandle>())
+        {
+            return Err(WireError::BadString);
+        }
+
+        let mut tiny_hash = [0u8; HASH_LEN];
+        tiny_hash.copy_from_slice(file_handle.0 .0);
+        Ok(DemoOpaqueFileHandle { tiny_hash })
     }
 
     fn into_file_handle(&self) -> FileHandle<'_> {
-        todo!("Add some logic to handle the the conversion into_file_handle")
+        FileHandle(BinString(&self.tiny_hash))
     }
 }
