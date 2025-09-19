@@ -158,10 +158,9 @@ impl DemoServer for StdDemo {
                     );
 
                     let mut sftp_handler =
-                        SftpHandler::<
-                            DemoOpaqueFileHandle,
-                            DemoSftpServer<DemoOpaqueFileHandle, PrivateFileHandler>,
-                        >::new(&mut file_server);
+                        SftpHandler::<DemoOpaqueFileHandle, DemoSftpServer>::new(
+                            &mut file_server,
+                        );
                     loop {
                         let lr = stdio.read(&mut buffer_in).await?;
                         trace!("SFTP <---- received: {:?}", &buffer_in[0..lr]);

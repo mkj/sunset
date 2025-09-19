@@ -1,9 +1,11 @@
-use crate::demofilehandlemanager::DemoFileHandleManager;
+use crate::{
+    demofilehandlemanager::DemoFileHandleManager,
+    demoopaquefilehandle::DemoOpaqueFileHandle,
+};
 
 use sunset_sftp::{
-    Attrs, DirReply, Filename, Name, NameEntry, OpaqueFileHandle,
-    OpaqueFileHandleManager, PathFinder, ReadReply, SftpOpResult, SftpServer,
-    StatusCode,
+    Attrs, DirReply, Filename, Name, NameEntry, OpaqueFileHandleManager, PathFinder,
+    ReadReply, SftpOpResult, SftpServer, StatusCode,
 };
 
 #[allow(unused_imports)]
@@ -28,31 +30,24 @@ impl PathFinder for PrivateFileHandler {
     }
 }
 
-pub struct DemoSftpServer<K, V>
-where
-    K: OpaqueFileHandle,
-    V: PathFinder,
-{
+pub struct DemoSftpServer {
     base_path: String,
-    handlers_manager: DemoFileHandleManager<K, V>,
+    handlers_manager:
+        DemoFileHandleManager<DemoOpaqueFileHandle, PrivateFileHandler>,
 }
 
-impl<K, V> DemoSftpServer<K, V>
-where
-    K: OpaqueFileHandle,
-    V: PathFinder,
-{
+impl DemoSftpServer {
     pub fn new(base_path: String) -> Self {
         DemoSftpServer { base_path, handlers_manager: DemoFileHandleManager::new() }
     }
 }
 
-impl<K, V> SftpServer<'_, K> for DemoSftpServer<K, V>
-where
-    K: OpaqueFileHandle,
-    V: PathFinder,
-{
-    fn open(&mut self, filename: &str, attrs: &Attrs) -> SftpOpResult<K> {
+impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
+    fn open(
+        &mut self,
+        filename: &str,
+        attrs: &Attrs,
+    ) -> SftpOpResult<DemoOpaqueFileHandle> {
         debug!("Open file: filename = {:?}, attributes = {:?}", filename, attrs);
 
         let poxit_attr = attrs
@@ -107,7 +102,10 @@ where
         }]))
     }
 
-    fn close(&mut self, obscure_file_handle: &K) -> SftpOpResult<()> {
+    fn close(
+        &mut self,
+        obscure_file_handle: &DemoOpaqueFileHandle,
+    ) -> SftpOpResult<()> {
         if let Some(handle) = self.handlers_manager.remove(obscure_file_handle) {
             debug!(
                 "SftpServer Close operation on {:?} was successful",
@@ -126,7 +124,7 @@ where
 
     fn write(
         &mut self,
-        obscured_file_handle: &K,
+        obscured_file_handle: &DemoOpaqueFileHandle,
         offset: u64,
         buf: &[u8],
     ) -> SftpOpResult<()> {
@@ -169,7 +167,7 @@ where
 
     fn read(
         &mut self,
-        obscured_file_handle: &K,
+        obscured_file_handle: &DemoOpaqueFileHandle,
         offset: u64,
         _reply: &mut ReadReply<'_, '_>,
     ) -> SftpOpResult<()> {
@@ -181,14 +179,14 @@ where
         Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
     }
 
-    fn opendir(&mut self, dir: &str) -> SftpOpResult<K> {
+    fn opendir(&mut self, dir: &str) -> SftpOpResult<DemoOpaqueFileHandle> {
         log::error!("SftpServer OpenDir operation not defined: dir = {:?}", dir);
         Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
     }
 
     fn readdir(
         &mut self,
-        obscured_file_handle: &K,
+        obscured_file_handle: &DemoOpaqueFileHandle,
         _reply: &mut DirReply<'_, '_>,
     ) -> SftpOpResult<()> {
         log::error!(
