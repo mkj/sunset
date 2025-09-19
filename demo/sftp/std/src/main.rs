@@ -181,9 +181,11 @@ impl DemoServer for StdDemo {
                 } {
                     Ok(_) => {
                         warn!("sftp server loop finished gracefully");
+                        return Ok(());
                     }
                     Err(e) => {
-                        warn!("sftp server loop finished with an error: {}", e)
+                        error!("sftp server loop finished with an error: {}", e);
+                        return Err(e);
                     }
                 };
             }
@@ -191,8 +193,16 @@ impl DemoServer for StdDemo {
         };
 
         let selected = select(prog_loop, sftp_loop).await;
-        error!("Selected finished: {:?}", selected);
-        todo!("Loop terminated: {:?}", selected)
+        match selected {
+            embassy_futures::select::Either::First(res) => {
+                warn!("prog_loop finished: {:?}", res);
+                res
+            }
+            embassy_futures::select::Either::Second(res) => {
+                warn!("sftp_loop finished: {:?}", res);
+                res
+            }
+        }
     }
 }
 
