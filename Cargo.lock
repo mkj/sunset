@@ -2863,6 +2863,7 @@ dependencies = [
  "embassy-time",
  "embedded-io-async",
  "env_logger",
+ "fnv",
  "heapless",
  "libc",
  "log",
