@@ -82,6 +82,12 @@ where
         let in_len = buffer_in.len();
         debug!("Received {:} bytes to process", in_len);
 
+        if self.partial_write_request_tracker.is_none()
+            & in_len.lt(&SFTP_MINIMUM_PACKET_LEN)
+        {
+            return Err(WireError::PacketWrong);
+        }
+
         let mut source = SftpSource::new(buffer_in);
         trace!("Source content: {:?}", source);
 
@@ -149,12 +155,6 @@ where
             };
 
             return Ok(sink.finalize());
-        }
-
-        if self.partial_write_request_tracker.is_none()
-            & in_len.lt(&SFTP_MINIMUM_PACKET_LEN)
-        {
-            return Err(WireError::PacketWrong);
         }
 
         let packet_length = u32::dec(&mut source)?;
