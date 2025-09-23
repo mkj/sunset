@@ -609,7 +609,7 @@ macro_rules! sftpmessages {
             ///
             /// Used by a SFTP server. Does not include the length field.
             ///
-            /// It will fail if the received packet is a response
+            /// It will fail if the received packet is a response, no valid or incomplete packet
             pub fn decode_request<'de, S>(s: &mut S) -> WireResult<Self>
                 where
                 S: SSHSource<'de>,
@@ -617,7 +617,6 @@ macro_rules! sftpmessages {
                 'de: 'a
             {
 
-                // let sftp_packet = Self::dec(s)?;
                 match Self::dec(s) {
                     Ok(sftp_packet)=> {
                         if (!sftp_packet.sftp_num().is_request()
