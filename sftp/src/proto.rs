@@ -616,7 +616,8 @@ macro_rules! sftpmessages {
                 'a: 'de, // 'a must outlive 'de and 'de must outlive 'a so they have matching lifetimes
                 'de: 'a
             {
-
+                let packet_length = u32::dec(s)?;
+                debug!("Packet field len = {:?}. Source len = {:?}", packet_length, s.remaining());
                 match Self::dec(s) {
                     Ok(sftp_packet)=> {
                         if (!sftp_packet.sftp_num().is_request()
