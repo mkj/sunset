@@ -1,13 +1,13 @@
 use crate::OpaqueFileHandle;
 use crate::proto::{
     self, InitVersionLowest, ReqId, SFTP_MINIMUM_PACKET_LEN, SFTP_VERSION, SftpNum,
-    SftpPacket, Status, StatusCode,
+    SftpPacket, Status, StatusCode, Write,
 };
 use crate::sftpserver::SftpServer;
 use crate::sftpsink::SftpSink;
 use crate::sftpsource::SftpSource;
 
-use sunset::sshwire::{SSHDecode, WireError, WireResult};
+use sunset::sshwire::{WireError, WireResult};
 
 use core::u32;
 #[allow(unused_imports)]
@@ -38,7 +38,7 @@ impl<T: OpaqueFileHandle> PartialWriteRequestTracker<T> {
         })
     }
 
-    pub fn get_file_handle(&self) -> T {
+    pub fn get_opaque_file_handle(&self) -> T {
         self.obscure_file_handle.clone()
     }
 }
@@ -81,7 +81,6 @@ where
     ) -> WireResult<usize> {
         let in_len = buffer_in.len();
         debug!("Received {:} bytes to process", in_len);
-
         if self.partial_write_request_tracker.is_none()
             & in_len.lt(&SFTP_MINIMUM_PACKET_LEN)
         {
@@ -94,149 +93,146 @@ where
         let mut sink = SftpSink::new(buffer_out);
 
         if let Some(mut write_tracker) = self.partial_write_request_tracker.take() {
-            trace!(
+            debug!(
                 "Processing successive chunks of a long write packet. Stored data: {:?}",
                 write_tracker
             );
+            let opaque_handle = write_tracker.get_opaque_file_handle();
 
-            let usable_data = in_len.min(write_tracker.remain_data_len as usize);
+            let partial_write = {
+                let usable_data = in_len.min(write_tracker.remain_data_len as usize);
 
-            if in_len > write_tracker.remain_data_len as usize {
-                // This is because we are receiving one packet and the beginning of the next one
-                let sftp_num = source.peak_packet_type_with_offset(
-                    write_tracker.remain_data_len as usize,
-                )?;
-                error!(
-                    "There is too much data in the buffer! {:?} > than expected {:?}. There is a trailing packet in buffer: {:?}",
-                    in_len, write_tracker.remain_data_len, sftp_num
+                if in_len > write_tracker.remain_data_len as usize {
+                    // This is because we are receiving one packet and the beginning of the next one
+                    // let sftp_num = source.peak_packet_type_with_offset(
+                    //     write_tracker.remain_data_len as usize,
+                    // )?;
+                    // error!(
+                    //     "There is too much data in the buffer! {:?} > than expected {:?}. There is a trailing packet in buffer: {:?}",
+                    //     in_len, write_tracker.remain_data_len, sftp_num
+                    // );
+                };
+
+                let data_segment = source.dec_as_binstring(usable_data)?;
+
+                // TODO: Do proper casting with checks u32::try_from(data_in_buffer.0.len())
+                let data_segment_len = data_segment.0.len() as u32;
+
+                let current_write_offset = write_tracker.remain_data_offset;
+                write_tracker.remain_data_offset += data_segment_len as u64;
+                write_tracker.remain_data_len -= data_segment_len;
+
+                let obscure_file_handle = write_tracker.get_opaque_file_handle();
+                debug!(
+                    "Processing successive chunks of a long write packet. Writing : obscure_file_handle = {:?}, write_offset = {:?}, data_segment = {:?}, data remaining = {:?}",
+                    obscure_file_handle,
+                    current_write_offset,
+                    data_segment,
+                    write_tracker.remain_data_len
                 );
+
+                let part_sftp_packet_write_request = SftpPacket::Write(
+                    write_tracker.req_id,
+                    Write {
+                        handle: opaque_handle.into_file_handle(),
+                        offset: current_write_offset,
+                        data: data_segment,
+                    },
+                );
+
+                part_sftp_packet_write_request
             };
 
-            let data_segment = source.dec_as_binstring(usable_data)?;
-
-            // TODO: Do proper casting with checks u32::try_from(data_in_buffer.0.len())
-            let data_segment_len = data_segment.0.len() as u32;
-
-            let current_write_offset = write_tracker.remain_data_offset;
-            write_tracker.remain_data_offset += data_segment_len as u64;
-            write_tracker.remain_data_len -= data_segment_len;
-
-            let obscure_file_handle = write_tracker.get_file_handle();
+            self.process_known_request(&mut sink, partial_write).await?;
             debug!(
-                "Processing successive chunks of a long write packet. Writing : obscure_file_handle = {:?}, write_offset = {:?}, data_segment = {:?}, data remaining = {:?}",
-                obscure_file_handle,
-                current_write_offset,
-                data_segment,
-                write_tracker.remain_data_len
+                "Finishing partial_write process. write_tracker = {:?}",
+                write_tracker
             );
-            match self.file_server.write(
-                &obscure_file_handle,
-                current_write_offset,
-                data_segment.as_ref(),
-            ) {
-                Ok(_) => {
-                    if write_tracker.remain_data_len > 0 {
-                        self.partial_write_request_tracker = Some(write_tracker);
-                    } else {
-                        push_ok(write_tracker.req_id, &mut sink)?;
-                        info!("Finished multi part Write Request");
-                        self.partial_write_request_tracker = None; // redundant
-                    }
+            if write_tracker.remain_data_len > 0 {
+                self.partial_write_request_tracker = Some(write_tracker);
+            } else {
+                push_ok(write_tracker.req_id, &mut sink)?;
+                info!("Finished multi part Write Request");
+                self.partial_write_request_tracker = None; // redundant
+            }
+        } else {
+            match SftpPacket::decode_request(&mut source) {
+                Ok(request) => {
+                    info!("received request: {:?}", request);
+                    self.process_known_request(&mut sink, request).await?;
                 }
                 Err(e) => {
-                    self.partial_write_request_tracker = None;
-                    error!("SFTP write thrown: {:?}", e);
-                    push_general_failure(
-                        write_tracker.req_id,
-                        "error writing",
-                        &mut sink,
-                    )?;
-                }
-            };
-
-            return Ok(sink.finalize());
-        }
-
-        let packet_length = u32::dec(&mut source)?;
-        trace!("Packet field length content: {}", packet_length);
-
-        match SftpPacket::decode_request(&mut source) {
-            Ok(request) => {
-                info!("received request: {:?}", request);
-                self.process_known_request(&mut sink, request).await?;
-            }
-            Err(e) => {
-                match e {
-                    WireError::RanOut => {
-                        warn!(
-                            "RanOut for the SFTP Packet in the source buffer: {:?}",
-                            e
-                        );
-                        // let packet_total_length = source.peak_packet_len()?;
-                        let packet_type = source.peak_packet_type()?;
-                        match packet_type {
-                            SftpNum::SSH_FXP_WRITE => {
-                                let (
+                    match e {
+                        WireError::RanOut => {
+                            warn!(
+                                "RanOut for the SFTP Packet in the source buffer: {:?}",
+                                e
+                            );
+                            // let packet_total_length = source.peak_packet_len()?;
+                            let packet_type = source.peak_packet_type()?;
+                            match packet_type {
+                                SftpNum::SSH_FXP_WRITE => {
+                                    let (
                                     file_handle,
                                     req_id,
                                     offset,
                                     data_in_buffer,
                                     write_tracker,
                                 ) = source
-                                    .get_packet_partial_write_content_and_tracker(
-                                    )?;
-                                debug!(
-                                    "Packet is too long for the source buffer, will write what we have now and continue writing later"
-                                );
-                                trace!(
-                                    "handle = {:?}, req_id = {:?}, offset = {:?}, data_in_buffer = {:?}, write_tracker = {:?}",
-                                    file_handle, // This file_handle will be the one facilitated by the demosftpserver, this is, an obscured file handle
-                                    req_id,
-                                    offset,
-                                    data_in_buffer,
-                                    write_tracker
-                                );
-
-                                match self.file_server.write(
-                                    &file_handle,
-                                    offset,
-                                    data_in_buffer.as_ref(),
-                                ) {
-                                    Ok(_) => {
-                                        self.partial_write_request_tracker =
-                                            Some(write_tracker);
-                                    }
-                                    Err(e) => {
-                                        error!("SFTP write thrown: {:?}", e);
-                                        push_general_failure(
-                                            req_id,
-                                            "error writing ",
-                                            &mut sink,
-                                        )?;
-                                    }
-                                };
-                            }
-                            _ => {
-                                push_general_failure(
-                                    ReqId(u32::MAX),
-                                    "Unsupported Request: Too long",
-                                    &mut sink,
+                                .get_packet_partial_write_content_and_tracker(
                                 )?;
-                            }
-                        };
-                    }
-                    WireError::UnknownPacket { number: _ } => {
-                        warn!("Error decoding SFTP Packet:{:?}", e);
-                        push_unsupported(ReqId(u32::MAX), &mut sink)?;
-                    }
-                    _ => {
-                        error!("Error decoding SFTP Packet: {:?}", e);
-                        push_unsupported(ReqId(u32::MAX), &mut sink)?;
+                                    debug!(
+                                        "Packet is too long for the source buffer, will write what we have now and continue writing later"
+                                    );
+                                    trace!(
+                                        "handle = {:?}, req_id = {:?}, offset = {:?}, data_in_buffer = {:?}, write_tracker = {:?}",
+                                        file_handle, // This file_handle will be the one facilitated by the demosftpserver, this is, an obscured file handle
+                                        req_id,
+                                        offset,
+                                        data_in_buffer,
+                                        write_tracker
+                                    );
+
+                                    match self.file_server.write(
+                                        &file_handle,
+                                        offset,
+                                        data_in_buffer.as_ref(),
+                                    ) {
+                                        Ok(_) => {
+                                            self.partial_write_request_tracker =
+                                                Some(write_tracker);
+                                        }
+                                        Err(e) => {
+                                            error!("SFTP write thrown: {:?}", e);
+                                            push_general_failure(
+                                                req_id,
+                                                "error writing ",
+                                                &mut sink,
+                                            )?;
+                                        }
+                                    };
+                                }
+                                _ => {
+                                    push_general_failure(
+                                        ReqId(u32::MAX),
+                                        "Unsupported Request: Too long",
+                                        &mut sink,
+                                    )?;
+                                }
+                            };
+                        }
+                        WireError::UnknownPacket { number: _ } => {
+                            warn!("Error decoding SFTP Packet:{:?}", e);
+                            push_unsupported(ReqId(u32::MAX), &mut sink)?;
+                        }
+                        _ => {
+                            error!("Error decoding SFTP Packet: {:?}", e);
+                            push_unsupported(ReqId(u32::MAX), &mut sink)?;
+                        }
                     }
                 }
             }
         };
-
         Ok(sink.finalize())
     }
 
