@@ -140,20 +140,10 @@ where
                     },
                 );
 
-                part_sftp_packet_write_request
-            };
-
-            self.process_known_request(&mut sink, partial_write).await?;
-            debug!(
-                "Finishing partial_write process. write_tracker = {:?}",
-                write_tracker
-            );
-            if write_tracker.remain_data_len > 0 {
-                self.partial_write_request_tracker = Some(write_tracker);
-            } else {
-                push_ok(write_tracker.req_id, &mut sink)?;
-                info!("Finished multi part Write Request");
-                self.partial_write_request_tracker = None; // redundant
+        match SftpPacket::decode_request(&mut source) {
+            Ok(request) => {
+                info!("received request: {:?}", request);
+                self.process_known_request(&mut sink, request).await?;
             }
         } else {
             match SftpPacket::decode_request(&mut source) {
