@@ -157,9 +157,6 @@ where
             return Ok(sink.finalize());
         }
 
-        let packet_length = u32::dec(&mut source)?;
-        trace!("Packet field length content: {}", packet_length);
-
         match SftpPacket::decode_request(&mut source) {
             Ok(request) => {
                 info!("received request: {:?}", request);
