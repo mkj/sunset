@@ -54,9 +54,27 @@ impl<'de> SftpSource<'de> {
     /// **Warning**: will only work in well formed packets, in other case the result will contain garbage
     pub(crate) fn peak_packet_type(&self) -> WireResult<SftpNum> {
         if self.buffer.len() < SFTP_MINIMUM_PACKET_LEN {
-            Err(WireError::PacketWrong)
+            Err(WireError::RanOut)
         } else {
             Ok(SftpNum::from(self.buffer[SFTP_FIELD_ID_INDEX]))
+        }
+    }
+
+    /// Peaks the buffer for packet length. This does not advance the reading index
+    ///
+    /// Useful to observe the packet fields in special conditions where a `dec(s)` would fail
+    ///
+    /// **Warning**: will only work in well formed packets, in other case the result will contain garbage
+    pub(crate) fn peak_packet_len(&self) -> WireResult<u32> {
+        if self.buffer.len() < SFTP_FIELD_LEN_INDEX + SFTP_FIELD_LEN_LENGTH {
+            Err(WireError::RanOut)
+        } else {
+            let bytes: [u8; 4] = self.buffer
+                [SFTP_FIELD_LEN_INDEX..SFTP_FIELD_LEN_INDEX + SFTP_FIELD_LEN_LENGTH]
+                .try_into()
+                .expect("slice length mismatch");
+
+            Ok(u32::from_be_bytes(bytes))
         }
     }
 
@@ -117,5 +135,9 @@ impl<'de> SftpSource<'de> {
         len: usize,
     ) -> WireResult<BinString<'_>> {
         Ok(BinString(self.take(len)?))
+    }
+
+    pub(crate) fn buffer_ref(&self) -> &[u8] {
+        self.buffer.clone()
     }
 }
