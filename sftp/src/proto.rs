@@ -617,7 +617,8 @@ macro_rules! sftpmessages {
                 'de: 'a
             {
                 let packet_length = u32::dec(s)?;
-                debug!("Packet field len = {:?}. Source len = {:?}", packet_length, s.remaining());
+                trace!("Packet field len = {:?}, buffer len = {:?}", packet_length, s.remaining());
+
                 match Self::dec(s) {
                     Ok(sftp_packet)=> {
                         if (!sftp_packet.sftp_num().is_request()

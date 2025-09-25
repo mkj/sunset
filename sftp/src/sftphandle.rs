@@ -18,7 +18,7 @@ use std::usize;
 #[derive(Debug)]
 pub struct PartialWriteRequestTracker<T: OpaqueFileHandle> {
     req_id: ReqId,
-    obscure_file_handle: T,
+    opaque_handle: T,
     remain_data_len: u32,
     remain_data_offset: u64,
 }
@@ -26,20 +26,20 @@ pub struct PartialWriteRequestTracker<T: OpaqueFileHandle> {
 impl<T: OpaqueFileHandle> PartialWriteRequestTracker<T> {
     pub fn new(
         req_id: ReqId,
-        obscure_file_handle: T,
+        opaque_handle: T,
         remain_data_len: u32,
         remain_data_offset: u64,
     ) -> WireResult<Self> {
         Ok(PartialWriteRequestTracker {
             req_id,
-            obscure_file_handle: obscure_file_handle,
+            opaque_handle: opaque_handle,
             remain_data_len,
             remain_data_offset,
         })
     }
 
     pub fn get_opaque_file_handle(&self) -> T {
-        self.obscure_file_handle.clone()
+        self.opaque_handle.clone()
     }
 }
 
@@ -122,39 +122,39 @@ where
                 write_tracker.remain_data_offset += data_segment_len as u64;
                 write_tracker.remain_data_len -= data_segment_len;
 
-                let obscure_file_handle = write_tracker.get_opaque_file_handle();
+                // let opaque_handle = write_tracker.get_file_handle();
                 debug!(
-                    "Processing successive chunks of a long write packet. Writing : obscure_file_handle = {:?}, write_offset = {:?}, data_segment = {:?}, data remaining = {:?}",
-                    obscure_file_handle,
+                    "Processing successive chunks of a long write packet. Writing : opaque_handle = {:?}, write_offset = {:?}, data_segment = {:?}, data remaining = {:?}",
+                    opaque_handle,
                     current_write_offset,
                     data_segment,
                     write_tracker.remain_data_len
                 );
-
-                let part_sftp_packet_write_request = SftpPacket::Write(
-                    write_tracker.req_id,
-                    Write {
-                        handle: opaque_handle.into_file_handle(),
-                        offset: current_write_offset,
-                        data: data_segment,
-                    },
-                );
-
-                part_sftp_packet_write_request
+                match self.file_server.write(
+                    &opaque_handle,
+                    current_write_offset,
+                    data_segment.as_ref(),
+                ) {
+                    Ok(_) => {
+                        if write_tracker.remain_data_len > 0 {
+                            self.partial_write_request_tracker = Some(write_tracker);
+                        } else {
+                            push_ok(write_tracker.req_id, &mut sink)?;
+                            info!("Finished multi part Write Request");
+                            self.partial_write_request_tracker = None; // redundant
+                        }
+                    }
+                    Err(e) => {
+                        self.partial_write_request_tracker = None;
+                        error!("SFTP write thrown: {:?}", e);
+                        push_general_failure(
+                            write_tracker.req_id,
+                            "error writing",
+                            &mut sink,
+                        )?;
+                    }
+                };
             };
-
-            self.process_known_request(&mut sink, partial_write).await?;
-            debug!(
-                "Finishing partial_write process. write_tracker = {:?}",
-                write_tracker
-            );
-            if write_tracker.remain_data_len > 0 {
-                self.partial_write_request_tracker = Some(write_tracker);
-            } else {
-                push_ok(write_tracker.req_id, &mut sink)?;
-                info!("Finished multi part Write Request");
-                self.partial_write_request_tracker = None; // redundant
-            }
         } else {
             match SftpPacket::decode_request(&mut source) {
                 Ok(request) => {
@@ -233,6 +233,7 @@ where
                 }
             }
         };
+
         Ok(sink.finalize())
     }
 
