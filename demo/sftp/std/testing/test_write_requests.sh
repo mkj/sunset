@@ -5,7 +5,7 @@ REMOTE_HOST="192.168.69.2"
 REMOTE_USER="any"
 
 # Define test files
-FILES=("512B_random" "16kB_random" "64kB_random" "65kB_random")
+FILES=("512B_random" "16kB_random" "64kB_random" "65kB_random" "256kB_random" "1MB_random" "2MB_random")
 
 # Generate random data files
 echo "Generating random data files..."
@@ -13,6 +13,9 @@ dd if=/dev/random bs=512 count=1 of=./512B_random 2>/dev/null
 dd if=/dev/random bs=1024 count=16 of=./16kB_random 2>/dev/null
 dd if=/dev/random bs=1024 count=64 of=./64kB_random 2>/dev/null
 dd if=/dev/random bs=1024 count=65 of=./65kB_random 2>/dev/null
+dd if=/dev/random bs=1024 count=256 of=./256kB_random 2>/dev/null
+dd if=/dev/random bs=1048576 count=1 of=./1MB_random 2>/dev/null
+dd if=/dev/random bs=1048576 count=2 of=./2MB_random 2>/dev/null
 
 echo "Uploading files to ${REMOTE_USER}@${REMOTE_HOST}..."
 

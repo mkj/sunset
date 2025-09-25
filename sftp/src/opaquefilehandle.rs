@@ -3,6 +3,7 @@ use crate::FileHandle;
 use sunset::sshwire::WireResult;
 
 /// This is the trait with the required methods for interoperability between different opaque file handles
+/// used in SFTP transactions
 pub trait OpaqueFileHandle:
     Sized + Clone + core::hash::Hash + PartialEq + Eq + core::fmt::Debug
 {
