@@ -1,6 +1,6 @@
 use crate::proto::{
-    ReqId, SFTP_FIELD_ID_INDEX, SFTP_MINIMUM_PACKET_LEN, SFTP_WRITE_REQID_INDEX,
-    SftpNum,
+    ReqId, SFTP_FIELD_ID_INDEX, SFTP_FIELD_LEN_INDEX, SFTP_FIELD_LEN_LENGTH,
+    SFTP_MINIMUM_PACKET_LEN, SFTP_WRITE_REQID_INDEX, SftpNum,
 };
 use crate::sftphandle::PartialWriteRequestTracker;
 use crate::{FileHandle, OpaqueFileHandle};
@@ -98,12 +98,10 @@ impl<'de> SftpSource<'de> {
             _ => return Err(WireError::PacketWrong), // TODO: Find a better error
         };
 
-        let prev_index = self.index;
         self.index = SFTP_WRITE_REQID_INDEX;
         let req_id = ReqId::dec(self)?;
         let file_handle = FileHandle::dec(self)?;
 
-        let obscured_file_handle = OpaqueFileHandle::try_from(&file_handle)?;
         let offset = u64::dec(self)?;
         let data_len = u32::dec(self)?;
 
@@ -124,6 +122,7 @@ impl<'de> SftpSource<'de> {
             remain_data_offset,
         )?;
 
+        let obscured_file_handle = OpaqueFileHandle::try_from(&file_handle)?;
         Ok((obscured_file_handle, req_id, offset, data_in_buffer, write_tracker))
     }
 
