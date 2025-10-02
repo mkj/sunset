@@ -143,15 +143,25 @@ where
                                 match e {
                                     RequestHolderError::RanOut => {
                                         warn!(
-                                            "There was not enough bytes in the buffer_in. We will continue adding bytes"
+                                            "There was not enough bytes in the buffer_in. \
+                                            We will continue adding bytes"
                                         );
                                         buffer_in_remaining_index +=
                                             incomplete_request_holder.appended();
                                         continue;
                                     }
                                     RequestHolderError::NoRoom => {
-                                        todo!(
-                                            "This is an incomplete long packet situation. You hope that it is a Write request"
+                                        warn!(
+                                            "There is not enough room in incomplete request holder \
+                                            to accommodate this packet buffer."
+                                        )
+                                    }
+                                    RequestHolderError::WireError(
+                                        WireError::RanOut,
+                                    ) => {
+                                        warn!(
+                                            "There is not enough room in incomplete request holder \
+                                            to accommodate this packet buffer."
                                         )
                                     }
                                     _ => {
@@ -162,6 +172,10 @@ where
                                         return Err(SunsetError::Bug.into());
                                     }
                                 }
+                            } else {
+                                debug!(
+                                    "Incomplete request holder completes request!"
+                                );
                             }
                             let mut source = SftpSource::new(
                                 &incomplete_request_holder.try_get_ref()?,
@@ -171,13 +185,31 @@ where
                             let sftp_packet =
                                 SftpPacket::decode_request(&mut source);
 
-                            // TODO: Here we have to check the append_result or simply the sftp_packet to handle Errors such as TooLongRanOut or similar
+                            match sftp_packet {
+                                Ok(request) => {
+                                    self.handle_general_request(&mut sink, request)?;
+                                }
+                                Err(e) => match e {
+                                    WireError::NoRoom => {
+                                        todo!("The packet do not fit in the buffer")
+                                    }
+                                    WireError::RanOut => {
+                                        todo!("Not enough data to decode the packet")
+                                    }
+                                    _ => {
+                                        error!(
+                                            "Unhandled error decoding assembled packet: {:?}",
+                                            e
+                                        );
+                                    }
+                                },
+                            }
 
                             let used = incomplete_request_holder.appended();
                             buffer_in_remaining_index += used;
 
                             incomplete_request_holder.reset();
-
+                            self.state = SftpHandleState::Idle;
                             todo!("FragmentedRequestState::ProcessingClippedRequest")
                         }
                         FragmentedRequestState::ProcessingLongRequest => {
@@ -299,84 +331,9 @@ where
                         },
                         SftpHandleState::Idle => {
                             match sftp_packet {
-                                Ok(request) => match request {
-                                    SftpPacket::Init(init_version_client) => {
-                                        return Err(SftpError::MalformedPacket);
-                                    }
-                                    SftpPacket::PathInfo(req_id, path_info) => {
-                                        let a_name = self
-                                            .file_server
-                                            .realpath(path_info.path.as_str()?)?;
-
-                                        let response =
-                                            SftpPacket::Name(req_id, a_name);
-
-                                        response.encode_response(&mut sink)?;
-                                    }
-                                    SftpPacket::Open(req_id, open) => {
-                                        match self.file_server.open(
-                                            open.filename.as_str()?,
-                                            &open.attrs,
-                                        ) {
-                                            Ok(opaque_file_handle) => {
-                                                let response = SftpPacket::Handle(
-                                                    req_id,
-                                                    proto::Handle {
-                                                        handle: opaque_file_handle
-                                                            .into_file_handle(),
-                                                    },
-                                                );
-                                                response
-                                                    .encode_response(&mut sink)?;
-                                                info!("Sending '{:?}'", response);
-                                            }
-                                            Err(status_code) => {
-                                                error!(
-                                                    "Open failed: {:?}",
-                                                    status_code
-                                                );
-                                                push_general_failure(
-                                                    req_id, "", &mut sink,
-                                                )?;
-                                            }
-                                        };
-                                    }
-                                    SftpPacket::Write(req_id, write) => {
-                                        match self.file_server.write(
-                                            &T::try_from(&write.handle)?,
-                                            write.offset,
-                                            write.data.as_ref(),
-                                        ) {
-                                            Ok(_) => push_ok(req_id, &mut sink)?,
-                                            Err(e) => {
-                                                error!("SFTP write thrown: {:?}", e);
-                                                push_general_failure(
-                                                    req_id,
-                                                    "error writing",
-                                                    &mut sink,
-                                                )?
-                                            }
-                                        };
-                                    }
-                                    SftpPacket::Close(req_id, close) => {
-                                        match self
-                                            .file_server
-                                            .close(&T::try_from(&close.handle)?)
-                                        {
-                                            Ok(_) => push_ok(req_id, &mut sink)?,
-                                            Err(e) => {
-                                                error!("SFTP Close thrown: {:?}", e);
-                                                push_general_failure(
-                                                    req_id, "", &mut sink,
-                                                )?
-                                            }
-                                        }
-                                    }
-                                    _ => {
-                                        error!("Unsuported request type");
-                                        push_unsupported(ReqId(0), &mut sink)?;
-                                    }
-                                },
+                                Ok(request) => {
+                                    self.handle_general_request(&mut sink, request)?
+                                }
                                 Err(e) => match e {
                                     WireError::RanOut => {
                                         warn!(
@@ -430,6 +387,72 @@ where
         }
 
         Ok(used_out_accumulated_index)
+    }
+
+    fn handle_general_request(
+        &mut self,
+        sink: &mut SftpSink<'_>,
+        request: SftpPacket<'_>,
+    ) -> Result<(), SftpError>
+    where
+        T: OpaqueFileHandle,
+    {
+        Ok(match request {
+            SftpPacket::Init(init_version_client) => {
+                return Err(SftpError::MalformedPacket);
+            }
+            SftpPacket::PathInfo(req_id, path_info) => {
+                let a_name = self.file_server.realpath(path_info.path.as_str()?)?;
+
+                let response = SftpPacket::Name(req_id, a_name);
+
+                response.encode_response(sink)?;
+            }
+            SftpPacket::Open(req_id, open) => {
+                match self.file_server.open(open.filename.as_str()?, &open.attrs) {
+                    Ok(opaque_file_handle) => {
+                        let response = SftpPacket::Handle(
+                            req_id,
+                            proto::Handle {
+                                handle: opaque_file_handle.into_file_handle(),
+                            },
+                        );
+                        response.encode_response(sink)?;
+                        info!("Sending '{:?}'", response);
+                    }
+                    Err(status_code) => {
+                        error!("Open failed: {:?}", status_code);
+                        push_general_failure(req_id, "", sink)?;
+                    }
+                };
+            }
+            SftpPacket::Write(req_id, write) => {
+                match self.file_server.write(
+                    &T::try_from(&write.handle)?,
+                    write.offset,
+                    write.data.as_ref(),
+                ) {
+                    Ok(_) => push_ok(req_id, sink)?,
+                    Err(e) => {
+                        error!("SFTP write thrown: {:?}", e);
+                        push_general_failure(req_id, "error writing", sink)?
+                    }
+                };
+            }
+            SftpPacket::Close(req_id, close) => {
+                match self.file_server.close(&T::try_from(&close.handle)?) {
+                    Ok(_) => push_ok(req_id, sink)?,
+                    Err(e) => {
+                        error!("SFTP Close thrown: {:?}", e);
+                        push_general_failure(req_id, "", sink)?
+                    }
+                }
+            }
+            _ => {
+                error!("Unsuported request type");
+                push_unsupported(ReqId(0), sink)?;
+            }
+        })
     }
 
     fn process_ran_out(
