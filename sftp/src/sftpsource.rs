@@ -3,8 +3,9 @@ use crate::proto::{
     SFTP_MINIMUM_PACKET_LEN, SFTP_WRITE_REQID_INDEX, SftpNum,
 };
 use crate::sftphandle::PartialWriteRequestTracker;
-use crate::{FileHandle, OpaqueFileHandle};
+use crate::{FileHandle, OpaqueFileHandle, SftpError, SftpResult};
 
+use sunset::error::RanOut;
 use sunset::sshwire::{BinString, SSHDecode, SSHSource, WireError, WireResult};
 
 #[allow(unused_imports)]
@@ -53,7 +54,7 @@ impl<'de> SftpSource<'de> {
     ///
     /// **Warning**: will only work in well formed packets, in other case the result will contain garbage
     pub(crate) fn peak_packet_type(&self) -> WireResult<SftpNum> {
-        if self.buffer.len() < SFTP_MINIMUM_PACKET_LEN {
+        if self.buffer.len() < SFTP_FIELD_ID_INDEX {
             Err(WireError::RanOut)
         } else {
             Ok(SftpNum::from(self.buffer[SFTP_FIELD_ID_INDEX]))
@@ -87,15 +88,15 @@ impl<'de> SftpSource<'de> {
         T: OpaqueFileHandle,
     >(
         &mut self,
-    ) -> WireResult<(T, ReqId, u64, BinString<'de>, PartialWriteRequestTracker<T>)>
+    ) -> SftpResult<(T, ReqId, u64, BinString<'de>, PartialWriteRequestTracker<T>)>
     {
         if self.buffer.len() < SFTP_MINIMUM_PACKET_LEN {
-            return Err(WireError::PacketWrong); // TODO: Find a better error
+            return Err(WireError::RanOut.into());
         }
 
         match self.peak_packet_type()? {
             SftpNum::SSH_FXP_WRITE => {}
-            _ => return Err(WireError::PacketWrong), // TODO: Find a better error
+            _ => return Err(SftpError::NotSupported),
         };
 
         self.index = SFTP_WRITE_REQID_INDEX;
