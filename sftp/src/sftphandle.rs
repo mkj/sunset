@@ -115,9 +115,6 @@ where
 
         trace!("Received {:} bytes to process", in_len);
 
-        // let mut pending_incomplete_request = incomplete_request_holder.is_busy();
-        // let pending_long_request = self.partial_write_request_tracker.is_some();
-
         if !matches!(self.state, SftpHandleState::Fragmented(_))
             & in_len.lt(&SFTP_MINIMUM_PACKET_LEN)
         {
@@ -134,12 +131,13 @@ where
                 SftpHandleState::Fragmented(fragment_case) => {
                     match fragment_case {
                         FragmentedRequestState::ProcessingClippedRequest => {
-                            let append_result = incomplete_request_holder
+                            let appending_result = incomplete_request_holder
                                 .try_append_for_valid_request(
+                                    // TODO: All your problems are here. Focus
                                     &buffer_in[buffer_in_remaining_index..],
                                 );
 
-                            if let Err(e) = append_result {
+                            if let Err(e) = appending_result {
                                 match e {
                                     RequestHolderError::RanOut => {
                                         warn!(
@@ -151,6 +149,7 @@ where
                                         continue;
                                     }
                                     RequestHolderError::NoRoom => {
+                                        // Fragmented Write request...
                                         warn!(
                                             "There is not enough room in incomplete request holder \
                                             to accommodate this packet buffer."
@@ -160,7 +159,7 @@ where
                                         WireError::RanOut,
                                     ) => {
                                         warn!(
-                                            "There is not enough room in incomplete request holder \
+                                            "WireError: There is not enough room in incomplete request holder \
                                             to accommodate this packet buffer."
                                         )
                                     }
@@ -174,43 +173,62 @@ where
                                 }
                             } else {
                                 debug!(
-                                    "Incomplete request holder completes request!"
+                                    "Incomplete request holder completed the request!"
                                 );
                             }
+
+                            let used = incomplete_request_holder.appended();
+                            buffer_in_remaining_index += used;
+
                             let mut source = SftpSource::new(
                                 &incomplete_request_holder.try_get_ref()?,
                             );
                             trace!("Internal Source Content: {:?}", source);
 
-                            let sftp_packet =
+                            let decoding_request_result =
                                 SftpPacket::decode_request(&mut source);
 
-                            match sftp_packet {
+                            match decoding_request_result {
                                 Ok(request) => {
                                     self.handle_general_request(&mut sink, request)?;
+                                    incomplete_request_holder.reset();
+                                    self.state = SftpHandleState::Idle;
                                 }
                                 Err(e) => match e {
-                                    WireError::NoRoom => {
-                                        todo!("The packet do not fit in the buffer")
-                                    }
                                     WireError::RanOut => {
-                                        todo!("Not enough data to decode the packet")
+                                        match self
+                                            .handle_ran_out(&mut sink, &mut source)
+                                        {
+                                            Ok(_) => {
+                                                self.state =
+                                                        SftpHandleState::Fragmented(FragmentedRequestState::ProcessingLongRequest);
+                                                incomplete_request_holder.reset();
+                                            }
+                                            Err(e) => match e {
+                                                _ => {
+                                                    error!(
+                                                        "handle_ran_out finished with error: {:?}",
+                                                        e
+                                                    );
+                                                    return (Err(
+                                                        SunsetError::Bug.into()
+                                                    ));
+                                                }
+                                            },
+                                        }
+                                    }
+                                    WireError::NoRoom => {
+                                        error!("Not enough space to fit the request")
                                     }
                                     _ => {
                                         error!(
                                             "Unhandled error decoding assembled packet: {:?}",
                                             e
                                         );
+                                        return Err(WireError::PacketWrong.into());
                                     }
                                 },
                             }
-
-                            let used = incomplete_request_holder.appended();
-                            buffer_in_remaining_index += used;
-
-                            incomplete_request_holder.reset();
-                            self.state = SftpHandleState::Idle;
-                            todo!("FragmentedRequestState::ProcessingClippedRequest")
                         }
                         FragmentedRequestState::ProcessingLongRequest => {
                             let mut source = SftpSource::new(
@@ -223,16 +241,19 @@ where
                             {
                                 wt
                             } else {
-                                return Err(SftpError::SunsetError(
-                                    SunsetError::Bug,
-                                ));
+                                error!(
+                                    "BUG: FragmentedRequestState::ProcessingLongRequest cannot take the write tracker"
+                                );
+                                return Err(SunsetError::Bug.into());
                             };
 
                             let opaque_handle =
                                 write_tracker.get_opaque_file_handle();
 
-                            let usable_data =
-                                in_len.min(write_tracker.remain_data_len as usize);
+                            let usable_data = source
+                                .remaining()
+                                .min(write_tracker.remain_data_len as usize); // TODO: Where does in_len comes from?
+                            // in_len.min(write_tracker.remain_data_len as usize);
 
                             let data_segment = // Fails!!
                                             source.dec_as_binstring(usable_data)?;
@@ -341,7 +362,7 @@ where
                                             e
                                         );
 
-                                        match self.process_ran_out(&mut sink, &mut source) {
+                                        match self.handle_ran_out(&mut sink, &mut source) {
                                                 Ok(_) => {
                                                     self.state =
                                                         SftpHandleState::Fragmented(FragmentedRequestState::ProcessingLongRequest)
@@ -357,7 +378,7 @@ where
                                                     }
                                                     _ => return (Err(SunsetError::Bug.into())),
                                                 },
-                                            };
+                                        };
                                     }
                                     WireError::UnknownPacket { number: _ } => {
                                         warn!("Error decoding SFTP Packet:{:?}", e);
@@ -455,11 +476,15 @@ where
         })
     }
 
-    fn process_ran_out(
+    /// Handles long request that do not fit in the buffers and stores a tracker
+    ///
+    /// **WARNING:** Only `SSH_FXP_WRITE` has been implemented!
+    ///
+    fn handle_ran_out(
         &mut self,
         sink: &mut SftpSink<'_>,
         source: &mut SftpSource<'_>,
-    ) -> Result<(), SftpError> {
+    ) -> SftpResult<()> {
         let packet_type = source.peak_packet_type()?;
         match packet_type {
             SftpNum::SSH_FXP_WRITE => {
@@ -476,7 +501,7 @@ where
                     "obscured_file_handle = {:?}, req_id = {:?}, \
                     offset = {:?}, data_in_buffer = {:?}, \
                     write_tracker = {:?}",
-                    obscured_file_handle, // This file_handle will be the one facilitated by the demosftpserver, this is, an obscured file handle
+                    obscured_file_handle,
                     req_id,
                     offset,
                     data_in_buffer,
@@ -489,7 +514,7 @@ where
                     data_in_buffer.as_ref(),
                 ) {
                     Ok(_) => {
-                        self.partial_write_request_tracker = Some(write_tracker);
+                        self.partial_write_request_tracker = Some(write_tracker); // TODO: This might belong to return value
                     }
                     Err(e) => {
                         error!("SFTP write thrown: {:?}", e);
@@ -498,7 +523,10 @@ where
                 };
             }
             _ => {
-                error!("Packet type could not be handled {:?}", packet_type);
+                error!(
+                    "RanOut of Packet type could not be handled {:?}",
+                    packet_type
+                );
                 push_general_failure(
                     ReqId(u32::MAX),
                     "Unsupported Request: Too long",
@@ -508,7 +536,6 @@ where
         };
         Ok(())
     }
-
 }
 
 #[inline]

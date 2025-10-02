@@ -1,5 +1,6 @@
 use core::convert::From;
 
+use log::warn;
 use sunset::Error as SunsetError;
 use sunset::sshwire::WireError;
 
@@ -10,6 +11,7 @@ pub enum SftpError {
     NotInitialized,
     AlreadyInitialized,
     MalformedPacket,
+    NotSupported,
     WireError(WireError),
     OperationError(StatusCode),
     SunsetError(SunsetError),
@@ -54,10 +56,26 @@ impl From<SftpError> for SunsetError {
         match value {
             SftpError::SunsetError(error) => error,
             SftpError::WireError(wire_error) => wire_error.into(),
-            SftpError::NotInitialized => SunsetError::PacketWrong {},
-            SftpError::AlreadyInitialized => SunsetError::PacketWrong {},
-            SftpError::MalformedPacket => SunsetError::PacketWrong {},
-            SftpError::OperationError(_) => SunsetError::PacketWrong {},
+            SftpError::NotInitialized => {
+                warn!("Casting error loosing information: {:?}", value);
+                SunsetError::PacketWrong {}
+            }
+            SftpError::NotSupported => {
+                warn!("Casting error loosing information: {:?}", value);
+                SunsetError::PacketWrong {}
+            }
+            SftpError::AlreadyInitialized => {
+                warn!("Casting error loosing information: {:?}", value);
+                SunsetError::PacketWrong {}
+            }
+            SftpError::MalformedPacket => {
+                warn!("Casting error loosing information: {:?}", value);
+                SunsetError::PacketWrong {}
+            }
+            SftpError::OperationError(_) => {
+                warn!("Casting error loosing information: {:?}", value);
+                SunsetError::PacketWrong {}
+            }
             SftpError::RequestHolderError(request_holder_error) => SunsetError::Bug,
         }
     }

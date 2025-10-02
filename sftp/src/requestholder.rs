@@ -18,6 +18,7 @@ pub(crate) enum RequestHolderError {
     RanOut,
     /// WireError
     WireError(WireError),
+    Bug,
 }
 
 impl From<WireError> for RequestHolderError {
@@ -57,7 +58,7 @@ pub struct RequestHolder<'a> {
     buffer: &'a mut [u8],
     /// The index of the last byte in the buffer containing usable data
     buffer_fill_index: usize,
-    /// Number of bytes appended to foundational `try_hold` slice
+    /// Number of bytes appended in a previous `try_hold` or `try_append_for_valid_request` slice
     appended: usize,
     /// Marks the structure as invalid
     invalid: bool,
@@ -72,34 +73,10 @@ impl<'a> RequestHolder<'a> {
         RequestHolder {
             buffer: buffer,
             buffer_fill_index: 0,
-            invalid: false,
+            invalid: false, // TODO: Remove if invalidate() is removed
             busy: false,
             appended: 0,
         }
-    }
-
-    /// Resets the structure allowing it to hold a new request.
-    ///
-    /// Will not remove the previous data from the buffer
-    pub fn reset(&mut self) -> () {
-        self.busy = false;
-        self.invalid = false;
-        self.buffer_fill_index = 0;
-        self.appended = 0;
-    }
-
-    /// Invalidates the current instance and returns its original buffer. Does not erase previous data
-    pub fn invalidate(&mut self) -> RequestHolderResult<&[u8]> {
-        if !self.busy {
-            return Err(RequestHolderError::Empty);
-        }
-        if self.invalid {
-            return Err(RequestHolderError::Invalid);
-        }
-
-        self.invalid = true;
-        // self.buffer_fill_index = 0;
-        Ok(&self.buffer)
     }
 
     /// Uses the internal buffer to store a copy of the provided slice
@@ -107,7 +84,15 @@ impl<'a> RequestHolder<'a> {
     /// The definition of `try_hold` and `try_append_slice` separately
     /// is deliberated to follow an order in composing the held request
     ///
-    /// returns the number of bytes read from the slice
+    /// Increases the `appended()` counter
+    ///
+    /// returns:
+    ///
+    /// - Ok(usize): the number of bytes read from the slice
+    ///
+    /// - `Err(Busy)`: If there has been a call to `try_hold` without a call to `reset`
+    ///
+    /// - `Err(Invalid)`: If the structure has been marked as invalid previously
     pub fn try_hold(&mut self, slice: &[u8]) -> RequestHolderResult<usize> {
         if self.busy {
             return Err(RequestHolderError::Busy);
@@ -123,12 +108,229 @@ impl<'a> RequestHolder<'a> {
         Ok(read_in)
     }
 
+    /// Resets the structure allowing it to hold a new request.
+    ///
+    /// Resets the `appended()` counter.
+    ///
+    /// Will not clear the previous data from the buffer.
+    pub fn reset(&mut self) -> () {
+        self.busy = false;
+        self.invalid = false;
+        self.buffer_fill_index = 0;
+        self.appended = 0;
+    }
+
+    // TODO: Remove it if it is not used
+    /// Invalidates the current instance and returns its original buffer. Does not erase previous data
+    pub fn invalidate(&mut self) -> RequestHolderResult<&[u8]> {
+        if !self.busy {
+            return Err(RequestHolderError::Empty);
+        }
+        if self.invalid {
+            return Err(RequestHolderError::Invalid);
+        }
+
+        self.invalid = true;
+        // self.buffer_fill_index = 0;
+        Ok(&self.buffer)
+    }
+
+    /// Using the content of the `RequestHolder` tries to find a valid
+    /// SFTP request appending from slice into the internal buffer to
+    /// form a valid request.
+    ///
+    /// Reset and increase the `appended()` counter.
+    ///
+    /// **Returns**:
+    ///
+    /// - `Ok(())`: Full valid request
+    ///
+    /// - `Err(RanOut)`: Not enough bytes in the slice to complete a valid request or fill the buffer
+    ///
+    /// - `Err(NoRoom)`: The internal buffer is full but there is not a full valid request in the buffer
+    ///
+    /// - `Err(Invalid)`: If the structure has been marked as invalid previously
+    ///
+    /// - `Err(Empty)`: If the structure has not been loaded with `try_hold`
+    ///
+    /// - `Err(Bug)`: An unexpected condition arises
+    pub fn try_append_for_valid_request(
+        &mut self,
+        slice: &[u8],
+    ) -> RequestHolderResult<()> {
+        debug!(
+            "try_append_for_valid_request: self = {:?}\n\
+            Space left = {:?}\n\
+            Length of slice to append from = {:?}",
+            self,
+            self.remaining_len(),
+            slice.len()
+        );
+
+        if self.invalid {
+            error!("Request Holder is invalid");
+            return Err(RequestHolderError::Invalid);
+        }
+
+        if !self.busy {
+            error!("Request Holder is not busy");
+            return Err(RequestHolderError::Empty);
+        }
+
+        if self.is_full() {
+            error!("Request Holder is full");
+            return Err(RequestHolderError::NoRoom);
+        }
+
+        self.appended = 0; // reset appended bytes counter
+
+        // If we will not be able to read the SFTP packet ID we clearly need more data
+        if self.buffer_fill_index + slice.len() < proto::SFTP_FIELD_ID_INDEX {
+            self.try_append_slice(&slice)?;
+            error!(
+                "[Buffer fill index = {:?}] + [slice.len = {:?}] = {:?} < SFTP field id index = {:?}",
+                self.buffer_fill_index,
+                slice.len(),
+                self.buffer_fill_index + slice.len(),
+                proto::SFTP_FIELD_ID_INDEX
+            );
+            return Err(RequestHolderError::RanOut);
+        }
+
+        let complete_to_id_index = proto::SFTP_FIELD_ID_INDEX
+            .checked_sub(self.buffer_fill_index)
+            .unwrap_or(0);
+
+        if complete_to_id_index > 0 {
+            warn!(
+                "The held fragment len = {:?}, is insufficient to peak\
+                the length and type. Will append {:?} to reach the \
+                id field index: {:?}",
+                self.buffer_fill_index,
+                complete_to_id_index,
+                proto::SFTP_FIELD_ID_INDEX
+            );
+            if complete_to_id_index > slice.len() {
+                self.try_append_slice(&slice)?;
+                error!(
+                    "The slice to include to the held fragment is too \
+                short to complete to id index. More data is required."
+                );
+                return Err(RequestHolderError::RanOut);
+            } else {
+                self.try_append_slice(&slice[..complete_to_id_index])?;
+            };
+        }
+
+        let (packet_len, packet_type) = {
+            let temp_source = SftpSource::new(self.try_get_ref()?);
+            let packet_len = temp_source.peak_packet_len()? as usize;
+            let packet_type = temp_source.peak_packet_type()?;
+            (packet_len, packet_type)
+        };
+        debug!("Request len = {:?}, type = {:?}", packet_len, packet_type);
+
+        let remaining_packet_len =
+            packet_len - (self.buffer_fill_index - proto::SFTP_FIELD_LEN_LENGTH);
+        // The packet len does not include the packet len field itself (4 bytes)
+        // https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-3
+        debug!(
+            "[Total Packet len = {:?}] = [Packet len copied so far = {:}] \
+            - [SFTP Field len length = {:?}] + [Remaining packet len = {:?}]",
+            packet_len,
+            self.buffer_fill_index,
+            proto::SFTP_FIELD_LEN_LENGTH,
+            remaining_packet_len,
+        );
+        assert_eq!(
+            packet_len,
+            self.buffer_fill_index - proto::SFTP_FIELD_LEN_LENGTH
+                + remaining_packet_len
+        );
+        // TODO: Fix the mess with the logic and the indexes to address the slice. IT IS PANICKING
+        if remaining_packet_len <= self.remaining_len() {
+            // We have all the remaining packet bytes in the slice and fits in the buffer
+
+            if (slice.len()) < (remaining_packet_len + self.appended()) {
+                self.try_append_slice(&slice[self.appended()..])?;
+                return Err(RequestHolderError::RanOut);
+            } else {
+                self.try_append_slice(
+                    &slice[self.appended()..remaining_packet_len],
+                )?;
+                return Ok(());
+            }
+        } else {
+            // the remaining packet bytes are more than we can fit in the buffer
+            // But they may not fit in the slice neither
+
+            let start = self.appended();
+            let end = self.remaining_len().min(slice.len() - self.appended());
+
+            debug!(
+                "Will finally take the range: [{:?}..{:?}] from the slice [0..{:?}]",
+                start,
+                end,
+                slice.len()
+            );
+            self.try_append_slice(
+                &slice[self.appended()
+                    ..self.remaining_len().min(slice.len() - self.appended())],
+            )?;
+            if self.is_full() {
+                return Err(RequestHolderError::NoRoom);
+            } else {
+                return Err(RequestHolderError::RanOut);
+            }
+        }
+        Ok(())
+    }
+
+    /// Gets a reference to the slice that it is holding
+    pub fn try_get_ref(&self) -> RequestHolderResult<&[u8]> {
+        if self.invalid {
+            return Err(RequestHolderError::Invalid);
+        }
+
+        if self.busy {
+            debug!(
+                "Returning reference to: {:?}",
+                &self.buffer[..self.buffer_fill_index]
+            );
+            Ok(&self.buffer[..self.buffer_fill_index])
+        } else {
+            Err(RequestHolderError::Empty)
+        }
+    }
+
+    pub fn is_full(&mut self) -> bool {
+        self.buffer_fill_index == self.buffer.len()
+    }
+
+    /// Returns true if it has a slice in its buffer
+    pub fn is_busy(&self) -> bool {
+        self.busy
+    }
+
+    /// Returns the bytes appened in the last call to `try_append_for_valid_request`
+    pub fn appended(&self) -> usize {
+        self.appended
+    }
+
     /// Appends a slice to the internal buffer. Requires the buffer to
     /// be busy by using `try_hold` first
     ///
-    /// Increases the `appended` counter
+    /// Increases the `appended` counter but does not reset it
     ///
-    /// Returns the number of bytes appended
+    /// Returns:
+    ///
+    /// - `Ok(())`: the slice was appended
+    ///
+    /// - `Err(Invalid)`: If the structure has been marked as invalid previously
+    ///
+    /// - `Err(Empty)`: If the structure has not been loaded with `try_hold`
+    ///
+    /// - `Err(NoRoom)`: The internal buffer is full but there is not a full valid request in the buffer
     fn try_append_slice(&mut self, slice: &[u8]) -> RequestHolderResult<()> {
         if slice.len() == 0 {
             warn!("try appending a zero length slice");
@@ -161,128 +363,10 @@ impl<'a> RequestHolder<'a> {
         Ok(())
     }
 
-    /// Using the content of the `RequestHolder` tries to find a valid
-    /// SFTP request appending from slice into the internal buffer to
-    /// form a valid request
-    ///
-    /// Returns the number of bytes appended
-    pub fn try_append_for_valid_request(
-        &mut self,
-        slice: &[u8],
-    ) -> RequestHolderResult<()> {
-        self.appended = 0; // reset appended bytes counter
-
-        debug!(
-            "try_append_for_valid_request: self = {:?}\n\
-            Space left = {:?}\n\
-            Length of slice to append from = {:?}",
-            self,
-            self.remaining_len(),
-            slice.len()
-        );
-
-        if self.invalid {
-            return Err(RequestHolderError::Invalid);
-        }
-
-        if !self.busy {
-            return Err(RequestHolderError::Empty);
-        }
-
-        // This makes sure that we do  not try to read more slice than we can
-        if self.buffer_fill_index + slice.len() < proto::SFTP_FIELD_ID_INDEX {
-            self.try_append_slice(&slice)?;
-            return Err(RequestHolderError::RanOut);
-        }
-
-        let complete_to_id_index = proto::SFTP_FIELD_ID_INDEX
-            .checked_sub(self.buffer_fill_index - 1)
-            .unwrap_or(0);
-
-        if complete_to_id_index > 0 {
-            warn!(
-                "The held fragment len = {:?}, is insufficient to peak\
-                the length and type. Will append {:?} to reach the \
-                id field index: {:?}",
-                self.buffer_fill_index,
-                complete_to_id_index,
-                proto::SFTP_FIELD_ID_INDEX
-            );
-            if complete_to_id_index > slice.len() {
-                self.try_append_slice(&slice)?;
-                error!(
-                    "The slice to include to the held fragment is too \
-                short to complete to id index. More data is required."
-                );
-                return Err(RequestHolderError::RanOut);
-            } else {
-                self.try_append_slice(&slice[..complete_to_id_index])?;
-            };
-        }
-
-        let packet_len =
-            SftpSource::new(self.try_get_ref()?).peak_packet_len()? as usize;
-
-        let packet_type = SftpSource::new(self.try_get_ref()?).peak_packet_type()?;
-        debug!("Request len = {:?}, type = {:?}", packet_len, packet_type);
-
-        let remaining_packet_len = packet_len - self.buffer_fill_index; // TODO: Careful, the packet len does not include the packet len field
-
-        if remaining_packet_len <= (self.remaining_len()) {
-            if remaining_packet_len > slice.len() {
-                self.try_append_slice(&slice[self.appended()..])?;
-                error!(
-                    "The slice to include to the held fragment does not \
-                    contain the whole packet. More data is required."
-                );
-                return Err(RequestHolderError::RanOut);
-            }
-            self.try_append_slice(&slice[self.appended()..])?; // The only Ok
-        } else {
-            warn!(
-                "The request does not fit in the buffer: \
-                (req len = {:?} > buffer len = {:?} )",
-                packet_len,
-                self.buffer.len()
-            );
-            if self.remaining_len() < (slice.len() - self.appended()) {
-                self.try_append_slice(
-                    &slice[self.appended()..self.remaining_len()],
-                )?;
-            } else {
-                self.try_append_slice(&slice[self.appended()..])?;
-            }
-            return Err(RequestHolderError::NoRoom);
-        }
-        Ok(())
-    }
-
-    /// Gets a reference to the slice that it is holding
-    pub fn try_get_ref(&self) -> RequestHolderResult<&[u8]> {
-        if self.invalid {
-            return Err(RequestHolderError::Invalid);
-        }
-
-        if self.busy {
-            Ok(&self.buffer[..self.buffer_fill_index])
-        } else {
-            Err(RequestHolderError::Empty)
-        }
-    }
-
-    /// Returns true if it has a slice in its buffer
-    pub fn is_busy(&self) -> bool {
-        self.busy
-    }
-
-    /// Returns the bytes appened in the last call to `try_append_for_valid_request`
-    pub fn appended(&self) -> usize {
-        self.appended
-    }
-
     /// Returns the number of bytes unused at the end of the buffer,
     /// this is, the remaining length
     fn remaining_len(&self) -> usize {
-        self.buffer.len() - self.buffer_fill_index - 1 // Off by one?
+        // self.buffer.len() - self.buffer_fill_index - 1 // TODO: Off by one?
+        self.buffer.len() - self.buffer_fill_index
     }
 }
