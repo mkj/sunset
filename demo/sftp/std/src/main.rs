@@ -1,6 +1,6 @@
 use sunset::*;
 use sunset_async::{ProgressHolder, SSHServer, SunsetMutex, SunsetRawMutex};
-use sunset_sftp::{RequestHolder, SftpHandler};
+use sunset_sftp::SftpHandler;
 
 pub(crate) use sunset_demo_common as demo_common;
 
@@ -141,6 +141,7 @@ impl DemoServer for StdDemo {
             Ok(())
         };
 
+        #[allow(unreachable_code)]
         let sftp_loop = async {
             loop {
                 let ch = chan_pipe.receive().await;
@@ -152,9 +153,6 @@ impl DemoServer for StdDemo {
                 let mut buffer_out = [0u8; 384];
                 let mut incomplete_request_buffer = [0u8; 128]; // TODO: Find a non arbitrary length
 
-                let mut incomplete_request_holder =
-                    RequestHolder::new(&mut incomplete_request_buffer);
-
                 match {
                     let mut stdio = serv.stdio(ch).await?;
                     let mut file_server = DemoSftpServer::new(
@@ -164,7 +162,7 @@ impl DemoServer for StdDemo {
                     let mut sftp_handler =
                         SftpHandler::<DemoOpaqueFileHandle, DemoSftpServer>::new(
                             &mut file_server,
-                            // &mut incomplete_request_buffer,
+                            &mut incomplete_request_buffer,
                         );
                     loop {
                         let lr = stdio.read(&mut buffer_in).await?;
@@ -175,11 +173,7 @@ impl DemoServer for StdDemo {
                         }
 
                         let lw = sftp_handler
-                            .process(
-                                &buffer_in[0..lr],
-                                &mut incomplete_request_holder,
-                                &mut buffer_out,
-                            )
+                            .process(&buffer_in[0..lr], &mut buffer_out)
                             .await?;
                         if lw > 0 {
                             stdio.write(&mut buffer_out[0..lw]).await?;

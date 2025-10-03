@@ -1,11 +1,11 @@
-use crate::{proto, sftperror, sftpsource::SftpSource};
+use crate::{proto, sftpsource::SftpSource};
 
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
 use sunset::sshwire::WireError;
 
 #[derive(Debug)]
-pub(crate) enum RequestHolderError {
+pub enum RequestHolderError {
     /// The slice to hold is too long
     NoRoom,
     /// The slice holder is keeping a slice already. Consideer cleaning
@@ -283,7 +283,6 @@ impl<'a> RequestHolder<'a> {
                 return Err(RequestHolderError::RanOut);
             }
         }
-        Ok(())
     }
 
     /// Gets a reference to the slice that it is holding

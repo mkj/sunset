@@ -5,7 +5,6 @@ use crate::proto::{
 use crate::sftphandle::PartialWriteRequestTracker;
 use crate::{FileHandle, OpaqueFileHandle, SftpError, SftpResult};
 
-use sunset::error::RanOut;
 use sunset::sshwire::{BinString, SSHDecode, SSHSource, WireError, WireResult};
 
 #[allow(unused_imports)]
@@ -135,9 +134,5 @@ impl<'de> SftpSource<'de> {
         len: usize,
     ) -> WireResult<BinString<'_>> {
         Ok(BinString(self.take(len)?))
-    }
-
-    pub(crate) fn buffer_ref(&self) -> &[u8] {
-        self.buffer.clone()
     }
 }
