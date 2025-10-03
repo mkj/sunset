@@ -135,6 +135,10 @@ pub struct NameEntry<'a> {
     pub attrs: Attrs,
 }
 
+// TODO: Will a Vector be an issue for no_std?
+// Maybe we should migrate this to heapless::Vec and let the user decide
+// the number of elements via features flags?
+/// A collection of [`NameEntry`]
 #[derive(Debug)]
 pub struct Name<'a>(pub Vec<NameEntry<'a>>);
 
