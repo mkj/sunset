@@ -47,7 +47,7 @@ impl<'a> From<&'a str> for Filename<'a> {
     }
 }
 
-// TODO: standardize the encoding of filenames as str
+// TODO standardize the encoding of filenames as str
 impl<'a> Filename<'a> {
     ///
     pub fn as_str(&self) -> Result<&'a str, WireError> {
@@ -176,7 +176,7 @@ pub struct NameEntry<'a> {
     pub attrs: Attrs,
 }
 
-// TODO: Will a Vector be an issue for no_std?
+// TODO Will a Vector be an issue for no_std?
 // Maybe we should migrate this to heapless::Vec and let the user decide
 // the number of elements via features flags?
 /// A collection of [`NameEntry`] used for [ssh_fxp_name responses](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-7).
@@ -327,7 +327,7 @@ impl Attrs {
         if self.atime.is_some() || self.mtime.is_some() {
             flags += AttrsFlags::SSH_FILEXFER_ATTR_ACMODTIME
         }
-        // TODO: Implement extensions
+        // TODO Implement extensions
         // if self.ext_count.is_some() {
         //     flags += AttrsFlags::SSH_FILEXFER_ATTR_EXTENDED
         // }
@@ -359,7 +359,7 @@ impl SSHEncode for Attrs {
         if let Some(value) = self.mtime.as_ref() {
             value.enc(s)?
         }
-        // TODO: Implement extensions
+        // TODO Implement extensions
         // if let Some(value) = self.ext_count.as_ref() { value.enc(s)? }
 
         Ok(())
@@ -387,7 +387,7 @@ impl<'de> SSHDecode<'de> for Attrs {
             attrs.atime = Some(u32::dec(s)?);
             attrs.mtime = Some(u32::dec(s)?);
         }
-        // TODO: Implement extensions
+        // TODO Implement extensions
         // if flags & AttrsFlags::SSH_FILEXFER_ATTR_EXTENDED != 0{
 
         Ok(attrs)
@@ -618,6 +618,8 @@ macro_rules! sftpmessages {
                 }
             }
 
+            // TODO Maybe change WireResult -> SftpResult and SSHSink to SftpSink?
+            // This way I have more internal details and can return a Error::bug() if required
             /// Encode a request.
             ///
             /// Used by a SFTP client. Does not include the length field.
@@ -625,7 +627,7 @@ macro_rules! sftpmessages {
                 if !self.sftp_num().is_request() {
                     return Err(WireError::PacketWrong)
                     // return Err(Error::bug())
-                    // TODO: I understand that it would be a bad call of encode_response and
+                    // I understand that it would be a bad call of encode_response and
                     // therefore a bug, bug Error::bug() is not compatible with WireResult
                 }
 
@@ -637,6 +639,8 @@ macro_rules! sftpmessages {
                 self.enc(s)
             }
 
+            // TODO Maybe change WireResult -> SftpResult and SSHSource to SftpSource?
+            // This way I have more internal details and can return a more appropriate error if required
             /// Decode a response.
             ///
             /// Used by a SFTP client. Does not include the length field.
@@ -651,7 +655,7 @@ macro_rules! sftpmessages {
                 if !num.is_response() {
                     return Err(WireError::PacketWrong)
                     // return error::SSHProto.fail();
-                    // TODO: Not an error in the SSHProtocol rather the SFTP Protocol.
+                    // Not an error in the SSHProtocol rather the SFTP Protocol.
                 }
 
                 let id = ReqId(u32::dec(s)?);
@@ -690,6 +694,8 @@ macro_rules! sftpmessages {
                 }
             }
 
+            // TODO Maybe change WireResult -> SftpResult and SSHSink to SftpSink?
+            // This way I have more internal details and can return a Error::bug() if required
             /// Encode a response.
             ///
             /// Used by a SFTP server. Does not include the length field.
@@ -700,7 +706,7 @@ macro_rules! sftpmessages {
                 if !self.sftp_num().is_response() {
                     return Err(WireError::PacketWrong)
                     // return Err(Error::bug())
-                    // TODO: I understand that it would be a bad call of encode_response and
+                    // I understand that it would be a bad call of encode_response and
                     // therefore a bug, bug Error::bug() is not compatible with WireResult
                 }
 

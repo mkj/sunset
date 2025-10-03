@@ -1,12 +1,13 @@
-use crate::{StatusCode, requestholder::RequestHolderError};
+use crate::protocol::StatusCode;
 
+use crate::requestholder::RequestHolderError;
 use sunset::Error as SunsetError;
 use sunset::sshwire::WireError;
 
 use core::convert::From;
 use log::warn;
 
-// TODO: Use it more broadly where reasonable
+// TODO Use it more broadly where reasonable
 /// Errors that are specific to this SFTP lib
 #[derive(Debug)]
 pub enum SftpError {

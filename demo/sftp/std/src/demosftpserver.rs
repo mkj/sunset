@@ -3,10 +3,9 @@ use crate::{
     demoopaquefilehandle::DemoOpaqueFileHandle,
 };
 
-use sunset_sftp::{
-    Attrs, DirReply, Filename, Name, NameEntry, OpaqueFileHandleManager, PathFinder,
-    ReadReply, SftpOpResult, SftpServer, StatusCode,
-};
+use sunset_sftp::handles::{OpaqueFileHandleManager, PathFinder};
+use sunset_sftp::protocol::{Attrs, Filename, Name, NameEntry, StatusCode};
+use sunset_sftp::server::{DirReply, ReadReply, SftpOpResult, SftpServer};
 
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};

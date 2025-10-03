@@ -1,4 +1,4 @@
-use crate::FileHandle;
+use crate::protocol::FileHandle;
 
 use sunset::sshwire::WireResult;
 
