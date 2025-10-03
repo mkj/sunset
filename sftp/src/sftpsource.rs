@@ -54,7 +54,7 @@ impl<'de> SftpSource<'de> {
     ///
     /// **Warning**: will only work in well formed packets, in other case the result will contain garbage
     pub(crate) fn peak_packet_type(&self) -> WireResult<SftpNum> {
-        if self.buffer.len() < SFTP_FIELD_ID_INDEX {
+        if self.buffer.len() < SFTP_FIELD_ID_INDEX + 1 {
             Err(WireError::RanOut)
         } else {
             Ok(SftpNum::from(self.buffer[SFTP_FIELD_ID_INDEX]))
