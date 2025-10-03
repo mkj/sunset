@@ -10,15 +10,15 @@ use sunset::sshwire::{BinString, SSHDecode, SSHSource, WireError, WireResult};
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
 
-/// SftpSource implements SSHSource and also extra functions to handle some challenges with long SFTP packets in constrained environments
+/// SftpSource implements [`SSHSource`] and also extra functions to handle
+/// some challenges related to long SFTP packets in constrained environments
 #[derive(Default, Debug)]
 pub struct SftpSource<'de> {
-    pub buffer: &'de [u8],
-    pub index: usize,
+    buffer: &'de [u8],
+    index: usize,
 }
 
 impl<'de> SSHSource<'de> for SftpSource<'de> {
-    // Original take
     fn take(&mut self, len: usize) -> sunset::sshwire::WireResult<&'de [u8]> {
         if len + self.index > self.buffer.len() {
             return Err(WireError::RanOut);
@@ -43,15 +43,19 @@ impl<'de> SSHSource<'de> for SftpSource<'de> {
 }
 
 impl<'de> SftpSource<'de> {
+    /// Creates a new [`SftpSource`] referencing a buffer
     pub fn new(buffer: &'de [u8]) -> Self {
         SftpSource { buffer: buffer, index: 0 }
     }
 
-    /// Peaks the buffer for packet type. This does not advance the reading index
+    /// Peaks the buffer for packet type [`SftpNum`]. This does not advance
+    /// the reading index
     ///
-    /// Useful to observe the packet fields in special conditions where a `dec(s)` would fail
+    /// Useful to observe the packet fields in special conditions where a
+    /// `dec(s)` would fail
     ///
-    /// **Warning**: will only work in well formed packets, in other case the result will contain garbage
+    /// **Warning**: will only work in well formed packets, in other case
+    /// the result will contain garbage
     pub(crate) fn peak_packet_type(&self) -> WireResult<SftpNum> {
         if self.buffer.len() < SFTP_FIELD_ID_INDEX + 1 {
             Err(WireError::RanOut)
@@ -62,9 +66,11 @@ impl<'de> SftpSource<'de> {
 
     /// Peaks the buffer for packet length. This does not advance the reading index
     ///
-    /// Useful to observe the packet fields in special conditions where a `dec(s)` would fail
+    /// Useful to observe the packet fields in special conditions where a `dec(s)`
+    /// would fail
     ///
-    /// **Warning**: will only work in well formed packets, in other case the result will contain garbage
+    /// **Warning**: will only work in well formed packets, in other case the result
+    /// will contain garbage
     pub(crate) fn peak_packet_len(&self) -> WireResult<u32> {
         if self.buffer.len() < SFTP_FIELD_LEN_INDEX + SFTP_FIELD_LEN_LENGTH {
             Err(WireError::RanOut)
@@ -78,11 +84,13 @@ impl<'de> SftpSource<'de> {
         }
     }
 
-    /// Assuming that the buffer contains a Write request packet initial bytes and not its totality,
-    /// extracts a partial version of the write request and a Write request tracker to handle and a
-    /// tracker to continue processing subsequent portions of the request from a SftpSource
+    /// Assuming that the buffer contains a [`proto::Write`] request packet initial
+    /// bytes and not its totality, extracts a partial version of the write request
+    /// and a Write request tracker to handle and a tracker to continue processing
+    /// subsequent portions of the request from a SftpSource
     ///
-    /// **Warning**: will only work in well formed write packets, in other case the result will contain garbage
+    /// **Warning**: will only work in well formed write packets, in other case
+    /// the result will contain garbage
     pub(crate) fn dec_packet_partial_write_content_and_get_tracker<
         T: OpaqueFileHandle,
     >(
@@ -126,9 +134,11 @@ impl<'de> SftpSource<'de> {
         Ok((obscured_file_handle, req_id, offset, data_in_buffer, write_tracker))
     }
 
-    /// Used to decode a slice of SSHSource as a single BinString
+    /// Used to decode a slice of [`SSHSource`] as a single BinString
     ///
-    /// It will not use the first four bytes as u32 for length, instead it will use the length of the data received and use it to set the length of the returned BinString.
+    /// It will not use the first four bytes as u32 for length, instead
+    /// it will use the length of the data received and use it to set the
+    /// length of the returned BinString.
     pub(crate) fn dec_as_binstring(
         &mut self,
         len: usize,

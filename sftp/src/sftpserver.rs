@@ -5,6 +5,7 @@ use crate::{
 
 use core::marker::PhantomData;
 
+/// Result used to store the result of an Sftp Operation
 pub type SftpOpResult<T> = core::result::Result<T, StatusCode>;
 
 /// All trait functions are optional in the SFTP protocol.
@@ -31,7 +32,7 @@ where
 
         Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
     }
-
+    /// Reads from a file that has previously being opened for reading
     fn read(
         &mut self,
         opaque_file_handle: &T,
@@ -45,7 +46,7 @@ where
         );
         Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
     }
-
+    /// Writes to a file that has previously being opened for writing
     fn write(
         &mut self,
         opaque_file_handle: &T,
@@ -61,11 +62,13 @@ where
         Ok(())
     }
 
+    /// Opens a directory
     fn opendir(&mut self, dir: &str) -> SftpOpResult<T> {
         log::error!("SftpServer OpenDir operation not defined: dir = {:?}", dir);
         Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
     }
 
+    /// Reads the list of items in a directory
     fn readdir(
         &mut self,
         opaque_file_handle: &T,

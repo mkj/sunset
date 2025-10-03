@@ -5,6 +5,11 @@ use sunset::sshwire::{SSHSink, WireError};
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
 
+/// A implementation fo [`SSHSink`] that observes some constraints for
+/// SFTP packets
+///
+/// **Important**: It needs to be [`SftpSink::finalize`] to add the packet
+/// len
 #[derive(Default)]
 pub struct SftpSink<'g> {
     pub buffer: &'g mut [u8],
@@ -12,13 +17,19 @@ pub struct SftpSink<'g> {
 }
 
 impl<'g> SftpSink<'g> {
+    /// Initializes the Sink, with the particularity that it will leave
+    /// [`crate::proto::SFTP_FIELD_LEN_LENGTH`] bytes empty at the
+    /// start of the buffer that will contain the total packet length
+    /// once the [`SftpSink::finalize`] method is called
     pub fn new(s: &'g mut [u8]) -> Self {
         SftpSink { buffer: s, index: SFTP_FIELD_LEN_LENGTH }
     }
 
-    /// Finalise the buffer by prepending the payload size and returning
+    /// Finalise the buffer by prepending the packet length field,
+    /// excluding the field itself.
     ///
-    /// Returns the final index in the buffer as a reference for the space used
+    /// **Returns** the final index in the buffer as a reference of the
+    /// space used
     pub fn finalize(&mut self) -> usize {
         if self.index <= SFTP_FIELD_LEN_LENGTH {
             warn!("SftpSink trying to terminate it before pushing data");
