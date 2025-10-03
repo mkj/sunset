@@ -16,7 +16,7 @@ use core::{u32, usize};
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
 
-/// FSM for handling sftp requests during `process()`
+/// FSM for handling sftp requests during [`SftpHandler::process`]
 #[derive(Default, Debug, PartialEq, Eq)]
 enum SftpHandleState {
     /// The handle is not initialized
@@ -28,7 +28,7 @@ enum SftpHandleState {
     Fragmented(FragmentedRequestState),
 }
 
-/// FSM subset to handle fragmented request as part of `SftpHandleState`
+/// FSM subset to handle fragmented request as part of [`SftpHandleState`]
 #[derive(Debug, PartialEq, Eq)]
 enum FragmentedRequestState {
     /// A request that is clipped needs to be process. It cannot be decoded
@@ -51,7 +51,7 @@ pub struct PartialWriteRequestTracker<T: OpaqueFileHandle> {
 }
 
 impl<T: OpaqueFileHandle> PartialWriteRequestTracker<T> {
-    /// Creates a new PartialWriteRequestTracker
+    /// Creates a new [`PartialWriteRequestTracker`]
     pub fn new(
         req_id: ReqId,
         opaque_handle: T,
@@ -75,7 +75,8 @@ impl<T: OpaqueFileHandle> PartialWriteRequestTracker<T> {
 /// Process the raw buffers in and out from a subsystem channel decoding
 /// request and encoding responses
 ///
-/// It will delegate request to an `SftpServer` implemented by the library
+/// It will delegate request to an [`crate::sftpserver::SftpServer`]
+/// implemented by the library
 /// user taking into account the local system details.
 pub struct SftpHandler<'a, T, S>
 where
@@ -86,7 +87,7 @@ where
     state: SftpHandleState,
 
     /// The local SFTP File server implementing the basic SFTP requests
-    /// defined by `SftpServer`
+    /// defined by [`crate::sftpserver::SftpServer`]
     file_server: &'a mut S,
 
     /// Use to process SFTP Write packets that have been received
@@ -105,10 +106,10 @@ where
     ///
     /// Requires:
     ///
-    /// - `file_server` (implementing `SftpServer`): to execute
+    /// - `file_server` (implementing [`crate::sftpserver::SftpServer`] ): to execute
     /// the request in the local system
     /// - `incomplete_request_buffer`: used to deal with fragmented
-    /// packets during `process()`
+    /// packets during [`SftpHandler::process`]
     pub fn new(
         file_server: &'a mut S,
         incomplete_request_buffer: &'a mut [u8],
@@ -125,7 +126,7 @@ where
     ///
     /// - Decodes the buffer_in request
     /// - Process the request delegating
-    /// operations to a `SftpServer` implementation
+    /// operations to a [`SftpHandler::process`] implementation
     /// - Serializes an answer in buffer_out
     ///
     /// **Returns**: A result containing the number of bytes used in
