@@ -37,6 +37,7 @@ pub const SFTP_WRITE_REQID_INDEX: usize = 5;
 // pub const SFTP_WRITE_HANDLE_INDEX: usize = 9;
 
 // TODO is utf8 enough, or does this need to be an opaque binstring?
+/// See [SSH_FXP_NAME in Responses from the Server to the Client](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-7)
 #[derive(Debug, SSHEncode, SSHDecode)]
 pub struct Filename<'a>(TextString<'a>);
 
@@ -46,12 +47,16 @@ impl<'a> From<&'a str> for Filename<'a> {
     }
 }
 
+// TODO: standardize the encoding of filenames as str
 impl<'a> Filename<'a> {
+    ///
     pub fn as_str(&self) -> Result<&'a str, WireError> {
         core::str::from_utf8(self.0.0).map_err(|_| WireError::BadString)
     }
 }
 
+/// An opaque handle that is used by the server to identify an open
+/// file or folder.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, SSHEncode, SSHDecode)]
 pub struct FileHandle<'a>(pub BinString<'a>);
 
@@ -74,71 +79,107 @@ pub struct InitVersionLowest {
     // TODO variable number of ExtPair
 }
 
+/// Used for `ssh_fxp_open` [response](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.3).
 #[derive(Debug, SSHEncode, SSHDecode)]
 pub struct Open<'a> {
+    /// The relative or absolute path of the file to be open
     pub filename: Filename<'a>,
+    /// File [permissions flags](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.3)
     pub pflags: u32,
+    /// Initial attributes for the file
     pub attrs: Attrs,
 }
 
+/// Used for `ssh_fxp_close` [response](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.3).
 #[derive(Debug, SSHEncode, SSHDecode)]
 pub struct Close<'a> {
+    /// An opaque handle that is used by the server to identify an open
+    /// file or folder to be closed.
     pub handle: FileHandle<'a>,
 }
 
+/// Used for `ssh_fxp_read` [response](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.4).
 #[derive(Debug, SSHEncode, SSHDecode)]
 pub struct Read<'a> {
+    /// An opaque handle that is used by the server to identify an open
+    /// file or folder.
     pub handle: FileHandle<'a>,
+    /// The offset for the read operation
     pub offset: u64,
+    /// The number of bytes to be retrieved
     pub len: u32,
 }
 
+/// Used for `ssh_fxp_write` [response](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.4).
 #[derive(Debug, SSHEncode, SSHDecode)]
 pub struct Write<'a> {
+    /// An opaque handle that is used by the server to identify an open
+    /// file or folder.
     pub handle: FileHandle<'a>,
+    /// The offset for the read operation
     pub offset: u64,
+
     pub data: BinString<'a>,
 }
 
 // Responses
 
+/// Used for `ssh_fxp_realpath` [response](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.11).
 #[derive(Debug, SSHEncode, SSHDecode)]
 pub struct PathInfo<'a> {
+    /// The path
     pub path: TextString<'a>,
 }
 
+/// Used for `ssh_fxp_status` [response](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-7).
 #[derive(Debug, SSHEncode, SSHDecode)]
 pub struct Status<'a> {
+    /// See [`StatusCode`] for possible codes
     pub code: StatusCode,
+    /// An extra message
     pub message: TextString<'a>,
+    /// A language tag as defined by [Tags for the Identification of Languages](https://datatracker.ietf.org/doc/html/rfc1766)
     pub lang: TextString<'a>,
 }
-
+/// Used for `ssh_fxp_handle` [response](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-7).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, SSHEncode, SSHDecode)]
 pub struct Handle<'a> {
+    /// An opaque handle that is used by the server to identify an open
+    /// file or folder.
     pub handle: FileHandle<'a>,
 }
 
+/// Used for `ssh_fxp_data` [responses](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-7).
 #[derive(Debug, SSHEncode, SSHDecode)]
 pub struct Data<'a> {
+    /// Handle for the file referred
     pub handle: FileHandle<'a>,
+    /// Offset in the data read
     pub offset: u64,
+    /// raw data
     pub data: BinString<'a>,
 }
 
+/// Struct to hold `SSH_FXP_NAME` response.
+/// See [SSH_FXP_NAME in Responses from the Server to the Client](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-7)
 #[derive(Debug, SSHEncode, SSHDecode)]
 pub struct NameEntry<'a> {
+    /// Is a file name being returned
     pub filename: Filename<'a>,
     /// longname is an undefined text line like "ls -l",
     /// SHOULD NOT be used.
     pub _longname: Filename<'a>,
+    /// Attributes for the file entry
+    ///
+    /// See [File Attributes](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#autoid-5)
+    /// for more information.
     pub attrs: Attrs,
 }
 
 // TODO: Will a Vector be an issue for no_std?
 // Maybe we should migrate this to heapless::Vec and let the user decide
 // the number of elements via features flags?
-/// A collection of [`NameEntry`]
+/// A collection of [`NameEntry`] used for [ssh_fxp_name responses](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-7).
 #[derive(Debug)]
 pub struct Name<'a>(pub Vec<NameEntry<'a>>);
 
@@ -183,9 +224,10 @@ pub struct ResponseAttributes {
 #[derive(Debug, SSHEncode, SSHDecode, Clone, Copy)]
 pub struct ReqId(pub u32);
 
+/// For more information see [Responses from the Server to the Client](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-7)
 #[derive(Debug, FromPrimitive, SSHEncode)]
 #[repr(u32)]
-#[allow(non_camel_case_types)]
+#[allow(non_camel_case_types, missing_docs)]
 pub enum StatusCode {
     #[sshwire(variant = "ssh_fx_ok")]
     SSH_FX_OK = 0,
@@ -226,9 +268,12 @@ pub struct ExtPair<'a> {
 }
 
 /// Files attributes to describe Files as SFTP v3 specification
+///
+/// See [File Attributes](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#autoid-5)
+/// for more information.
+#[allow(missing_docs)]
 #[derive(Debug, Default)]
 pub struct Attrs {
-    // flags: u32, defines used attributes
     pub size: Option<u64>,
     pub uid: Option<u32>,
     pub gid: Option<u32>,
@@ -239,6 +284,7 @@ pub struct Attrs {
     // TODO extensions
 }
 
+/// For more information see [File Attributes](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#autoid-5)
 #[repr(u32)]
 #[allow(non_camel_case_types)]
 pub enum AttrsFlags {
@@ -263,6 +309,10 @@ impl core::ops::BitAnd<AttrsFlags> for u32 {
 }
 
 impl Attrs {
+    /// Obtains the flags for the values stored in the [`Attrs`] struct.
+    ///
+    /// See [File Attributes](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#autoid-5)
+    /// for more information.
     pub fn flags(&self) -> u32 {
         let mut flags: u32 = 0;
         if self.size.is_some() {
