@@ -621,7 +621,7 @@ fn push_ok(req_id: ReqId, sink: &mut SftpSink<'_>) -> Result<(), WireError> {
         Status {
             code: StatusCode::SSH_FX_OK,
             message: "".into(),
-            lang: "EN".into(),
+            lang: "en-US".into(),
         },
     );
     trace!("Pushing an OK status message: {:?}", response);
@@ -639,7 +639,7 @@ fn push_unsupported(
         Status {
             code: StatusCode::SSH_FX_OP_UNSUPPORTED,
             message: "Not implemented".into(),
-            lang: "EN".into(),
+            lang: "en-US".into(),
         },
     );
     debug!("Pushing a unsupported status message: {:?}", response);
@@ -658,7 +658,7 @@ fn push_general_failure(
         Status {
             code: StatusCode::SSH_FX_FAILURE,
             message: msg.into(),
-            lang: "EN".into(),
+            lang: "en-US".into(),
         },
     );
     debug!("Pushing a general failure status message: {:?}", response);
