@@ -1,6 +1,5 @@
-use sunset_sftp::{
-    OpaqueFileHandle, OpaqueFileHandleManager, PathFinder, StatusCode,
-};
+use sunset_sftp::handles::{OpaqueFileHandle, OpaqueFileHandleManager, PathFinder};
+use sunset_sftp::protocol::StatusCode;
 
 use std::collections::HashMap; // Not enforced. Only for std. For no_std environments other solutions can be used to store Key, Value
 

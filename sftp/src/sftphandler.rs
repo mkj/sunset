@@ -1,3 +1,5 @@
+use crate::error::SftpError;
+use crate::handles::OpaqueFileHandle;
 use crate::proto::{
     self, InitVersionLowest, ReqId, SFTP_MINIMUM_PACKET_LEN, SFTP_VERSION, SftpNum,
     SftpPacket, Status, StatusCode,
@@ -7,7 +9,6 @@ use crate::sftperror::SftpResult;
 use crate::sftpserver::SftpServer;
 use crate::sftpsink::SftpSink;
 use crate::sftpsource::SftpSource;
-use crate::{OpaqueFileHandle, SftpError};
 
 use sunset::Error as SunsetError;
 use sunset::sshwire::{SSHSource, WireError, WireResult};
@@ -39,7 +40,7 @@ enum FragmentedRequestState {
     ProcessingLongRequest,
 }
 
-// TODO: Generalize this to allow other request types
+// TODO Generalize this to allow other request types
 /// Used to keep record of a long SFTP Write request that does not fit in
 /// receiving buffer and requires processing in batches
 #[derive(Debug)]
@@ -166,7 +167,6 @@ where
                             if let Err(e) = self
                                 .incomplete_request_holder
                                 .try_append_for_valid_request(
-                                    // TODO: All your problems are here. Focus
                                     &buffer_in[buffer_in_remaining_index..],
                                 )
                             {
@@ -293,8 +293,7 @@ where
 
                             let usable_data = source
                                 .remaining()
-                                .min(write_tracker.remain_data_len as usize); // TODO: Where does in_len comes from?
-                            // in_len.min(write_tracker.remain_data_len as usize);
+                                .min(write_tracker.remain_data_len as usize);
 
                             let data_segment = // Fails!!
                                             source.dec_as_binstring(usable_data)?;
@@ -546,7 +545,7 @@ where
         Ok(())
     }
 
-    // TODO: Handle more long requests
+    // TODO Handle more long requests
     /// Handles long request that do not fit in the buffers and stores a tracker
     ///
     /// **WARNING:** Only `SSH_FXP_WRITE` has been implemented!
@@ -593,7 +592,6 @@ where
                             "Storing a write tracker for a fragmented write request"
                         );
                         return Ok(write_tracker);
-                        // partial_write_request_tracker = Some(write_tracker); // TODO: This might belong to return value
                     }
                     Err(e) => {
                         error!("SFTP write thrown: {:?}", e);

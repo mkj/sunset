@@ -212,7 +212,6 @@ impl<'a> RequestHolder<'a> {
             self.buffer_fill_index - proto::SFTP_FIELD_LEN_LENGTH
                 + remaining_packet_len
         );
-        // TODO: Fix the mess with the logic and the indexes to address the slice. IT IS PANICKING
         if remaining_packet_len <= self.remaining_len() {
             // We have all the remaining packet bytes in the slice and fits in the buffer
 
@@ -321,7 +320,6 @@ impl<'a> RequestHolder<'a> {
     /// Returns the number of bytes unused at the end of the buffer,
     /// this is, the remaining length
     fn remaining_len(&self) -> usize {
-        // self.buffer.len() - self.buffer_fill_index - 1 // TODO: Off by one?
         self.buffer.len() - self.buffer_fill_index
     }
 }

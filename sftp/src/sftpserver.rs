@@ -1,5 +1,5 @@
 use crate::{
-    OpaqueFileHandle,
+    handles::OpaqueFileHandle,
     proto::{Attrs, Name, StatusCode},
 };
 
@@ -88,7 +88,7 @@ where
     }
 }
 
-// TODO: Define this
+// TODO Define this
 pub struct ReadReply<'g, 'a> {
     chan: ChanOut<'g, 'a>,
 }
@@ -97,7 +97,7 @@ impl<'g, 'a> ReadReply<'g, 'a> {
     pub fn reply(self, _data: &[u8]) {}
 }
 
-// TODO: Define this
+// TODO Define this
 pub struct DirReply<'g, 'a> {
     chan: ChanOut<'g, 'a>,
 }
@@ -106,7 +106,7 @@ impl<'g, 'a> DirReply<'g, 'a> {
     pub fn reply(self, _data: &[u8]) {}
 }
 
-// TODO: Implement correct Channel Out
+// TODO Implement correct Channel Out
 pub struct ChanOut<'g, 'a> {
     _phantom_g: PhantomData<&'g ()>,
     _phantom_a: PhantomData<&'a ()>,

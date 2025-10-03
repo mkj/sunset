@@ -80,7 +80,7 @@ impl<'g, 'a> DirReply<'g, 'a> {
     pub async fn reply(self, data: &[u8]) {}
 }
 
-// TODO: Implement correct Channel Out
+// TODO Implement correct Channel Out
 pub struct ChanOut<'g, 'a> {
     _phantom_g: PhantomData<&'g ()>,
     _phantom_a: PhantomData<&'a ()>,
