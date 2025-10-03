@@ -13,8 +13,6 @@ pub use sftpserver::ReadReply;
 pub use sftpserver::SftpOpResult;
 pub use sftpserver::SftpServer;
 
-pub use requestholder::RequestHolder;
-
 pub use sftphandle::SftpHandler;
 
 pub use opaquefilehandle::{OpaqueFileHandle, OpaqueFileHandleManager, PathFinder};
