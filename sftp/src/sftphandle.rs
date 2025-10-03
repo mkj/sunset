@@ -125,19 +125,21 @@ where
             let mut sink =
                 SftpSink::new(&mut buffer_out[used_out_accumulated_index..]);
 
-            debug!("SFTP Process State: {:?}", self.state);
+            debug!(
+                "<=======================[ SFTP Process State: {:?} ]=======================>",
+                self.state
+            );
 
             match &self.state {
                 SftpHandleState::Fragmented(fragment_case) => {
                     match fragment_case {
                         FragmentedRequestState::ProcessingClippedRequest => {
-                            let appending_result = incomplete_request_holder
+                            if let Err(e) = incomplete_request_holder
                                 .try_append_for_valid_request(
                                     // TODO: All your problems are here. Focus
                                     &buffer_in[buffer_in_remaining_index..],
-                                );
-
-                            if let Err(e) = appending_result {
+                                )
+                            {
                                 match e {
                                     RequestHolderError::RanOut => {
                                         warn!(
@@ -148,21 +150,23 @@ where
                                             incomplete_request_holder.appended();
                                         continue;
                                     }
-                                    RequestHolderError::NoRoom => {
-                                        // Fragmented Write request...
-                                        warn!(
-                                            "There is not enough room in incomplete request holder \
-                                            to accommodate this packet buffer."
-                                        )
-                                    }
                                     RequestHolderError::WireError(
                                         WireError::RanOut,
                                     ) => {
                                         warn!(
-                                            "WireError: There is not enough room in incomplete request holder \
-                                            to accommodate this packet buffer."
+                                            "WIRE ERROR: There was not enough bytes in the buffer_in. \
+                                            We will continue adding bytes"
+                                        );
+                                        buffer_in_remaining_index +=
+                                            incomplete_request_holder.appended();
+                                        continue;
+                                    }
+                                    RequestHolderError::NoRoom => {
+                                        warn!(
+                                            "The request holder if full but the request in incomplete"
                                         )
                                     }
+
                                     _ => {
                                         error!(
                                             "Unhandled error completing incomplete request {:?}",
@@ -185,10 +189,7 @@ where
                             );
                             trace!("Internal Source Content: {:?}", source);
 
-                            let decoding_request_result =
-                                SftpPacket::decode_request(&mut source);
-
-                            match decoding_request_result {
+                            match SftpPacket::decode_request(&mut source) {
                                 Ok(request) => {
                                     self.handle_general_request(&mut sink, request)?;
                                     incomplete_request_holder.reset();
@@ -200,9 +201,8 @@ where
                                             .handle_ran_out(&mut sink, &mut source)
                                         {
                                             Ok(_) => {
-                                                self.state =
-                                                        SftpHandleState::Fragmented(FragmentedRequestState::ProcessingLongRequest);
                                                 incomplete_request_holder.reset();
+                                                self.state = SftpHandleState::Fragmented(FragmentedRequestState::ProcessingLongRequest);
                                             }
                                             Err(e) => match e {
                                                 _ => {
@@ -210,9 +210,9 @@ where
                                                         "handle_ran_out finished with error: {:?}",
                                                         e
                                                     );
-                                                    return (Err(
+                                                    return Err(
                                                         SunsetError::Bug.into()
-                                                    ));
+                                                    );
                                                 }
                                             },
                                         }
@@ -367,17 +367,22 @@ where
                                                     self.state =
                                                         SftpHandleState::Fragmented(FragmentedRequestState::ProcessingLongRequest)
                                                 }
-                                                Err(e) => match e {
+                                                Err(e) => {
+                                                    error!("Error handle_ran_out");
+                                                    match e {
                                                     SftpError::WireError(WireError::RanOut) => {
+                                                        
                                                         let read = incomplete_request_holder
                                                             .try_hold(
                                                             &buffer_in
                                                                 [buffer_in_remaining_index..],
-                                                        )?; // Fails because it does not fit. Also. It is not the beginning of a new packet
-                                                        self.state = SftpHandleState::Fragmented(FragmentedRequestState::ProcessingClippedRequest)
+                                                        )?; 
+                                                        buffer_in_remaining_index += read;
+                                                        self.state = SftpHandleState::Fragmented(FragmentedRequestState::ProcessingClippedRequest);
+                                                        continue;
                                                     }
                                                     _ => return (Err(SunsetError::Bug.into())),
-                                                },
+                                                }},
                                         };
                                     }
                                     WireError::UnknownPacket { number: _ } => {
@@ -488,7 +493,7 @@ where
         let packet_type = source.peak_packet_type()?;
         match packet_type {
             SftpNum::SSH_FXP_WRITE => {
-                debug!("about to decode packet partial write content",);
+                debug!("about to decode packet partial write content. Source remaining = {:?}",source.remaining());
                 let (
                     obscured_file_handle,
                     req_id,
@@ -514,6 +519,9 @@ where
                     data_in_buffer.as_ref(),
                 ) {
                     Ok(_) => {
+                        debug!(
+                            "Storing a write tracker for a fragmented write request"
+                        );
                         self.partial_write_request_tracker = Some(write_tracker); // TODO: This might belong to return value
                     }
                     Err(e) => {
