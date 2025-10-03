@@ -48,7 +48,7 @@ impl From<SunsetError> for SftpError {
 
 impl From<StatusCode> for SftpError {
     fn from(value: StatusCode) -> Self {
-        SftpError::OperationError(value)
+        SftpError::FileServerError(value)
     }
 }
 

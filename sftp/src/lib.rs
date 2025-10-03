@@ -1,7 +1,7 @@
 mod opaquefilehandle;
 mod proto;
 mod requestholder;
-mod sftphandle;
+mod sftphandler;
 mod sftpserver;
 mod sftpsink;
 mod sftpsource;
@@ -13,7 +13,7 @@ pub use sftpserver::ReadReply;
 pub use sftpserver::SftpOpResult;
 pub use sftpserver::SftpServer;
 
-pub use sftphandle::SftpHandler;
+pub use sftphandler::SftpHandler;
 
 pub use opaquefilehandle::{OpaqueFileHandle, OpaqueFileHandleManager, PathFinder};
 

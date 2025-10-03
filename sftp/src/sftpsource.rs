@@ -2,7 +2,7 @@ use crate::proto::{
     ReqId, SFTP_FIELD_ID_INDEX, SFTP_FIELD_LEN_INDEX, SFTP_FIELD_LEN_LENGTH,
     SFTP_MINIMUM_PACKET_LEN, SFTP_WRITE_REQID_INDEX, SftpNum,
 };
-use crate::sftphandle::PartialWriteRequestTracker;
+use crate::sftphandler::PartialWriteRequestTracker;
 use crate::{FileHandle, OpaqueFileHandle, SftpError, SftpResult};
 
 use sunset::sshwire::{BinString, SSHDecode, SSHSource, WireError, WireResult};
