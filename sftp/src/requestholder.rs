@@ -197,13 +197,13 @@ impl<'a> RequestHolder<'a> {
             return Err(RequestHolderError::RanOut);
         }
 
-        let complete_to_id_index = proto::SFTP_FIELD_ID_INDEX
+        let complete_to_id_index = (proto::SFTP_FIELD_ID_INDEX + 1)
             .checked_sub(self.buffer_fill_index)
             .unwrap_or(0);
 
         if complete_to_id_index > 0 {
             warn!(
-                "The held fragment len = {:?}, is insufficient to peak\
+                "The held fragment len = {:?}, is insufficient to peak \
                 the length and type. Will append {:?} to reach the \
                 id field index: {:?}",
                 self.buffer_fill_index,
