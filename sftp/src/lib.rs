@@ -1,3 +1,6 @@
+#![forbid(unsafe_code)]
+#![warn(missing_docs)]
+
 mod opaquefilehandle;
 mod proto;
 mod requestholder;
