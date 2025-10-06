@@ -27,7 +27,8 @@ pub enum SftpError {
     NotSupported,
     /// The [`crate::sftpserver::SftpServer`] failed doing an IO operation
     FileServerError(StatusCode),
-    /// A RequestHolder instance throw an error. See [`crate::requestholder::RequestHolderError`]
+    // A RequestHolder instance throw an error. See [`crate::requestholder::RequestHolderError`]
+    /// A RequestHolder instance threw an error. See `RequestHolderError`
     RequestHolderError(RequestHolderError),
     /// A variant containing a [`WireError`]
     WireError(WireError),
