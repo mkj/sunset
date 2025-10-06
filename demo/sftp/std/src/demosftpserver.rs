@@ -29,6 +29,7 @@ impl PathFinder for PrivateFileHandler {
     }
 }
 
+/// A basic demo server. Used as a demo and to test SFTP functionality
 pub struct DemoSftpServer {
     base_path: String,
     handlers_manager:
