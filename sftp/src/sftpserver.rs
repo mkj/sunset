@@ -54,10 +54,10 @@ where
         buf: &[u8],
     ) -> SftpOpResult<()> {
         log::error!(
-            "SftpServer Write operation: handle = {:?}, offset = {:?}, buf = {:?}",
+            "SftpServer Write operation not defined: handle = {:?}, offset = {:?}, buf = {:?}",
             opaque_file_handle,
             offset,
-            String::from_utf8(buf.to_vec())
+            buf
         );
         Ok(())
     }
