@@ -25,6 +25,8 @@ pub enum SftpError {
     /// - The request has not been handled by an [`crate::sftpserver::SftpServer`]
     /// - Long request which its handling was not implemented
     NotSupported,
+    /// The connection has been closed by the client
+    ClientDisconnected,
     /// The [`crate::sftpserver::SftpServer`] failed doing an IO operation
     FileServerError(StatusCode),
     // A RequestHolder instance throw an error. See [`crate::requestholder::RequestHolderError`]
@@ -98,6 +100,7 @@ impl From<SftpError> for SunsetError {
                 warn!("Casting error loosing information: {:?}", value);
                 SunsetError::Bug
             }
+            SftpError::ClientDisconnected => SunsetError::ChannelEOF,
         }
     }
 }

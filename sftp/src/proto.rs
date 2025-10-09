@@ -94,11 +94,11 @@ pub struct Open<'a> {
     pub attrs: Attrs,
 }
 
-/// Used for `ssh_fxp_open` [response](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.3).
+/// Used for `ssh_fxp_open` [response](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.7).
 #[derive(Debug, SSHEncode, SSHDecode)]
 pub struct OpenDir<'a> {
     /// The relative or absolute path of the directory to be open
-    pub filename: Filename<'a>,
+    pub dirname: Filename<'a>,
 }
 
 /// Used for `ssh_fxp_close` [response](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.3).
@@ -119,6 +119,14 @@ pub struct Read<'a> {
     pub offset: u64,
     /// The number of bytes to be retrieved
     pub len: u32,
+}
+
+/// Used for `ssh_fxp_readdir` [response](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.7).
+#[derive(Debug, SSHEncode, SSHDecode)]
+pub struct ReadDir<'a> {
+    /// An opaque handle that is used by the server to identify an open
+    /// file or folder.
+    pub handle: FileHandle<'a>,
 }
 
 /// Used for `ssh_fxp_write` [response](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.4).
@@ -769,6 +777,7 @@ sftpmessages! [
             (5, Read, Read<'a>, "ssh_fxp_read"),
             (6, Write, Write<'a>, "ssh_fxp_write"),
             (11, OpenDir, OpenDir<'a>, "ssh_fxp_opendir"),
+            (12, ReadDir, ReadDir<'a>, "ssh_fxp_readdir"),
             (16, PathInfo, PathInfo<'a>, "ssh_fxp_realpath"),
         },
 
