@@ -17,7 +17,9 @@ where
     T: OpaqueFileHandle,
 {
     /// Opens a file or directory for reading/writing
-    fn open(&'_ mut self, filename: &str, attrs: &Attrs) -> SftpOpResult<T> {
+    ///
+    /// In the case of a path the attrs parameter content is ignored
+    fn open(&'_ mut self, path: &str, attrs: &Attrs) -> SftpOpResult<T> {
         log::error!(
             "SftpServer Open operation not defined: filename = {:?}, attrs = {:?}",
             filename,

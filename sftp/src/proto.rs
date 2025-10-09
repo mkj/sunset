@@ -60,6 +60,8 @@ impl<'a> Filename<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, SSHEncode, SSHDecode)]
 pub struct FileHandle<'a>(pub BinString<'a>);
 
+// ========================== Initialization ===========================
+
 /// The reference implementation we are working on is 3, this is, https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02
 pub const SFTP_VERSION: u32 = 3;
 
@@ -79,6 +81,8 @@ pub struct InitVersionLowest {
     // TODO variable number of ExtPair
 }
 
+// ============================= Requests ==============================
+
 /// Used for `ssh_fxp_open` [response](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.3).
 #[derive(Debug, SSHEncode, SSHDecode)]
 pub struct Open<'a> {
@@ -88,6 +92,13 @@ pub struct Open<'a> {
     pub pflags: u32,
     /// Initial attributes for the file
     pub attrs: Attrs,
+}
+
+/// Used for `ssh_fxp_open` [response](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.3).
+#[derive(Debug, SSHEncode, SSHDecode)]
+pub struct OpenDir<'a> {
+    /// The relative or absolute path of the directory to be open
+    pub filename: Filename<'a>,
 }
 
 /// Used for `ssh_fxp_close` [response](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.3).
@@ -122,7 +133,7 @@ pub struct Write<'a> {
     pub data: BinString<'a>,
 }
 
-// Responses
+// ============================= Responses =============================
 
 /// Used for `ssh_fxp_realpath` [response](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.11).
 #[derive(Debug, SSHEncode, SSHDecode)]
@@ -757,6 +768,7 @@ sftpmessages! [
             (4, Close, Close<'a>, "ssh_fxp_close"),
             (5, Read, Read<'a>, "ssh_fxp_read"),
             (6, Write, Write<'a>, "ssh_fxp_write"),
+            (11, OpenDir, OpenDir<'a>, "ssh_fxp_opendir"),
             (16, PathInfo, PathInfo<'a>, "ssh_fxp_realpath"),
         },
 
