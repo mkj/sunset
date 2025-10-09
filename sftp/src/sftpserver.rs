@@ -16,13 +16,11 @@ pub trait SftpServer<'a, T>
 where
     T: OpaqueFileHandle,
 {
-    /// Opens a file or directory for reading/writing
-    ///
-    /// In the case of a path the attrs parameter content is ignored
+    /// Opens a file for reading/writing
     fn open(&'_ mut self, path: &str, attrs: &Attrs) -> SftpOpResult<T> {
         log::error!(
-            "SftpServer Open operation not defined: filename = {:?}, attrs = {:?}",
-            filename,
+            "SftpServer Open operation not defined: path = {:?}, attrs = {:?}",
+            path,
             attrs
         );
         Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
@@ -64,7 +62,7 @@ where
         Ok(())
     }
 
-    /// Opens a directory
+    /// Opens a directory and returns a handle
     fn opendir(&mut self, dir: &str) -> SftpOpResult<T> {
         log::error!("SftpServer OpenDir operation not defined: dir = {:?}", dir);
         Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
@@ -73,12 +71,12 @@ where
     /// Reads the list of items in a directory
     fn readdir(
         &mut self,
-        opaque_file_handle: &T,
-        _reply: &mut DirReply<'_, '_>,
+        opaque_dir_handle: &T,
+        // _reply: &mut DirReply<'_, '_>,
     ) -> SftpOpResult<()> {
         log::error!(
             "SftpServer ReadDir operation not defined: handle = {:?}",
-            opaque_file_handle
+            opaque_dir_handle
         );
         Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
     }

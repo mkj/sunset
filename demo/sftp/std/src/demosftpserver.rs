@@ -5,24 +5,30 @@ use crate::{
 
 use sunset_sftp::handles::{OpaqueFileHandleManager, PathFinder};
 use sunset_sftp::protocol::{Attrs, Filename, Name, NameEntry, StatusCode};
-use sunset_sftp::server::{DirReply, ReadReply, SftpOpResult, SftpServer};
+use sunset_sftp::server::{ReadReply, SftpOpResult, SftpServer};
 
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
 use std::fs;
+use std::os::linux::fs::MetadataExt;
+use std::os::unix::fs::PermissionsExt;
+use std::time::SystemTime;
 use std::{fs::File, os::unix::fs::FileExt, path::Path};
 
+#[derive(Debug)]
 pub(crate) enum PrivatePathHandle {
     File(PrivateFileHandle),
     Directory(PrivateDirHandle),
 }
 
+#[derive(Debug)]
 pub(crate) struct PrivateFileHandle {
     path: String,
     permissions: Option<u32>,
     file: File,
 }
 
+#[derive(Debug)]
 pub(crate) struct PrivateDirHandle {
     path: String,
 }
@@ -84,13 +90,13 @@ impl PathFinder for PrivateDirHandle {
 /// A basic demo server. Used as a demo and to test SFTP functionality
 pub struct DemoSftpServer {
     base_path: String,
-    handlers_manager: DemoFileHandleManager<DemoOpaqueFileHandle, PrivatePathHandle>,
+    handles_manager: DemoFileHandleManager<DemoOpaqueFileHandle, PrivatePathHandle>,
 }
 
 impl DemoSftpServer {
     pub fn new(base_path: String) -> Self {
         // TODO What if the base_path does not exist? Create it or Return error?
-        DemoSftpServer { base_path, handlers_manager: DemoFileHandleManager::new() }
+        DemoSftpServer { base_path, handles_manager: DemoFileHandleManager::new() }
     }
 }
 
@@ -100,71 +106,57 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
         filename: &str,
         attrs: &Attrs,
     ) -> SftpOpResult<DemoOpaqueFileHandle> {
-        let path = Path::new(filename);
+        debug!("Open file: filename = {:?}, attributes = {:?}", filename, attrs);
 
-        let metadata = fs::symlink_metadata(path).map_err(|e| {
-            warn!("Could not open {:?}: {:?}", filename, e);
-            StatusCode::SSH_FX_NO_SUCH_FILE
-        })?;
+        let poxit_attr = attrs
+            .permissions
+            .as_ref()
+            .ok_or(StatusCode::SSH_FX_PERMISSION_DENIED)?;
+        let can_write = poxit_attr & 0o222 > 0;
+        let can_read = poxit_attr & 0o444 > 0;
+        debug!(
+            "File open for read/write access: can_read={:?}, can_write={:?}",
+            can_read, can_write
+        );
 
-        if metadata.is_symlink() {
-            return Err(StatusCode::SSH_FX_OP_UNSUPPORTED);
-        }
+        let file = File::options()
+            .read(can_read)
+            .write(can_write)
+            .create(true)
+            .open(filename)
+            .map_err(|_| StatusCode::SSH_FX_FAILURE)?;
 
-        if metadata.is_dir() {
-            debug!("Open Directory = {:?}", filename);
+        let fh = self.handles_manager.insert(
+            PrivatePathHandle::File(PrivateFileHandle {
+                path: filename.into(),
+                permissions: attrs.permissions,
+                file,
+            }),
+            OPAQUE_SALT,
+        );
 
-            let fh = self.handlers_manager.insert(
-                PrivatePathHandle::Directory(PrivateDirHandle {
-                    path: filename.into(),
-                }),
-                OPAQUE_SALT,
-            );
+        debug!(
+            "Filename \"{:?}\" will have the obscured file handle: {:?}",
+            filename, fh
+        );
 
-            debug!(
-                "Directory \"{:?}\" will have the obscured file handle: {:?}",
-                filename, fh
-            );
+        fh
+    }
 
-            // Err(StatusCode::SSH_FX_BAD_MESSAGE)
-            fh
-        } else {
-            debug!("Open file: filename = {:?}, attributes = {:?}", filename, attrs);
+    fn opendir(&mut self, dir: &str) -> SftpOpResult<DemoOpaqueFileHandle> {
+        debug!("Open Directory = {:?}", dir);
 
-            let poxit_attr = attrs
-                .permissions
-                .as_ref()
-                .ok_or(StatusCode::SSH_FX_PERMISSION_DENIED)?;
-            let can_write = poxit_attr & 0o222 > 0;
-            let can_read = poxit_attr & 0o444 > 0;
-            debug!(
-                "File open for read/write access: can_read={:?}, can_write={:?}",
-                can_read, can_write
-            );
+        let dir_handle = self.handles_manager.insert(
+            PrivatePathHandle::Directory(PrivateDirHandle { path: dir.into() }),
+            OPAQUE_SALT,
+        );
 
-            let file = File::options()
-                .read(can_read)
-                .write(can_write)
-                .create(true)
-                .open(filename)
-                .map_err(|_| StatusCode::SSH_FX_FAILURE)?;
+        debug!(
+            "Directory \"{:?}\" will have the obscured file handle: {:?}",
+            dir, dir_handle
+        );
 
-            let fh = self.handlers_manager.insert(
-                PrivatePathHandle::File(PrivateFileHandle {
-                    path: filename.into(),
-                    permissions: attrs.permissions,
-                    file,
-                }),
-                OPAQUE_SALT,
-            );
-
-            debug!(
-                "Filename \"{:?}\" will have the obscured file handle: {:?}",
-                filename, fh
-            );
-
-            fh
-        }
+        dir_handle
     }
 
     fn realpath(&mut self, dir: &str) -> SftpOpResult<Name<'_>> {
@@ -188,7 +180,7 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
         &mut self,
         opaque_file_handle: &DemoOpaqueFileHandle,
     ) -> SftpOpResult<()> {
-        if let Some(handle) = self.handlers_manager.remove(opaque_file_handle) {
+        if let Some(handle) = self.handles_manager.remove(opaque_file_handle) {
             match handle {
                 PrivatePathHandle::File(private_file_handle) => {
                     debug!(
@@ -216,52 +208,6 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
         }
     }
 
-    fn write(
-        &mut self,
-        opaque_file_handle: &DemoOpaqueFileHandle,
-        offset: u64,
-        buf: &[u8],
-    ) -> SftpOpResult<()> {
-        if let PrivatePathHandle::File(private_file_handle) = self
-            .handlers_manager
-            .get_private_as_ref(opaque_file_handle)
-            .ok_or(StatusCode::SSH_FX_FAILURE)?
-        {
-            let permissions_poxit = (private_file_handle
-                .permissions
-                .ok_or(StatusCode::SSH_FX_PERMISSION_DENIED))?;
-
-            if (permissions_poxit & 0o222) == 0 {
-                return Err(StatusCode::SSH_FX_PERMISSION_DENIED);
-            };
-
-            log::trace!(
-            "SftpServer Write operation: handle = {:?}, filepath = {:?}, offset = {:?}, buf = {:?}",
-            opaque_file_handle,
-            private_file_handle.path,
-            offset,
-            String::from_utf8(buf.to_vec())
-        );
-            let bytes_written = private_file_handle
-                .file
-                .write_at(buf, offset)
-                .map_err(|_| StatusCode::SSH_FX_FAILURE)?;
-
-            log::debug!(
-            "SftpServer Write operation: handle = {:?}, filepath = {:?}, offset = {:?}, buffer length = {:?}, bytes written = {:?}",
-            opaque_file_handle,
-            private_file_handle.path,
-            offset,
-            buf.len(),
-            bytes_written
-        );
-
-            Ok(())
-        } else {
-            Err(StatusCode::SSH_FX_PERMISSION_DENIED)
-        }
-    }
-
     fn read(
         &mut self,
         opaque_file_handle: &DemoOpaqueFileHandle,
@@ -276,20 +222,120 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
         Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
     }
 
-    fn opendir(&mut self, dir: &str) -> SftpOpResult<DemoOpaqueFileHandle> {
-        log::error!("SftpServer OpenDir operation not defined: dir = {:?}", dir);
-        Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
+    fn write(
+        &mut self,
+        opaque_file_handle: &DemoOpaqueFileHandle,
+        offset: u64,
+        buf: &[u8],
+    ) -> SftpOpResult<()> {
+        if let PrivatePathHandle::File(private_file_handle) = self
+            .handles_manager
+            .get_private_as_ref(opaque_file_handle)
+            .ok_or(StatusCode::SSH_FX_FAILURE)?
+        {
+            let permissions_poxit = (private_file_handle
+                .permissions
+                .ok_or(StatusCode::SSH_FX_PERMISSION_DENIED))?;
+
+            if (permissions_poxit & 0o222) == 0 {
+                return Err(StatusCode::SSH_FX_PERMISSION_DENIED);
+            };
+
+            log::trace!(
+                "SftpServer Write operation: handle = {:?}, filepath = {:?}, offset = {:?}, buf = {:?}",
+                opaque_file_handle,
+                private_file_handle.path,
+                offset,
+                String::from_utf8(buf.to_vec())
+            );
+            let bytes_written = private_file_handle
+                .file
+                .write_at(buf, offset)
+                .map_err(|_| StatusCode::SSH_FX_FAILURE)?;
+
+            log::debug!(
+            "SftpServer Write operation: handle = {:?}, filepath = {:?}, offset = {:?}, buffer length = {:?}, bytes written = {:?}",
+                opaque_file_handle,
+                private_file_handle.path,
+                offset,
+                buf.len(),
+                bytes_written
+            );
+
+            Ok(())
+        } else {
+            Err(StatusCode::SSH_FX_PERMISSION_DENIED)
+        }
     }
 
     fn readdir(
         &mut self,
-        opaque_file_handle: &DemoOpaqueFileHandle,
-        _reply: &mut DirReply<'_, '_>,
+        opaque_dir_handle: &DemoOpaqueFileHandle,
+        // _reply: &mut DirReply<'_, '_>,
     ) -> SftpOpResult<()> {
-        log::error!(
-            "SftpServer ReadDir operation not defined: handle = {:?}",
-            opaque_file_handle
-        );
+        debug!("read dir for  {:?}", opaque_dir_handle);
+        if let PrivatePathHandle::Directory(dir) = self
+            .handles_manager
+            .get_private_as_ref(opaque_dir_handle)
+            .ok_or(StatusCode::SSH_FX_FAILURE)?
+        {
+            let path_str = dir.path.clone();
+            debug!("opaque handle found in handles manager: {:?}", path_str);
+            let dir_path = Path::new(&path_str);
+            debug!("path: {:?}", dir_path);
+            if dir_path.is_dir() {
+                debug!("SftpServer ReadDir operation path = {:?}", dir_path);
+
+                let dir_iterator = fs::read_dir(dir_path).map_err(|err| {
+                    error!("could not get the directory {:?}: {:?}", path_str, err);
+                    StatusCode::SSH_FX_PERMISSION_DENIED
+                })?;
+
+                debug!("got iterator = {:?}", dir_iterator);
+
+                for entry in dir_iterator {
+                    if let Ok(entry) = entry {
+                        // info!("{:?}", entry);
+                        if let Ok(metadata) = entry.metadata() {
+                            if metadata.accessed().is_ok()
+                                && metadata.modified().is_ok()
+                            {
+                                info!(
+                                    "{:?} : size = {:?}, uid = {:?}, gid = {:?}, \
+                                    permissions = {:?}, atime = {:?}, mtime = {:?}, \
+                                    ",
+                                    entry.path(),
+                                    metadata.len(),
+                                    metadata.st_uid(),
+                                    metadata.st_uid(),
+                                    metadata.permissions().mode(),
+                                    metadata
+                                        .accessed()
+                                        .unwrap()
+                                        .duration_since(SystemTime::UNIX_EPOCH)
+                                        .unwrap()
+                                        .as_secs(),
+                                    metadata
+                                        .modified()
+                                        .unwrap()
+                                        .duration_since(SystemTime::UNIX_EPOCH)
+                                        .unwrap()
+                                        .as_secs(),
+                                );
+                            }
+                        }
+                    }
+                }
+            } else {
+                error!("the path is not a directory = {:?}", dir_path);
+                return Err(StatusCode::SSH_FX_NO_SUCH_FILE);
+            }
+        } else {
+            error!("Could not find the directory for {:?}", opaque_dir_handle);
+            return Err(StatusCode::SSH_FX_NO_SUCH_FILE);
+        }
+
+        error!("What is the return that we are looking for?");
         Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
     }
 }
