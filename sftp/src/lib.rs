@@ -49,7 +49,7 @@
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
-#![no_std]
+// #![no_std]
 
 mod opaquefilehandle;
 mod proto;
