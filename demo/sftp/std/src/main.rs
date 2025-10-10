@@ -164,22 +164,10 @@ impl DemoServer for StdDemo {
                             &mut file_server,
                             &mut incomplete_request_buffer,
                         );
-                    loop {
-                        let lr = stdio.read(&mut buffer_in).await?;
-                        trace!("SFTP <---- received: {:?}", &buffer_in[0..lr]);
-                        if lr == 0 {
-                            debug!("client disconnected");
-                            break;
-                        }
+                    sftp_handler
+                        .process_loop(&mut stdio, &mut buffer_in, &mut buffer_out)
+                        .await?;
 
-                        let lw = sftp_handler
-                            .process(&buffer_in[0..lr], &mut buffer_out)
-                            .await?;
-                        if lw > 0 {
-                            stdio.write(&mut buffer_out[0..lw]).await?;
-                            trace!("SFTP ----> Sent: {:?}", &buffer_out[0..lw]);
-                        }
-                    }
                     Ok::<_, Error>(())
                 } {
                     Ok(_) => {

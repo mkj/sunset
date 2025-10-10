@@ -478,6 +478,38 @@ where
         Ok(used_out_accumulated_index)
     }
 
+    /// WIP: A loop that will process all the request from stdio until
+    /// an EOF is received
+    pub async fn process_loop<'c>(
+        &mut self,
+        stdio: &mut ChanInOut<'c>,
+        buffer_in: &mut [u8],
+        buffer_out: &mut [u8],
+    ) -> SftpResult<()> {
+        loop {
+            let lr = stdio.read(buffer_in).await?;
+            trace!("SFTP <---- received: {:?}", &buffer_in[0..lr]);
+            if lr == 0 {
+                debug!("client disconnected");
+                return Err(SftpError::ClientDisconnected);
+            }
+
+            let lw = self.process(&buffer_in[0..lr], buffer_out).await?;
+            if lw > 0 {
+                let wo = stdio.write(&mut buffer_out[0..lw]).await?;
+                if wo != lw {
+                    error!("SFTP ----> Sent incomplete {} < {}", wo, lw);
+                    todo!(
+                        "Fix write incomplete condition: Repeat until \
+                    all is gone down the channel"
+                    );
+                }
+                trace!("SFTP ----> Sent: {:?}", &buffer_out[0..lw]);
+            }
+        }
+        Ok(())
+    }
+
     fn handle_general_request(
         file_server: &mut S,
         sink: &mut SftpSink<'_>,
