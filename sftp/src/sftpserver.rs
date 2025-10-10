@@ -1,6 +1,8 @@
+use log::debug;
+
 use crate::{
     handles::OpaqueFileHandle,
-    proto::{Attrs, Name, StatusCode},
+    proto::{Attrs, Name, ReqId, StatusCode},
 };
 
 use core::marker::PhantomData;
@@ -72,7 +74,7 @@ where
     fn readdir(
         &mut self,
         opaque_dir_handle: &T,
-        // _reply: &mut DirReply<'_, '_>,
+        reply: &mut DirReply<'_, '_>,
     ) -> SftpOpResult<()> {
         log::error!(
             "SftpServer ReadDir operation not defined: handle = {:?}",
@@ -88,6 +90,41 @@ where
     }
 }
 
+/// This trait is an standardized way to interact with an iterator or collection of Directory entries
+/// that need to be sent via an SSH_FXP_READDIR SFTP response to a client.
+///
+/// It uses is expected when implementing an [`SftpServer`] TODO Future trait WIP
+pub trait DirEntriesResponseHelpers {
+    /// returns the number of directory entries.
+    /// Used for the `SSH_FXP_READDIR` response field `count`
+    /// as specified in [draft-ietf-secsh-filexfer-02](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-7)
+    fn get_count(&self) -> SftpOpResult<u32> {
+        Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
+    }
+
+    /// Returns the total encoded length in bytes for all directory entries.
+    /// Used for the `SSH_FXP_READDIR` general response field `length`
+    /// as part of the [General Packet Format](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-3)
+    ///
+    /// This represents the sum of all [`NameEntry`] structures when encoded
+    /// into [`SftpSink`] format. The length is to be pre-computed by
+    /// encoding each entry and summing the [`SftpSink::payload_len()`] values.
+    fn get_encoded_len(&self) -> SftpOpResult<u32> {
+        Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
+    }
+
+    /// Must call the callback passing an [`SftpSink::payload_slice()`] as a parameter
+    /// were a [`NameEntry`] has been encoded.
+    ///
+    ///
+    fn for_each_encoded<F>(&self, mut writer: F) -> SftpOpResult<()>
+    where
+        F: FnMut(&[u8]) -> (),
+    {
+        Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
+    }
+}
+
 // TODO Define this
 pub struct ReadReply<'g, 'a> {
     chan: ChanOut<'g, 'a>,
@@ -99,15 +136,38 @@ impl<'g, 'a> ReadReply<'g, 'a> {
 
 // TODO Define this
 pub struct DirReply<'g, 'a> {
+    req_id: ReqId,
+    muting: &'a mut u32,
     chan: ChanOut<'g, 'a>,
 }
 
 impl<'g, 'a> DirReply<'g, 'a> {
-    pub fn reply(self, _data: &[u8]) {}
+    /// I am faking a DirReply to prototype it
+    pub fn mock(req_id: ReqId, muting: &'a mut u32) -> Self {
+        DirReply {
+            chan: ChanOut { _phantom_g: PhantomData, _phantom_a: PhantomData },
+            muting,
+            req_id,
+        }
+    }
+
+    /// mocks sending  an item via a stdio
+    pub fn send_item(&mut self, data: &[u8]) {
+        *self.muting += 1;
+        debug!("Muted incremented {:?}. Got data: {:?}", self.muting, data);
+    }
+
+    /// Must be call it first. Make this enforceable
+    pub fn send_header(&self, get_count: u32, get_encoded_len: u32) {
+        debug!(
+            "I will send the header here for request id {:?}: count = {:?}, length = {:?}",
+            self.req_id, get_count, get_encoded_len
+        );
+    }
 }
 
 // TODO Implement correct Channel Out
 pub struct ChanOut<'g, 'a> {
-    _phantom_g: PhantomData<&'g ()>,
-    _phantom_a: PhantomData<&'a ()>,
+    _phantom_g: PhantomData<&'g ()>, // 'g look what these might be ChanIO lifetime
+    _phantom_a: PhantomData<&'a ()>, // a' Why the second lifetime if ChanIO only needs one
 }

@@ -3,16 +3,21 @@ use crate::{
     demoopaquefilehandle::DemoOpaqueFileHandle,
 };
 
+use sunset::sshwire::SSHEncode;
 use sunset_sftp::handles::{OpaqueFileHandleManager, PathFinder};
 use sunset_sftp::protocol::{Attrs, Filename, Name, NameEntry, StatusCode};
-use sunset_sftp::server::{ReadReply, SftpOpResult, SftpServer};
+use sunset_sftp::server::{
+    DirEntriesResponseHelpers, DirReply, ReadReply, SftpOpResult, SftpServer,
+    SftpSink,
+};
 
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
-use std::fs;
+use std::fs::DirEntry;
 use std::os::linux::fs::MetadataExt;
 use std::os::unix::fs::PermissionsExt;
 use std::time::SystemTime;
+use std::{fs, io};
 use std::{fs::File, os::unix::fs::FileExt, path::Path};
 
 #[derive(Debug)]
@@ -271,9 +276,10 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
     fn readdir(
         &mut self,
         opaque_dir_handle: &DemoOpaqueFileHandle,
-        // _reply: &mut DirReply<'_, '_>,
+        visitor: &mut DirReply<'_, '_>,
     ) -> SftpOpResult<()> {
         debug!("read dir for  {:?}", opaque_dir_handle);
+
         if let PrivatePathHandle::Directory(dir) = self
             .handles_manager
             .get_private_as_ref(opaque_dir_handle)
@@ -283,6 +289,7 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
             debug!("opaque handle found in handles manager: {:?}", path_str);
             let dir_path = Path::new(&path_str);
             debug!("path: {:?}", dir_path);
+
             if dir_path.is_dir() {
                 debug!("SftpServer ReadDir operation path = {:?}", dir_path);
 
@@ -291,41 +298,17 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
                     StatusCode::SSH_FX_PERMISSION_DENIED
                 })?;
 
-                debug!("got iterator = {:?}", dir_iterator);
+                let name_entry_collection = DirEntriesCollection::new(dir_iterator);
 
-                for entry in dir_iterator {
-                    if let Ok(entry) = entry {
-                        // info!("{:?}", entry);
-                        if let Ok(metadata) = entry.metadata() {
-                            if metadata.accessed().is_ok()
-                                && metadata.modified().is_ok()
-                            {
-                                info!(
-                                    "{:?} : size = {:?}, uid = {:?}, gid = {:?}, \
-                                    permissions = {:?}, atime = {:?}, mtime = {:?}, \
-                                    ",
-                                    entry.path(),
-                                    metadata.len(),
-                                    metadata.st_uid(),
-                                    metadata.st_uid(),
-                                    metadata.permissions().mode(),
-                                    metadata
-                                        .accessed()
-                                        .unwrap()
-                                        .duration_since(SystemTime::UNIX_EPOCH)
-                                        .unwrap()
-                                        .as_secs(),
-                                    metadata
-                                        .modified()
-                                        .unwrap()
-                                        .duration_since(SystemTime::UNIX_EPOCH)
-                                        .unwrap()
-                                        .as_secs(),
-                                );
-                            }
-                        }
-                    }
-                }
+                visitor.send_header(
+                    name_entry_collection.get_count()?,
+                    name_entry_collection.get_encoded_len()?,
+                );
+
+                name_entry_collection
+                    .for_each_encoded(|data: &[u8]| visitor.send_item(data))?;
+
+                // debug!("got iterator = {:?}", name_entry_collection);
             } else {
                 error!("the path is not a directory = {:?}", dir_path);
                 return Err(StatusCode::SSH_FX_NO_SUCH_FILE);
@@ -337,5 +320,117 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
 
         error!("What is the return that we are looking for?");
         Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
+    }
+}
+
+// TODO Add this to SFTP library only available with std as a global helper
+#[derive(Debug)]
+pub struct DirEntriesCollection {
+    /// Number of elements
+    count: u32,
+    /// Computed length of all the encoded elements
+    encoded_length: u32,
+    /// The actual entries. As you can see these are DirEntry. This is a std choice
+    entries: Vec<DirEntry>,
+}
+
+impl DirEntriesCollection {
+    pub fn new(dir_iterator: fs::ReadDir) -> Self {
+        let mut encoded_length = 0;
+        // This way I collect data required for the header and collect
+        // valid entries into a vector (only std)
+        let entries: Vec<DirEntry> = dir_iterator
+            .filter_map(|entry_result| {
+                let entry = entry_result.ok()?;
+
+                let filename = entry.path().to_string_lossy().into_owned();
+                let name_entry = NameEntry {
+                    filename: Filename::from(filename.as_str()),
+                    _longname: Filename::from(""),
+                    attrs: Self::get_attrs_or_empty(entry.metadata()),
+                };
+
+                const MAX_NAME_ENTRY_SIZE: usize = 4 + 256 + 4 + 72; // 4 + 256 bytes for path, 4 for empty long path and 72 bytes for the attributes ( 32/4*7 + 64/4 * 1 = 72)
+
+                let mut buffer = [0u8; MAX_NAME_ENTRY_SIZE];
+                let mut sftp_sink = SftpSink::new(&mut buffer);
+                name_entry.enc(&mut sftp_sink).ok()?;
+                //TODO remove this unchecked casting
+                encoded_length += sftp_sink.payload_len() as u32;
+                Some(entry)
+            })
+            .collect();
+
+        //TODO remove this unchecked casting
+        let count = entries.len() as u32;
+
+        info!(
+            "Processed {} entries, estimated serialized length: {}",
+            count, encoded_length
+        );
+
+        Self { count, encoded_length, entries }
+    }
+
+    fn get_attrs_or_empty(
+        maybe_metadata: Result<fs::Metadata, std::io::Error>,
+    ) -> Attrs {
+        maybe_metadata.map(Self::get_attrs).unwrap_or_default()
+    }
+
+    fn get_attrs(metadata: fs::Metadata) -> Attrs {
+        let time_to_u32 = |time_result: io::Result<SystemTime>| {
+            time_result
+                .ok()?
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .ok()?
+                .as_secs()
+                .try_into()
+                .ok()
+        };
+
+        Attrs {
+            size: Some(metadata.len()),
+            uid: Some(metadata.st_uid()),
+            gid: Some(metadata.st_gid()),
+            permissions: Some(metadata.permissions().mode()),
+            atime: time_to_u32(metadata.accessed()),
+            mtime: time_to_u32(metadata.modified()),
+            ext_count: None,
+        }
+    }
+}
+
+impl DirEntriesResponseHelpers for DirEntriesCollection {
+    fn get_count(&self) -> SftpOpResult<u32> {
+        Ok(self.count)
+    }
+
+    fn get_encoded_len(&self) -> SftpOpResult<u32> {
+        Ok(self.encoded_length)
+    }
+
+    fn for_each_encoded<F>(&self, mut writer: F) -> SftpOpResult<()>
+    where
+        F: FnMut(&[u8]) -> (),
+    {
+        for entry in &self.entries {
+            let filename = entry.path().to_string_lossy().into_owned();
+            let attrs = Self::get_attrs_or_empty(entry.metadata());
+            let name_entry = NameEntry {
+                filename: Filename::from(filename.as_str()),
+                _longname: Filename::from(""),
+                attrs,
+            };
+            debug!("Sending new item: {:?}", name_entry);
+            let mut buffer = [0u8; 4 + 256 + 4 + 72]; // 4 + 256 bytes for path, 4 for empty long path and 72 bytes for the attributes ( 32/4*7 + 64/4 * 1 = 72)
+            let mut sftp_sink = SftpSink::new(&mut buffer);
+            name_entry.enc(&mut sftp_sink).map_err(|err| {
+                debug!("WireError: {:?}", err);
+                StatusCode::SSH_FX_FAILURE
+            })?;
+            writer(sftp_sink.payload_slice());
+        }
+        Ok(())
     }
 }
