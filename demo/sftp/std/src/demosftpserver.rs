@@ -5,6 +5,7 @@ use crate::{
 
 use sunset::sshwire::SSHEncode;
 use sunset_sftp::handles::{OpaqueFileHandleManager, PathFinder};
+use sunset_sftp::protocol::constants::MAX_NAME_ENTRY_SIZE;
 use sunset_sftp::protocol::{Attrs, Filename, Name, NameEntry, StatusCode};
 use sunset_sftp::server::{
     DirEntriesResponseHelpers, DirReply, ReadReply, SftpOpResult, SftpServer,
@@ -350,8 +351,6 @@ impl DirEntriesCollection {
                     attrs: Self::get_attrs_or_empty(entry.metadata()),
                 };
 
-                const MAX_NAME_ENTRY_SIZE: usize = 4 + 256 + 4 + 72; // 4 + 256 bytes for path, 4 for empty long path and 72 bytes for the attributes ( 32/4*7 + 64/4 * 1 = 72)
-
                 let mut buffer = [0u8; MAX_NAME_ENTRY_SIZE];
                 let mut sftp_sink = SftpSink::new(&mut buffer);
                 name_entry.enc(&mut sftp_sink).ok()?;
@@ -423,7 +422,7 @@ impl DirEntriesResponseHelpers for DirEntriesCollection {
                 attrs,
             };
             debug!("Sending new item: {:?}", name_entry);
-            let mut buffer = [0u8; 4 + 256 + 4 + 72]; // 4 + 256 bytes for path, 4 for empty long path and 72 bytes for the attributes ( 32/4*7 + 64/4 * 1 = 72)
+            let mut buffer = [0u8; MAX_NAME_ENTRY_SIZE];
             let mut sftp_sink = SftpSink::new(&mut buffer);
             name_entry.enc(&mut sftp_sink).map_err(|err| {
                 debug!("WireError: {:?}", err);
