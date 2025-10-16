@@ -94,6 +94,10 @@ pub mod protocol {
     pub use crate::proto::NameEntry;
     pub use crate::proto::PathInfo;
     pub use crate::proto::StatusCode;
+    /// Constants that might be useful for SFTP developers
+    pub mod constants {
+        pub use crate::proto::MAX_NAME_ENTRY_SIZE;
+    }
 }
 
 /// Errors and results used in this crate

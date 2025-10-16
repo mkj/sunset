@@ -27,14 +27,20 @@ pub const SFTP_FIELD_LEN_LENGTH: usize = 4;
 
 // SSH_FXP_WRITE SFTP Packet definition used to decode long packets that do not fit in one buffer
 
-/// SFTP SSH_FXP_WRITE Packet cannot be shorter than this (len:4+pnum:1+rid:4+hand:4+0+data:4+0 bytes = 17 bytes) [draft-ietf-secsh-filexfer-02](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#autoid-10)
+/// SFTP SSH_FXP_WRITE Packet cannot be shorter than this (len:4+pnum:1+rid:4+hand:4+0+data:4+0 bytes = 17 bytes) [draft-ietf-secsh-filexfer-02](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.4)
 // pub const SFTP_MINIMUM_WRITE_PACKET_LEN: usize = 17;
 
-/// SFTP SSH_FXP_WRITE Packet request id field index  [draft-ietf-secsh-filexfer-02](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#autoid-10)
+/// SFTP SSH_FXP_WRITE Packet request id field index  [draft-ietf-secsh-filexfer-02](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.4)
 pub const SFTP_WRITE_REQID_INDEX: usize = 5;
 
-/// SFTP SSH_FXP_WRITE Packet handle field index  [draft-ietf-secsh-filexfer-02](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#autoid-10)
+/// SFTP SSH_FXP_WRITE Packet handle field index  [draft-ietf-secsh-filexfer-02](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.4)
 // pub const SFTP_WRITE_HANDLE_INDEX: usize = 9;
+
+/// Considering the definition in [Section 7](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-7)
+/// for `SSH_FXP_READDIR`
+///
+/// (4 + 256) bytes for path, (4 + 0) bytes for empty long path and 72 bytes for the attributes ( 32/4*7 + 64/4 * 1 = 72)
+pub const MAX_NAME_ENTRY_SIZE: usize = 4 + 256 + 4 + 72;
 
 // TODO is utf8 enough, or does this need to be an opaque binstring?
 /// See [SSH_FXP_NAME in Responses from the Server to the Client](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-7)
