@@ -688,7 +688,7 @@ macro_rules! sftpmessages {
             }
 
 
-            /// Decode a request. Includes Initialization packets
+            /// Decode a request or initialization packets
             ///
             /// Used by a SFTP server. Does not include the length field.
             ///
@@ -792,6 +792,5 @@ sftpmessages! [
             (102, Handle, Handle<'a>, "ssh_fxp_handle"),
             (103, Data, Data<'a>, "ssh_fxp_data"),
             (104, Name, Name<'a>, "ssh_fxp_name"),
-
         },
 ];

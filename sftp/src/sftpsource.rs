@@ -47,6 +47,7 @@ impl<'de> SSHSource<'de> for SftpSource<'de> {
 impl<'de> SftpSource<'de> {
     /// Creates a new [`SftpSource`] referencing a buffer
     pub fn new(buffer: &'de [u8]) -> Self {
+        debug!("New source with content: : {:?}", buffer);
         SftpSource { buffer: buffer, index: 0 }
     }
 
