@@ -6,6 +6,7 @@ use crate::{
 };
 
 use core::marker::PhantomData;
+// use futures::executor::block_on; TODO Deal with the async nature of [`ChanOut`]
 
 /// Result used to store the result of an Sftp Operation
 pub type SftpOpResult<T> = core::result::Result<T, StatusCode>;
@@ -71,6 +72,7 @@ where
     }
 
     /// Reads the list of items in a directory
+    #[allow(unused_variables)]
     fn readdir(
         &mut self,
         opaque_dir_handle: &T,
@@ -117,7 +119,8 @@ pub trait DirEntriesResponseHelpers {
     /// were a [`NameEntry`] has been encoded.
     ///
     ///
-    fn for_each_encoded<F>(&self, mut writer: F) -> SftpOpResult<()>
+    #[allow(unused_variables)]
+    fn for_each_encoded<F>(&self, writer: F) -> SftpOpResult<()>
     where
         F: FnMut(&[u8]) -> (),
     {
@@ -126,17 +129,49 @@ pub trait DirEntriesResponseHelpers {
 }
 
 // TODO Define this
+/// **This is a work in progress**
+/// A reference structure passed to the [`SftpServer::read()`] method to
+/// allow replying with the read data.
+
 pub struct ReadReply<'g, 'a> {
     chan: ChanOut<'g, 'a>,
 }
 
 impl<'g, 'a> ReadReply<'g, 'a> {
-    pub fn reply(self, _data: &[u8]) {}
+    /// **This is a work in progress**
+    ///
+    /// Reply with a slice containing the read data
+    /// It can be called several times to send multiple data chunks
+    ///
+    /// **Important**: The first reply should contain the header
+    #[allow(unused_variables)]
+    pub fn reply(self, data: &[u8]) {}
 }
 
 // TODO Define this
+/// Dir Reply is the structure that will be "visiting" the [`SftpServer`]
+///  trait
+/// implementation via [`SftpServer::readdir()`] in order to send the
+/// directory content list.
+///
+/// It contains references to a slice buffer and a output channel
+/// [`sunset_async::async_channel::ChanOut`] used in the context of an
+/// SFTP Session.
+///
+/// The usage is simple:
+///
+/// 1. SftpHandler will: Initialize the structure with the buffer and the ChanOut
+/// 2. The `SftpServer` trait implementation for `readdir()` will:
+///     a. Receive the DirReply
+///     b. Obtain the number of items and the **total** encoded length of
+/// the [`NameEntry`] items in the directory and send them calling `send_header`
+///     c. Send each serialized `NameEntry`, excluding their length using
+/// the `send_item` method
+///     
 pub struct DirReply<'g, 'a> {
+    /// Used during the
     req_id: ReqId,
+    /// To test muting operations
     muting: &'a mut u32,
     chan: ChanOut<'g, 'a>,
 }
@@ -151,12 +186,14 @@ impl<'g, 'a> DirReply<'g, 'a> {
         }
     }
 
+    // TODO this will need to do async execution
     /// mocks sending  an item via a stdio
     pub fn send_item(&mut self, data: &[u8]) {
         *self.muting += 1;
         debug!("Muted incremented {:?}. Got data: {:?}", self.muting, data);
     }
 
+    // TODO this will need to do async execution
     /// Must be call it first. Make this enforceable
     pub fn send_header(&self, get_count: u32, get_encoded_len: u32) {
         debug!(

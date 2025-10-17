@@ -308,8 +308,6 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
 
                 name_entry_collection
                     .for_each_encoded(|data: &[u8]| visitor.send_item(data))?;
-
-                // debug!("got iterator = {:?}", name_entry_collection);
             } else {
                 error!("the path is not a directory = {:?}", dir_path);
                 return Err(StatusCode::SSH_FX_NO_SUCH_FILE);
