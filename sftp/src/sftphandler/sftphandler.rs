@@ -1,22 +1,24 @@
+use super::PartialWriteRequestTracker;
+
 use crate::error::SftpError;
 use crate::handles::OpaqueFileHandle;
 use crate::proto::{
     self, InitVersionLowest, ReqId, SFTP_MINIMUM_PACKET_LEN, SFTP_VERSION, SftpNum,
-    SftpPacket, Status, StatusCode,
+    SftpPacket, StatusCode,
 };
 use crate::requestholder::{RequestHolder, RequestHolderError};
 use crate::server::DirReply;
 use crate::sftperror::SftpResult;
+use crate::sftphandler::sftpoutputchannelwrapper::SftpOutputChannelWrapper;
 use crate::sftpserver::SftpServer;
-use crate::sftpsink::SftpSink;
 use crate::sftpsource::SftpSource;
 
 use sunset::Error as SunsetError;
-use sunset::sshwire::{SSHEncode, SSHSource, WireError, WireResult};
-use sunset_async::{ChanInOut, ChanOut};
+use sunset::sshwire::{SSHSource, WireError};
+use sunset_async::ChanInOut;
 
 use core::u32;
-use embedded_io_async::{Read, Write};
+use embedded_io_async::Read;
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
 
@@ -47,38 +49,38 @@ enum FragmentedRequestState {
     ProcessingLongRequest,
 }
 
-// TODO Generalize this to allow other request types
-/// Used to keep record of a long SFTP Write request that does not fit in
-/// receiving buffer and requires processing in batches
-#[derive(Debug)]
-pub struct PartialWriteRequestTracker<T: OpaqueFileHandle> {
-    req_id: ReqId,
-    obscure_file_handle: T,
-    remain_data_len: u32,
-    remain_data_offset: u64,
-}
+// // TODO Generalize this to allow other request types
+// /// Used to keep record of a long SFTP Write request that does not fit in
+// /// receiving buffer and requires processing in batches
+// #[derive(Debug)]
+// pub struct PartialWriteRequestTracker<T: OpaqueFileHandle> {
+//     req_id: ReqId,
+//     opaque_handle: T,
+//     remain_data_len: u32,
+//     remain_data_offset: u64,
+// }
 
-impl<T: OpaqueFileHandle> PartialWriteRequestTracker<T> {
-    /// Creates a new [`PartialWriteRequestTracker`]
-    pub fn new(
-        req_id: ReqId,
-        obscure_file_handle: T,
-        remain_data_len: u32,
-        remain_data_offset: u64,
-    ) -> WireResult<Self> {
-        Ok(PartialWriteRequestTracker {
-            req_id,
-            obscure_file_handle: obscure_file_handle,
-            remain_data_len,
-            remain_data_offset,
-        })
-    }
-    /// Returns the opaque file handle associated with the request
-    /// tracked
-    pub fn get_opaque_file_handle(&self) -> T {
-        self.obscure_file_handle.clone()
-    }
-}
+// impl<T: OpaqueFileHandle> PartialWriteRequestTracker<T> {
+//     /// Creates a new [`PartialWriteRequestTracker`]
+//     pub fn new(
+//         req_id: ReqId,
+//         opaque_handle: T,
+//         remain_data_len: u32,
+//         remain_data_offset: u64,
+//     ) -> WireResult<Self> {
+//         Ok(PartialWriteRequestTracker {
+//             req_id,
+//             opaque_handle: opaque_handle,
+//             remain_data_len,
+//             remain_data_offset,
+//         })
+//     }
+//     /// Returns the opaque file handle associated with the request
+//     /// tracked
+//     pub fn get_opaque_file_handle(&self) -> T {
+//         self.opaque_handle.clone()
+//     }
+// }
 
 /// Process the raw buffers in and out from a subsystem channel decoding
 /// request and encoding responses
@@ -144,7 +146,7 @@ where
     async fn process<'g>(
         &mut self,
         buffer_in: &[u8],
-        output_wrapper: &mut OutputWrapper<'a, 'g>,
+        output_wrapper: &mut SftpOutputChannelWrapper<'a, 'g>,
     ) -> SftpResult<()> {
         let in_len = buffer_in.len();
         let mut buffer_in_lower_index_bracket = 0;
@@ -202,9 +204,12 @@ where
                                         continue;
                                     }
                                     RequestHolderError::NoRoom => {
-                                        warn!(
-                                            "The request holder if full but the request in incomplete"
-                                        )
+                                        error!(
+                                            "The request holder if full but the request in incomplete. \
+                                            Consider increasing its size"
+                                        );
+                                        // TODO react to this situation  with an internal server error
+                                        return Err(SunsetError::NoRoom {}.into());
                                     }
 
                                     _ => {
@@ -299,7 +304,7 @@ where
 
                             let usable_data = source
                                 .remaining()
-                                .min(write_tracker.remain_data_len as usize);
+                                .min(write_tracker.get_remain_data_len() as usize);
 
                             let data_segment = // Fails!!
                                             source.dec_as_binstring(usable_data)?;
@@ -312,10 +317,10 @@ where
                                 SunsetError::Bug
                             })?;
                             let current_write_offset =
-                                write_tracker.remain_data_offset;
-                            write_tracker.remain_data_offset +=
-                                data_segment_len as u64;
-                            write_tracker.remain_data_len -= data_segment_len;
+                                write_tracker.get_remain_data_offset();
+                            write_tracker.update_remaining_after_partial_write(
+                                data_segment_len,
+                            );
 
                             debug!(
                                 "Processing successive chunks of a long write packet. \
@@ -324,7 +329,7 @@ where
                                 opaque_handle,
                                 current_write_offset,
                                 data_segment,
-                                write_tracker.remain_data_len
+                                write_tracker.get_remain_data_len()
                             );
 
                             match self.file_server.write(
@@ -333,27 +338,30 @@ where
                                 data_segment.as_ref(),
                             ) {
                                 Ok(_) => {
-                                    if write_tracker.remain_data_len > 0 {
+                                    if write_tracker.get_remain_data_len() > 0 {
                                         self.partial_write_request_tracker =
                                             Some(write_tracker);
                                     } else {
-                                        push_ok(
-                                            write_tracker.req_id,
-                                            &mut output_wrapper.get_mut_sink_ref(),
-                                        )?;
-                                        output_wrapper.send_buffer().await?;
+                                        output_wrapper
+                                            .send_status(
+                                                write_tracker.get_req_id(),
+                                                StatusCode::SSH_FX_OK,
+                                                "",
+                                            )
+                                            .await?;
                                         info!("Finished multi part Write Request");
                                         self.state = SftpHandleState::Idle;
                                     }
                                 }
                                 Err(e) => {
                                     error!("SFTP write thrown: {:?}", e);
-                                    push_general_failure(
-                                        write_tracker.req_id,
-                                        "error writing",
-                                        &mut output_wrapper.get_mut_sink_ref(),
-                                    )?;
-                                    output_wrapper.send_buffer().await?;
+                                    output_wrapper
+                                        .send_status(
+                                            write_tracker.get_req_id(),
+                                            StatusCode::SSH_FX_FAILURE,
+                                            "error writing",
+                                        )
+                                        .await?;
                                     self.state = SftpHandleState::Idle;
                                 }
                             };
@@ -363,127 +371,114 @@ where
                     }
                 }
 
-                // No pending request
-                _ => {
-                    let mut source =
-                        SftpSource::new(&buffer_in[buffer_in_lower_index_bracket..]);
+                SftpHandleState::Initializing => {
+                    let (source, sftp_packet) = create_sftp_source_and_packet(
+                        buffer_in,
+                        buffer_in_lower_index_bracket,
+                    );
+                    match sftp_packet {
+                        Ok(request) => {
+                            match request {
+                                SftpPacket::Init(_) => {
+                                    let version =
+                                        SftpPacket::Version(InitVersionLowest {
+                                            version: SFTP_VERSION,
+                                        });
 
-                    let sftp_packet = SftpPacket::decode_request(&mut source);
-
-                    match self.state {
-                        SftpHandleState::Initializing => match sftp_packet {
-                            Ok(request) => {
-                                match request {
-                                    SftpPacket::Init(_) => {
-                                        let version =
-                                            SftpPacket::Version(InitVersionLowest {
-                                                version: SFTP_VERSION,
-                                            });
-
-                                        // info!("Sending '{:?}'", version);
-                                        version.encode_response(
-                                            output_wrapper.get_mut_sink_ref(),
-                                        )?;
-                                        output_wrapper.send_buffer().await?;
-                                        self.state = SftpHandleState::Idle;
-                                    }
-                                    _ => {
-                                        error!(
-                                            "Request received before init: {:?}",
-                                            request
-                                        );
-                                        return Err(SftpError::NotInitialized);
-                                    }
-                                };
-                            }
-                            Err(_) => {
-                                error!(
-                                    "Malformed SFTP Packet before Init: {:?}",
-                                    sftp_packet
-                                );
-                                return Err(SftpError::MalformedPacket);
-                            }
-                        },
-                        SftpHandleState::Idle => {
-                            match sftp_packet {
-                                Ok(request) => {
-                                    Self::handle_general_request(
-                                        &mut self.file_server,
-                                        output_wrapper,
-                                        request,
-                                    )
-                                    .await?;
+                                    output_wrapper.send_packet(version).await?;
+                                    self.state = SftpHandleState::Idle;
                                 }
-                                Err(e) => match e {
-                                    WireError::RanOut => {
-                                        warn!(
-                                            "RanOut for the SFTP Packet in the source buffer: {:?}",
-                                            e
-                                        );
-
-                                        match Self::handle_ran_out(
-                                            &mut self.file_server,
-                                            output_wrapper,
-                                            &mut source,
-                                        )
-                                        .await
-                                        {
-                                            Ok(holder) => {
-                                                self.partial_write_request_tracker =
-                                                    Some(holder);
-                                                self.state =
-                                                        SftpHandleState::Fragmented(FragmentedRequestState::ProcessingLongRequest)
-                                            }
-                                            Err(e) => {
-                                                error!("Error handle_ran_out");
-                                                match e {
-                                                    SftpError::WireError(
-                                                        WireError::RanOut,
-                                                    ) => {
-                                                        let read = self.incomplete_request_holder
-                                                            .try_hold(
-                                                            &buffer_in
-                                                                [buffer_in_lower_index_bracket..],
-                                                        )?;
-                                                        buffer_in_lower_index_bracket +=
-                                                            read;
-                                                        self.state = SftpHandleState::Fragmented(FragmentedRequestState::ProcessingClippedRequest);
-                                                        continue;
-                                                    }
-                                                    _ => {
-                                                        return Err(
-                                                            SunsetError::Bug.into(),
-                                                        );
-                                                    }
-                                                }
-                                            }
-                                        };
-                                    }
-                                    _ => {
-                                        error!(
-                                            "Error decoding SFTP Packet: {:?}",
-                                            e
-                                        );
-                                        push_unsupported(
-                                            ReqId(u32::MAX),
-                                            &mut output_wrapper.get_mut_sink_ref(),
-                                        )?;
-                                        output_wrapper.send_buffer().await?;
-                                    }
-                                },
+                                _ => {
+                                    error!(
+                                        "Request received before init: {:?}",
+                                        request
+                                    );
+                                    return Err(SftpError::NotInitialized);
+                                }
                             };
                         }
-                        _ => {
+                        Err(_) => {
                             error!(
-                                "Unhandled SftpHandleState {:?} in main loop",
-                                self.state
+                                "Malformed SFTP Packet before Init: {:?}",
+                                sftp_packet
                             );
-                            return Err(SunsetError::Bug.into());
+                            return Err(SftpError::MalformedPacket);
                         }
                     }
                     buffer_in_lower_index_bracket = in_len - source.remaining();
                 }
-            };
+                SftpHandleState::Idle => {
+                    let (mut source, sftp_packet) = create_sftp_source_and_packet(
+                        buffer_in,
+                        buffer_in_lower_index_bracket,
+                    );
+                    match sftp_packet {
+                        Ok(request) => {
+                            Self::handle_general_request(
+                                &mut self.file_server,
+                                output_wrapper,
+                                request,
+                            )
+                            .await?;
+                        }
+                        Err(e) => match e {
+                            WireError::RanOut => {
+                                warn!(
+                                    "RanOut for the SFTP Packet in the source buffer: {:?}",
+                                    e
+                                );
+
+                                match Self::handle_ran_out(
+                                    &mut self.file_server,
+                                    output_wrapper,
+                                    &mut source,
+                                )
+                                .await
+                                {
+                                    Ok(holder) => {
+                                        self.partial_write_request_tracker =
+                                            Some(holder);
+                                        self.state =
+                                                        SftpHandleState::Fragmented(FragmentedRequestState::ProcessingLongRequest)
+                                    }
+                                    Err(e) => {
+                                        error!("Error handle_ran_out");
+                                        match e {
+                                            SftpError::WireError(
+                                                WireError::RanOut,
+                                            ) => {
+                                                let read = self.incomplete_request_holder
+                                                            .try_hold(
+                                                            &buffer_in
+                                                                [buffer_in_lower_index_bracket..],
+                                                        )?;
+                                                buffer_in_lower_index_bracket +=
+                                                    read;
+                                                self.state = SftpHandleState::Fragmented(FragmentedRequestState::ProcessingClippedRequest);
+                                                continue;
+                                            }
+                                            _ => {
+                                                return Err(SunsetError::Bug.into());
+                                            }
+                                        }
+                                    }
+                                };
+                            }
+                            _ => {
+                                error!("Error decoding SFTP Packet: {:?}", e);
+                                output_wrapper
+                                    .send_status(
+                                        ReqId(u32::MAX),
+                                        StatusCode::SSH_FX_OP_UNSUPPORTED,
+                                        "Error decoding SFTP Packet",
+                                    )
+                                    .await?;
+                            }
+                        },
+                    };
+                    buffer_in_lower_index_bracket = in_len - source.remaining();
+                }
+            }
         }
 
         Ok(())
@@ -499,7 +494,8 @@ where
     ) -> SftpResult<()> {
         let (mut chan_in, chan_out) = stdio.split();
 
-        let mut out_wrapper = OutputWrapper::new(buffer_out, chan_out);
+        let mut chan_out_wrapper =
+            SftpOutputChannelWrapper::new(buffer_out, chan_out);
         loop {
             let lr = chan_in.read(buffer_in).await?;
             trace!("SFTP <---- received: {:?}", &buffer_in[0..lr]);
@@ -508,14 +504,13 @@ where
                 return Err(SftpError::ClientDisconnected);
             }
 
-            self.process(&buffer_in[0..lr], &mut out_wrapper).await?;
+            self.process(&buffer_in[0..lr], &mut chan_out_wrapper).await?;
         }
-        // Ok(())
     }
 
     async fn handle_general_request<'g>(
         file_server: &mut S,
-        output_wrapper: &mut OutputWrapper<'a, 'g>,
+        output_wrapper: &mut SftpOutputChannelWrapper<'a, 'g>,
         request: SftpPacket<'_>,
     ) -> Result<(), SftpError>
     where
@@ -536,9 +531,7 @@ where
                     &req_id, &response
                 );
 
-                response.encode_response(output_wrapper.get_mut_sink_ref())?;
-                // dbg!("PathInfo response encoded", &response);
-                output_wrapper.send_buffer().await?;
+                output_wrapper.send_packet(response).await?;
             }
             SftpPacket::Open(req_id, open) => {
                 match file_server.open(open.filename.as_str()?, &open.attrs) {
@@ -549,18 +542,13 @@ where
                                 handle: opaque_file_handle.into_file_handle(),
                             },
                         );
-                        response
-                            .encode_response(output_wrapper.get_mut_sink_ref())?;
-                        output_wrapper.send_buffer().await?;
+                        output_wrapper.send_packet(response).await?;
                     }
                     Err(status_code) => {
                         error!("Open failed: {:?}", status_code);
-                        push_general_failure(
-                            req_id,
-                            "",
-                            output_wrapper.get_mut_sink_ref(),
-                        )?;
-                        output_wrapper.send_buffer().await?;
+                        output_wrapper
+                            .send_status(req_id, StatusCode::SSH_FX_FAILURE, "")
+                            .await?;
                     }
                 };
             }
@@ -573,34 +561,38 @@ where
                     write.data.as_ref(),
                 ) {
                     Ok(_) => {
-                        push_ok(req_id, output_wrapper.get_mut_sink_ref())?;
-                        output_wrapper.send_buffer().await?;
+                        output_wrapper
+                            .send_status(req_id, StatusCode::SSH_FX_OK, "")
+                            .await?;
                     }
                     Err(e) => {
                         error!("SFTP write thrown: {:?}", e);
-                        push_general_failure(
-                            req_id,
-                            "error writing",
-                            output_wrapper.get_mut_sink_ref(),
-                        )?;
-                        output_wrapper.send_buffer().await?;
+                        output_wrapper
+                            .send_status(
+                                req_id,
+                                StatusCode::SSH_FX_FAILURE,
+                                "error writing",
+                            )
+                            .await?;
                     }
                 };
             }
             SftpPacket::Close(req_id, close) => {
                 match file_server.close(&T::try_from(&close.handle)?) {
                     Ok(_) => {
-                        push_ok(req_id, output_wrapper.get_mut_sink_ref())?;
-                        output_wrapper.send_buffer().await?;
+                        output_wrapper
+                            .send_status(req_id, StatusCode::SSH_FX_OK, "")
+                            .await?;
                     }
                     Err(e) => {
                         error!("SFTP Close thrown: {:?}", e);
-                        push_general_failure(
-                            req_id,
-                            "",
-                            output_wrapper.get_mut_sink_ref(),
-                        )?;
-                        output_wrapper.send_buffer().await?;
+                        output_wrapper
+                            .send_status(
+                                req_id,
+                                StatusCode::SSH_FX_FAILURE,
+                                "Could not Close the handle",
+                            )
+                            .await?;
                     }
                 }
             }
@@ -613,18 +605,13 @@ where
                                 handle: opaque_file_handle.into_file_handle(),
                             },
                         );
-                        response
-                            .encode_response(output_wrapper.get_mut_sink_ref())?;
-                        output_wrapper.send_buffer().await?;
+                        output_wrapper.send_packet(response).await?;
                     }
                     Err(status_code) => {
                         error!("Open failed: {:?}", status_code);
-                        push_general_failure(
-                            req_id,
-                            "",
-                            output_wrapper.get_mut_sink_ref(),
-                        )?;
-                        output_wrapper.send_buffer().await?;
+                        output_wrapper
+                            .send_status(req_id, StatusCode::SSH_FX_FAILURE, "")
+                            .await?;
                     }
                 };
             }
@@ -632,9 +619,7 @@ where
                 // TODO Implement the mechanism you are going to use to
                 // handle the list of elements
 
-                let mut muting = 0;
-
-                let mut dir_reply = DirReply::mock(req_id, &mut muting);
+                let mut dir_reply = DirReply::new(req_id, output_wrapper);
 
                 match file_server
                     .readdir(&T::try_from(&read_dir.handle)?, &mut dir_reply)
@@ -644,11 +629,15 @@ where
                     }
                     Err(status_code) => {
                         error!("Open failed: {:?}", status_code);
-                        push_unsupported(req_id, output_wrapper.get_mut_sink_ref())?;
-                        output_wrapper.send_buffer().await?;
+                        // output_wrapper
+                        //     .push_status(
+                        //         req_id,
+                        //         StatusCode::SSH_FX_OP_UNSUPPORTED,
+                        //         "Error Reading Directory",
+                        //     )
+                        //     .await?;
                     }
                 };
-                debug!("final muting: {:?}", muting);
                 error!("Unsupported Read Dir : {:?}", read_dir);
                 // return Err(SftpError::NotSupported);
                 // push_unsupported(ReqId(0), sink)?;
@@ -663,13 +652,21 @@ where
     }
 
     // TODO Handle more long requests
-    /// Handles long request that do not fit in the buffers and stores a tracker
+    /// Some long request will not fit in the channel buffers. Such requests
+    /// will require to be handled differently. Gathering the data in and
+    /// processing it as we receive it in the channel in buffer.
+    ///
+    /// In the current approach a tracker is required to store the state of
+    /// the processing of such long requests.
+    ///
+    /// With an implementation that where able to hold the channel_in there might
+    /// be no need to keep this tracker.
     ///
     /// **WARNING:** Only `SSH_FXP_WRITE` has been implemented!
     ///
     async fn handle_ran_out<'g>(
         file_server: &mut S,
-        output_wrapper: &mut OutputWrapper<'a, 'g>,
+        output_wrapper: &mut SftpOutputChannelWrapper<'a, 'g>,
         source: &mut SftpSource<'_>,
     ) -> SftpResult<PartialWriteRequestTracker<T>> {
         let packet_type = source.peak_packet_type()?;
@@ -712,12 +709,13 @@ where
                     }
                     Err(e) => {
                         error!("SFTP write thrown: {:?}", e);
-                        push_general_failure(
-                            req_id,
-                            "error writing ",
-                            output_wrapper.get_mut_sink_ref(),
-                        )?;
-                        output_wrapper.send_buffer().await?;
+                        output_wrapper
+                            .send_status(
+                                req_id,
+                                StatusCode::SSH_FX_FAILURE,
+                                "error writing ",
+                            )
+                            .await?;
                         return Err(SftpError::FileServerError(e));
                     }
                 };
@@ -733,117 +731,14 @@ where
         // Ok(())
     }
 }
+/// Function to create an SFTP source and decode an SFTP packet from it
+/// to avoid code duplication
+fn create_sftp_source_and_packet(
+    buffer_in: &[u8],
+    buffer_in_lower_index_bracket: usize,
+) -> (SftpSource<'_>, Result<SftpPacket<'_>, WireError>) {
+    let mut source = SftpSource::new(&buffer_in[buffer_in_lower_index_bracket..]);
 
-struct OutputWrapper<'a, 'g> {
-    sink: SftpSink<'a>,
-    channel_out: ChanOut<'g>,
-}
-
-impl<'a, 'g> OutputWrapper<'a, 'g> {
-    pub fn new(buffer: &'a mut [u8], channel_out: ChanOut<'g>) -> Self {
-        let sink = SftpSink::new(buffer);
-        OutputWrapper { channel_out, sink }
-    }
-
-    pub fn reset(&mut self) {
-        self.sink.reset();
-    }
-
-    pub fn get_mut_sink_ref(&mut self) -> &mut SftpSink<'a> {
-        &mut self.sink
-    }
-
-    // TODO Are we using this?
-    pub fn encode<T>(&mut self, data: &T) -> SftpResult<()>
-    where
-        T: SSHEncode,
-    {
-        data.enc(&mut self.sink)?;
-        Ok(())
-    }
-    //
-
-    /// Finalizes (Prepends the packet length) and send the data in the
-    /// buffer by the subsystem channel out
-    pub async fn send_buffer(&mut self) -> SftpResult<usize> {
-        if self.sink.payload_len() == 0 {
-            debug!("No data to send in the SFTP sink");
-            return Ok(0);
-        }
-        self.sink.finalize();
-        let buffer = self.sink.used_slice();
-        info!("Sending buffer: '{:?}'", buffer);
-        let written = self.channel_out.write(buffer).await?;
-        self.sink.reset();
-        Ok(written)
-    }
-
-    /// Send the data in the buffer by the subsystem channel out without
-    ///  prepending the packet length to it.
-    ///     
-    /// This is useful when an SFTP packet header has already being sent
-    /// or when the data requires an special treatment
-    pub async fn send_payload(&mut self) -> SftpResult<usize> {
-        let payload = self.sink.payload_slice();
-        info!("Sending payload: '{:?}'", payload);
-        let written = self.channel_out.write(payload).await?;
-        self.sink.reset();
-        Ok(written)
-    }
-
-    pub fn finalize(&mut self) -> usize {
-        self.sink.finalize()
-    }
-}
-
-#[inline]
-fn push_ok(req_id: ReqId, sink: &mut SftpSink<'_>) -> Result<(), WireError> {
-    let response = SftpPacket::Status(
-        req_id,
-        Status {
-            code: StatusCode::SSH_FX_OK,
-            message: "".into(),
-            lang: "en-US".into(),
-        },
-    );
-    trace!("Pushing an OK status message: {:?}", response);
-    response.encode_response(sink)?;
-    Ok(())
-}
-
-#[inline]
-fn push_unsupported(
-    req_id: ReqId,
-    sink: &mut SftpSink<'_>,
-) -> Result<(), WireError> {
-    let response = SftpPacket::Status(
-        req_id,
-        Status {
-            code: StatusCode::SSH_FX_OP_UNSUPPORTED,
-            message: "Not implemented".into(),
-            lang: "en-US".into(),
-        },
-    );
-    debug!("Pushing a unsupported status message: {:?}", response);
-    response.encode_response(sink)?;
-    Ok(())
-}
-
-#[inline]
-fn push_general_failure(
-    req_id: ReqId,
-    msg: &'static str,
-    sink: &mut SftpSink<'_>,
-) -> Result<(), WireError> {
-    let response = SftpPacket::Status(
-        req_id,
-        Status {
-            code: StatusCode::SSH_FX_FAILURE,
-            message: msg.into(),
-            lang: "en-US".into(),
-        },
-    );
-    debug!("Pushing a general failure status message: {:?}", response);
-    response.encode_response(sink)?;
-    Ok(())
+    let sftp_packet = SftpPacket::decode_request(&mut source);
+    (source, sftp_packet)
 }

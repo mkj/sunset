@@ -1,11 +1,13 @@
-use log::debug;
-
+use crate::error::SftpResult;
+use crate::sftphandler::SftpOutputChannelWrapper;
 use crate::{
     handles::OpaqueFileHandle,
     proto::{Attrs, Name, ReqId, StatusCode},
 };
 
 use core::marker::PhantomData;
+use log::debug;
+
 // use futures::executor::block_on; TODO Deal with the async nature of [`ChanOut`]
 
 /// Result used to store the result of an Sftp Operation
@@ -148,6 +150,12 @@ impl<'g, 'a> ReadReply<'g, 'a> {
     pub fn reply(self, data: &[u8]) {}
 }
 
+// TODO Implement correct Channel Out
+pub struct ChanOut<'g, 'a> {
+    _phantom_g: PhantomData<&'g ()>, // 'g look what these might be ChanIO lifetime
+    _phantom_a: PhantomData<&'a ()>, // a' Why the second lifetime if ChanIO only needs one
+}
+
 // TODO Define this
 /// Dir Reply is the structure that will be "visiting" the [`SftpServer`]
 ///  trait
@@ -172,39 +180,47 @@ pub struct DirReply<'g, 'a> {
     /// Used during the
     req_id: ReqId,
     /// To test muting operations
-    muting: &'a mut u32,
-    chan: ChanOut<'g, 'a>,
+    chan_out: &'g mut SftpOutputChannelWrapper<'g>,
 }
 
 impl<'g, 'a> DirReply<'g, 'a> {
     /// I am faking a DirReply to prototype it
-    pub fn mock(req_id: ReqId, muting: &'a mut u32) -> Self {
-        DirReply {
-            chan: ChanOut { _phantom_g: PhantomData, _phantom_a: PhantomData },
-            muting,
-            req_id,
-        }
+    // pub fn mock(req_id: ReqId, muting: &'a mut u32) -> Self {
+    //     DirReply {
+    //         chan_out: ChanOut { _phantom_g: PhantomData, _phantom_a: PhantomData },
+    //         // muting,
+    //         req_id,
+    //     }
+    // }
+    pub fn new(
+        req_id: ReqId,
+        chan_out_wrapper: &'g mut SftpOutputChannelWrapper<'g, 'g>,
+    ) -> Self {
+        DirReply { chan_out: chan_out_wrapper, req_id }
     }
 
     // TODO this will need to do async execution
     /// mocks sending  an item via a stdio
     pub fn send_item(&mut self, data: &[u8]) {
-        *self.muting += 1;
-        debug!("Muted incremented {:?}. Got data: {:?}", self.muting, data);
+        // *self.muting += 1;
+        debug!("Send item: data = {:?}", data);
     }
 
     // TODO this will need to do async execution
     /// Must be call it first. Make this enforceable
-    pub fn send_header(&self, get_count: u32, get_encoded_len: u32) {
+    pub async fn send_header(
+        &mut self,
+        get_count: u32,
+        get_encoded_len: u32,
+    ) -> SftpResult<()> {
         debug!(
             "I will send the header here for request id {:?}: count = {:?}, length = {:?}",
             self.req_id, get_count, get_encoded_len
         );
+        self.chan_out.push(&get_encoded_len).await?;
+        self.chan_out.push(&(104 as u8)).await?;
+        self.chan_out.push(&get_count).await?;
+        self.chan_out.send_payload().await?;
+        Ok(())
     }
-}
-
-// TODO Implement correct Channel Out
-pub struct ChanOut<'g, 'a> {
-    _phantom_g: PhantomData<&'g ()>, // 'g look what these might be ChanIO lifetime
-    _phantom_a: PhantomData<&'a ()>, // a' Why the second lifetime if ChanIO only needs one
 }
