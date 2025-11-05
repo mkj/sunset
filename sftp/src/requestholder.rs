@@ -108,7 +108,7 @@ impl<'a> RequestHolder<'a> {
     }
 
     /// Using the content of the `RequestHolder` tries to find a valid
-    /// SFTP request appending from slice into the internal buffer to
+    /// SFTP request appending bytes from slice_in into the internal buffer to
     /// form a valid request.
     ///
     /// Reset and increase the `appended()` counter.
@@ -126,7 +126,7 @@ impl<'a> RequestHolder<'a> {
     /// - `Err(Bug)`: An unexpected condition arises
     pub fn try_append_for_valid_request(
         &mut self,
-        slice: &[u8],
+        slice_in: &[u8],
     ) -> RequestHolderResult<()> {
         debug!(
             "try_append_for_valid_request: self = {:?}\n\
@@ -134,7 +134,7 @@ impl<'a> RequestHolder<'a> {
             Length of slice to append from = {:?}",
             self,
             self.remaining_len(),
-            slice.len()
+            slice_in.len()
         );
 
         if !self.busy {
@@ -150,13 +150,13 @@ impl<'a> RequestHolder<'a> {
         self.appended = 0; // reset appended bytes counter
 
         // If we will not be able to read the SFTP packet ID we clearly need more data
-        if self.buffer_fill_index + slice.len() < proto::SFTP_FIELD_ID_INDEX {
-            self.try_append_slice(&slice)?;
+        if self.buffer_fill_index + slice_in.len() < proto::SFTP_FIELD_ID_INDEX {
+            self.try_append_slice(&slice_in)?;
             error!(
                 "[Buffer fill index = {:?}] + [slice.len = {:?}] = {:?} < SFTP field id index = {:?}",
                 self.buffer_fill_index,
-                slice.len(),
-                self.buffer_fill_index + slice.len(),
+                slice_in.len(),
+                self.buffer_fill_index + slice_in.len(),
                 proto::SFTP_FIELD_ID_INDEX
             );
             return Err(RequestHolderError::RanOut);
@@ -175,15 +175,15 @@ impl<'a> RequestHolder<'a> {
                 complete_to_id_index,
                 proto::SFTP_FIELD_ID_INDEX
             );
-            if complete_to_id_index > slice.len() {
-                self.try_append_slice(&slice)?;
+            if complete_to_id_index > slice_in.len() {
+                self.try_append_slice(&slice_in)?;
                 error!(
                     "The slice to include to the held fragment is too \
                 short to complete to id index. More data is required."
                 );
                 return Err(RequestHolderError::RanOut);
             } else {
-                self.try_append_slice(&slice[..complete_to_id_index])?;
+                self.try_append_slice(&slice_in[..complete_to_id_index])?;
             };
         }
 
@@ -213,14 +213,16 @@ impl<'a> RequestHolder<'a> {
                 + remaining_packet_len
         );
         if remaining_packet_len <= self.remaining_len() {
-            // We have all the remaining packet bytes in the slice and fits in the buffer
+            // The remaining bytes would fill in the buffer
 
-            if (slice.len()) < (remaining_packet_len + self.appended()) {
-                self.try_append_slice(&slice[self.appended()..])?;
+            if (slice_in.len()) < (remaining_packet_len + self.appended()) {
+                // the slice_in does not contain all the remaining bytes
+                // We added them an request more
+                self.try_append_slice(&slice_in[self.appended()..])?;
                 return Err(RequestHolderError::RanOut);
             } else {
                 self.try_append_slice(
-                    &slice[self.appended()..remaining_packet_len],
+                    &slice_in[self.appended()..remaining_packet_len],
                 )?;
                 return Ok(());
             }
@@ -229,22 +231,22 @@ impl<'a> RequestHolder<'a> {
             // But they may not fit in the slice neither
 
             let start = self.appended();
-            let end = self.remaining_len().min(slice.len() - self.appended());
+            let end = self.remaining_len().min(slice_in.len() - self.appended());
 
             debug!(
                 "Will finally take the range: [{:?}..{:?}] from the slice [0..{:?}]",
                 start,
                 end,
-                slice.len()
+                slice_in.len()
             );
             self.try_append_slice(
-                &slice[self.appended()
-                    ..self.remaining_len().min(slice.len() - self.appended())],
+                &slice_in[self.appended()
+                    ..self.remaining_len().min(slice_in.len() - self.appended())],
             )?;
             if self.is_full() {
                 return Err(RequestHolderError::NoRoom);
             } else {
-                return Err(RequestHolderError::RanOut);
+                return Err(RequestHolderError::RanOut); // More bytes are needed to complete the Write request
             }
         }
     }
