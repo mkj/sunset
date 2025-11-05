@@ -60,7 +60,12 @@ impl<'de> SftpSource<'de> {
     /// **Warning**: will only work in well formed packets, in other case
     /// the result will contain garbage
     pub(crate) fn peak_packet_type(&self) -> WireResult<SftpNum> {
-        if self.buffer.len() < SFTP_FIELD_ID_INDEX + 1 {
+        if self.buffer.len() <= SFTP_FIELD_ID_INDEX {
+            error!(
+                "Peak packet type failed: buffer len <= SFTP_FIELD_ID_INDEX ( {:?} <= {:?})",
+                self.buffer.len(),
+                SFTP_FIELD_ID_INDEX
+            );
             Err(WireError::RanOut)
         } else {
             Ok(SftpNum::from(self.buffer[SFTP_FIELD_ID_INDEX]))
@@ -88,9 +93,15 @@ impl<'de> SftpSource<'de> {
     }
 
     /// Assuming that the buffer contains a [`proto::Write`] request packet initial
-    /// bytes and not its totality, extracts a partial version of the write request
-    /// and a Write request tracker to handle and a tracker to continue processing
-    /// subsequent portions of the request from a SftpSource
+    /// bytes and not its totality:
+    ///
+    /// **Returns**:
+    ///
+    /// - An [`OpaqueFileHandle`] to guide the Write operation,
+    /// - Request ID as [`ReqId`],
+    /// - Offset as [`u64`]
+    /// - Data in the buffer as [`BinString`]
+    /// - [`PartialWriteRequestTracker`] to handle subsequent portions of the request
     ///
     /// **Warning**: will only work in well formed write packets, in other case
     /// the result will contain garbage
