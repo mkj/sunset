@@ -8,7 +8,7 @@ use embassy_sync::pipe::{Pipe, Reader as PipeReader, Writer as PipeWriter};
 use embedded_io_async::Write;
 use sunset_async::SunsetRawMutex;
 
-use log::{debug, trace};
+use log::{debug, error, trace};
 
 //// This is the beginning of a new idea:
 /// I want to pass ref of an item where different methods in the sftphandler can
@@ -46,7 +46,6 @@ use log::{debug, trace};
 
 pub struct SftpOutputPipe<const N: usize> {
     pipe: Pipe<SunsetRawMutex, N>,
-    capacity: usize,
 }
 
 /// M: SunsetSunsetRawMutex
@@ -59,22 +58,15 @@ impl<const N: usize> SftpOutputPipe<N> {
     /// let output_pipe = SftpOutputPipe::<NoopSunsetRawMutex, 1024>::new();
     ///
     pub fn new() -> Self {
-        SftpOutputPipe { pipe: Pipe::new(), capacity: N }
-    }
-
-    /// Returns the inner pipe capacity. This method can be called after
-    /// split.
-    pub fn get_capacity(&self) -> usize {
-        self.capacity
+        SftpOutputPipe { pipe: Pipe::new() }
     }
 
     // TODO: Check if it panics when called twice
-    // TODO: Fix Doc links
     /// Get a Consumer and Producer pair so the producer can send data to the
     /// output channel without mutable borrows.
     ///
-    /// The ['SftpOutputConsumer'] needs to be running to write data to the
-    /// ['ChanOut']
+    /// The [`SftpOutputConsumer`] needs to be running to write data to the
+    /// [`ChanOut`]
     ///
     /// ## Lifetimes
     /// The lifetime indicates that the lifetime of self, ChanOut and the
@@ -88,10 +80,14 @@ impl<const N: usize> SftpOutputPipe<N> {
         (SftpOutputConsumer { reader, ssh_chan_out }, SftpOutputProducer { writer })
     }
 }
+
+/// Consumer that takes ownership of [`ChanOut`]. It pipes the data received
+/// from a [`PipeReader`] into the channel
 pub struct SftpOutputConsumer<'a, const N: usize> {
     reader: PipeReader<'a, SunsetRawMutex, N>,
     ssh_chan_out: ChanOut<'a>,
 }
+
 impl<'a, const N: usize> SftpOutputConsumer<'a, N> {
     /// Run it to start the piping
     pub async fn receive_task(&mut self) -> SftpResult<()> {
@@ -99,26 +95,35 @@ impl<'a, const N: usize> SftpOutputConsumer<'a, N> {
         let mut buf = [0u8; N];
         loop {
             let rl = self.reader.read(&mut buf).await;
-            debug!("Output Consumer Reader task: Reads {} bytes", rl);
-            debug!("Output Consumer Reader task: Bytes {:?}", &buf[..rl]);
+            debug!("Output Consumer: Reads {} bytes", rl);
+            debug!("Output Consumer: Bytes {:?}", &buf[..rl]);
             if rl > 0 {
                 self.ssh_chan_out.write_all(&buf[..rl]).await?;
+            } else {
+                error!("Output Consumer: Empty array received");
             }
         }
     }
 }
 
+/// Producer used to send data to a [`ChanOut`] without the restrictions
+/// of mutable borrows
 #[derive(Clone)]
 pub struct SftpOutputProducer<'a, const N: usize> {
     writer: PipeWriter<'a, SunsetRawMutex, N>,
 }
 impl<'a, const N: usize> SftpOutputProducer<'a, N> {
+    /// Send the data encoded in the provided [`SftpSink`] without including
+    /// the size.
+    ///
+    /// Use this when you are sending chunks of data after a valid header
     pub async fn send_payload(&self, sftp_sink: &SftpSink<'_>) -> SftpResult<()> {
         let buf = sftp_sink.payload_slice();
         Self::send_buffer(&self.writer, &buf).await;
         Ok(())
     }
 
+    /// Simplifies the task of sending a status response to the client.
     pub async fn send_status(
         &self,
         req_id: ReqId,
@@ -134,7 +139,7 @@ impl<'a, const N: usize> SftpOutputProducer<'a, N> {
         Ok(())
     }
 
-    /// Push an SFTP Packet into the channel out
+    /// Sends an SFTP Packet into the channel out, including the length field
     pub async fn send_packet(&self, packet: &SftpPacket<'_>) -> SftpResult<()> {
         let mut buf = [0u8; N];
         let mut sink = SftpSink::new(&mut buf);
@@ -145,6 +150,7 @@ impl<'a, const N: usize> SftpOutputProducer<'a, N> {
         Ok(())
     }
 
+    /// Internal associated method to log the writes to the pipe
     async fn send_buffer(writer: &PipeWriter<'a, SunsetRawMutex, N>, buf: &[u8]) {
         debug!("Output Producer: Sends {:?} bytes", buf.len());
         trace!("Output Producer: Sending buffer {:?}", buf);
