@@ -1,5 +1,4 @@
 use crate::error::SftpResult;
-use crate::sftphandler::SftpOutputChannelWrapper;
 use crate::{
     handles::OpaqueFileHandle,
     proto::{Attrs, Name, ReqId, StatusCode},
@@ -179,24 +178,19 @@ pub struct ChanOut<'g, 'a> {
 pub struct DirReply<'g> {
     /// Used during the
     req_id: ReqId,
-    /// To test muting operations
-    chan_out: &'g mut SftpOutputChannelWrapper<'g>,
+
+    _phantom_g: PhantomData<&'g ()>,
+    // /// To test muting operations
+    // chan_out: &'g mut SftpOutputChannelWrapper<'g>,
 }
 
 impl<'g> DirReply<'g> {
-    /// I am faking a DirReply to prototype it
-    // pub fn mock(req_id: ReqId, muting: &'a mut u32) -> Self {
-    //     DirReply {
-    //         chan_out: ChanOut { _phantom_g: PhantomData, _phantom_a: PhantomData },
-    //         // muting,
-    //         req_id,
-    //     }
-    // }
     pub fn new(
         req_id: ReqId,
-        chan_out_wrapper: &'g mut SftpOutputChannelWrapper<'g>,
+        // chan_out_wrapper: &'g mut SftpOutputChannelWrapper<'g>,
     ) -> Self {
-        DirReply { chan_out: chan_out_wrapper, req_id }
+        // DirReply { chan_out: chan_out_wrapper, req_id }
+        DirReply { req_id, _phantom_g: PhantomData }
     }
 
     // TODO this will need to do async execution
@@ -217,10 +211,10 @@ impl<'g> DirReply<'g> {
             "I will send the header here for request id {:?}: count = {:?}, length = {:?}",
             self.req_id, get_count, get_encoded_len
         );
-        self.chan_out.push(&get_encoded_len).await?;
-        self.chan_out.push(&(104 as u8)).await?;
-        self.chan_out.push(&get_count).await?;
-        self.chan_out.send_payload().await?;
+        // self.chan_out.push(&get_encoded_len).await?;
+        // self.chan_out.push(&(104 as u8)).await?;
+        // self.chan_out.push(&get_count).await?;
+        // self.chan_out.send_payload().await?;
         Ok(())
     }
 }

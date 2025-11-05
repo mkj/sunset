@@ -89,7 +89,7 @@ impl DemoServer for StdDemo {
     async fn run(&self, serv: &SSHServer<'_>, mut common: DemoCommon) -> Result<()> {
         let chan_pipe = Channel::<SunsetRawMutex, ChanHandle, 1>::new();
 
-        let prog_loop_inner = async {
+        let ssh_loop_inner = async {
             loop {
                 let mut ph = ProgressHolder::new();
                 let ev = serv.progress(&mut ph).await?;
@@ -118,7 +118,7 @@ impl DemoServer for StdDemo {
                                 warn!(
                                 "request for subsystem '{}' not implemented: fail",
                                 a.command()?
-                            );
+                                );
                                 a.fail()?;
                             }
                         }
@@ -130,9 +130,9 @@ impl DemoServer for StdDemo {
             Ok::<_, Error>(())
         };
 
-        let prog_loop = async {
+        let ssh_loop = async {
             info!("prog_loop started");
-            if let Err(e) = prog_loop_inner.await {
+            if let Err(e) = ssh_loop_inner.await {
                 warn!("Prog Loop Exited: {e:?}");
                 return Err(e);
             }
@@ -148,8 +148,7 @@ impl DemoServer for StdDemo {
 
                 // TODO Do some research to find reasonable default buffer lengths
                 let mut buffer_in = [0u8; 512];
-                let mut buffer_out = [0u8; 384];
-                let mut incomplete_request_buffer = [0u8; 128];
+                let mut incomplete_request_buffer = [0u8; 256];
 
                 match {
                     let stdio = serv.stdio(ch).await?;
@@ -157,11 +156,11 @@ impl DemoServer for StdDemo {
                         "./demo/sftp/std/testing/out/".to_string(),
                     );
 
-                    SftpHandler::<DemoOpaqueFileHandle, DemoSftpServer>::new(
+                    SftpHandler::<DemoOpaqueFileHandle, DemoSftpServer, 512>::new(
                         &mut file_server,
                         &mut incomplete_request_buffer,
                     )
-                    .process_loop(stdio, &mut buffer_in, &mut buffer_out)
+                    .process_loop(stdio, &mut buffer_in)
                     .await?;
 
                     Ok::<_, Error>(())
@@ -179,7 +178,7 @@ impl DemoServer for StdDemo {
             Ok::<_, Error>(())
         };
 
-        let selected = select(prog_loop, sftp_loop).await;
+        let selected = select(ssh_loop, sftp_loop).await;
         match selected {
             embassy_futures::select::Either::First(res) => {
                 warn!("prog_loop finished: {:?}", res);
@@ -206,7 +205,7 @@ async fn listen(
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     env_logger::builder()
-        .filter_level(log::LevelFilter::Debug)
+        .filter_level(log::LevelFilter::Trace)
         .filter_module("sunset::runner", log::LevelFilter::Info)
         .filter_module("sunset_sftp::sftpsink", log::LevelFilter::Info)
         .filter_module("sunset_sftp::sftpsource", log::LevelFilter::Info)
