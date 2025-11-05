@@ -78,7 +78,7 @@ where
     fn readdir(
         &mut self,
         opaque_dir_handle: &T,
-        reply: &mut DirReply<'_, '_>,
+        reply: &mut DirReply<'_>,
     ) -> SftpOpResult<()> {
         log::error!(
             "SftpServer ReadDir operation not defined: handle = {:?}",
@@ -176,14 +176,14 @@ pub struct ChanOut<'g, 'a> {
 ///     c. Send each serialized `NameEntry`, excluding their length using
 /// the `send_item` method
 ///     
-pub struct DirReply<'g, 'a> {
+pub struct DirReply<'g> {
     /// Used during the
     req_id: ReqId,
     /// To test muting operations
     chan_out: &'g mut SftpOutputChannelWrapper<'g>,
 }
 
-impl<'g, 'a> DirReply<'g, 'a> {
+impl<'g> DirReply<'g> {
     /// I am faking a DirReply to prototype it
     // pub fn mock(req_id: ReqId, muting: &'a mut u32) -> Self {
     //     DirReply {
@@ -194,7 +194,7 @@ impl<'g, 'a> DirReply<'g, 'a> {
     // }
     pub fn new(
         req_id: ReqId,
-        chan_out_wrapper: &'g mut SftpOutputChannelWrapper<'g, 'g>,
+        chan_out_wrapper: &'g mut SftpOutputChannelWrapper<'g>,
     ) -> Self {
         DirReply { chan_out: chan_out_wrapper, req_id }
     }
