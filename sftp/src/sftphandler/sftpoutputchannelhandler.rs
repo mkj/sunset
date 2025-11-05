@@ -1,13 +1,12 @@
-#![no_std]
 use crate::error::SftpResult;
 use crate::proto::{ReqId, SftpPacket, Status, StatusCode};
 use crate::server::SftpSink;
 
 use sunset_async::ChanOut;
 
-use embassy_sync::blocking_mutex::raw::RawMutex;
 use embassy_sync::pipe::{Pipe, Reader as PipeReader, Writer as PipeWriter};
 use embedded_io_async::Write;
+use sunset_async::SunsetRawMutex;
 
 use log::{debug, trace};
 
@@ -43,29 +42,29 @@ use log::{debug, trace};
 
 // enum AgentMsg { message to be sent}
 
-// static' RAW_PIPE = Pipe::<NoopRawMutex, 512>::new();
+// static' RAW_PIPE = Pipe::<SunsetRawMutex, 512>::new();
 
-pub struct SftpOutputPipe<M: RawMutex, const N: usize> {
-    pipe: Pipe<M, N>,
+pub struct SftpOutputPipe<const N: usize> {
+    pipe: Pipe<SunsetRawMutex, N>,
     capacity: usize,
 }
 
-/// M: SunsetRawMutex
-impl<M: RawMutex, const N: usize> SftpOutputPipe<M, N> {
+/// M: SunsetSunsetRawMutex
+impl<const N: usize> SftpOutputPipe<N> {
     /// Creates an empty SftpOutputPipe.
     /// The output channel will be consumed during the split call
     ///
     ///  Usage:
     ///
-    /// let output_pipe = SftpOutputPipe::<NoopRawMutex, 1024>::new();
+    /// let output_pipe = SftpOutputPipe::<NoopSunsetRawMutex, 1024>::new();
     ///
-    fn new() -> Self {
+    pub fn new() -> Self {
         SftpOutputPipe { pipe: Pipe::new(), capacity: N }
     }
 
     /// Returns the inner pipe capacity. This method can be called after
     /// split.
-    fn get_capacity(&self) -> usize {
+    pub fn get_capacity(&self) -> usize {
         self.capacity
     }
 
@@ -81,31 +80,27 @@ impl<M: RawMutex, const N: usize> SftpOutputPipe<M, N> {
     /// The lifetime indicates that the lifetime of self, ChanOut and the
     /// consumer and producer are the same. I chose this because if the ChanOut
     /// is closed, there is no point on having a pipe outliving it.
-    fn split<'a>(
+    pub fn split<'a>(
         &'a mut self,
         ssh_chan_out: ChanOut<'a>,
-    ) -> (SftpOutputConsumer<'a, M, N>, SftpOutputProducer<'a, M, N>) {
+    ) -> (SftpOutputConsumer<'a, N>, SftpOutputProducer<'a, N>) {
         let (reader, writer) = self.pipe.split();
         (SftpOutputConsumer { reader, ssh_chan_out }, SftpOutputProducer { writer })
     }
 }
-pub struct SftpOutputConsumer<'a, M, const N: usize>
-where
-    M: RawMutex,
-{
-    reader: PipeReader<'a, M, N>,
+pub struct SftpOutputConsumer<'a, const N: usize> {
+    reader: PipeReader<'a, SunsetRawMutex, N>,
     ssh_chan_out: ChanOut<'a>,
 }
-impl<'a, M, const N: usize> SftpOutputConsumer<'a, M, N>
-where
-    M: RawMutex,
-{
+impl<'a, const N: usize> SftpOutputConsumer<'a, N> {
     /// Run it to start the piping
     pub async fn receive_task(&mut self) -> SftpResult<()> {
+        debug!("Running SftpOutout Consumer Reader task");
         let mut buf = [0u8; N];
         loop {
             let rl = self.reader.read(&mut buf).await;
-            debug!("Read {} bytes", rl);
+            debug!("Output Consumer Reader task: Reads {} bytes", rl);
+            debug!("Output Consumer Reader task: Bytes {:?}", &buf[..rl]);
             if rl > 0 {
                 self.ssh_chan_out.write_all(&buf[..rl]).await?;
             }
@@ -114,16 +109,10 @@ where
 }
 
 #[derive(Clone)]
-pub struct SftpOutputProducer<'a, M, const N: usize>
-where
-    M: RawMutex,
-{
-    writer: PipeWriter<'a, M, N>,
+pub struct SftpOutputProducer<'a, const N: usize> {
+    writer: PipeWriter<'a, SunsetRawMutex, N>,
 }
-impl<'a, M, const N: usize> SftpOutputProducer<'a, M, N>
-where
-    M: RawMutex,
-{
+impl<'a, const N: usize> SftpOutputProducer<'a, N> {
     pub async fn send_payload(&self, sftp_sink: &SftpSink<'_>) -> SftpResult<()> {
         let buf = sftp_sink.payload_slice();
         Self::send_buffer(&self.writer, &buf).await;
@@ -140,7 +129,7 @@ where
             req_id,
             Status { code: status, message: msg.into(), lang: "en-US".into() },
         );
-        debug!("Pushing a status message: {:?}", response);
+        debug!("Output Producer: Pushing a status message: {:?}", response);
         self.send_packet(&response).await?;
         Ok(())
     }
@@ -149,14 +138,16 @@ where
     pub async fn send_packet(&self, packet: &SftpPacket<'_>) -> SftpResult<()> {
         let mut buf = [0u8; N];
         let mut sink = SftpSink::new(&mut buf);
-        packet.encode_response(&mut sink);
-        debug!("Sending packet {:?}", packet);
-        Self::send_buffer(&self.writer, &buf).await;
+        packet.encode_response(&mut sink)?;
+        debug!("Output Producer: Sending packet {:?}", packet);
+        sink.finalize();
+        Self::send_buffer(&self.writer, &sink.used_slice()).await;
         Ok(())
     }
 
-    async fn send_buffer(writer: &PipeWriter<'a, M, N>, buf: &[u8]) {
-        trace!("Sending buffer {:?}", buf);
+    async fn send_buffer(writer: &PipeWriter<'a, SunsetRawMutex, N>, buf: &[u8]) {
+        debug!("Output Producer: Sends {:?} bytes", buf.len());
+        trace!("Output Producer: Sending buffer {:?}", buf);
         writer.write(buf).await;
     }
 }
