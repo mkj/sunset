@@ -204,13 +204,11 @@ where
                                         continue;
                                     }
                                     RequestHolderError::NoRoom => {
-                                        error!(
-                                            "The request holder if full but the request in incomplete. \
-                                            Consider increasing its size"
-                                        );
-                                        // TODO react to this situation  with an internal server error
-                                        return Err(SunsetError::NoRoom {}.into());
-                                    }
+                                    warn!(
+                                        "The request holder is full but the request in is incomplete. \
+                                                We will try to decode it"
+                                    );
+                                }
 
                                     _ => {
                                         error!(
