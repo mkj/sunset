@@ -157,15 +157,12 @@ impl DemoServer for StdDemo {
                         "./demo/sftp/std/testing/out/".to_string(),
                     );
 
-                    let mut sftp_handler =
-                        SftpHandler::<DemoOpaqueFileHandle, DemoSftpServer>::new(
-                            &mut file_server,
-                            &mut incomplete_request_buffer,
-                        );
-
-                    sftp_handler
-                        .process_loop(stdio, &mut buffer_in, &mut buffer_out)
-                        .await?;
+                    SftpHandler::<DemoOpaqueFileHandle, DemoSftpServer>::new(
+                        &mut file_server,
+                        &mut incomplete_request_buffer,
+                    )
+                    .process_loop(stdio, &mut buffer_in, &mut buffer_out)
+                    .await?;
 
                     Ok::<_, Error>(())
                 } {

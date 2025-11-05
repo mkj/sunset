@@ -277,7 +277,7 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
     fn readdir(
         &mut self,
         opaque_dir_handle: &DemoOpaqueFileHandle,
-        visitor: &mut DirReply<'_, '_>,
+        visitor: &mut DirReply<'_>,
     ) -> SftpOpResult<()> {
         debug!("read dir for  {:?}", opaque_dir_handle);
 

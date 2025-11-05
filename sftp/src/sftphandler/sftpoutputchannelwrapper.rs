@@ -5,6 +5,7 @@ use crate::proto::Status;
 use crate::protocol::StatusCode;
 use crate::server::SftpSink;
 
+use sunset::sshwire::SSHEncode;
 use sunset::sshwire::WireError;
 use sunset_async::ChanOut;
 
@@ -12,21 +13,25 @@ use embedded_io_async::Write;
 #[allow(unused_imports)]
 use log::{debug, info, trace, warn};
 
+pub struct BufferMsg<const N: usize> {
+    pub data: [u8; N],
+    pub used: usize,
+}
 /// Wrapper structure to handle SFTP output operations
 ///
 /// It wraps an SftpSink and a ChanOut to facilitate sending SFTP packets
 /// even when they require multiple iterations
-pub struct SftpOutputChannelWrapper<'a, 'g> {
-    sink: SftpSink<'a>,
+pub struct SftpOutputChannelWrapper<'g> {
+    sink: SftpSink<'g>,
     channel_out: ChanOut<'g>,
 }
 
-impl<'a, 'g> SftpOutputChannelWrapper<'a, 'g> {
+impl<'g> SftpOutputChannelWrapper<'g> {
     /// Creates a new OutputWrapper
     ///
     /// This structure wraps an SftpSink and a ChanOut to facilitate
     /// sending SFTP packets even when they require multiple steps
-    pub fn new(buffer: &'a mut [u8], channel_out: ChanOut<'g>) -> Self {
+    pub fn new(buffer: &'g mut [u8], channel_out: ChanOut<'g>) -> Self {
         let sink = SftpSink::new(buffer);
         SftpOutputChannelWrapper { channel_out, sink }
     }
@@ -48,7 +53,7 @@ impl<'a, 'g> SftpOutputChannelWrapper<'a, 'g> {
 
     /// Send the data in the buffer by the subsystem channel out without
     ///  prepending the packet length to it.
-    ///     
+    ///
     /// This is useful when an SFTP packet header has already being sent
     /// or when the data requires an special treatment
     pub async fn send_payload(&mut self) -> SftpResult<usize> {
