@@ -274,17 +274,17 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
         }
     }
 
-    fn readdir(
+    async fn readdir<const N: usize>(
         &mut self,
         opaque_dir_handle: &DemoOpaqueFileHandle,
-        visitor: &mut DirReply<'_>,
+        reply: &DirReply<'_, N>,
     ) -> SftpOpResult<()> {
         debug!("read dir for  {:?}", opaque_dir_handle);
 
         if let PrivatePathHandle::Directory(dir) = self
             .handles_manager
             .get_private_as_ref(opaque_dir_handle)
-            .ok_or(StatusCode::SSH_FX_FAILURE)?
+            .ok_or(StatusCode::SSH_FX_NO_SUCH_FILE)?
         {
             let path_str = dir.path.clone();
             debug!("opaque handle found in handles manager: {:?}", path_str);
@@ -301,13 +301,9 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
 
                 let name_entry_collection = DirEntriesCollection::new(dir_iterator);
 
-                visitor.send_header(
-                    name_entry_collection.get_count()?,
-                    name_entry_collection.get_encoded_len()?,
-                );
+                name_entry_collection.send_header(reply).await?;
 
-                name_entry_collection
-                    .for_each_encoded(|data: &[u8]| visitor.send_item(data))?;
+                name_entry_collection.send_entries(reply).await?;
             } else {
                 error!("the path is not a directory = {:?}", dir_path);
                 return Err(StatusCode::SSH_FX_NO_SUCH_FILE);
@@ -316,13 +312,19 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
             error!("Could not find the directory for {:?}", opaque_dir_handle);
             return Err(StatusCode::SSH_FX_NO_SUCH_FILE);
         }
-
-        error!("What is the return that we are looking for?");
-        Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
+        Ok(())
     }
 }
 
 // TODO Add this to SFTP library only available with std as a global helper
+/// This is a helper structure to make ReadDir into something somehow
+/// digestible by [`DirReply`]
+///
+/// WIP: Not stable. It has know issues and most likely it's methods will change
+///
+/// BUG: It does not count properly the number of bytes
+///
+/// BUG: It does not include longname and that may be an issue
 #[derive(Debug)]
 pub struct DirEntriesCollection {
     /// Number of elements
@@ -396,21 +398,21 @@ impl DirEntriesCollection {
             ext_count: None,
         }
     }
-}
 
-impl DirEntriesResponseHelpers for DirEntriesCollection {
-    fn get_count(&self) -> SftpOpResult<u32> {
-        Ok(self.count)
+    pub async fn send_header<const N: usize>(
+        &self,
+        reply: &DirReply<'_, N>,
+    ) -> SftpOpResult<()> {
+        reply.send_header(self.count, self.encoded_length).await.map_err(|e| {
+            debug!("Could not send header {e:?}");
+            StatusCode::SSH_FX_FAILURE
+        })
     }
 
-    fn get_encoded_len(&self) -> SftpOpResult<u32> {
-        Ok(self.encoded_length)
-    }
-
-    fn for_each_encoded<F>(&self, mut writer: F) -> SftpOpResult<()>
-    where
-        F: FnMut(&[u8]) -> (),
-    {
+    pub async fn send_entries<const N: usize>(
+        &self,
+        reply: &DirReply<'_, N>,
+    ) -> SftpOpResult<()> {
         for entry in &self.entries {
             let filename = entry.path().to_string_lossy().into_owned();
             let attrs = Self::get_attrs_or_empty(entry.metadata());
@@ -426,7 +428,7 @@ impl DirEntriesResponseHelpers for DirEntriesCollection {
                 debug!("WireError: {:?}", err);
                 StatusCode::SSH_FX_FAILURE
             })?;
-            writer(sftp_sink.payload_slice());
+            reply.send_item(sftp_sink.payload_slice()).await;
         }
         Ok(())
     }

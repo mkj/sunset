@@ -1,4 +1,6 @@
 use crate::error::SftpResult;
+use crate::server::SftpSink;
+use crate::sftphandler::SftpOutputProducer;
 use crate::{
     handles::OpaqueFileHandle,
     proto::{Attrs, Name, ReqId, StatusCode},
@@ -6,6 +8,7 @@ use crate::{
 
 use core::marker::PhantomData;
 use log::debug;
+use sunset::sshwire::SSHEncode;
 
 // use futures::executor::block_on; TODO Deal with the async nature of [`ChanOut`]
 
@@ -74,10 +77,10 @@ where
 
     /// Reads the list of items in a directory
     #[allow(unused_variables)]
-    fn readdir(
+    async fn readdir<const N: usize>(
         &mut self,
         opaque_dir_handle: &T,
-        reply: &mut DirReply<'_>,
+        reply: &DirReply<'_, N>,
     ) -> SftpOpResult<()> {
         log::error!(
             "SftpServer ReadDir operation not defined: handle = {:?}",
@@ -85,6 +88,15 @@ where
         );
         Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
     }
+
+    // async fn readdir<const N: usize>(
+    //     &mut self,
+    //     opaque_dir_handle: &T,
+    //     reply: &DirReply<'_, N>,
+    // ) -> SftpOpResult<()> {
+    //     log::error!("SftpServer ReadDir operation not defined");
+    //     Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
+    // }
 
     /// Provides the real path of the directory specified
     fn realpath(&mut self, dir: &str) -> SftpOpResult<Name<'_>> {
@@ -127,6 +139,18 @@ pub trait DirEntriesResponseHelpers {
     {
         Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
     }
+
+    // /// Must call the callback passing an [`SftpSink::payload_slice()`] as a parameter
+    // /// were a [`NameEntry`] has been encoded.
+    // ///
+    // ///
+    // #[allow(unused_variables)]
+    // fn encoded_iter<F>(
+    //     &self,
+    //     writer: F,
+    // ) -> impl Iterator<Item = SftpOpResult<&[u8]>> {
+    //     Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
+    // }
 }
 
 // TODO Define this
@@ -175,35 +199,31 @@ pub struct ChanOut<'g, 'a> {
 ///     c. Send each serialized `NameEntry`, excluding their length using
 /// the `send_item` method
 ///     
-pub struct DirReply<'g> {
+pub struct DirReply<'g, const N: usize> {
     /// Used during the
     req_id: ReqId,
 
-    _phantom_g: PhantomData<&'g ()>,
+    // _phantom_g: PhantomData<&'g ()>,
     // /// To test muting operations
-    // chan_out: &'g mut SftpOutputChannelWrapper<'g>,
+    chan_out: &'g SftpOutputProducer<'g, N>,
 }
 
-impl<'g> DirReply<'g> {
-    pub fn new(
-        req_id: ReqId,
-        // chan_out_wrapper: &'g mut SftpOutputChannelWrapper<'g>,
-    ) -> Self {
+impl<'g, const N: usize> DirReply<'g, N> {
+    pub fn new(req_id: ReqId, chan_out: &'g SftpOutputProducer<'g, N>) -> Self {
         // DirReply { chan_out: chan_out_wrapper, req_id }
-        DirReply { req_id, _phantom_g: PhantomData }
+        DirReply { req_id, chan_out }
     }
 
-    // TODO this will need to do async execution
-    /// mocks sending  an item via a stdio
-    pub fn send_item(&mut self, data: &[u8]) {
+    /// Sends an item to the client
+    pub async fn send_item(&self, data: &[u8]) {
         // *self.muting += 1;
-        debug!("Send item: data = {:?}", data);
+        debug!("Sending item: len = {:?}, content = {:?}", data.len(), data);
+        self.chan_out.send_data(data).await;
     }
 
-    // TODO this will need to do async execution
-    /// Must be call it first. Make this enforceable
+    /// Sends the header to the client. TODO Make this enforceable
     pub async fn send_header(
-        &mut self,
+        &self,
         get_count: u32,
         get_encoded_len: u32,
     ) -> SftpResult<()> {
@@ -211,10 +231,20 @@ impl<'g> DirReply<'g> {
             "I will send the header here for request id {:?}: count = {:?}, length = {:?}",
             self.req_id, get_count, get_encoded_len
         );
-        // self.chan_out.push(&get_encoded_len).await?;
-        // self.chan_out.push(&(104 as u8)).await?;
-        // self.chan_out.push(&get_count).await?;
-        // self.chan_out.send_payload().await?;
+        let mut s = [0u8; N];
+        let mut sink = SftpSink::new(&mut s);
+
+        get_encoded_len.enc(&mut sink)?;
+        104u8.enc(&mut sink)?;
+        self.req_id.enc(&mut sink)?;
+        get_count.enc(&mut sink)?;
+        let payload = sink.payload_slice();
+        debug!(
+            "Sending header:  len = {:?}, content = {:?}",
+            payload.len(),
+            payload
+        );
+        self.chan_out.send_data(sink.payload_slice()).await?;
         Ok(())
     }
 }
