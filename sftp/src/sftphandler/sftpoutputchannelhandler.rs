@@ -96,9 +96,9 @@ impl<'a, const N: usize> SftpOutputConsumer<'a, N> {
         loop {
             let rl = self.reader.read(&mut buf).await;
             debug!("Output Consumer: Reads {} bytes", rl);
-            debug!("Output Consumer: Bytes {:?}", &buf[..rl]);
             if rl > 0 {
                 self.ssh_chan_out.write_all(&buf[..rl]).await?;
+                debug!("Output Consumer: Bytes written {:?}", &buf[..rl]);
             } else {
                 error!("Output Consumer: Empty array received");
             }
