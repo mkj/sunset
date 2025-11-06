@@ -113,7 +113,16 @@ pub struct SftpOutputProducer<'a, const N: usize> {
     writer: PipeWriter<'a, SunsetRawMutex, N>,
 }
 impl<'a, const N: usize> SftpOutputProducer<'a, N> {
-    /// Send the data encoded in the provided [`SftpSink`] without including
+    /// Sends the data encoded in the provided [`SftpSink`] without including
+    /// the size.
+    ///
+    /// Use this when you are sending chunks of data after a valid header
+    pub async fn send_data(&self, buf: &[u8]) -> SftpResult<()> {
+        Self::send_buffer(&self.writer, &buf).await;
+        Ok(())
+    }
+
+    /// Sends the data encoded in the provided [`SftpSink`] without including
     /// the size.
     ///
     /// Use this when you are sending chunks of data after a valid header
@@ -139,7 +148,7 @@ impl<'a, const N: usize> SftpOutputProducer<'a, N> {
         Ok(())
     }
 
-    /// Sends an SFTP Packet into the channel out, including the length field
+    /// Sends a SFTP Packet into the channel out, including the length field
     pub async fn send_packet(&self, packet: &SftpPacket<'_>) -> SftpResult<()> {
         let mut buf = [0u8; N];
         let mut sink = SftpSink::new(&mut buf);

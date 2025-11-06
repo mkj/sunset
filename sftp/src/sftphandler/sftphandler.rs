@@ -7,6 +7,7 @@ use crate::proto::{
     SftpPacket, StatusCode,
 };
 use crate::requestholder::{RequestHolder, RequestHolderError};
+use crate::server::{DirReply, SftpOpResult};
 use crate::sftperror::SftpResult;
 use crate::sftphandler::sftpoutputchannelhandler::{
     SftpOutputPipe, SftpOutputProducer,
@@ -626,33 +627,27 @@ where
                 // TODO Implement the mechanism you are going to use to
                 // handle the list of elements
 
-                // let mut dir_reply = DirReply::new(req_id, output_wrapper);
+                let mut dir_reply = DirReply::new(req_id, output_producer);
 
-                // match file_server
-                //     .readdir(&T::try_from(&read_dir.handle)?, &mut dir_reply)
-                // {
-                //     Ok(_) => {
-                //         todo!("Dance starts here");
-                //     }
-                //     Err(status_code) => {
-                //         error!("Open failed: {:?}", status_code);
-                //         // output_wrapper
-                //         //     .push_status(
-                //         //         req_id,
-                //         //         StatusCode::SSH_FX_OP_UNSUPPORTED,
-                //         //         "Error Reading Directory",
-                //         //     )
-                //         //     .await?;
-                //     }
-                // };
-                // error!("Unsupported Read Dir : {:?}", read_dir);
-                // return Err(SftpError::NotSupported);
-                // push_unsupported(ReqId(0), sink)?;
+                match file_server
+                    .readdir(&T::try_from(&read_dir.handle)?, &mut dir_reply)
+                    .await
+                {
+                    Ok(_) => {}
+                    Err(status) => {
+                        error!("Open failed: {:?}", status);
+
+                        output_producer.send_status(
+                            req_id,
+                            status,
+                            "Error Reading Directory",
+                        );
+                    }
+                };
             }
             _ => {
                 error!("Unsupported request type: {:?}", request);
                 return Err(SftpError::NotSupported);
-                // push_unsupported(ReqId(0), sink)?;
             }
         }
         Ok(())

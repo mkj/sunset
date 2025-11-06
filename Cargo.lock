@@ -805,9 +805,9 @@ dependencies = [
 
 [[package]]
 name = "embassy-futures"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1f878075b9794c1e4ac788c95b728f26aa6366d32eeb10c7051389f898f7d067"
+checksum = "dc2d050bdc5c21e0862a89256ed8029ae6c290a93aecefc73084b3002cdebb01"
 
 [[package]]
 name = "embassy-hal-internal"
@@ -934,15 +934,15 @@ dependencies = [
 
 [[package]]
 name = "embassy-sync"
-version = "0.7.0"
+version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cef1a8a1ea892f9b656de0295532ac5d8067e9830d49ec75076291fd6066b136"
+checksum = "73974a3edbd0bd286759b3d483540f0ebef705919a5f56f4fc7709066f71689b"
 dependencies = [
  "cfg-if",
  "critical-section",
  "embedded-io-async",
+ "futures-core",
  "futures-sink",
- "futures-util",
  "heapless",
 ]
 
@@ -2777,7 +2777,7 @@ name = "sunset-async"
 version = "0.3.0"
 dependencies = [
  "embassy-futures",
- "embassy-sync 0.7.0",
+ "embassy-sync 0.7.2",
  "embedded-io-async",
  "log",
  "portable-atomic",
@@ -2794,7 +2794,7 @@ dependencies = [
  "embassy-futures",
  "embassy-net",
  "embassy-net-driver",
- "embassy-sync 0.7.0",
+ "embassy-sync 0.7.2",
  "embassy-time",
  "embedded-io-async",
  "heapless",
@@ -2824,7 +2824,7 @@ dependencies = [
  "embassy-net",
  "embassy-net-wiznet",
  "embassy-rp",
- "embassy-sync 0.7.0",
+ "embassy-sync 0.7.2",
  "embassy-time",
  "embassy-usb",
  "embassy-usb-driver",
@@ -2859,7 +2859,7 @@ dependencies = [
  "embassy-futures",
  "embassy-net",
  "embassy-net-tuntap",
- "embassy-sync 0.7.0",
+ "embassy-sync 0.7.2",
  "embassy-time",
  "embedded-io-async",
  "env_logger",
@@ -2885,7 +2885,7 @@ dependencies = [
  "embassy-futures",
  "embassy-net",
  "embassy-net-tuntap",
- "embassy-sync 0.7.0",
+ "embassy-sync 0.7.2",
  "embassy-time",
  "embedded-io-async",
  "env_logger",
@@ -2917,6 +2917,8 @@ dependencies = [
 name = "sunset-sftp"
 version = "0.1.1"
 dependencies = [
+ "embassy-futures",
+ "embassy-sync 0.7.2",
  "embedded-io-async",
  "log",
  "num_enum 0.7.4",
@@ -2941,7 +2943,7 @@ dependencies = [
  "argh",
  "critical-section",
  "embassy-futures",
- "embassy-sync 0.7.0",
+ "embassy-sync 0.7.2",
  "embedded-io-adapters",
  "embedded-io-async",
  "futures",
