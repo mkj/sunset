@@ -7,10 +7,7 @@ use sunset::sshwire::SSHEncode;
 use sunset_sftp::handles::{OpaqueFileHandleManager, PathFinder};
 use sunset_sftp::protocol::constants::MAX_NAME_ENTRY_SIZE;
 use sunset_sftp::protocol::{Attrs, Filename, Name, NameEntry, StatusCode};
-use sunset_sftp::server::{
-    DirEntriesResponseHelpers, DirReply, ReadReply, SftpOpResult, SftpServer,
-    SftpSink,
-};
+use sunset_sftp::server::{DirReply, ReadReply, SftpOpResult, SftpServer, SftpSink};
 
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
@@ -425,10 +422,13 @@ impl DirEntriesCollection {
             let mut buffer = [0u8; MAX_NAME_ENTRY_SIZE];
             let mut sftp_sink = SftpSink::new(&mut buffer);
             name_entry.enc(&mut sftp_sink).map_err(|err| {
-                debug!("WireError: {:?}", err);
+                error!("WireError: {:?}", err);
                 StatusCode::SSH_FX_FAILURE
             })?;
-            reply.send_item(sftp_sink.payload_slice()).await;
+            reply.send_item(sftp_sink.payload_slice()).await.map_err(|err| {
+                error!("SftpError: {:?}", err);
+                StatusCode::SSH_FX_FAILURE
+            })?;
         }
         Ok(())
     }

@@ -2,6 +2,7 @@ use crate::error::SftpResult;
 use crate::proto::{ReqId, SftpPacket, Status, StatusCode};
 use crate::server::SftpSink;
 
+use embassy_sync::mutex::Mutex;
 use sunset_async::ChanOut;
 
 use embassy_sync::pipe::{Pipe, Reader as PipeReader, Writer as PipeWriter};
@@ -10,42 +11,12 @@ use sunset_async::SunsetRawMutex;
 
 use log::{debug, error, trace};
 
-//// This is the beginning of a new idea:
-/// I want to pass ref of an item where different methods in the sftphandler can
-/// send data down the ChanOut. That would mutate the ChanOut (since it mutates on write)
-/// and would violate the basic rule of only one mut borrow.
-///
-/// To overcome this hurdle, I can use a two part solution related with a channel or a pipe.
-///
-///
-/// Some notes:
-///
-/// # sftpoutputchannelwrapper
-/// Currently is a mutable entity. That causes issues since it needs to be mutated during loops.
-/// ## first usage:
-/// push SFTPEncode n times (composition)
-// send_payload()
-/// ## Second usage:
-/// send_packet(SftpPacket)
-/// ## last usage:
-/// send_status('static str for messages) -> calls send_packet
-/// # Alternative to avoid mutation: a channel or pipe
-/// What would we put in the pipe?
-/// ## 1st. composition:
-/// We would create an SftpSink, add the SFTPEncode items and send it as a buffer. Maybe Len field eq to 0?
-/// Maybe receive an SftpSink?
-/// ## 2nd. SftpPacket
-/// SftpSink, encode a packet, terminate it and send the SftpSink. len != 0
-/// ## 3rd. SftpPacket::Status
-/// Compose the Status SftpPacket, Encode it in SftpSink, finalise it, send the buffer
-//
-
-// enum AgentMsg { message to be sent}
-
-// static' RAW_PIPE = Pipe::<SunsetRawMutex, 512>::new();
+type CounterMutex = Mutex<SunsetRawMutex, usize>;
 
 pub struct SftpOutputPipe<const N: usize> {
     pipe: Pipe<SunsetRawMutex, N>,
+    counter_send: CounterMutex,
+    counter_recv: CounterMutex,
 }
 
 /// M: SunsetSunsetRawMutex
@@ -58,7 +29,11 @@ impl<const N: usize> SftpOutputPipe<N> {
     /// let output_pipe = SftpOutputPipe::<NoopSunsetRawMutex, 1024>::new();
     ///
     pub fn new() -> Self {
-        SftpOutputPipe { pipe: Pipe::new() }
+        SftpOutputPipe {
+            pipe: Pipe::new(),
+            counter_send: Mutex::<SunsetRawMutex, usize>::new(0),
+            counter_recv: Mutex::<SunsetRawMutex, usize>::new(0),
+        }
     }
 
     // TODO: Check if it panics when called twice
@@ -77,7 +52,10 @@ impl<const N: usize> SftpOutputPipe<N> {
         ssh_chan_out: ChanOut<'a>,
     ) -> (SftpOutputConsumer<'a, N>, SftpOutputProducer<'a, N>) {
         let (reader, writer) = self.pipe.split();
-        (SftpOutputConsumer { reader, ssh_chan_out }, SftpOutputProducer { writer })
+        (
+            SftpOutputConsumer { reader, ssh_chan_out, counter: &self.counter_recv },
+            SftpOutputProducer { writer, counter: &self.counter_send },
+        )
     }
 }
 
@@ -86,6 +64,7 @@ impl<const N: usize> SftpOutputPipe<N> {
 pub struct SftpOutputConsumer<'a, const N: usize> {
     reader: PipeReader<'a, SunsetRawMutex, N>,
     ssh_chan_out: ChanOut<'a>,
+    counter: &'a CounterMutex,
 }
 
 impl<'a, const N: usize> SftpOutputConsumer<'a, N> {
@@ -95,10 +74,18 @@ impl<'a, const N: usize> SftpOutputConsumer<'a, N> {
         let mut buf = [0u8; N];
         loop {
             let rl = self.reader.read(&mut buf).await;
-            debug!("Output Consumer: Reads {} bytes", rl);
+            let mut total = 0;
+            {
+                let mut lock = self.counter.lock().await;
+                *lock += rl;
+                total = *lock;
+            }
+
+            debug!("Output Consumer: Reads {rl} bytes. Total {total}");
             if rl > 0 {
                 self.ssh_chan_out.write_all(&buf[..rl]).await?;
-                debug!("Output Consumer: Bytes written {:?}", &buf[..rl]);
+                debug!("Output Consumer: Written {:?} bytes ", &buf[..rl].len());
+                trace!("Output Consumer: Bytes written {:?}", &buf[..rl]);
             } else {
                 error!("Output Consumer: Empty array received");
             }
@@ -111,6 +98,7 @@ impl<'a, const N: usize> SftpOutputConsumer<'a, N> {
 #[derive(Clone)]
 pub struct SftpOutputProducer<'a, const N: usize> {
     writer: PipeWriter<'a, SunsetRawMutex, N>,
+    counter: &'a CounterMutex,
 }
 impl<'a, const N: usize> SftpOutputProducer<'a, N> {
     /// Sends the data encoded in the provided [`SftpSink`] without including
@@ -118,7 +106,7 @@ impl<'a, const N: usize> SftpOutputProducer<'a, N> {
     ///
     /// Use this when you are sending chunks of data after a valid header
     pub async fn send_data(&self, buf: &[u8]) -> SftpResult<()> {
-        Self::send_buffer(&self.writer, &buf).await;
+        Self::send_buffer(&self.writer, &buf, &self.counter).await;
         Ok(())
     }
 
@@ -128,7 +116,7 @@ impl<'a, const N: usize> SftpOutputProducer<'a, N> {
     /// Use this when you are sending chunks of data after a valid header
     pub async fn send_payload(&self, sftp_sink: &SftpSink<'_>) -> SftpResult<()> {
         let buf = sftp_sink.payload_slice();
-        Self::send_buffer(&self.writer, &buf).await;
+        Self::send_buffer(&self.writer, &buf, &self.counter).await;
         Ok(())
     }
 
@@ -155,14 +143,37 @@ impl<'a, const N: usize> SftpOutputProducer<'a, N> {
         packet.encode_response(&mut sink)?;
         debug!("Output Producer: Sending packet {:?}", packet);
         sink.finalize();
-        Self::send_buffer(&self.writer, &sink.used_slice()).await;
+        Self::send_buffer(&self.writer, &sink.used_slice(), &self.counter).await;
         Ok(())
     }
 
     /// Internal associated method to log the writes to the pipe
-    async fn send_buffer(writer: &PipeWriter<'a, SunsetRawMutex, N>, buf: &[u8]) {
-        debug!("Output Producer: Sends {:?} bytes", buf.len());
+    async fn send_buffer(
+        writer: &PipeWriter<'a, SunsetRawMutex, N>,
+        buf: &[u8],
+        counter: &CounterMutex,
+    ) {
+        let mut total = 0;
+        {
+            let mut lock = counter.lock().await;
+            *lock += buf.len();
+            total = *lock;
+        }
+
+        debug!("Output Producer: Sends {:?} bytes. Total {total}", buf.len());
         trace!("Output Producer: Sending buffer {:?}", buf);
-        writer.write(buf).await;
+
+        // writer.write_all(buf); // ??? error[E0596]: cannot borrow `*writer` as mutable, as it is behind a `&` reference
+
+        let mut buf = buf;
+        loop {
+            if buf.len() == 0 {
+                break;
+            }
+            trace!("Sending buffer {:?}", buf);
+
+            let bytes_sent = writer.write(&buf).await;
+            buf = &buf[bytes_sent..];
+        }
     }
 }
