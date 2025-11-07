@@ -69,7 +69,7 @@ pub use sftphandler::SftpHandler;
 /// Structures and types used to add the details for the target system
 pub mod server {
 
-    pub use crate::sftpserver::DirEntriesResponseHelpers;
+    // pub use crate::sftpserver::DirEntriesResponseHelpers;
     pub use crate::sftpserver::DirReply;
     pub use crate::sftpserver::ReadReply;
     pub use crate::sftpserver::SftpOpResult;

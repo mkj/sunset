@@ -637,11 +637,9 @@ where
                     Err(status) => {
                         error!("Open failed: {:?}", status);
 
-                        output_producer.send_status(
-                            req_id,
-                            status,
-                            "Error Reading Directory",
-                        );
+                        output_producer
+                            .send_status(req_id, status, "Error Reading Directory")
+                            .await?;
                     }
                 };
             }
