@@ -7,7 +7,9 @@ use sunset::sshwire::SSHEncode;
 use sunset_sftp::handles::{OpaqueFileHandleManager, PathFinder};
 use sunset_sftp::protocol::constants::MAX_NAME_ENTRY_SIZE;
 use sunset_sftp::protocol::{Attrs, Filename, Name, NameEntry, StatusCode};
-use sunset_sftp::server::{DirReply, ReadReply, SftpOpResult, SftpServer, SftpSink};
+use sunset_sftp::server::{
+    DirReply, ReadReply, ReadStatus, SftpOpResult, SftpServer, SftpSink,
+};
 
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
@@ -275,7 +277,7 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
         &mut self,
         opaque_dir_handle: &DemoOpaqueFileHandle,
         reply: &DirReply<'_, N>,
-    ) -> SftpOpResult<()> {
+    ) -> SftpOpResult<ReadStatus> {
         debug!("read dir for  {:?}", opaque_dir_handle);
 
         if let PrivatePathHandle::Directory(dir) = self
@@ -303,6 +305,7 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
                 name_entry_collection.send_entries(reply).await?;
 
                 // name_entry_collection.send_eof(reply).await?;
+                Ok(ReadStatus::EndOfFile)
             } else {
                 error!("the path is not a directory = {:?}", dir_path);
                 return Err(StatusCode::SSH_FX_NO_SUCH_FILE);
@@ -311,7 +314,6 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
             error!("Could not find the directory for {:?}", opaque_dir_handle);
             return Err(StatusCode::SSH_FX_NO_SUCH_FILE);
         }
-        Ok(())
     }
 }
 

@@ -4,10 +4,10 @@ use crate::error::SftpError;
 use crate::handles::OpaqueFileHandle;
 use crate::proto::{
     self, InitVersionLowest, ReqId, SFTP_MINIMUM_PACKET_LEN, SFTP_VERSION, SftpNum,
-    SftpPacket, StatusCode,
+    SftpPacket, Status, StatusCode,
 };
 use crate::requestholder::{RequestHolder, RequestHolderError};
-use crate::server::{DirReply, SftpOpResult};
+use crate::server::{DirReply, ReadStatus, SftpOpResult, SftpSink};
 use crate::sftperror::SftpResult;
 use crate::sftphandler::sftpoutputchannelhandler::{
     SftpOutputPipe, SftpOutputProducer,
@@ -17,7 +17,7 @@ use crate::sftpsource::SftpSource;
 
 use embassy_futures::select::select;
 use sunset::Error as SunsetError;
-use sunset::sshwire::{SSHSource, WireError};
+use sunset::sshwire::{SSHEncode, SSHSource, WireError};
 use sunset_async::ChanInOut;
 
 use core::u32;
@@ -108,6 +108,12 @@ where
     partial_write_request_tracker: Option<PartialWriteRequestTracker<T>>,
 
     incomplete_request_holder: RequestHolder<'a>,
+
+    /// Records the last read status reported
+    /// from a read operation. This is used to communicate
+    /// the EOF with the appropriate ReqId to a pending read operation
+    /// **WARNING**: This assumes that only one read operation is pending at a time.
+    last_read_status: ReadStatus,
 }
 
 impl<'a, T, S, const BUFFER_OUT_SIZE: usize> SftpHandler<'a, T, S, BUFFER_OUT_SIZE>
@@ -132,6 +138,7 @@ where
             partial_write_request_tracker: None,
             state: SftpHandleState::default(),
             incomplete_request_holder: RequestHolder::new(incomplete_request_buffer),
+            last_read_status: ReadStatus::PendingData,
         }
     }
 
@@ -231,6 +238,7 @@ where
                             Ok(request) => {
                                 Self::handle_general_request(
                                     &mut self.file_server,
+                                    &mut self.last_read_status,
                                     output_producer,
                                     request,
                                 )
@@ -395,6 +403,7 @@ where
                         Ok(request) => {
                             Self::handle_general_request(
                                 &mut self.file_server,
+                                &mut self.last_read_status,
                                 output_producer,
                                 request,
                             )
@@ -508,6 +517,7 @@ where
 
     async fn handle_general_request(
         file_server: &mut S,
+        last_read_status: &mut ReadStatus,
         output_producer: &SftpOutputProducer<'_, BUFFER_OUT_SIZE>,
         request: SftpPacket<'_>,
     ) -> Result<(), SftpError>
@@ -617,23 +627,41 @@ where
                 // TODO I should send back an EOF response when all the files in folder have been sent AND I have been asked for more files.
                 // According to https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.7
                 // This should be the file_server responsibility
-                output_producer
-                    .send_status(req_id, StatusCode::SSH_FX_EOF, "")
-                    .await?;
 
-                return Ok(());
+                if (*last_read_status).eq(&ReadStatus::EndOfFile) {
+                    let packet = SftpPacket::Status(
+                        req_id,
+                        Status {
+                            code: StatusCode::SSH_FX_EOF,
+                            message: "".into(),
+                            lang: "en-US".into(),
+                        },
+                    );
+                    let mut buf = [0u8; 256];
+                    let mut sink = SftpSink::new(&mut buf);
+                    packet.encode_response(&mut sink)?;
+                    debug!("Output Producer: Sending packet {:?}", packet);
+                    sink.finalize();
+                    output_producer.send_data(sink.used_slice()).await?;
+                    // output_producer
+                    //     .send_status(req_id, StatusCode::SSH_FX_EOF, "")
+                    //     .await?;
+                    *last_read_status = ReadStatus::PendingData;
+                    return Ok(());
+                }
+
                 let dir_reply = DirReply::new(req_id, output_producer);
 
                 match file_server
                     .readdir(&T::try_from(&read_dir.handle)?, &dir_reply)
                     .await
                 {
-                    Ok(_) => {
-
+                    Ok(read_status) => {
+                        *last_read_status = read_status;
                         // dir_reply should have sent a response
-                        // output_producer
-                        //     .send_status(req_id, StatusCode::SSH_FX_EOF, "")
-                        //     .await?;
+                        output_producer
+                            .send_status(req_id, StatusCode::SSH_FX_EOF, "")
+                            .await?;
                     }
                     Err(status) => {
                         error!("Open failed: {:?}", status);

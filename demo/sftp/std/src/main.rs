@@ -211,10 +211,10 @@ async fn main(spawner: Spawner) {
             log::LevelFilter::Info,
         )
         .filter_module("sunset_sftp::sftphandler", log::LevelFilter::Debug)
-        // .filter_module(
-        //     "sunset_sftp::sftphandler::sftpoutputchannelhandler",
-        //     log::LevelFilter::Trace,
-        // )
+        .filter_module(
+            "sunset_sftp::sftphandler::sftpoutputchannelhandler",
+            log::LevelFilter::Trace,
+        )
         // .filter_module("sunset_sftp::sftpsink", log::LevelFilter::Info)
         // .filter_module("sunset_sftp::sftpsource", log::LevelFilter::Info)
         // .filter_module("sunset_sftp::sftpserver", log::LevelFilter::Info)
