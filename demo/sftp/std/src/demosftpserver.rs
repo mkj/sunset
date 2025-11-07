@@ -429,6 +429,11 @@ impl DirEntriesCollection {
                 error!("SftpError: {:?}", err);
                 StatusCode::SSH_FX_FAILURE
             })?;
+
+            reply.send_eof().await.map_err(|err| {
+                error!("SftpError: {:?}", err);
+                StatusCode::SSH_FX_FAILURE
+            })?;
         }
         Ok(())
     }
