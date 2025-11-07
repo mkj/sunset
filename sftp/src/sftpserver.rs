@@ -197,6 +197,7 @@ pub struct ChanOut<'g, 'a> {
 ///     b. Instantiate a [`DirEntriesCollection`] with the items in the requested folder
 ///     c. call the `DirEntriesCollection.SendHeader(reply)`
 ///     d. call the `DirEntriesCollection.send_entries(reply)`
+///     e. call the `reply.send_eof()`
 pub struct DirReply<'g, const N: usize> {
     /// The request Id that will be used in the response
     req_id: ReqId,
@@ -210,13 +211,6 @@ impl<'g, const N: usize> DirReply<'g, N> {
     pub fn new(req_id: ReqId, chan_out: &'g SftpOutputProducer<'g, N>) -> Self {
         // DirReply { chan_out: chan_out_wrapper, req_id }
         DirReply { req_id, chan_out }
-    }
-
-    /// Sends an item to the client
-    pub async fn send_item(&self, data: &[u8]) -> SftpResult<()> {
-        debug!("Sending item: {:?} bytes", data.len());
-        trace!("Sending item: content = {:?}", data);
-        self.chan_out.send_data(data).await
     }
 
     /// Sends the header to the client. TODO Make this enforceable
@@ -233,7 +227,7 @@ impl<'g, const N: usize> DirReply<'g, N> {
         let mut sink = SftpSink::new(&mut s);
 
         get_encoded_len.enc(&mut sink)?;
-        104u8.enc(&mut sink)?;
+        104u8.enc(&mut sink)?; // TODO Remove hack
         self.req_id.enc(&mut sink)?;
         get_count.enc(&mut sink)?;
         let payload = sink.payload_slice();
@@ -244,5 +238,17 @@ impl<'g, const N: usize> DirReply<'g, N> {
         );
         self.chan_out.send_data(sink.payload_slice()).await?;
         Ok(())
+    }
+
+    /// Sends an item to the client
+    pub async fn send_item(&self, data: &[u8]) -> SftpResult<()> {
+        debug!("Sending item: {:?} bytes", data.len());
+        trace!("Sending item: content = {:?}", data);
+        self.chan_out.send_data(data).await
+    }
+
+    /// Sends EOF meaning that there is no more files in the directory
+    pub async fn send_eof(&self) -> SftpResult<()> {
+        self.chan_out.send_status(self.req_id, StatusCode::SSH_FX_EOF, "").await
     }
 }

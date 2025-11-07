@@ -131,7 +131,7 @@ impl<'a, const N: usize> SftpOutputProducer<'a, N> {
             req_id,
             Status { code: status, message: msg.into(), lang: "en-US".into() },
         );
-        debug!("Output Producer: Pushing a status message: {:?}", response);
+        trace!("Output Producer: Pushing a status message: {:?}", response);
         self.send_packet(&response).await?;
         Ok(())
     }
