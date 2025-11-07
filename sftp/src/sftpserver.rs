@@ -15,6 +15,22 @@ use sunset::sshwire::SSHEncode;
 /// Result used to store the result of an Sftp Operation
 pub type SftpOpResult<T> = core::result::Result<T, StatusCode>;
 
+/// Since the server needs to answer with an STATUS EOF to finish read requests,
+/// Helps handling the completion for reading data.
+/// See:
+///
+/// - [Reading and Writing](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.4)
+/// - [Scanning Directories](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.7)
+#[derive(PartialEq, Debug, Default)]
+pub enum ReadStatus {
+    // TODO Ideally this will contain an OwnedFileHandle
+    /// There is more data to read
+    #[default]
+    PendingData,
+    /// The server has provided all the data requested
+    EndOfFile,
+}
+
 /// All trait functions are optional in the SFTP protocol.
 /// Some less core operations have a Provided implementation returning
 /// returns `SSH_FX_OP_UNSUPPORTED`. Common operations must be implemented,
@@ -81,7 +97,7 @@ where
         &mut self,
         opaque_dir_handle: &T,
         reply: &DirReply<'_, N>,
-    ) -> SftpOpResult<()> {
+    ) -> SftpOpResult<ReadStatus> {
         log::error!(
             "SftpServer ReadDir operation not defined: handle = {:?}",
             opaque_dir_handle
@@ -132,6 +148,7 @@ pub struct ChanOut<'g, 'a> {
 /// [`sunset_async::async_channel::ChanOut`] used in the context of an
 /// SFTP Session.
 ///
+// TODO: complete this once the flow is fully developed
 /// The usage is simple:
 ///
 /// 1. SftpHandler will: Initialize the structure
