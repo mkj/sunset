@@ -334,9 +334,9 @@ pub struct DirEntriesCollection {
 
 impl DirEntriesCollection {
     pub fn new(dir_iterator: fs::ReadDir) -> Self {
-        let mut encoded_length = 0;
-        // This way I collect data required for the header and collect
-        // valid entries into a vector (only std)
+        let mut encoded_length = 9; // TODO We need to consider the packet type, Id and count fields
+                                    // This way I collect data required for the header and collect
+                                    // valid entries into a vector (only std)
         let entries: Vec<DirEntry> = dir_iterator
             .filter_map(|entry_result| {
                 let entry = entry_result.ok()?;
