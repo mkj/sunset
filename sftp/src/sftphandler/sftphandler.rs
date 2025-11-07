@@ -614,9 +614,14 @@ where
                 };
             }
             SftpPacket::ReadDir(req_id, read_dir) => {
-                // TODO Implement the mechanism you are going to use to
-                // handle the list of elements
+                // TODO I should send back an EOF response when all the files in folder have been sent AND I have been asked for more files.
+                // According to https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.7
+                // This should be the file_server responsibility
+                output_producer
+                    .send_status(req_id, StatusCode::SSH_FX_EOF, "")
+                    .await?;
 
+                return Ok(());
                 let dir_reply = DirReply::new(req_id, output_producer);
 
                 match file_server
@@ -624,6 +629,7 @@ where
                     .await
                 {
                     Ok(_) => {
+
                         // dir_reply should have sent a response
                         // output_producer
                         //     .send_status(req_id, StatusCode::SSH_FX_EOF, "")
@@ -646,7 +652,7 @@ where
         Ok(())
     }
 
-    // TODO Handle more long requests
+    // TODO Handle other long requests
     /// Some long request will not fit in the channel buffers. Such requests
     /// will require to be handled differently. Gathering the data in and
     /// processing it as we receive it in the channel in buffer.

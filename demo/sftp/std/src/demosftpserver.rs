@@ -298,9 +298,11 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
 
                 let name_entry_collection = DirEntriesCollection::new(dir_iterator);
 
-                name_entry_collection.send_header(reply).await?;
+                name_entry_collection.send_entries_header(reply).await?;
 
                 name_entry_collection.send_entries(reply).await?;
+
+                // name_entry_collection.send_eof(reply).await?;
             } else {
                 error!("the path is not a directory = {:?}", dir_path);
                 return Err(StatusCode::SSH_FX_NO_SUCH_FILE);
@@ -340,8 +342,7 @@ impl DirEntriesCollection {
         let entries: Vec<DirEntry> = dir_iterator
             .filter_map(|entry_result| {
                 let entry = entry_result.ok()?;
-
-                let filename = entry.path().to_string_lossy().into_owned();
+                let filename = entry.file_name().to_string_lossy().into_owned();
                 let name_entry = NameEntry {
                     filename: Filename::from(filename.as_str()),
                     _longname: Filename::from(""),
@@ -396,7 +397,7 @@ impl DirEntriesCollection {
         }
     }
 
-    pub async fn send_header<const N: usize>(
+    pub async fn send_entries_header<const N: usize>(
         &self,
         reply: &DirReply<'_, N>,
     ) -> SftpOpResult<()> {
@@ -411,7 +412,7 @@ impl DirEntriesCollection {
         reply: &DirReply<'_, N>,
     ) -> SftpOpResult<()> {
         for entry in &self.entries {
-            let filename = entry.path().to_string_lossy().into_owned();
+            let filename = entry.file_name().to_string_lossy().into_owned();
             let attrs = Self::get_attrs_or_empty(entry.metadata());
             let name_entry = NameEntry {
                 filename: Filename::from(filename.as_str()),
@@ -429,12 +430,17 @@ impl DirEntriesCollection {
                 error!("SftpError: {:?}", err);
                 StatusCode::SSH_FX_FAILURE
             })?;
-
-            reply.send_eof().await.map_err(|err| {
-                error!("SftpError: {:?}", err);
-                StatusCode::SSH_FX_FAILURE
-            })?;
         }
         Ok(())
+    }
+
+    pub async fn no_files<const N: usize>(
+        &self,
+        reply: &DirReply<'_, N>,
+    ) -> SftpOpResult<()> {
+        reply.send_eof().await.map_err(|err| {
+            error!("SftpError: {:?}", err);
+            StatusCode::SSH_FX_FAILURE
+        })
     }
 }
