@@ -25,6 +25,7 @@ impl<'g> SftpSink<'g> {
         SftpSink { buffer: s, index: SFTP_FIELD_LEN_LENGTH }
     }
 
+    // TODO: Why don't you compute this every time that a new field is added?
     /// Finalise the buffer by prepending the packet length field,
     /// excluding the field itself.
     ///
