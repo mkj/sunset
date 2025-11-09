@@ -138,6 +138,23 @@ pub struct ChanOut<'g, 'a> {
     _phantom_a: PhantomData<&'a ()>, // a' Why the second lifetime if ChanIO only needs one
 }
 
+// TODO: complete this once the flow is fully developed
+// `/ The usage is simple:
+// /
+// / 1. SftpHandler will: Initialize the structure
+// / 2. The `SftpServer` trait implementation for 'readdir()' will:
+// /
+// /     - Receive the DirReply ref 'reply'
+// /
+// /     a. If there are items to send:
+// /
+// /         - Instantiate a [`DirEntriesCollection`] with the items in the requested folder
+// /         - call the 'DirEntriesCollection.SendHeader(reply)'
+// /         - call the 'DirEntriesCollection.send_entries(reply)'
+// /
+// /     b. If there are no items to send:
+// /
+// /         - Call the 'reply.send_eof()'
 // TODO Define this
 /// Dir Reply is the structure that will be "visiting" the [`SftpServer`]
 ///  trait
@@ -148,25 +165,8 @@ pub struct ChanOut<'g, 'a> {
 /// [`sunset_async::async_channel::ChanOut`] used in the context of an
 /// SFTP Session.
 ///
-// TODO: complete this once the flow is fully developed
-/// The usage is simple:
-///
-/// 1. SftpHandler will: Initialize the structure
-/// 2. The `SftpServer` trait implementation for `readdir()` will:
-///
-///     - Receive the DirReply ref `reply`
-///     
-///     a. If there are items to send:
-///
-///         - Instantiate a [`DirEntriesCollection`] with the items in the requested folder
-///         - call the `DirEntriesCollection.SendHeader(reply)`
-///         - call the `DirEntriesCollection.send_entries(reply)`
-///
-///     b. If there are no items to send:
-///
-///         - Call the `reply.send_eof()`
 pub struct DirReply<'g, const N: usize> {
-    /// The request Id that will be used in the response
+    /// The request Id that will be use`d in the response
     req_id: ReqId,
 
     /// Immutable writer

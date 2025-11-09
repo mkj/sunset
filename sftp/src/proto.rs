@@ -250,6 +250,7 @@ pub struct ResponseAttributes {
 pub struct ReqId(pub u32);
 
 /// For more information see [Responses from the Server to the Client](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-7)
+/// TODO: Reference! This is packed as u32 since that is the field data type in specs
 #[derive(Debug, FromPrimitive, SSHEncode)]
 #[repr(u32)]
 #[allow(non_camel_case_types, missing_docs)]
@@ -794,3 +795,39 @@ sftpmessages! [
             (104, Name, Name<'a>, "ssh_fxp_name"),
         },
 ];
+
+#[cfg(test)]
+mod ProtoTests {
+    use super::*;
+    use crate::server::SftpSink;
+
+    #[test]
+    fn test_status_encoding() {
+        let mut buf = [0u8; 256];
+        let mut sink = SftpSink::new(&mut buf);
+        let status_packet = SftpPacket::Status(
+            ReqId(16),
+            Status {
+                code: StatusCode::SSH_FX_EOF,
+                message: "A".into(),
+                lang: "en-US".into(),
+            },
+        );
+
+        let expected_status_packet_slice: [u8; 27] = [
+            0, 0, 0, 18,  //                            Packet len
+            101, //                                     Packet type
+            0, 0, 0, 16, //                             ReqId
+            0, 0, 0, 4, //                              Status code
+            0, 0, 0, 1,  //                             string message length
+            65, //                                      string message content
+            0, 0, 0, 5, //                              string lang length
+            101, 110, 45, 85, 83, //                    string lang content
+        ];
+
+        let _ = status_packet.encode_response(&mut sink);
+        sink.finalize();
+
+        assert_eq!(&expected_status_packet_slice, sink.used_slice());
+    }
+}
