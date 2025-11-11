@@ -56,4 +56,8 @@ where
     fn get_private_as_ref(&self, opaque_handle: &K) -> Option<&V> {
         self.handle_map.get(opaque_handle)
     }
+
+    fn get_private_as_mut_ref(&mut self, opaque_handle: &K) -> Option<&mut V> {
+        self.handle_map.get_mut(opaque_handle)
+    }
 }

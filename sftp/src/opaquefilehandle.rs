@@ -63,5 +63,8 @@ where
     fn opaque_handle_exist(&self, opaque_handle: &K) -> bool;
 
     /// given the opaque_handle returns a reference to the associated private handle
+    fn get_private_as_mut_ref(&mut self, opaque_handle: &K) -> Option<&mut V>;
+
+    /// given the opaque_handle returns a reference to the associated private handle
     fn get_private_as_ref(&self, opaque_handle: &K) -> Option<&V>;
 }
