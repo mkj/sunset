@@ -304,7 +304,6 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
 
                 name_entry_collection.send_entries(reply).await?;
 
-                // name_entry_collection.send_eof(reply).await?;
                 Ok(ReadStatus::EndOfFile)
             } else {
                 error!("the path is not a directory = {:?}", dir_path);

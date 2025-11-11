@@ -515,6 +515,14 @@ where
         }
     }
 
+    /// Handles Healthy formed SftpRequest. Will return error if:
+    ///
+    /// - The request (SftpPacket) is not a request
+    ///
+    /// - The request is an unknown SftpPacket
+    ///
+    /// - The request is an initialization packet, and the initialization
+    /// has already been performed
     async fn handle_general_request(
         file_server: &mut S,
         last_read_status: &mut ReadStatus,
@@ -658,10 +666,6 @@ where
                 {
                     Ok(read_status) => {
                         *last_read_status = read_status;
-                        // dir_reply should have sent a response
-                        output_producer
-                            .send_status(req_id, StatusCode::SSH_FX_EOF, "")
-                            .await?;
                     }
                     Err(status) => {
                         error!("Open failed: {:?}", status);
