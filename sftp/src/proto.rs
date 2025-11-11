@@ -166,6 +166,7 @@ pub struct Status<'a> {
     /// A language tag as defined by [Tags for the Identification of Languages](https://datatracker.ietf.org/doc/html/rfc1766)
     pub lang: TextString<'a>,
 }
+
 /// Used for `ssh_fxp_handle` [response](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-7).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, SSHEncode, SSHDecode)]
 pub struct Handle<'a> {
@@ -251,29 +252,29 @@ pub struct ReqId(pub u32);
 
 /// For more information see [Responses from the Server to the Client](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-7)
 /// TODO: Reference! This is packed as u32 since that is the field data type in specs
-#[derive(Debug, FromPrimitive, SSHEncode)]
+#[derive(Debug, FromPrimitive)]
 #[repr(u32)]
 #[allow(non_camel_case_types, missing_docs)]
 pub enum StatusCode {
-    #[sshwire(variant = "ssh_fx_ok")]
+    // #[sshwire(variant = "ssh_fx_ok")]
     SSH_FX_OK = 0,
-    #[sshwire(variant = "ssh_fx_eof")]
+    // #[sshwire(variant = "ssh_fx_eof")]
     SSH_FX_EOF = 1,
-    #[sshwire(variant = "ssh_fx_no_such_file")]
+    // #[sshwire(variant = "ssh_fx_no_such_file")]
     SSH_FX_NO_SUCH_FILE = 2,
-    #[sshwire(variant = "ssh_fx_permission_denied")]
+    // #[sshwire(variant = "ssh_fx_permission_denied")]
     SSH_FX_PERMISSION_DENIED = 3,
-    #[sshwire(variant = "ssh_fx_failure")]
+    // #[sshwire(variant = "ssh_fx_failure")]
     SSH_FX_FAILURE = 4,
-    #[sshwire(variant = "ssh_fx_bad_message")]
+    // #[sshwire(variant = "ssh_fx_bad_message")]
     SSH_FX_BAD_MESSAGE = 5,
-    #[sshwire(variant = "ssh_fx_no_connection")]
+    // #[sshwire(variant = "ssh_fx_no_connection")]
     SSH_FX_NO_CONNECTION = 6,
-    #[sshwire(variant = "ssh_fx_connection_lost")]
+    // #[sshwire(variant = "ssh_fx_connection_lost")]
     SSH_FX_CONNECTION_LOST = 7,
-    #[sshwire(variant = "ssh_fx_unsupported")]
+    // #[sshwire(variant = "ssh_fx_unsupported")]
     SSH_FX_OP_UNSUPPORTED = 8,
-    #[sshwire(unknown)]
+    // #[sshwire(unknown)]
     #[num_enum(catch_all)]
     Other(u32),
 }
@@ -284,6 +285,32 @@ impl<'de> SSHDecode<'de> for StatusCode {
         S: SSHSource<'de>,
     {
         Ok(StatusCode::from(u32::dec(s)?))
+    }
+}
+
+// TODO: Implement an automatic from implementation for u32 to Status code
+// This is prone to errors if we update StatusCode enum
+impl From<&StatusCode> for u32 {
+    fn from(value: &StatusCode) -> Self {
+        match value {
+            StatusCode::SSH_FX_OK => 0,
+            StatusCode::SSH_FX_EOF => 1,
+            StatusCode::SSH_FX_NO_SUCH_FILE => 2,
+            StatusCode::SSH_FX_PERMISSION_DENIED => 3,
+            StatusCode::SSH_FX_FAILURE => 4,
+            StatusCode::SSH_FX_BAD_MESSAGE => 5,
+            StatusCode::SSH_FX_NO_CONNECTION => 6,
+            StatusCode::SSH_FX_CONNECTION_LOST => 7,
+            StatusCode::SSH_FX_OP_UNSUPPORTED => 8,
+            StatusCode::Other(value) => *value,
+        }
+    }
+}
+// TODO: Implement an SSHEncode attribute for enums to encode them in a given numeric format
+impl SSHEncode for StatusCode {
+    fn enc(&self, s: &mut dyn SSHSink) -> WireResult<()> {
+        let numeric_value: u32 = self.into();
+        numeric_value.enc(s)
     }
 }
 
@@ -797,7 +824,7 @@ sftpmessages! [
 ];
 
 #[cfg(test)]
-mod ProtoTests {
+mod proto_tests {
     use super::*;
     use crate::server::SftpSink;
 
@@ -815,10 +842,10 @@ mod ProtoTests {
         );
 
         let expected_status_packet_slice: [u8; 27] = [
-            0, 0, 0, 18,  //                            Packet len
+            0, 0, 0, 23,  //                            Packet len
             101, //                                     Packet type
             0, 0, 0, 16, //                             ReqId
-            0, 0, 0, 4, //                              Status code
+            0, 0, 0, 1, //                              Status code: SSH_FX_EOF
             0, 0, 0, 1,  //                             string message length
             65, //                                      string message content
             0, 0, 0, 5, //                              string lang length
