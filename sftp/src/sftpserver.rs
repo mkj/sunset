@@ -1,4 +1,5 @@
 use crate::error::SftpResult;
+use crate::proto::{MAX_NAME_ENTRY_SIZE, NameEntry};
 use crate::server::SftpSink;
 use crate::sftphandler::SftpOutputProducer;
 use crate::{
@@ -7,7 +8,7 @@ use crate::{
 };
 
 use core::marker::PhantomData;
-use log::{debug, trace};
+use log::{debug, error, trace};
 use sunset::sshwire::SSHEncode;
 
 // use futures::executor::block_on; TODO Deal with the async nature of [`ChanOut`]
@@ -15,8 +16,13 @@ use sunset::sshwire::SSHEncode;
 /// Result used to store the result of an Sftp Operation
 pub type SftpOpResult<T> = core::result::Result<T, StatusCode>;
 
-/// Since the server needs to answer with an STATUS EOF to finish read requests,
-/// Helps handling the completion for reading data.
+/// To finish read requests the server needs to answer to
+/// **subsequent READ requests** after all the data has been sent already
+/// with a [`SftpPacket`] including a status code [`StatusCode::SSH_FX_EOF`].
+///
+/// [`ReadStatus`] enum has been implemented to keep record of these exhausted
+/// read operations.
+///
 /// See:
 ///
 /// - [Reading and Writing](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.4)
@@ -24,10 +30,13 @@ pub type SftpOpResult<T> = core::result::Result<T, StatusCode>;
 #[derive(PartialEq, Debug, Default)]
 pub enum ReadStatus {
     // TODO Ideally this will contain an OwnedFileHandle
-    /// There is more data to read
+    /// There is more data to be read therefore the [`SftpServer`] will
+    /// send more data in the next read request.
     #[default]
     PendingData,
-    /// The server has provided all the data requested
+    /// The server has provided all the data requested therefore the [`SftpServer`]
+    /// will send a [`SftpPacket`] including a status code [`StatusCode::SSH_FX_EOF`]
+    /// in the next read request.
     EndOfFile,
 }
 
@@ -91,13 +100,31 @@ where
         Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
     }
 
-    /// Reads the list of items in a directory
+    /// Reads the list of items in a directory and returns them using the [`DirReply`]
+    /// parameter.
+    ///
+    /// ## Notes to the implementer:
+    ///
+    /// The implementer is expected to use the parameter `reply` [`DirReply`] to:
+    ///
+    /// - In case of no more items in the directory to send, call `reply.send_eof()`
+    /// - There are more items in the directory:
+    ///     1. Call `reply.send_header()` with the number of items and the [`SSHEncode`]
+    /// length of all the items to be sent
+    ///     2. Call `reply.send_item()` for each of the items announced to be sent
+    ///     3. Do not call `reply.send_eof()` during this [`readdir`] method call
+    ///
+    /// The server is expected to keep track of the number of items that remain to be sent
+    /// to the client since the client will only stop asking for more elements in the
+    /// directory when a read dir request is answer with an reply.send_eof()
+    ///
+
     #[allow(unused_variables)]
     async fn readdir<const N: usize>(
         &mut self,
         opaque_dir_handle: &T,
         reply: &DirReply<'_, N>,
-    ) -> SftpOpResult<ReadStatus> {
+    ) -> SftpOpResult<()> {
         log::error!(
             "SftpServer ReadDir operation not defined: handle = {:?}",
             opaque_dir_handle
@@ -156,10 +183,15 @@ pub struct ChanOut<'g, 'a> {
 // /
 // /         - Call the 'reply.send_eof()'
 // TODO Define this
-/// Dir Reply is the structure that will be "visiting" the [`SftpServer`]
-///  trait
-/// implementation via [`SftpServer::readdir()`] in order to send the
-/// directory content list.
+
+/// Uses for [`DirReply`] to:
+///
+/// - In case of no more items in the directory to be sent, call `reply.send_eof()`
+/// - There are more items in the directory to be sent:
+///     1. Call `reply.send_header()` with the number of items and the [`SSHEncode`]
+/// length of all the items to be sent
+///     2. Call `reply.send_item()` for each of the items announced to be sent
+///     3. Do not call `reply.send_eof()` during this [`readdir`] method call
 ///
 /// It handles immutable sending data via the underlying sftp-channel
 /// [`sunset_async::async_channel::ChanOut`] used in the context of an
@@ -174,13 +206,19 @@ pub struct DirReply<'g, const N: usize> {
 }
 
 impl<'g, const N: usize> DirReply<'g, N> {
-    /// New instance
-    pub fn new(req_id: ReqId, chan_out: &'g SftpOutputProducer<'g, N>) -> Self {
+    /// New instances can only be created within the crate. Users can only
+    /// use other public methods to use it.
+    pub(crate) fn new(
+        req_id: ReqId,
+        chan_out: &'g SftpOutputProducer<'g, N>,
+    ) -> Self {
         // DirReply { chan_out: chan_out_wrapper, req_id }
         DirReply { req_id, chan_out }
     }
 
-    /// Sends the header to the client. TODO Make this enforceable
+    // TODO Make this enforceable
+    /// Sends the header to the client with the number of files as [`NameEntry`] and the [`SSHEncode`]
+    /// length of all these [`NameEntry`] items
     pub async fn send_header(
         &self,
         get_count: u32,
@@ -194,9 +232,13 @@ impl<'g, const N: usize> DirReply<'g, N> {
         let mut sink = SftpSink::new(&mut s);
 
         get_encoded_len.enc(&mut sink)?;
-        104u8.enc(&mut sink)?; // TODO Remove hack
+        104u8.enc(&mut sink)?; // TODO Replace hack with 
         self.req_id.enc(&mut sink)?;
-        get_count.enc(&mut sink)?;
+        let encoded_name_sftp_packet_length: u32 = 9;
+        // We need to consider the packet type, Id and count fields
+        // This way I collect data required for the header and collect
+        // valid entries into a vector (only std)
+        (get_count + encoded_name_sftp_packet_length).enc(&mut sink)?;
         let payload = sink.payload_slice();
         debug!(
             "Sending header:  len = {:?}, content = {:?}",
@@ -207,11 +249,18 @@ impl<'g, const N: usize> DirReply<'g, N> {
         Ok(())
     }
 
-    /// Sends an item to the client
-    pub async fn send_item(&self, data: &[u8]) -> SftpResult<()> {
-        debug!("Sending item: {:?} bytes", data.len());
-        trace!("Sending item: content = {:?}", data);
-        self.chan_out.send_data(data).await
+    /// Sends a directory item to the client as a [`NameEntry`]
+    ///
+    /// Call this
+    pub async fn send_item(&self, name_entry: &NameEntry<'_>) -> SftpResult<()> {
+        let mut buffer = [0u8; MAX_NAME_ENTRY_SIZE];
+        let mut sftp_sink = SftpSink::new(&mut buffer);
+        name_entry.enc(&mut sftp_sink).map_err(|err| {
+            error!("WireError: {:?}", err);
+            StatusCode::SSH_FX_FAILURE
+        })?;
+
+        self.chan_out.send_data(sftp_sink.payload_slice()).await
     }
 
     /// Sends EOF meaning that there is no more files in the directory

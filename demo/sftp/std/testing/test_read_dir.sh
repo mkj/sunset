@@ -28,3 +28,6 @@ ls -lh
 bye
 EOF
 
+echo "Cleaning up local files..."
+rm -f -r ./*_random ./out/*_random
+

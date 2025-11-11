@@ -36,6 +36,7 @@ pub(crate) struct PrivateFileHandle {
 #[derive(Debug)]
 pub(crate) struct PrivateDirHandle {
     path: String,
+    read_status: ReadStatus,
 }
 
 static OPAQUE_SALT: &'static str = "12d%32";
@@ -152,7 +153,10 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
         debug!("Open Directory = {:?}", dir);
 
         let dir_handle = self.handles_manager.insert(
-            PrivatePathHandle::Directory(PrivateDirHandle { path: dir.into() }),
+            PrivatePathHandle::Directory(PrivateDirHandle {
+                path: dir.into(),
+                read_status: ReadStatus::default(),
+            }),
             OPAQUE_SALT,
         );
 
@@ -277,14 +281,21 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
         &mut self,
         opaque_dir_handle: &DemoOpaqueFileHandle,
         reply: &DirReply<'_, N>,
-    ) -> SftpOpResult<ReadStatus> {
+    ) -> SftpOpResult<()> {
         debug!("read dir for  {:?}", opaque_dir_handle);
 
         if let PrivatePathHandle::Directory(dir) = self
             .handles_manager
-            .get_private_as_ref(opaque_dir_handle)
+            .get_private_as_mut_ref(opaque_dir_handle)
             .ok_or(StatusCode::SSH_FX_NO_SUCH_FILE)?
         {
+            if dir.read_status == ReadStatus::EndOfFile {
+                reply.send_eof().await.map_err(|error| {
+                    error!("{:?}", error);
+                    StatusCode::SSH_FX_FAILURE
+                })?;
+                return Ok(());
+            }
             let path_str = dir.path.clone();
             debug!("opaque handle found in handles manager: {:?}", path_str);
             let dir_path = Path::new(&path_str);
@@ -303,8 +314,8 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
                 name_entry_collection.send_entries_header(reply).await?;
 
                 name_entry_collection.send_entries(reply).await?;
-
-                Ok(ReadStatus::EndOfFile)
+                dir.read_status = ReadStatus::EndOfFile;
+                return Ok(());
             } else {
                 error!("the path is not a directory = {:?}", dir_path);
                 return Err(StatusCode::SSH_FX_NO_SUCH_FILE);
@@ -317,12 +328,10 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
 }
 
 // TODO Add this to SFTP library only available with std as a global helper
-/// This is a helper structure to make ReadDir into something somehow
-/// digestible by [`DirReply`]
+/// This is a helper structure to make ReadDir into something manageable for
+/// [`DirReply`]
 ///
 /// WIP: Not stable. It has know issues and most likely it's methods will change
-///
-/// BUG: It does not count properly the number of bytes
 ///
 /// BUG: It does not include longname and that may be an issue
 #[derive(Debug)]
@@ -337,9 +346,8 @@ pub struct DirEntriesCollection {
 
 impl DirEntriesCollection {
     pub fn new(dir_iterator: fs::ReadDir) -> Self {
-        let mut encoded_length = 9; // TODO We need to consider the packet type, Id and count fields
-                                    // This way I collect data required for the header and collect
-                                    // valid entries into a vector (only std)
+        let mut encoded_length = 0;
+
         let entries: Vec<DirEntry> = dir_iterator
             .filter_map(|entry_result| {
                 let entry = entry_result.ok()?;
@@ -421,13 +429,7 @@ impl DirEntriesCollection {
                 attrs,
             };
             debug!("Sending new item: {:?}", name_entry);
-            let mut buffer = [0u8; MAX_NAME_ENTRY_SIZE];
-            let mut sftp_sink = SftpSink::new(&mut buffer);
-            name_entry.enc(&mut sftp_sink).map_err(|err| {
-                error!("WireError: {:?}", err);
-                StatusCode::SSH_FX_FAILURE
-            })?;
-            reply.send_item(sftp_sink.payload_slice()).await.map_err(|err| {
+            reply.send_item(&name_entry).await.map_err(|err| {
                 error!("SftpError: {:?}", err);
                 StatusCode::SSH_FX_FAILURE
             })?;
