@@ -3,6 +3,12 @@ name = "sunset-sftp"
 version = "0.1.1"
 edition = "2024"
 
+[features]
+default = []
+
+# Standard library support - enables std helpers
+std = []
+
 [dependencies]
 sunset = { version = "0.3.0", path = "../" }
 sunset-async = { path = "../async", version = "0.3" }
