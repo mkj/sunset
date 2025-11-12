@@ -208,7 +208,7 @@ async fn main(spawner: Spawner) {
         .filter_level(log::LevelFilter::Warn)
         .filter_module(
             "sunset_demo_sftp_std::demosftpserver",
-            log::LevelFilter::Info,
+            log::LevelFilter::Debug,
         )
         .filter_module("sunset_sftp::sftphandler", log::LevelFilter::Debug)
         .filter_module(

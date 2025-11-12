@@ -163,9 +163,9 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
         dir_handle
     }
 
-    fn realpath(&mut self, dir: &str) -> SftpOpResult<Name<'_>> {
-        debug!("finding path for: {:?}", dir);
-        Ok(Name(vec![NameEntry {
+    fn realpath(&mut self, dir: &str) -> SftpOpResult<NameEntry<'_>> {
+        info!("finding path for: {:?}", dir);
+        let name_entry = NameEntry {
             filename: Filename::from(self.base_path.as_str()),
             _longname: Filename::from(""),
             attrs: Attrs {
@@ -177,7 +177,9 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
                 mtime: None,
                 ext_count: None,
             },
-        }]))
+        };
+        debug!("Will return: {:?}", name_entry);
+        Ok(name_entry)
     }
 
     fn close(
