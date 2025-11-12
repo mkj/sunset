@@ -3,21 +3,16 @@ use crate::{
     demoopaquefilehandle::DemoOpaqueFileHandle,
 };
 
-use sunset::sshwire::SSHEncode;
 use sunset_sftp::handles::{OpaqueFileHandleManager, PathFinder};
-use sunset_sftp::protocol::constants::MAX_NAME_ENTRY_SIZE;
 use sunset_sftp::protocol::{Attrs, Filename, Name, NameEntry, StatusCode};
+use sunset_sftp::server::helpers::DirEntriesCollection;
 use sunset_sftp::server::{
-    DirReply, ReadReply, ReadStatus, SftpOpResult, SftpServer, SftpSink,
+    DirReply, ReadReply, ReadStatus, SftpOpResult, SftpServer,
 };
 
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
-use std::fs::DirEntry;
-use std::os::linux::fs::MetadataExt;
-use std::os::unix::fs::PermissionsExt;
-use std::time::SystemTime;
-use std::{fs, io};
+use std::fs;
 use std::{fs::File, os::unix::fs::FileExt, path::Path};
 
 #[derive(Debug)]
@@ -296,6 +291,7 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
                 })?;
                 return Ok(());
             }
+
             let path_str = dir.path.clone();
             debug!("opaque handle found in handles manager: {:?}", path_str);
             let dir_path = Path::new(&path_str);
@@ -311,10 +307,10 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
 
                 let name_entry_collection = DirEntriesCollection::new(dir_iterator);
 
-                name_entry_collection.send_entries_header(reply).await?;
+                let response_read_status =
+                    name_entry_collection.send_response(reply).await?;
 
-                name_entry_collection.send_entries(reply).await?;
-                dir.read_status = ReadStatus::EndOfFile;
+                dir.read_status = response_read_status;
                 return Ok(());
             } else {
                 error!("the path is not a directory = {:?}", dir_path);
@@ -324,126 +320,5 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
             error!("Could not find the directory for {:?}", opaque_dir_handle);
             return Err(StatusCode::SSH_FX_NO_SUCH_FILE);
         }
-    }
-}
-
-// TODO Add this to SFTP library only available with std as a global helper
-/// This is a helper structure to make ReadDir into something manageable for
-/// [`DirReply`]
-///
-/// WIP: Not stable. It has know issues and most likely it's methods will change
-///
-/// BUG: It does not include longname and that may be an issue
-#[derive(Debug)]
-pub struct DirEntriesCollection {
-    /// Number of elements
-    count: u32,
-    /// Computed length of all the encoded elements
-    encoded_length: u32,
-    /// The actual entries. As you can see these are DirEntry. This is a std choice
-    entries: Vec<DirEntry>,
-}
-
-impl DirEntriesCollection {
-    pub fn new(dir_iterator: fs::ReadDir) -> Self {
-        let mut encoded_length = 0;
-
-        let entries: Vec<DirEntry> = dir_iterator
-            .filter_map(|entry_result| {
-                let entry = entry_result.ok()?;
-                let filename = entry.file_name().to_string_lossy().into_owned();
-                let name_entry = NameEntry {
-                    filename: Filename::from(filename.as_str()),
-                    _longname: Filename::from(""),
-                    attrs: Self::get_attrs_or_empty(entry.metadata()),
-                };
-
-                let mut buffer = [0u8; MAX_NAME_ENTRY_SIZE];
-                let mut sftp_sink = SftpSink::new(&mut buffer);
-                name_entry.enc(&mut sftp_sink).ok()?;
-                //TODO remove this unchecked casting
-                encoded_length += sftp_sink.payload_len() as u32;
-                Some(entry)
-            })
-            .collect();
-
-        //TODO remove this unchecked casting
-        let count = entries.len() as u32;
-
-        info!(
-            "Processed {} entries, estimated serialized length: {}",
-            count, encoded_length
-        );
-
-        Self { count, encoded_length, entries }
-    }
-
-    fn get_attrs_or_empty(
-        maybe_metadata: Result<fs::Metadata, std::io::Error>,
-    ) -> Attrs {
-        maybe_metadata.map(Self::get_attrs).unwrap_or_default()
-    }
-
-    fn get_attrs(metadata: fs::Metadata) -> Attrs {
-        let time_to_u32 = |time_result: io::Result<SystemTime>| {
-            time_result
-                .ok()?
-                .duration_since(SystemTime::UNIX_EPOCH)
-                .ok()?
-                .as_secs()
-                .try_into()
-                .ok()
-        };
-
-        Attrs {
-            size: Some(metadata.len()),
-            uid: Some(metadata.st_uid()),
-            gid: Some(metadata.st_gid()),
-            permissions: Some(metadata.permissions().mode()),
-            atime: time_to_u32(metadata.accessed()),
-            mtime: time_to_u32(metadata.modified()),
-            ext_count: None,
-        }
-    }
-
-    pub async fn send_entries_header<const N: usize>(
-        &self,
-        reply: &DirReply<'_, N>,
-    ) -> SftpOpResult<()> {
-        reply.send_header(self.count, self.encoded_length).await.map_err(|e| {
-            debug!("Could not send header {e:?}");
-            StatusCode::SSH_FX_FAILURE
-        })
-    }
-
-    pub async fn send_entries<const N: usize>(
-        &self,
-        reply: &DirReply<'_, N>,
-    ) -> SftpOpResult<()> {
-        for entry in &self.entries {
-            let filename = entry.file_name().to_string_lossy().into_owned();
-            let attrs = Self::get_attrs_or_empty(entry.metadata());
-            let name_entry = NameEntry {
-                filename: Filename::from(filename.as_str()),
-                _longname: Filename::from(""),
-                attrs,
-            };
-            debug!("Sending new item: {:?}", name_entry);
-            reply.send_item(&name_entry).await.map_err(|err| {
-                error!("SftpError: {:?}", err);
-                StatusCode::SSH_FX_FAILURE
-            })?;
-        }
-        Ok(())
-    }
-
-    pub async fn no_files<const N: usize>(
-        &self,
-        reply: &DirReply<'_, N>,
-    ) -> SftpOpResult<()> {
-        reply.send_eof().await.map_err(|err| {
-            error!("SftpError: {:?}", err);
-            StatusCode::SSH_FX_FAILURE
-        })
     }
 }
