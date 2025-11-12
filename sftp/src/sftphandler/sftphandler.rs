@@ -91,6 +91,11 @@ enum FragmentedRequestState {
 /// It will delegate request to an [`crate::sftpserver::SftpServer`]
 /// implemented by the library
 /// user taking into account the local system details.
+///
+/// The compiler time constant `BUFFER_OUT_SIZE` is used to define the
+/// size of the output buffer for the subsystem [`Embassy-sync::pipe`] used
+/// to send responses safely across the instantiated structure.
+///
 pub struct SftpHandler<'a, T, S, const BUFFER_OUT_SIZE: usize>
 where
     T: OpaqueFileHandle,
