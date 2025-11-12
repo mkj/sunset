@@ -74,14 +74,14 @@ impl<'a, const N: usize> SftpOutputConsumer<'a, N> {
         let mut buf = [0u8; N];
         loop {
             let rl = self.reader.read(&mut buf).await;
-            let mut total = 0;
+            let mut _total = 0;
             {
                 let mut lock = self.counter.lock().await;
                 *lock += rl;
-                total = *lock;
+                _total = *lock;
             }
 
-            debug!("Output Consumer: Reads {rl} bytes. Total {total}");
+            debug!("Output Consumer: Reads {rl} bytes. Total {_total}");
             if rl > 0 {
                 self.ssh_chan_out.write_all(&buf[..rl]).await?;
                 debug!("Output Consumer: Written {:?} bytes ", &buf[..rl].len());
@@ -106,16 +106,6 @@ impl<'a, const N: usize> SftpOutputProducer<'a, N> {
     ///
     /// Use this when you are sending chunks of data after a valid header
     pub async fn send_data(&self, buf: &[u8]) -> SftpResult<()> {
-        Self::send_buffer(&self.writer, &buf, &self.counter).await;
-        Ok(())
-    }
-
-    /// Sends the data encoded in the provided [`SftpSink`] without including
-    /// the size.
-    ///
-    /// Use this when you are sending chunks of data after a valid header
-    pub async fn send_payload(&self, sftp_sink: &SftpSink<'_>) -> SftpResult<()> {
-        let buf = sftp_sink.payload_slice();
         Self::send_buffer(&self.writer, &buf, &self.counter).await;
         Ok(())
     }
@@ -153,14 +143,14 @@ impl<'a, const N: usize> SftpOutputProducer<'a, N> {
         buf: &[u8],
         counter: &CounterMutex,
     ) {
-        let mut total = 0;
+        let mut _total = 0;
         {
             let mut lock = counter.lock().await;
             *lock += buf.len();
-            total = *lock;
+            _total = *lock;
         }
 
-        debug!("Output Producer: Sends {:?} bytes. Total {total}", buf.len());
+        debug!("Output Producer: Sends {:?} bytes. Total {_total}", buf.len());
         trace!("Output Producer: Sending buffer {:?}", buf);
 
         // writer.write_all(buf); // ??? error[E0596]: cannot borrow `*writer` as mutable, as it is behind a `&` reference

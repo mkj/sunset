@@ -202,44 +202,65 @@ pub struct NameEntry<'a> {
     pub attrs: Attrs,
 }
 
+/// This is the encoded length for the Name Sftp Response.
+///
+/// This considers the Packet type (1), the Request Id (4) and
+/// count of [`NameEntry`] that will follow
+///
+/// It excludes the length of [`NameEntry`] explicitly
+///
+/// It is defined a single source of truth for what is the length for the
+/// encoded [`SftpPacket::Name`] variant
+///
+/// See [Responses from the Server to the Client](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-7)
+pub(crate) const ENCODED_BASE_NAME_SFTP_PACKET_LENGTH: u32 = 9;
+
 // TODO Will a Vector be an issue for no_std?
 // Maybe we should migrate this to heapless::Vec and let the user decide
 // the number of elements via features flags?
+/// This is the first part of the `SSH_FXP_NAME` response. It includes
+/// only the count of [`NameEntry`] items that follow this Name
+///
+/// After encoding or decoding [`Name`], [`NameEntry`] must be encoded or
+/// decoded `count` times
 /// A collection of [`NameEntry`] used for [ssh_fxp_name responses](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-7).
 #[derive(Debug)]
-pub struct Name<'a>(pub Vec<NameEntry<'a>>);
+// pub struct Name<'a>(pub Vec<NameEntry<'a>>);
+pub struct Name {
+    /// Number of [`NameEntry`] items that follow this Name
+    pub count: u32,
+}
 
-impl<'a: 'de, 'de> SSHDecode<'de> for Name<'a>
-where
-    'de: 'a,
-{
+impl<'de> SSHDecode<'de> for Name {
     fn dec<S>(s: &mut S) -> WireResult<Self>
     where
         S: SSHSource<'de>,
     {
-        let count = u32::dec(s)? as usize;
+        let count = u32::dec(s)? as u32;
 
-        let mut names = Vec::with_capacity(count);
+        // let mut names = Vec::with_capacity(count);
 
-        for _ in 0..count {
-            names.push(NameEntry::dec(s)?);
-        }
+        // for _ in 0..count {
+        //     names.push(NameEntry::dec(s)?);
+        // }
 
-        Ok(Name(names))
+        Ok(Name { count })
     }
 }
 
-impl<'a> SSHEncode for Name<'a> {
+impl SSHEncode for Name {
     fn enc(&self, s: &mut dyn SSHSink) -> WireResult<()> {
-        (self.0.len() as u32).enc(s)?;
+        self.count.enc(s)
+        // (self.0.len() as u32).enc(s)?;
 
-        for element in self.0.iter() {
-            element.enc(s)?;
-        }
-        Ok(())
+        // for element in self.0.iter() {
+        //     element.enc(s)?;
+        // }
+        // Ok(())
     }
 }
 
+// TODO: Is this really necessary?
 #[derive(Debug, SSHEncode, SSHDecode)]
 pub struct ResponseAttributes {
     pub attrs: Attrs,
@@ -314,6 +335,8 @@ impl SSHEncode for StatusCode {
     }
 }
 
+// TODO: Implement extensions. Low in priority
+/// Provided to provide a mechanism to implement extensions
 #[derive(Debug, SSHEncode, SSHDecode)]
 pub struct ExtPair<'a> {
     pub name: &'a str,
@@ -819,7 +842,7 @@ sftpmessages! [
             (101, Status, Status<'a>, "ssh_fxp_status"),
             (102, Handle, Handle<'a>, "ssh_fxp_handle"),
             (103, Data, Data<'a>, "ssh_fxp_data"),
-            (104, Name, Name<'a>, "ssh_fxp_name"),
+            (104, Name, Name, "ssh_fxp_name"),
         },
 ];
 

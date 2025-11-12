@@ -1,10 +1,12 @@
 use crate::error::SftpResult;
-use crate::proto::{MAX_NAME_ENTRY_SIZE, NameEntry};
+use crate::proto::{
+    ENCODED_BASE_NAME_SFTP_PACKET_LENGTH, MAX_NAME_ENTRY_SIZE, NameEntry,
+};
 use crate::server::SftpSink;
 use crate::sftphandler::SftpOutputProducer;
 use crate::{
     handles::OpaqueFileHandle,
-    proto::{Attrs, Name, ReqId, StatusCode},
+    proto::{Attrs, ReqId, StatusCode},
 };
 
 use sunset::sshwire::SSHEncode;
@@ -133,7 +135,7 @@ where
     }
 
     /// Provides the real path of the directory specified
-    fn realpath(&mut self, dir: &str) -> SftpOpResult<Name<'_>> {
+    fn realpath(&mut self, dir: &str) -> SftpOpResult<NameEntry<'_>> {
         log::error!("SftpServer RealPath operation not defined: dir = {:?}", dir);
         Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
     }
@@ -206,6 +208,8 @@ pub struct DirReply<'g, const N: usize> {
 }
 
 impl<'g, const N: usize> DirReply<'g, N> {
+    // const ENCODED_NAME_SFTP_PACKET_LENGTH: u32 = 9;
+
     /// New instances can only be created within the crate. Users can only
     /// use other public methods to use it.
     pub(crate) fn new(
@@ -221,24 +225,23 @@ impl<'g, const N: usize> DirReply<'g, N> {
     /// length of all these [`NameEntry`] items
     pub async fn send_header(
         &self,
-        get_count: u32,
-        get_encoded_len: u32,
+        count: u32,
+        items_encoded_len: u32,
     ) -> SftpResult<()> {
         debug!(
             "I will send the header here for request id {:?}: count = {:?}, length = {:?}",
-            self.req_id, get_count, get_encoded_len
+            self.req_id, count, items_encoded_len
         );
         let mut s = [0u8; N];
         let mut sink = SftpSink::new(&mut s);
 
-        get_encoded_len.enc(&mut sink)?;
-        104u8.enc(&mut sink)?; // TODO Replace hack with 
-        self.req_id.enc(&mut sink)?;
-        let encoded_name_sftp_packet_length: u32 = 9;
         // We need to consider the packet type, Id and count fields
         // This way I collect data required for the header and collect
         // valid entries into a vector (only std)
-        (get_count + encoded_name_sftp_packet_length).enc(&mut sink)?;
+        (items_encoded_len + ENCODED_BASE_NAME_SFTP_PACKET_LENGTH).enc(&mut sink)?;
+        104u8.enc(&mut sink)?; // TODO Replace hack with 
+        self.req_id.enc(&mut sink)?;
+        count.enc(&mut sink)?;
         let payload = sink.payload_slice();
         debug!(
             "Sending header:  len = {:?}, content = {:?}",
@@ -266,6 +269,24 @@ impl<'g, const N: usize> DirReply<'g, N> {
     /// Sends EOF meaning that there is no more files in the directory
     pub async fn send_eof(&self) -> SftpResult<()> {
         self.chan_out.send_status(self.req_id, StatusCode::SSH_FX_EOF, "").await
+    }
+}
+
+pub mod helpers {
+    use crate::{
+        error::SftpResult,
+        proto::{MAX_NAME_ENTRY_SIZE, NameEntry},
+        server::SftpSink,
+    };
+
+    use sunset::sshwire::SSHEncode;
+
+    /// Helper function to get the length of a [`NameEntry`]
+    pub fn get_name_entry_len(name_entry: &NameEntry<'_>) -> SftpResult<u32> {
+        let mut buf = [0u8; MAX_NAME_ENTRY_SIZE];
+        let mut temp_sink = SftpSink::new(&mut buf);
+        name_entry.enc(&mut temp_sink)?;
+        Ok(temp_sink.payload_len() as u32)
     }
 }
 

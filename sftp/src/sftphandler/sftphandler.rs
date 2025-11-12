@@ -4,10 +4,10 @@ use crate::error::SftpError;
 use crate::handles::OpaqueFileHandle;
 use crate::proto::{
     self, InitVersionLowest, ReqId, SFTP_MINIMUM_PACKET_LEN, SFTP_VERSION, SftpNum,
-    SftpPacket, Status, StatusCode,
+    SftpPacket, StatusCode,
 };
 use crate::requestholder::{RequestHolder, RequestHolderError};
-use crate::server::{DirReply, ReadStatus, SftpOpResult, SftpSink};
+use crate::server::DirReply;
 use crate::sftperror::SftpResult;
 use crate::sftphandler::sftpoutputchannelhandler::{
     SftpOutputPipe, SftpOutputProducer,
@@ -17,7 +17,7 @@ use crate::sftpsource::SftpSource;
 
 use embassy_futures::select::select;
 use sunset::Error as SunsetError;
-use sunset::sshwire::{SSHEncode, SSHSource, WireError};
+use sunset::sshwire::{SSHSource, WireError};
 use sunset_async::ChanInOut;
 
 use core::u32;
@@ -493,6 +493,7 @@ where
 
                 self.process(&buffer_in[0..lr], &output_producer).await?;
             }
+            #[allow(unreachable_code)]
             SftpResult::Ok(())
         };
         match select(processing_loop, output_consumer_loop).await {
@@ -530,15 +531,15 @@ where
                 return Err(SftpError::AlreadyInitialized);
             }
             SftpPacket::PathInfo(req_id, path_info) => {
-                let a_name = file_server.realpath(path_info.path.as_str()?)?;
+                let dir_reply = DirReply::new(req_id, output_producer);
+                let name_entry = file_server.realpath(path_info.path.as_str()?)?;
 
-                let response = SftpPacket::Name(req_id, a_name);
-                debug!(
-                    "Request Id {:?}. Encoding response: {:?}",
-                    &req_id, &response
-                );
-
-                output_producer.send_packet(&response).await?;
+                let encoded_len =
+                    crate::sftpserver::helpers::get_name_entry_len(&name_entry)?;
+                debug!("PathInfo encoded length: {:?}", encoded_len);
+                trace!("PathInfo Response content: {:?}", encoded_len);
+                dir_reply.send_header(1, encoded_len).await?;
+                dir_reply.send_item(&name_entry).await?;
             }
             SftpPacket::Open(req_id, open) => {
                 match file_server.open(open.filename.as_str()?, &open.attrs) {
