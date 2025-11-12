@@ -7,7 +7,7 @@ edition = "2021"
 sunset = { workspace = true, features = ["rsa", "std"] }
 sunset-async.workspace = true
 sunset-demo-common.workspace = true
-sunset-sftp = { version = "0.1.0", path = "../../../sftp" }
+sunset-sftp = { version = "0.1.0", path = "../../../sftp", features = ["std"] }
 
 # 131072 was determined empirically
 embassy-executor = { version = "0.7", features = [
