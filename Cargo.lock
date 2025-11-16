@@ -2851,7 +2851,7 @@ dependencies = [
 
 [[package]]
 name = "sunset-demo-sftp-std"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "async-io",
  "critical-section",
@@ -2915,7 +2915,7 @@ dependencies = [
 
 [[package]]
 name = "sunset-sftp"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "embassy-futures",
  "embassy-sync 0.7.2",
