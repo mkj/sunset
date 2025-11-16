@@ -1,4 +1,4 @@
-use crate::error::SftpResult;
+use crate::error::{SftpError, SftpResult};
 use crate::proto::{ReqId, SftpPacket, Status, StatusCode};
 use crate::server::SftpSink;
 
@@ -17,6 +17,7 @@ pub struct SftpOutputPipe<const N: usize> {
     pipe: Pipe<SunsetRawMutex, N>,
     counter_send: CounterMutex,
     counter_recv: CounterMutex,
+    splitted: bool,
 }
 
 /// M: SunsetSunsetRawMutex
@@ -33,6 +34,7 @@ impl<const N: usize> SftpOutputPipe<N> {
             pipe: Pipe::new(),
             counter_send: Mutex::<SunsetRawMutex, usize>::new(0),
             counter_recv: Mutex::<SunsetRawMutex, usize>::new(0),
+            splitted: false,
         }
     }
 
@@ -50,12 +52,16 @@ impl<const N: usize> SftpOutputPipe<N> {
     pub fn split<'a>(
         &'a mut self,
         ssh_chan_out: ChanOut<'a>,
-    ) -> (SftpOutputConsumer<'a, N>, SftpOutputProducer<'a, N>) {
+    ) -> SftpResult<(SftpOutputConsumer<'a, N>, SftpOutputProducer<'a, N>)> {
+        if self.splitted {
+            return Err(SftpError::AlreadyInitialized);
+        }
+        self.splitted = true;
         let (reader, writer) = self.pipe.split();
-        (
+        Ok((
             SftpOutputConsumer { reader, ssh_chan_out, counter: &self.counter_recv },
             SftpOutputProducer { writer, counter: &self.counter_send },
-        )
+        ))
     }
 }
 

@@ -52,39 +52,6 @@ enum FragmentedRequestState {
     ProcessingLongRequest,
 }
 
-// // TODO Generalize this to allow other request types
-// /// Used to keep record of a long SFTP Write request that does not fit in
-// /// receiving buffer and requires processing in batches
-// #[derive(Debug)]
-// pub struct PartialWriteRequestTracker<T: OpaqueFileHandle> {
-//     req_id: ReqId,
-//     opaque_handle: T,
-//     remain_data_len: u32,
-//     remain_data_offset: u64,
-// }
-
-// impl<T: OpaqueFileHandle> PartialWriteRequestTracker<T> {
-//     /// Creates a new [`PartialWriteRequestTracker`]
-//     pub fn new(
-//         req_id: ReqId,
-//         opaque_handle: T,
-//         remain_data_len: u32,
-//         remain_data_offset: u64,
-//     ) -> WireResult<Self> {
-//         Ok(PartialWriteRequestTracker {
-//             req_id,
-//             opaque_handle: opaque_handle,
-//             remain_data_len,
-//             remain_data_offset,
-//         })
-//     }
-//     /// Returns the opaque file handle associated with the request
-//     /// tracked
-//     pub fn get_opaque_file_handle(&self) -> T {
-//         self.opaque_handle.clone()
-//     }
-// }
-
 /// Process the raw buffers in and out from a subsystem channel decoding
 /// request and encoding responses
 ///
@@ -481,7 +448,7 @@ where
         let mut sftp_output_pipe = SftpOutputPipe::<BUFFER_OUT_SIZE>::new();
 
         let (mut output_consumer, output_producer) =
-            sftp_output_pipe.split(chan_out);
+            sftp_output_pipe.split(chan_out)?;
 
         let output_consumer_loop = output_consumer.receive_task();
 
