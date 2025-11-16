@@ -13,17 +13,26 @@ use paste::paste;
 #[allow(unused)]
 pub const SFTP_MINIMUM_PACKET_LEN: usize = 9;
 
-/// SFTP packets have the packet type after a u32 length field
-#[allow(unused)]
-pub const SFTP_FIELD_ID_INDEX: usize = 4;
-/// SFTP packets ID length is 1 byte
-// pub const SFTP_FIELD_ID_LEN: usize = 1;
-/// SFTP packets start with the length field
 #[allow(unused)]
 pub const SFTP_FIELD_LEN_INDEX: usize = 0;
 /// SFTP packets length field us u32
 #[allow(unused)]
 pub const SFTP_FIELD_LEN_LENGTH: usize = 4;
+/// SFTP packets have the packet type after a u32 length field
+#[allow(unused)]
+pub const SFTP_FIELD_ID_INDEX: usize = 4;
+/// SFTP packets ID length is 1 byte
+#[allow(unused)]
+pub const SFTP_FIELD_ID_LEN: usize = 1;
+/// SFTP packets start with the length field
+
+/// SFTP packets have the packet request id after field id
+#[allow(unused)]
+pub const SFTP_FIELD_REQ_ID_INDEX: usize = 5;
+/// SFTP packets ID length is 1 byte
+#[allow(unused)]
+pub const SFTP_FIELD_REQ_ID_LEN: usize = 4;
+/// SFTP packets start with the length field
 
 // SSH_FXP_WRITE SFTP Packet definition used to decode long packets that do not fit in one buffer
 
