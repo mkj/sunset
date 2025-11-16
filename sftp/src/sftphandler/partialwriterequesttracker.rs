@@ -55,6 +55,6 @@ impl<T: OpaqueFileHandle> PartialWriteRequestTracker<T> {
     }
 
     pub(crate) fn get_req_id(&self) -> ReqId {
-        self.req_id.clone() // TODO reference?
+        self.req_id.clone()
     }
 }
