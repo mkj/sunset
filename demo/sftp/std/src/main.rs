@@ -205,7 +205,7 @@ async fn listen(
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     env_logger::builder()
-        .filter_level(log::LevelFilter::Warn)
+        .filter_level(log::LevelFilter::Debug)
         .filter_module(
             "sunset_demo_sftp_std::demosftpserver",
             log::LevelFilter::Debug,
