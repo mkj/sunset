@@ -1,3 +1,5 @@
+use crate::sftpsource::SftpSource;
+
 use sunset::sshwire::{
     BinString, SSHDecode, SSHEncode, SSHSink, SSHSource, TextString, WireError,
     WireResult,
@@ -277,7 +279,7 @@ pub struct ResponseAttributes {
 
 // Requests/Responses data types
 
-#[derive(Debug, SSHEncode, SSHDecode, Clone, Copy)]
+#[derive(Debug, SSHEncode, SSHDecode, Clone, Copy, PartialEq)]
 pub struct ReqId(pub u32);
 
 /// For more information see [Responses from the Server to the Client](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-7)
@@ -508,7 +510,7 @@ macro_rules! sftpmessages {
     ) => {
         paste! {
             /// Represent a subset of the SFTP packet types defined by draft-ietf-secsh-filexfer-02
-            #[derive(Debug, Clone, FromPrimitive, SSHEncode)]
+            #[derive(Debug, Clone, PartialEq, FromPrimitive, SSHEncode)]
             #[repr(u8)]
             #[allow(non_camel_case_types)]
             pub enum SftpNum {
@@ -729,9 +731,9 @@ macro_rules! sftpmessages {
             /// Decode a response.
             ///
             /// Used by a SFTP client. Does not include the length field.
-            pub fn decode_response<'de, S>(s: &mut S) -> WireResult<(ReqId, Self)>
+            pub fn decode_response<'de>(s: &mut SftpSource<'de>) -> WireResult<(ReqId, Self)>
                 where
-                S: SSHSource<'de>,
+                // S: SftpSource<'de>,
                 'a: 'de, // 'a must outlive 'de and 'de must outlive 'a so they have matching lifetimes
                 'de: 'a
             {
@@ -753,9 +755,9 @@ macro_rules! sftpmessages {
             /// Used by a SFTP server. Does not include the length field.
             ///
             /// It will fail if the received packet is a response, no valid or incomplete packet
-            pub fn decode_request<'de, S>(s: &mut S) -> WireResult<Self>
+            pub fn decode_request<'de>(s: &mut SftpSource<'de>) -> WireResult<Self>
                 where
-                S: SSHSource<'de>,
+                // S: SftpSource<'de>,
                 'a: 'de, // 'a must outlive 'de and 'de must outlive 'a so they have matching lifetimes
                 'de: 'a
             {
@@ -774,7 +776,11 @@ macro_rules! sftpmessages {
                         }
                     },
                     Err(e) => {
-                        Err(e)
+                        match e {
+                            WireError::UnknownPacket{..} if !s.packet_fits()? => Err(WireError::RanOut),
+                            _ => Err(e)
+                        }
+
                     }
                 }
             }
