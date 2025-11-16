@@ -212,6 +212,25 @@ where
                                 self.state = SftpHandleState::Idle;
                             }
                             Err(e) => match e {
+                                WireError::UnknownPacket { number } => {
+                                    warn!(
+                                        "Unknown packet: packetId = {:?}. Will flush \
+                                    its length and send unsupported back",
+                                        number
+                                    );
+
+                                    let req_id = ReqId(source.peak_packet_req_id()?);
+                                    let len =
+                                        source.peak_total_packet_len()? as usize;
+                                    source.consume_first(len)?;
+                                    output_producer
+                                        .send_status(
+                                            req_id,
+                                            StatusCode::SSH_FX_OP_UNSUPPORTED,
+                                            "Error decoding SFTP Packet",
+                                        )
+                                        .await?;
+                                }
                                 WireError::RanOut => match Self::handle_ran_out(
                                     &mut self.file_server,
                                     output_producer,
@@ -412,6 +431,36 @@ where
                                         }
                                     }
                                 };
+                            }
+                            WireError::UnknownPacket { number } => {
+                                warn!(
+                                    "Unknown packet: packetId = {:?}. Will flush \
+                                    its length and send unsupported back",
+                                    number
+                                );
+                                /* TODO: The packet is unknown, but we are not consuming it properly.
+                                That has the side effect that we will be interpreting chunks of that packet
+                                as new packets and sending more garbage back to the client
+                                Will result on an Close and not simply a clean message saying that
+                                - Peek out the ReqId
+                                - Peek out the length
+
+                                - flush the packet len if possible (do we have the whole length?)
+
+                                - Send an StatusCode with the relevant ReqId
+
+                                - Move on!
+                                */
+                                let req_id = ReqId(source.peak_packet_req_id()?);
+                                let len = source.peak_total_packet_len()? as usize;
+                                source.consume_first(len)?;
+                                output_producer
+                                    .send_status(
+                                        req_id,
+                                        StatusCode::SSH_FX_OP_UNSUPPORTED,
+                                        "Error decoding SFTP Packet",
+                                    )
+                                    .await?;
                             }
                             _ => {
                                 error!("Error decoding SFTP Packet: {:?}", e);
