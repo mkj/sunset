@@ -738,7 +738,7 @@ impl<'g, 'a> ServExecRequest<'g, 'a> {
         self.raw_command()?.as_str()
     }
 
-    fn raw_command(&self) -> Result<TextString<'_>> {
+    pub fn raw_command(&self) -> Result<TextString<'_>> {
         self.runner.fetch_servcommand()
     }
 
