@@ -84,6 +84,7 @@ pub mod server {
 
         #[cfg(feature = "std")]
         pub use crate::sftpserver::DirEntriesCollection;
+        pub use crate::sftpserver::get_file_attrs;
     }
     pub use crate::sftpsink::SftpSink;
     pub use sunset::sshwire::SSHEncode;
