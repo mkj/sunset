@@ -547,6 +547,8 @@ impl<CS: CliServ> Kex<CS> {
     }
 
     /// Send NewKeys and switch to next encryption key.
+    ///
+    /// To be called in Self::Taken state.
     fn send_newkeys(
         &mut self,
         output: KexOutput,

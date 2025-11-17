@@ -234,7 +234,6 @@ pub enum KeyType {
 ///
 /// This may hold the private key part locally
 /// or potentially send the signing requests to an SSH agent or other entity.
-// #[derive(ZeroizeOnDrop, Clone, PartialEq)]
 #[derive(ZeroizeOnDrop, Clone, PartialEq, Eq)]
 pub enum SignKey {
     // TODO: we could just have the 32 byte seed here to save memory, but

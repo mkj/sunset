@@ -37,12 +37,13 @@ Working:
 - hmac-sha256 integrity
 - rsa (`std`-only unless someone writes a `no_std` crate)
 - `~.` client escape sequences
+- Post quantum hybrid key exchange (mlkem)
 
 Desirable:
 
 - SFTP
+- sntrup761
 - TCP forwarding
-- Post quantum hybrid key exchange
 - A std server example
 - Perhaps aes256-gcm
 - Perhaps ECDSA, hardware often supports it ahead of ed25519
@@ -61,7 +62,7 @@ Release builds should not panic, instead returning `Error::bug()`.
 `debug_assert!` is used in some places for invariants during testing or
 fuzzing.
 
-Some attempts are made to clear sensitive memory after use, but stack copies
+Some attempts are made to clear sensitive memory after use, but compiler-generated copies
 will not be cleared.
 
 ## Author

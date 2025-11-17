@@ -45,7 +45,7 @@ where
 const USER_KNOWN_HOSTS: &str = ".ssh/known_hosts";
 
 fn user_known_hosts() -> Result<PathBuf, KnownHostsError> {
-    // home_dir() works fine on linux.
+    // home_dir() was undeprecated in 1.87
     #[allow(deprecated)]
     let p = std::env::home_dir().ok_or_else(|| KnownHostsError::Other {
         msg: "Failed getting home directory".into(),
