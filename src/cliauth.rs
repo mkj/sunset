@@ -117,7 +117,7 @@ impl CliAuth {
         key: &'b SignKey,
         sess_id: &'b SessId,
     ) -> Result<AuthSigMsg<'b>> {
-        let p = req_packet_pubkey(&self.username, &key, None, true)?;
+        let p = req_packet_pubkey(&self.username, key, None, true)?;
         Ok(auth::AuthSigMsg::new(p, sess_id))
     }
 
@@ -145,7 +145,7 @@ impl CliAuth {
         // Sign the packet without the signature
         let msg = self.auth_sig_msg(key, sess_id)?;
         let sig = key.sign(&msg)?;
-        let p = req_packet_pubkey(&self.username, &key, Some(&sig), true)?;
+        let p = req_packet_pubkey(&self.username, key, Some(&sig), true)?;
 
         s.send(p)?;
         parse_ctx.cli_auth_type = None;
@@ -169,7 +169,7 @@ impl CliAuth {
             return Ok(DispatchEvent::CliEvent(CliEventId::Pubkey));
         };
 
-        let p = req_packet_pubkey(&self.username, &key, Some(&sig), true)?;
+        let p = req_packet_pubkey(&self.username, key, Some(sig), true)?;
         s.send(p)?;
         Ok(DispatchEvent::None)
     }

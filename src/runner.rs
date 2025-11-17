@@ -386,7 +386,7 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
 
     pub(crate) fn packet(&self) -> Result<Option<packets::Packet<'_>>> {
         if let Some((payload, _seq)) = self.traf_in.payload() {
-            self.conn.packet(payload).map(|p| Some(p))
+            self.conn.packet(payload).map(Some)
         } else {
             Ok(None)
         }
@@ -502,7 +502,7 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
 
         let len = self.write_channel_ready(chan, dt)?;
         let len = match len {
-            Some(l) if l == 0 => return Ok(0),
+            Some(0) => return Ok(0),
             Some(l) => l,
             None => return Err(Error::ChannelEOF),
         };
@@ -826,7 +826,9 @@ pub(crate) fn set_waker(store_waker: &mut Option<Waker>, new_waker: &Waker) {
         }
     }
 
-    store_waker.take().map(|w| w.wake());
+    if let Some(w) = store_waker.take() {
+        w.wake()
+    }
     *store_waker = Some(new_waker.clone())
 }
 

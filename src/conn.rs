@@ -69,7 +69,7 @@ enum ConnState {
 
 // must_use so return values can't be forgotten in Conn::dispatch_packet
 #[must_use]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub(crate) enum DispatchEvent {
     /// Incoming channel data
     Data(channel::DataIn),
@@ -80,13 +80,8 @@ pub(crate) enum DispatchEvent {
     /// Connection state has changed, should poll again
     Progressed,
     /// No event
+    #[default]
     None,
-}
-
-impl Default for DispatchEvent {
-    fn default() -> Self {
-        Self::None
-    }
 }
 
 impl DispatchEvent {
@@ -115,10 +110,7 @@ impl DispatchEvent {
     }
 
     pub(crate) fn is_event(&self) -> bool {
-        match self {
-            Self::CliEvent(_) | Self::ServEvent(_) => true,
-            _ => false,
-        }
+        matches!(self, Self::CliEvent(_) | Self::ServEvent(_))
     }
 }
 
@@ -706,7 +698,7 @@ impl Conn<Server> {
         if auth.authed && matches!(self.state, ConnState::PreAuth) {
             self.state = ConnState::Authed;
         }
-        return Ok(());
+        Ok(())
     }
 
     pub(crate) fn resume_servauth_pkok(

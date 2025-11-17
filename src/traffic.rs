@@ -445,17 +445,14 @@ impl<'a> TrafOut<'a> {
     }
 
     pub fn consume_output(&mut self, l: usize) {
-        match self.state {
-            TxState::Write { ref mut idx, len } => {
-                let wlen = (len - *idx).min(l);
-                *idx += wlen;
+        if let TxState::Write { ref mut idx, len } = self.state {
+            let wlen = (len - *idx).min(l);
+            *idx += wlen;
 
-                if *idx == len {
-                    // all done, read the next packet
-                    self.state = TxState::Idle
-                }
+            if *idx == len {
+                // all done, read the next packet
+                self.state = TxState::Idle
             }
-            _ => (),
         }
     }
 

@@ -173,7 +173,7 @@ async fn listen(
     stack: Stack<'static>,
     config: &'static SunsetMutex<SSHConfig>,
 ) -> ! {
-    let demo = StdDemo::default();
+    let demo = StdDemo;
     demo_common::listen(stack, config, &demo).await
 }
 

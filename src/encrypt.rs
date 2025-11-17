@@ -420,7 +420,7 @@ impl KeysRecv {
         let sublength = if self.cipher.is_aead() { SSH_LENGTH_SIZE } else { 0 };
         let len = buf.len() - size_integ - sublength;
 
-        if len % size_block != 0 {
+        if !len.is_multiple_of(size_block) {
             debug!("Bad packet, not multiple of block size");
             return error::SSHProto.fail();
         }

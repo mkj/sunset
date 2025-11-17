@@ -346,7 +346,7 @@ impl<CS: CliServ> Kex<CS> {
         }
         let kex_hash = KexHash::new::<CS>(
             algo_conf,
-            &our_cookie,
+            our_cookie,
             remote_version,
             &remote_kexinit.into(),
         )?;
@@ -509,11 +509,11 @@ impl<CS: CliServ> Kex<CS> {
     }
 
     pub fn is_strict(&self) -> bool {
-        match self {
-            Kex::KexDH { algos: Algos { strict_kex: true, .. }, .. } => true,
-            Kex::NewKeys { algos: Algos { strict_kex: true, .. }, .. } => true,
-            _ => false,
-        }
+        matches!(
+            self,
+            Kex::KexDH { algos: Algos { strict_kex: true, .. }, .. }
+                | Kex::NewKeys { algos: Algos { strict_kex: true, .. }, .. }
+        )
     }
 
     pub fn handle_kexdhreply(&self) -> Result<DispatchEvent> {

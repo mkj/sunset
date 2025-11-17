@@ -42,7 +42,7 @@ pub async fn listen(
             continue;
         }
 
-        let r = session(&mut socket, &config, demo).await;
+        let r = session(&mut socket, config, demo).await;
         if let Err(e) = r {
             warn!("Ended with error {e:#?}");
         }

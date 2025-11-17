@@ -118,20 +118,18 @@ pub fn check_known_hosts_file(
 
         if pubk.algorithm() != known_key.algorithm() {
             debug!("Line {line}, Ignoring other-format existing key {known_key:?}")
+        } else if pubk.key_data() == known_key.key_data() {
+            debug!("Line {line}, found matching key");
+            return Ok(());
         } else {
-            if pubk.key_data() == known_key.key_data() {
-                debug!("Line {line}, found matching key");
-                return Ok(());
-            } else {
-                let fp = known_key.fingerprint(Default::default());
-                println!("\nHost key mismatch for {match_host} in ~/.ssh/known_hosts line {line}\n\
-                    Existing key has fingerprint {fp}\n");
-                return Err(KnownHostsError::Mismatch {
-                    path: p.to_path_buf(),
-                    line,
-                    existing: known_key,
-                });
-            }
+            let fp = known_key.fingerprint(Default::default());
+            println!("\nHost key mismatch for {match_host} in ~/.ssh/known_hosts line {line}\n\
+                Existing key has fingerprint {fp}\n");
+            return Err(KnownHostsError::Mismatch {
+                path: p.to_path_buf(),
+                line,
+                existing: known_key,
+            });
         }
     }
 

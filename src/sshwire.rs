@@ -126,7 +126,7 @@ pub fn packet_from_bytes<'a>(b: &'a [u8], ctx: &ParseContext) -> Result<Packet<'
     let mut s = DecodeBytes { input: b, parse_ctx: ctx };
     let p = Packet::dec(&mut s)?;
 
-    if s.input.len() != 0 && !s.ctx().seen_unknown {
+    if !s.input.is_empty() && !s.ctx().seen_unknown {
         // No length check if the packet had an unknown variant
         // - it skipped parsing the remainder of the packet.
         Err(Error::WrongPacketLength)
@@ -199,7 +199,7 @@ impl<'a> SSHSink for EncodeBytes<'a> {
             return Err(WireError::NoRoom);
         }
         // keep the borrow checker happy
-        let tmp = core::mem::replace(&mut self.target, &mut []);
+        let tmp = core::mem::take(&mut self.target);
         let t;
         (t, self.target) = tmp.split_at_mut(v.len());
         t.copy_from_slice(v);

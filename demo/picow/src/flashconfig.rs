@@ -48,8 +48,10 @@ struct FlashConfig<'a> {
 impl FlashConfig<'_> {
     const BUF_SIZE: usize = 4 + SSHConfig::BUF_SIZE + 32;
 }
-const _: () =
-    assert!(FlashConfig::BUF_SIZE % 4 == 0, "flash reads must be a multiple of 4");
+const _: () = assert!(
+    FlashConfig::BUF_SIZE.is_multiple_of(4),
+    "flash reads must be a multiple of 4"
+);
 
 fn config_hash(config: &SSHConfig) -> Result<[u8; 32]> {
     let mut h = sha2::Sha256::new();
@@ -113,8 +115,8 @@ pub async fn load(fl: &mut Fl<'_>) -> Result<SSHConfig> {
 pub async fn save(fl: &mut Fl<'_>, config: &SSHConfig) -> Result<()> {
     let sc = FlashConfig {
         version: SSHConfig::CURRENT_VERSION,
-        config: OwnOrBorrow::Borrow(&config),
-        hash: config_hash(&config)?,
+        config: OwnOrBorrow::Borrow(config),
+        hash: config_hash(config)?,
     };
     let l = sshwire::write_ssh(&mut fl.buf, &sc)?;
     let buf = &fl.buf[..l];
@@ -133,7 +135,7 @@ pub async fn save(fl: &mut Fl<'_>, config: &SSHConfig) -> Result<()> {
 
     trace!("flash write");
     fl.flash
-        .write(CONFIG_OFFSET, &buf)
+        .write(CONFIG_OFFSET, buf)
         .await
         .map_err(|_| Error::msg("flash write error"))?;
 

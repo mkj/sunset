@@ -2,6 +2,7 @@
 //!
 //! `SSHWIRE_DEBUG` environment variable can be set at build time
 //! to write generated files to the `target/` directory.
+#![expect(clippy::useless_format)]
 
 use std::collections::HashSet;
 use std::env;
