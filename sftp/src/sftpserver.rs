@@ -120,7 +120,6 @@ where
     /// to the client since the client will only stop asking for more elements in the
     /// directory when a read dir request is answer with an reply.send_eof()
     ///
-
     #[allow(unused_variables)]
     async fn readdir<const N: usize>(
         &mut self,
@@ -137,6 +136,15 @@ where
     /// Provides the real path of the directory specified
     fn realpath(&mut self, dir: &str) -> SftpOpResult<NameEntry<'_>> {
         log::error!("SftpServer RealPath operation not defined: dir = {:?}", dir);
+        Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
+    }
+
+    /// Provides the stats of the given file path. It does not follow links
+    fn liststats(&mut self, file_path: &str) -> SftpOpResult<Attrs> {
+        log::error!(
+            "SftpServer ListStats operation not defined: file_path = {:?}",
+            file_path
+        );
         Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
     }
 }
@@ -166,25 +174,6 @@ pub struct ChanOut<'g, 'a> {
     _phantom_g: PhantomData<&'g ()>, // 'g look what these might be ChanIO lifetime
     _phantom_a: PhantomData<&'a ()>, // a' Why the second lifetime if ChanIO only needs one
 }
-
-// TODO: complete this once the flow is fully developed
-// `/ The usage is simple:
-// /
-// / 1. SftpHandler will: Initialize the structure
-// / 2. The `SftpServer` trait implementation for 'readdir()' will:
-// /
-// /     - Receive the DirReply ref 'reply'
-// /
-// /     a. If there are items to send:
-// /
-// /         - Instantiate a [`DirEntriesCollection`] with the items in the requested folder
-// /         - call the 'DirEntriesCollection.SendHeader(reply)'
-// /         - call the 'DirEntriesCollection.send_entries(reply)'
-// /
-// /     b. If there are no items to send:
-// /
-// /         - Call the 'reply.send_eof()'
-// TODO Define this
 
 /// Uses for [`DirReply`] to:
 ///
@@ -408,28 +397,52 @@ impl DirEntriesCollection {
     fn get_attrs_or_empty(
         maybe_metadata: Result<Metadata, std::io::Error>,
     ) -> Attrs {
-        maybe_metadata.map(Self::get_attrs).unwrap_or_default()
+        maybe_metadata.map(get_file_attrs).unwrap_or_default()
     }
 
-    fn get_attrs(metadata: Metadata) -> Attrs {
-        let time_to_u32 = |time_result: std::io::Result<SystemTime>| {
-            time_result
-                .ok()?
-                .duration_since(SystemTime::UNIX_EPOCH)
-                .ok()?
-                .as_secs()
-                .try_into()
-                .ok()
-        };
+    // fn get_attrs(metadata: Metadata) -> Attrs {
+    //     let time_to_u32 = |time_result: std::io::Result<SystemTime>| {
+    //         time_result
+    //             .ok()?
+    //             .duration_since(SystemTime::UNIX_EPOCH)
+    //             .ok()?
+    //             .as_secs()
+    //             .try_into()
+    //             .ok()
+    //     };
 
-        Attrs {
-            size: Some(metadata.len()),
-            uid: Some(metadata.st_uid()),
-            gid: Some(metadata.st_gid()),
-            permissions: Some(metadata.permissions().mode()),
-            atime: time_to_u32(metadata.accessed()),
-            mtime: time_to_u32(metadata.modified()),
-            ext_count: None,
-        }
+    //     Attrs {
+    //         size: Some(metadata.len()),
+    //         uid: Some(metadata.st_uid()),
+    //         gid: Some(metadata.st_gid()),
+    //         permissions: Some(metadata.permissions().mode()),
+    //         atime: time_to_u32(metadata.accessed()),
+    //         mtime: time_to_u32(metadata.modified()),
+    //         ext_count: None,
+    //     }
+    // }
+}
+
+#[cfg(feature = "std")]
+/// [`std`] helper function to get [`Attrs`] from a [`Metadata`].
+pub fn get_file_attrs(metadata: Metadata) -> Attrs {
+    let time_to_u32 = |time_result: std::io::Result<SystemTime>| {
+        time_result
+            .ok()?
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .ok()?
+            .as_secs()
+            .try_into()
+            .ok()
+    };
+
+    Attrs {
+        size: Some(metadata.len()),
+        uid: Some(metadata.st_uid()),
+        gid: Some(metadata.st_gid()),
+        permissions: Some(metadata.permissions().mode()),
+        atime: time_to_u32(metadata.accessed()),
+        mtime: time_to_u32(metadata.modified()),
+        ext_count: None,
     }
 }

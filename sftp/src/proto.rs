@@ -158,6 +158,14 @@ pub struct Write<'a> {
     pub data: BinString<'a>,
 }
 
+/// Used for `ssh_fxp_lstat` [response](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.8).
+/// LSTAT does not follow symbolic links
+#[derive(Debug, SSHEncode, SSHDecode)]
+pub struct LStat<'a> {
+    /// The path of the element which stats are to be retrieved
+    pub file_path: TextString<'a>,
+}
+
 // ============================= Responses =============================
 
 /// Used for `ssh_fxp_realpath` [response](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.11).
@@ -848,6 +856,7 @@ sftpmessages! [
             (4, Close, Close<'a>, "ssh_fxp_close"),
             (5, Read, Read<'a>, "ssh_fxp_read"),
             (6, Write, Write<'a>, "ssh_fxp_write"),
+            (7, LStat, LStat<'a>, "ssh_fxp_lstat"),
             (11, OpenDir, OpenDir<'a>, "ssh_fxp_opendir"),
             (12, ReadDir, ReadDir<'a>, "ssh_fxp_readdir"),
             (16, PathInfo, PathInfo<'a>, "ssh_fxp_realpath"),
@@ -858,6 +867,7 @@ sftpmessages! [
             (102, Handle, Handle<'a>, "ssh_fxp_handle"),
             (103, Data, Data<'a>, "ssh_fxp_data"),
             (104, Name, Name, "ssh_fxp_name"),
+            (105, Attrs, Attrs, "ssh_fxp_attrs"),
         },
 ];
 
