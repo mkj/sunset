@@ -585,7 +585,7 @@ pub fn try_as_ascii_str(t: &[u8]) -> WireResult<&str> {
     try_as_ascii(t).map(AsciiStr::as_str)
 }
 
-impl<'de: 'a, 'a> SSHDecode<'de> for &'a str {
+impl<'de> SSHDecode<'de> for &'de str {
     fn dec<S>(s: &mut S) -> WireResult<Self>
     where
         S: SSHSource<'de>,
@@ -596,7 +596,7 @@ impl<'de: 'a, 'a> SSHDecode<'de> for &'a str {
     }
 }
 
-impl<'de: 'a, 'a> SSHDecode<'de> for &'de AsciiStr {
+impl<'de> SSHDecode<'de> for &'de AsciiStr {
     fn dec<S>(s: &mut S) -> WireResult<&'de AsciiStr>
     where
         S: SSHSource<'de>,
