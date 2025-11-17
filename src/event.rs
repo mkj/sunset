@@ -301,7 +301,7 @@ pub enum ServEvent<'g, 'a> {
     /// TODO details
     SessionPty(ServPtyRequest<'g, 'a>),
     /// Server has received one environment variable
-    Environment(ServEnvironmentRequest<'g, 'a>),
+    SessionEnv(ServEnvironmentRequest<'g, 'a>),
 
     /// The SSH session is no longer running
     #[allow(unused)]
@@ -327,7 +327,7 @@ impl Debug for ServEvent<'_, '_> {
             Self::SessionExec(_) => "SessionExec",
             Self::SessionSubsystem(_) => "SessionSubsystem",
             Self::SessionPty(_) => "SessionPty",
-            Self::Environment(_) => "Environment",
+            Self::SessionEnv(_) => "Environment",
             Self::Defunct => "Defunct",
             Self::PollAgain => "PollAgain",
         };
@@ -872,7 +872,7 @@ impl ServEventId {
             }
             Self::Environment { num } => {
                 debug_assert!(matches!(p, Some(Packet::ChannelRequest(_))));
-                Ok(ServEvent::Environment(ServEnvironmentRequest::new(runner, num)))
+                Ok(ServEvent::SessionEnv(ServEnvironmentRequest::new(runner, num)))
             }
             Self::Defunct => Ok(ServEvent::Defunct),
         }
