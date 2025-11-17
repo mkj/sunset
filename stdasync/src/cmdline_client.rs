@@ -319,7 +319,10 @@ impl CmdlineClient {
                         }
                     }
                     CliEvent::Banner(b) => {
-                        println!("Banner from server:\n{}", b.banner()?)
+                        println!(
+                            "Banner from server:\n{}",
+                            EscapeBanner(b.banner()?)
+                        )
                     }
                     CliEvent::Defunct => {
                         trace!("break defunct");
@@ -360,6 +363,22 @@ impl CmdlineClient {
             (io, Some(extin))
         };
         Ok((io, extin))
+    }
+}
+
+/// Disallows ascii control characters, allows newlines.
+struct EscapeBanner<'a>(&'a str);
+
+impl core::fmt::Display for EscapeBanner<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for c in self.0.chars() {
+            if c.is_control() && c != '\n' {
+                f.write_str(".")?;
+            } else {
+                write!(f, "{}", c)?;
+            }
+        }
+        Ok(())
     }
 }
 
