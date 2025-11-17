@@ -188,17 +188,17 @@ struct Args {
     cmd: Vec<String>,
 
     // options for compatibility with sshfs, are ignored
-    #[allow(unused)]
+    #[expect(unused)]
     #[argh(switch, short = 'x', hidden_help)]
     /// no X11
     no_x11: bool,
 
-    #[allow(unused)]
+    #[expect(unused)]
     #[argh(switch, short = 'a', hidden_help)]
     /// no agent forwarding
     no_agent: bool,
 
-    #[allow(unused)]
+    #[expect(unused)]
     #[argh(switch, short = '2', hidden_help)]
     /// ssh version 2
     version_2: bool,

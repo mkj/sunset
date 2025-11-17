@@ -60,7 +60,6 @@ pub enum CliEvent<'g, 'a> {
     // ChanRequest(ChanRequest<'g, 'a>),
     // Banner { banner: TextString<'a>, language: TextString<'a> },
     /// The SSH connection is no longer running
-    #[allow(unused)]
     Defunct,
 
     /// No event was returned.
@@ -198,7 +197,7 @@ pub(crate) enum CliEventId {
     SessionOpened(ChanNum),
     SessionExit,
     Banner,
-    #[allow(unused)]
+    #[expect(unused)]
     Defunct,
     // TODO:
     // Disconnected
@@ -306,7 +305,6 @@ pub enum ServEvent<'g, 'a> {
     SessionEnv(ServEnvironmentRequest<'g, 'a>),
 
     /// The SSH session is no longer running
-    #[allow(unused)]
     Defunct,
 
     /// No event was returned.
@@ -942,7 +940,7 @@ pub(crate) enum ServEventId {
     Environment {
         num: ChanNum,
     },
-    #[allow(unused)]
+    #[expect(unused)]
     Defunct,
     // TODO:
     // Disconnected

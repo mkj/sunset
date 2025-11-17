@@ -106,7 +106,7 @@ impl AlgoConfig {
 }
 
 /// The current state of the Kex
-#[allow(clippy::enum_variant_names)]
+#[expect(clippy::enum_variant_names)]
 #[derive(Debug)]
 pub(crate) enum Kex<CS: CliServ> {
     /// No key exchange in progress
