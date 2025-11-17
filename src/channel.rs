@@ -101,11 +101,7 @@ impl Channels {
         }
     }
 
-    pub fn _from_handle(&self, handle: &ChanHandle) -> &Channel {
-        self.get(handle.0).unwrap()
-    }
-
-    pub fn from_handle_mut(&mut self, handle: &ChanHandle) -> &mut Channel {
+    pub fn by_handle_mut(&mut self, handle: &ChanHandle) -> &mut Channel {
         self.get_mut(handle.0).unwrap()
     }
 

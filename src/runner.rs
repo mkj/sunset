@@ -660,7 +660,7 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
         dt: ChanData,
         waker: &Waker,
     ) {
-        self.conn.channels.from_handle_mut(ch).set_read_waker(
+        self.conn.channels.by_handle_mut(ch).set_read_waker(
             dt,
             CS::is_client(),
             waker,
@@ -673,7 +673,7 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
         dt: ChanData,
         waker: &Waker,
     ) {
-        self.conn.channels.from_handle_mut(ch).set_write_waker(
+        self.conn.channels.by_handle_mut(ch).set_write_waker(
             dt,
             CS::is_client(),
             waker,
