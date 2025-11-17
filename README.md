@@ -49,7 +49,7 @@ Desirable:
 
 ## Rust versions
 
-At the time of writing Sunset will build with Rust 1.83.
+At the time of writing Sunset will build with Rust 1.87.
 The requirement may increase whenever useful, targetting stable.
 
 ## Checks

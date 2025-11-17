@@ -7,6 +7,7 @@ repository = "https://github.com/mkj/sunset"
 categories = ["network-programming", "embedded", "no-std"]
 license = "0BSD"
 keywords = ["ssh"]
+rust-version = "1.87"
 
 [workspace]
 members = [
