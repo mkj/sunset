@@ -323,4 +323,19 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
             return Err(StatusCode::SSH_FX_NO_SUCH_FILE);
         }
     }
+
+    fn liststats(&mut self, file_path: &str) -> SftpOpResult<Attrs> {
+        log::debug!("SftpServer ListStats: file_path = {:?}", file_path);
+        let file_path = Path::new(file_path);
+        if file_path.is_file() {
+            return Ok(sunset_sftp::server::helpers::get_file_attrs(
+                file_path.metadata().map_err(|err| {
+                    error!("Problem listing stats: {:?}", err);
+                    StatusCode::SSH_FX_FAILURE
+                })?,
+            ));
+        } else {
+            return Err(StatusCode::SSH_FX_NO_SUCH_FILE);
+        }
+    }
 }
