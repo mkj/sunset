@@ -4,7 +4,7 @@ use crate::{
 };
 
 use sunset_sftp::handles::{OpaqueFileHandleManager, PathFinder};
-use sunset_sftp::protocol::{Attrs, Filename, Name, NameEntry, StatusCode};
+use sunset_sftp::protocol::{Attrs, Filename, NameEntry, PFlags, StatusCode};
 use sunset_sftp::server::helpers::DirEntriesCollection;
 use sunset_sftp::server::{
     DirReply, ReadReply, ReadStatus, SftpOpResult, SftpServer,
@@ -14,6 +14,8 @@ use sunset_sftp::server::{
 use log::{debug, error, info, log, trace, warn};
 use std::fs;
 use std::{fs::File, os::unix::fs::FileExt, path::Path};
+
+use std::os::unix::fs::PermissionsExt;
 
 #[derive(Debug)]
 pub(crate) enum PrivatePathHandle {
@@ -105,16 +107,13 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
     fn open(
         &mut self,
         filename: &str,
-        attrs: &Attrs,
+        mode: &PFlags,
     ) -> SftpOpResult<DemoOpaqueFileHandle> {
-        debug!("Open file: filename = {:?}, attributes = {:?}", filename, attrs);
+        debug!("Open file: filename = {:?}, mode = {:?}", filename, mode);
 
-        let poxit_attr = attrs
-            .permissions
-            .as_ref()
-            .ok_or(StatusCode::SSH_FX_PERMISSION_DENIED)?;
-        let can_write = poxit_attr & 0o222 > 0;
-        let can_read = poxit_attr & 0o444 > 0;
+        let can_write = u32::from(mode) & u32::from(&PFlags::SSH_FXF_WRITE) > 0;
+        let can_read = u32::from(mode) & u32::from(&PFlags::SSH_FXF_READ) > 0;
+
         debug!(
             "File open for read/write access: can_read={:?}, can_write={:?}",
             can_read, can_write
@@ -123,14 +122,21 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
         let file = File::options()
             .read(can_read)
             .write(can_write)
-            .create(true)
+            .create(can_write)
             .open(filename)
             .map_err(|_| StatusCode::SSH_FX_FAILURE)?;
+
+        let permissions = file
+            .metadata()
+            .map_err(|_| StatusCode::SSH_FX_FAILURE)?
+            .permissions()
+            .mode()
+            & 0o777;
 
         let fh = self.handles_manager.insert(
             PrivatePathHandle::File(PrivateFileHandle {
                 path: filename.into(),
-                permissions: attrs.permissions,
+                permissions: Some(permissions),
                 file,
             }),
             OPAQUE_SALT,
@@ -324,16 +330,24 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
         }
     }
 
-    fn liststats(&mut self, file_path: &str) -> SftpOpResult<Attrs> {
+    fn stats(&mut self, follow_links: bool, file_path: &str) -> SftpOpResult<Attrs> {
         log::debug!("SftpServer ListStats: file_path = {:?}", file_path);
         let file_path = Path::new(file_path);
+
+        let metadata = if follow_links {
+            file_path.metadata() // follows symlinks
+        } else {
+            file_path.symlink_metadata() // doesn't follow symlinks
+        }
+        .map_err(|err| {
+            error!("Problem listing stats: {:?}", err);
+            StatusCode::SSH_FX_FAILURE
+        })?;
+
         if file_path.is_file() {
-            return Ok(sunset_sftp::server::helpers::get_file_attrs(
-                file_path.metadata().map_err(|err| {
-                    error!("Problem listing stats: {:?}", err);
-                    StatusCode::SSH_FX_FAILURE
-                })?,
-            ));
+            return Ok(sunset_sftp::server::helpers::get_file_attrs(metadata));
+        } else if file_path.is_symlink() {
+            return Ok(sunset_sftp::server::helpers::get_file_attrs(metadata));
         } else {
             return Err(StatusCode::SSH_FX_NO_SUCH_FILE);
         }

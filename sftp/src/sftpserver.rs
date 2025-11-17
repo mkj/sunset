@@ -1,6 +1,6 @@
 use crate::error::SftpResult;
 use crate::proto::{
-    ENCODED_BASE_NAME_SFTP_PACKET_LENGTH, MAX_NAME_ENTRY_SIZE, NameEntry,
+    ENCODED_BASE_NAME_SFTP_PACKET_LENGTH, MAX_NAME_ENTRY_SIZE, NameEntry, PFlags,
 };
 use crate::server::SftpSink;
 use crate::sftphandler::SftpOutputProducer;
@@ -51,11 +51,11 @@ where
     T: OpaqueFileHandle,
 {
     /// Opens a file for reading/writing
-    fn open(&'_ mut self, path: &str, attrs: &Attrs) -> SftpOpResult<T> {
+    fn open(&'_ mut self, path: &str, mode: &PFlags) -> SftpOpResult<T> {
         log::error!(
             "SftpServer Open operation not defined: path = {:?}, attrs = {:?}",
             path,
-            attrs
+            mode
         );
         Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
     }
@@ -139,10 +139,12 @@ where
         Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
     }
 
-    /// Provides the stats of the given file path. It does not follow links
-    fn liststats(&mut self, file_path: &str) -> SftpOpResult<Attrs> {
+    /// Provides the stats of the given file path
+    fn stats(&mut self, follow_links: bool, file_path: &str) -> SftpOpResult<Attrs> {
         log::error!(
-            "SftpServer ListStats operation not defined: file_path = {:?}",
+            "SftpServer Stats operation not defined: follow_link = {:?}, \
+            file_path = {:?}",
+            follow_links,
             file_path
         );
         Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
@@ -399,28 +401,6 @@ impl DirEntriesCollection {
     ) -> Attrs {
         maybe_metadata.map(get_file_attrs).unwrap_or_default()
     }
-
-    // fn get_attrs(metadata: Metadata) -> Attrs {
-    //     let time_to_u32 = |time_result: std::io::Result<SystemTime>| {
-    //         time_result
-    //             .ok()?
-    //             .duration_since(SystemTime::UNIX_EPOCH)
-    //             .ok()?
-    //             .as_secs()
-    //             .try_into()
-    //             .ok()
-    //     };
-
-    //     Attrs {
-    //         size: Some(metadata.len()),
-    //         uid: Some(metadata.st_uid()),
-    //         gid: Some(metadata.st_gid()),
-    //         permissions: Some(metadata.permissions().mode()),
-    //         atime: time_to_u32(metadata.accessed()),
-    //         mtime: time_to_u32(metadata.modified()),
-    //         ext_count: None,
-    //     }
-    // }
 }
 
 #[cfg(feature = "std")]
