@@ -6,13 +6,12 @@ use {
 
 use crate::sshnames::*;
 use crate::*;
-use event::{CliEvent, ServEventId};
+use event::ServEventId;
 use kex::SessId;
 use packets::{AuthMethod, Packet, Userauth60, UserauthPkOk, UserauthRequest};
-use sshwire::{BinString, Blob};
 use traffic::TrafSend;
 
-use heapless::{String, Vec};
+use heapless::Vec;
 
 /// Server authentication context
 ///

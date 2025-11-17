@@ -18,13 +18,13 @@ use ml_kem::{
     kem::{Decapsulate, Encapsulate, EncapsulationKey, Kem},
     Ciphertext, EncodedSizeUser, KemCore, MlKem768, MlKem768Params,
 };
-use rand_core::{CryptoRng, OsRng, RngCore};
+use rand_core::OsRng;
 use sha2::Sha256;
-use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
+use zeroize::ZeroizeOnDrop;
 
 use crate::*;
 use encrypt::{Cipher, Integ, KeysRecv, KeysSend};
-use event::{CliEventId, ServEventId};
+use event::ServEventId;
 use ident::RemoteVersion;
 use namelist::{LocalNames, NameList};
 use packets::{KexCookie, Packet, PubKey, Signature};
@@ -1048,16 +1048,12 @@ impl KexMlkemX25519 {
 
 #[cfg(test)]
 mod tests {
-    use pretty_hex::PrettyHex;
-
     use crate::encrypt::{self, KeyState, KeysRecv, KeysSend, SSH_PAYLOAD_START};
-    use crate::error::Error;
     use crate::ident::RemoteVersion;
     use crate::kex;
     use crate::kex::*;
-    use crate::packets::{Packet, ParseContext};
+    use crate::packets::Packet;
     use crate::sunsetlog::init_test_log;
-    use crate::*;
     use std::collections::VecDeque;
 
     // TODO:

@@ -9,13 +9,9 @@ use {
 use zeroize::Zeroize;
 
 use crate::channel::{ChanData, ChanNum};
-use crate::encrypt::{
-    KeyState, KeysRecv, KeysSend, SSH_LENGTH_SIZE, SSH_PAYLOAD_START,
-};
+use crate::encrypt::{KeyState, KeysRecv, KeysSend, SSH_PAYLOAD_START};
 use crate::ident::RemoteVersion;
-use crate::packets::Packet;
 use crate::*;
-use pretty_hex::PrettyHex;
 
 // TODO: if smoltcp exposed both ends of a CircularBuffer to recv()
 // we could perhaps just work directly in smoltcp's provided buffer?

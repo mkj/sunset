@@ -8,25 +8,21 @@ use {
 
 use core::num::NonZeroUsize;
 use core::task::Waker;
-use core::{marker::PhantomData, mem};
 
-use heapless::{Deque, String, Vec};
+use heapless::{String, Vec};
 
 use crate::{runner::set_waker, *};
 use config::*;
 use conn::DispatchEvent;
-use conn::Dispatched;
 use event::{CliEventId, ServEventId};
 use packets::{
-    ChannelData, ChannelDataExt, ChannelOpen, ChannelOpenFailure, ChannelOpenType,
-    ChannelReqType, ChannelRequest, Packet,
+    ChannelData, ChannelDataExt, ChannelOpen, ChannelOpenType, ChannelReqType,
+    ChannelRequest, Packet,
 };
 use runner::ChanHandle;
 use sshnames::*;
 use sshwire::{BinString, SSHEncodeEnum, TextString};
 use traffic::TrafSend;
-
-use snafu::ErrorCompat;
 
 pub(crate) struct Channels {
     ch: [Option<Channel>; config::MAX_CHANNELS],

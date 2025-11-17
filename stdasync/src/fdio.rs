@@ -8,7 +8,7 @@ use tokio::io::{AsyncRead, AsyncWrite, Interest, ReadBuf};
 use std::fs::File;
 use std::io::Error as IoError;
 use std::io::{Read, Write};
-use std::os::fd::{AsRawFd, FromRawFd, RawFd};
+use std::os::fd::{AsRawFd, FromRawFd};
 
 use core::pin::Pin;
 use core::task::{Context, Poll};

@@ -4,16 +4,8 @@ use {
     log::{debug, error, info, log, trace, warn},
 };
 
-use core::task::{Poll, Waker};
-use heapless::{String, Vec};
-
 use crate::*;
-use client::*;
 use kex::SessId;
-use packets::ParseContext;
-use packets::{Packet, Signature, Userauth60};
-use sign::SignKey;
-use sshnames::*;
 use sshwire::{BinString, SSHEncode, WireResult};
 
 /// The message to be signed in a pubkey authentication message,

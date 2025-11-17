@@ -4,21 +4,13 @@ use {
     log::{debug, error, info, log, trace, warn},
 };
 
-use core::{
-    hash::Hash,
-    mem::discriminant,
-    task::{Poll, Waker},
-};
+use core::{hash::Hash, mem::discriminant, task::Waker};
 
-use pretty_hex::PrettyHex;
-
-use crate::packets::{Packet, Subsystem};
 use crate::*;
 use channel::{ChanData, ChanNum};
 use channel::{CliSessionExit, CliSessionOpener};
 use encrypt::KeyState;
 use event::{CliEvent, CliEventId, Event, ServEvent, ServEventId};
-use packets::{ChannelData, ChannelDataExt};
 use traffic::{TrafIn, TrafOut};
 
 use conn::{CliServ, Conn, DispatchEvent, Dispatched};

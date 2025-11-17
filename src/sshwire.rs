@@ -12,11 +12,9 @@ use {
 };
 
 use core::convert::AsRef;
-use core::fmt::{self, Debug, Display};
+use core::fmt::{Debug, Display};
 use core::str::FromStr;
-use digest::Output;
 use pretty_hex::PrettyHex;
-use snafu::{prelude::*, Location};
 
 use ascii::{AsAsciiStr, AsciiChar, AsciiStr};
 

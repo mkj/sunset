@@ -13,12 +13,8 @@ use core::fmt;
 use core::fmt::Debug;
 use core::num::Wrapping;
 
-use aes::{
-    cipher::{BlockSizeUser, KeyIvInit, KeySizeUser, StreamCipher},
-    Aes256,
-};
-use hmac::{Hmac, Mac};
-use pretty_hex::PrettyHex;
+use aes::cipher::{BlockSizeUser, KeyIvInit, KeySizeUser, StreamCipher};
+use hmac::Mac;
 use sha2::Digest as Sha2DigestForTrait;
 use zeroize::ZeroizeOnDrop;
 
@@ -26,7 +22,6 @@ use crate::*;
 use kex::{self, SessId};
 use ssh_chapoly::SSHChaPoly;
 use sshnames::*;
-use sshwire::hash_mpint;
 
 // TODO: check that Ctr32 is sufficient. Should be OK with SSH rekeying.
 type Aes256Ctr32BE = ctr::Ctr32BE<aes::Aes256>;

@@ -2,12 +2,9 @@ use core::str::Utf8Error;
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
 
-use core::fmt;
 use core::fmt::Arguments;
 
-use snafu::{prelude::*, Backtrace, Location};
-
-use heapless::String;
+use snafu::prelude::*;
 
 use crate::channel::ChanNum;
 
@@ -299,8 +296,4 @@ impl From<std::io::Error> for Error {
 }
 
 #[cfg(test)]
-pub(crate) mod tests {
-    use crate::error::*;
-    use crate::packets::Unknown;
-    use crate::sunsetlog::init_test_log;
-}
+pub(crate) mod tests {}

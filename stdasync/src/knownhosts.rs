@@ -1,12 +1,11 @@
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
 
-use std::fs::{File, OpenOptions};
+use std::fs::File;
 use std::io;
 use std::io::{BufRead, Read, Write};
 use std::path::{Path, PathBuf};
 
-use crate::*;
 use sunset::packets::PubKey;
 
 type OpenSSHKey = ssh_key::PublicKey;

@@ -14,7 +14,7 @@ use sunset_sshwire_derive::{SSHDecode, SSHEncode};
 
 use crate::*;
 use heapless::Vec;
-use sshwire::{BinString, SSHDecode, SSHEncode, SSHSink, SSHSource, WireResult};
+use sshwire::{SSHDecode, SSHEncode, SSHSink, SSHSource, WireResult};
 
 // Used for lists of:
 // - algorithm names
@@ -222,8 +222,7 @@ impl LocalNames {
 #[cfg(test)]
 mod tests {
     use crate::namelist::*;
-    use crate::sunsetlog::init_test_log;
-    use pretty_hex::PrettyHex;
+
     use std::vec::Vec;
 
     #[test]

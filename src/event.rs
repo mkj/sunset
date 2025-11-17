@@ -1,11 +1,3 @@
-/// Events used by applications running the SSH connection
-///
-/// These include hostkeys, authentication, and shell/command sessions
-use self::{
-    channel::Channel,
-    packets::{AuthMethod, MethodPubKey, UserauthRequest},
-};
-
 #[allow(unused_imports)]
 use {
     crate::error::{Error, Result, TrapBug},
@@ -14,7 +6,6 @@ use {
 };
 
 use core::fmt::Debug;
-use core::mem::Discriminant;
 
 use crate::*;
 use channel::{CliSessionExit, CliSessionOpener};

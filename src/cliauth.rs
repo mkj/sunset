@@ -1,7 +1,4 @@
-use self::{
-    conn::DispatchEvent,
-    event::{CliEvent, CliEventId},
-};
+use self::{conn::DispatchEvent, event::CliEventId};
 
 #[allow(unused_imports)]
 use {
@@ -9,21 +6,15 @@ use {
     log::{debug, error, info, log, trace, warn},
 };
 
-use core::task::{Poll, Waker};
-use heapless::{String, Vec};
-use pretty_hex::PrettyHex;
+use heapless::String;
 
 use crate::{packets::UserauthPkOk, *};
 use auth::AuthType;
-use client::*;
 use kex::SessId;
-use packets::{
-    AuthMethod, MessageNumber, MethodPubKey, ParseContext, UserauthRequest,
-};
-use packets::{Packet, Signature, Userauth60};
+use packets::{AuthMethod, MethodPubKey, ParseContext};
+use packets::{Packet, Userauth60};
 use sign::{OwnedSig, SignKey};
 use sshnames::*;
-use sshwire::{BinString, Blob};
 use traffic::TrafSend;
 
 #[derive(Debug)]

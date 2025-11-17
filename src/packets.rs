@@ -15,7 +15,6 @@ use core::fmt::{Debug, Display};
 
 #[cfg(feature = "arbitrary")]
 use arbitrary::Arbitrary;
-use heapless::String;
 use pretty_hex::PrettyHex;
 
 use sunset_sshwire_derive::*;
@@ -24,10 +23,9 @@ use crate::*;
 use namelist::NameList;
 use sign::{OwnedSig, SigType};
 use sshnames::*;
+use sshwire::SSHEncodeEnum;
 use sshwire::{BinString, Blob, TextString};
 use sshwire::{SSHDecode, SSHEncode, SSHSink, SSHSource, WireError, WireResult};
-use sshwire::{SSHDecodeEnum, SSHEncodeEnum};
-use subtle::ConstantTimeEq;
 
 #[cfg(feature = "rsa")]
 use rsa::traits::PublicKeyParts;
@@ -1090,11 +1088,11 @@ messagetypes![
 #[cfg(test)]
 mod tests {
     use crate::packets::*;
-    use crate::sshnames::*;
-    use crate::sshwire::tests::{assert_serialize_equal, test_roundtrip};
+
+    use crate::packets;
+    use crate::sshwire::tests::test_roundtrip;
     use crate::sshwire::{packet_from_bytes, write_ssh};
     use crate::sunsetlog::init_test_log;
-    use crate::{packets, sshwire};
     use pretty_hex::PrettyHex;
 
     #[test]

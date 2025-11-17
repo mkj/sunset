@@ -12,21 +12,14 @@ use {
     log::{debug, error, info, log, trace, warn},
 };
 
-use core::char::MAX;
-use core::task::{Poll, Waker};
-
-use heapless::Vec;
 use pretty_hex::PrettyHex;
 
 use crate::*;
 use channel::{Channels, CliSessionExit};
 use client::Client;
-use config::MAX_CHANNELS;
-use event::{CliEvent, ServEvent};
 use kex::{AlgoConfig, Kex, SessId};
 use packets::{Packet, ParseContext};
 use server::Server;
-use sshnames::*;
 use traffic::TrafSend;
 
 /// The core state of a SSH instance.
@@ -722,8 +715,4 @@ impl Conn<Server> {
 }
 
 #[cfg(test)]
-mod tests {
-    use crate::conn::*;
-    use crate::error::Error;
-    use crate::sunsetlog::*;
-}
+mod tests {}
