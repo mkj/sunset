@@ -210,7 +210,7 @@ impl CliServ for server::Server {
         Some(self)
     }
 
-    #[allow(private_interfaces)]
+    #[expect(private_interfaces)]
     fn dispatch_into_event<'a, 'g>(
         runner: &'g mut Runner<'a, Self>,
         disp: DispatchEvent,
