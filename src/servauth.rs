@@ -80,7 +80,7 @@ impl ServAuth {
             match Vec::from_slice(p.username.0) {
                 Result::Ok(u) => self.username = Some(u),
                 Result::Err(_) => {
-                    warn!("Client tried too long username");
+                    warn!("Client tried too long username, {}", p.username.0.len());
                     return error::SSHProtoUnsupported.fail();
                 }
             }
