@@ -300,7 +300,8 @@ pub enum ServEvent<'g, 'a> {
     ///
     /// TODO details
     SessionPty(ServPtyRequest<'g, 'a>),
-    /// Server has received one environment variable
+    /// Server has received one environment variable.
+    /// Note: input strings are not sanitised.
     SessionEnv(ServEnvironmentRequest<'g, 'a>),
 
     /// The SSH session is no longer running
