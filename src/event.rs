@@ -301,6 +301,9 @@ pub enum ServEvent<'g, 'a> {
     ///
     /// TODO details
     SessionPty(ServPtyRequest<'g, 'a>),
+    /// Server has received one environment variable.
+    /// Note: input strings are not sanitised.
+    SessionEnv(ServEnvironmentRequest<'g, 'a>),
 
     /// The SSH session is no longer running
     #[allow(unused)]
@@ -326,6 +329,7 @@ impl Debug for ServEvent<'_, '_> {
             Self::SessionExec(_) => "SessionExec",
             Self::SessionSubsystem(_) => "SessionSubsystem",
             Self::SessionPty(_) => "SessionPty",
+            Self::SessionEnv(_) => "Environment",
             Self::Defunct => "Defunct",
             Self::PollAgain => "PollAgain",
         };
@@ -745,7 +749,7 @@ impl<'g, 'a> ServExecRequest<'g, 'a> {
         self.raw_command()?.as_str()
     }
 
-    pub fn raw_command(&self) -> Result<TextString<'_>> {
+    fn raw_command(&self) -> Result<TextString<'_>> {
         self.runner.fetch_servcommand()
     }
 
@@ -847,6 +851,69 @@ impl Drop for ServPtyRequest<'_, '_> {
     }
 }
 
+/// An environment variable request
+///
+pub struct ServEnvironmentRequest<'g, 'a> {
+    runner: &'g mut Runner<'a, Server>,
+    num: ChanNum,
+    done: bool,
+}
+
+impl<'g, 'a> ServEnvironmentRequest<'g, 'a> {
+    fn new(runner: &'g mut Runner<'a, Server>, num: ChanNum) -> Self {
+        Self { runner, num, done: false }
+    }
+
+    /// Indicate that the request succeeded.
+    ///
+    /// Note that if the peer didn't request a reply, this call
+    /// will not do anything.
+    pub fn succeed(mut self) -> Result<()> {
+        self.done = true;
+        self.runner.resume_chanreq(true)
+    }
+
+    /// Indicate that the request failed.
+    ///
+    /// Note that if the peer didn't request a reply, this call
+    /// will not do anything.
+    /// Does not need to be called explicitly, also occurs on drop without `accept()`
+    pub fn fail(mut self) -> Result<()> {
+        self.done = true;
+        self.runner.resume_chanreq(false)
+    }
+
+    /// Return the associated channel number.
+    ///
+    /// This will correspond to a `ChanHandle::num()`
+    /// from a previous [`ServOpenSession`] event.
+    pub fn channel(&self) -> ChanNum {
+        self.num
+    }
+
+    /// Retrieve the name of the environment variable (from NAME=VALUE pair).
+    pub fn name(&self) -> Result<&str> {
+        self.raw_name()?.as_str()
+    }
+
+    /// Retrieve the raw name of the environment variable.
+    fn raw_name(&self) -> Result<TextString<'_>> {
+        self.runner.fetch_env_name()
+    }
+
+    /// Retrieve the value of the environment variable (from NAME=VALUE pair).
+    pub fn value(&self) -> Result<&str> {
+        self.raw_value()?.as_str()
+    }
+
+    /// Retrieve the raw value of the environment variable.
+    fn raw_value(&self) -> Result<TextString<'_>> {
+        self.runner.fetch_env_value()
+    }
+
+    // TODO: does the app care about wantreply?
+}
+
 // Only small values should be stored inline.
 // Larger state is retrieved from the current packet via Runner::fetch_*()
 #[derive(Debug, Clone)]
@@ -870,6 +937,9 @@ pub(crate) enum ServEventId {
         num: ChanNum,
     },
     SessionPty {
+        num: ChanNum,
+    },
+    Environment {
         num: ChanNum,
     },
     #[allow(unused)]
@@ -925,6 +995,10 @@ impl ServEventId {
                 debug_assert!(matches!(p, Some(Packet::ChannelRequest(_))));
                 Ok(ServEvent::SessionPty(ServPtyRequest::new(runner, num)))
             }
+            Self::Environment { num } => {
+                debug_assert!(matches!(p, Some(Packet::ChannelRequest(_))));
+                Ok(ServEvent::SessionEnv(ServEnvironmentRequest::new(runner, num)))
+            }
             Self::Defunct => Ok(ServEvent::Defunct),
         }
     }
@@ -942,6 +1016,7 @@ impl ServEventId {
             | Self::SessionShell { .. }
             | Self::SessionExec { .. }
             | Self::SessionSubsystem { .. }
+            | Self::Environment { .. }
             | Self::SessionPty { .. } => true,
         }
     }

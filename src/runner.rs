@@ -778,6 +778,7 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
                 | DispatchEvent::ServEvent(ServEventId::SessionExec { .. })
                 | DispatchEvent::ServEvent(ServEventId::SessionSubsystem { .. })
                 | DispatchEvent::ServEvent(ServEventId::SessionPty { .. })
+                | DispatchEvent::ServEvent(ServEventId::Environment { .. })
         ));
     }
 
@@ -799,6 +800,20 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
         let (payload, _seq) = self.traf_in.payload().trap()?;
         let p = self.conn.packet(payload)?;
         self.conn.channels.fetch_servcommand(&p)
+    }
+
+    pub(crate) fn fetch_env_name(&self) -> Result<TextString<'_>> {
+        Self::check_chanreq(&self.resume_event);
+        let (payload, _seq) = self.traf_in.payload().trap()?;
+        let p = self.conn.packet(payload)?;
+        self.conn.channels.fetch_env_name(&p)
+    }
+
+    pub(crate) fn fetch_env_value(&self) -> Result<TextString<'_>> {
+        Self::check_chanreq(&self.resume_event);
+        let (payload, _seq) = self.traf_in.payload().trap()?;
+        let p = self.conn.packet(payload)?;
+        self.conn.channels.fetch_env_value(&p)
     }
 }
 

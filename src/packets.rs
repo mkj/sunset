@@ -2,7 +2,7 @@
 //!
 //! A [`Packet`] can be encoded/decoded to the
 //! SSH Binary Packet Protocol using [`sshwire`].
-//! SSH packet format is described in [RFC4253](https://tools.ietf.org/html/rfc5643) SSH Transport
+//! SSH packet format is described in [RFC4253](https://tools.ietf.org/html/rfc4253#section-6) SSH Transport
 
 #[allow(unused_imports)]
 use {
@@ -722,6 +722,8 @@ pub enum ChannelReqType<'a> {
     Subsystem(Subsystem<'a>),
     #[sshwire(variant = "window-change")]
     WinChange(WinChange),
+    #[sshwire(variant = "env")]
+    Environment(Environment<'a>),
     #[sshwire(variant = "signal")]
     Signal(Signal<'a>),
     #[sshwire(variant = "exit-status")]
@@ -736,7 +738,6 @@ pub enum ChannelReqType<'a> {
     // Other requests that aren't implemented at present:
     // auth-agent-req@openssh.com
     // x11-req
-    // env
     // xon-xoff
     #[sshwire(unknown)]
     Unknown(Unknown<'a>),
@@ -775,6 +776,14 @@ pub struct WinChange {
     pub rows: u32,
     pub width: u32,
     pub height: u32,
+}
+
+/// An environment variable
+#[derive(Debug, SSHEncode, SSHDecode)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
+pub struct Environment<'a> {
+    pub name: TextString<'a>,
+    pub value: TextString<'a>,
 }
 
 /// A unix signal channel request
