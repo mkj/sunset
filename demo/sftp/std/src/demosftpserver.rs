@@ -286,7 +286,7 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
             debug!("Starting reading loop: remaining = {}", remaining);
             while remaining > 0 {
                 let next_read_len: usize = remaining.min(read_buff.len());
-                debug!("next_read_len = {}", next_read_len);
+                trace!("next_read_len = {}", next_read_len);
                 let br = private_file_handle
                     .file
                     .read_at(&mut read_buff[..next_read_len], running_offset)
@@ -294,16 +294,17 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
                         error!("read error: {:?}", err);
                         StatusCode::SSH_FX_FAILURE
                     })?;
-                debug!("{} bytes readed", br);
+                trace!("{} bytes readed", br);
                 reply.send_data(&read_buff[..br.min(remaining)]).await?;
-                debug!("Read sent {} bytes", br.min(remaining));
-                debug!("remaining {} bytes. {} byte read", remaining, br);
+                trace!("Read sent {} bytes", br.min(remaining));
+                trace!("remaining {} bytes. {} byte read", remaining, br);
 
                 remaining =
                     remaining.checked_sub(br).ok_or(StatusCode::SSH_FX_FAILURE)?;
-                debug!(
+                trace!(
                     "after substracting {} bytes, there are {} bytes remaining",
-                    br, remaining
+                    br,
+                    remaining
                 );
                 running_offset = running_offset
                     .checked_add(br as u64)

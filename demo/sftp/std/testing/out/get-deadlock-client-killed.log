@@ -1,0 +1,55 @@
+Server:
+
+[2025-11-18T04:08:59.480314646Z TRACE sunset_sftp::sftphandler::sftphandler] SFTP: About to read bytes from SSH Channel
+[2025-11-18T04:08:59.481255533Z DEBUG sunset_sftp::sftphandler::sftphandler] SFTP <---- received: 29 bytes
+[2025-11-18T04:08:59.481288052Z TRACE sunset_sftp::sftphandler::sftphandler] SFTP <---- received: [0, 0, 0, 25, 5, 0, 0, 0, 18, 0, 0, 0, 4, 195, 17, 206, 102, 0, 0, 0, 0, 0, 0, 128, 0, 0, 0, 128, 0]
+[2025-11-18T04:08:59.481298059Z TRACE sunset_sftp::sftphandler::sftphandler] Received 29 bytes to process
+[2025-11-18T04:08:59.481322710Z TRACE sunset_sftp::sftphandler::sftphandler] Entering loop to process the full received buffer
+[2025-11-18T04:08:59.481347629Z DEBUG sunset_sftp::sftphandler::sftphandler] <=======================[ SFTP Process State: Idle ]=======================> Buffer remaining: 29
+[2025-11-18T04:08:59.481375365Z DEBUG sunset_sftp::sftphandler::sftphandler] Creating a source: buf_len = 29
+[2025-11-18T04:08:59.481403061Z DEBUG sunset_sftp::sftphandler::sftphandler] Handling general request: Read(ReqId(18), Read { handle: FileHandle(BinString(len=4)), offset: 32768, len: 32768 })
+[2025-11-18T04:08:59.481434849Z DEBUG sunset_demo_sftp_std::demosftpserver] SftpServer Read operation: handle = DemoOpaqueFileHandle { tiny_hash: [195, 17, 206, 102] }, filepath = "./demo/sftp/std/testing/out/./64kB_random", offset = 32768, len = 32768
+[2025-11-18T04:08:59.481473199Z DEBUG sunset_demo_sftp_std::demosftpserver] Starting reading loop: remaining = 32768
+[2025-11-18T04:08:59.530448787Z DEBUG sunset_demo_sftp_std::demosftpserver] Finished sending data
+[2025-11-18T04:08:59.530485451Z TRACE sunset_sftp::sftphandler::sftphandler] New buffer len 0 bytes 
+[2025-11-18T04:08:59.530493205Z TRACE sunset_sftp::sftphandler::sftphandler] Process checking buf len 0
+[2025-11-18T04:08:59.530497236Z TRACE sunset_sftp::sftphandler::sftphandler] Exiting process with Ok(())
+[2025-11-18T04:08:59.530500918Z TRACE sunset_sftp::sftphandler::sftphandler] SFTP: About to read bytes from SSH Channel
+[2025-11-18T04:09:04.048434784Z WARN  sunset_async::async_sunset] rx complete ()
+[2025-11-18T04:09:04.048557097Z INFO  sunset_demo_common::server] Listening on TCP:22...
+
+Client:
+
+sftp> get ./64kB_random
+debug3: Looking up ./demo/sftp/std/testing/out/./64kB_random
+debug3: Sent message fd 3 T:7 I:14
+debug3: Received stat reply T:105 I:14 F:0x000f M:100644
+Fetching ./demo/sftp/std/testing/out/./64kB_random to 64kB_random
+debug2: do_download: download remote "./demo/sftp/std/testing/out/./64kB_random" to local "64kB_random"
+debug2: Sending SSH2_FXP_STAT "./demo/sftp/std/testing/out/./64kB_random"
+debug3: Sent message fd 3 T:17 I:15
+debug3: Received stat reply T:105 I:15 F:0x000f M:100644
+debug2: Sending SSH2_FXP_OPEN "./demo/sftp/std/testing/out/./64kB_random"
+debug3: Sent remote message SSH2_FXP_OPEN I:16 P:./demo/sftp/std/testing/out/./64kB_random M:0x0001
+64kB_random                                                   0%    0     0.0KB/s   --:-- ETAdebug3: Request range 0 -> 32767 (0/1)
+debug3: Received reply T:103 I:17 R:1
+debug3: Received data 0 -> 32767
+debug3: Request range 32768 -> 65535 (0/2)
+debug3: Request range 65536 -> 98303 (1/2)
+debug2: channel 0: rcvd adjust 534
+debug3: Received reply T:103 I:18 R:2
+debug3: Received data 32768 -> 65535
+debug3: Finish at 98304 ( 1)
+64kB_random                                                 100%   64KB  16.0KB/s   00:04    debug3: send packet: type 1
+debug1: channel 0: free: client-session, nchannels 1
+debug3: channel 0: status: The following connections are open:
+  #0 client-session (t4 r0 i0/0 o0/0 e[write]/0 fd 4/5/6 sock -1 cc -1 io 0x01/0x02)
+
+Killed by signal 15.
+DOWNLOAD Test Results:
+=============
+Download PASS: 512B_random
+Download PASS: 16kB_random
+Download PASS: 64kB_random
+Download FAIL: 65kB_random
+Cleaning up local files...

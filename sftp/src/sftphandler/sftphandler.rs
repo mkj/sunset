@@ -503,6 +503,7 @@ where
 
         let processing_loop = async {
             loop {
+                trace!("SFTP: About to read bytes from SSH Channel");
                 let lr = chan_in.read(buffer_in).await?;
 
                 debug!("SFTP <---- received: {:?} bytes", lr);

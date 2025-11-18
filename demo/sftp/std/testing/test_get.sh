@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "Testing Stats..."
+echo "Testing Multiple GETs..."
 
 # Set remote server details
 REMOTE_HOST="192.168.69.2"
@@ -42,7 +42,7 @@ echo "Cleaning up original files..."
 rm -f -r ./*_random
 
 # Download the files
-sftp -vvv -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR ${REMOTE_USER}@${REMOTE_HOST}  << EOF
+sftp -vvvvv -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR ${REMOTE_USER}@${REMOTE_HOST}  << EOF
 $(printf 'get ./%s\n' "${FILES[@]}")
 
 bye

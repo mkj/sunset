@@ -1,0 +1,351 @@
+[2025-11-18T04:00:55.665183905Z DEBUG sunset_sftp::sftphandler::sftphandler] Creating a source: buf_len = 54
+[2025-11-18T04:00:55.665245066Z DEBUG sunset_sftp::sftphandler::sftphandler] Handling general request: LStat(ReqId(2), LStat { file_path: TextString("./demo/sftp/std/testing/out/./512B_random") })
+[2025-11-18T04:00:55.665306824Z DEBUG sunset_demo_sftp_std::demosftpserver] SftpServer ListStats: file_path = "./demo/sftp/std/testing/out/./512B_random"
+[2025-11-18T04:00:55.665390942Z DEBUG sunset_sftp::sftphandler::sftphandler] List stats for "./demo/sftp/std/testing/out/./512B_random" is Attrs { size: Some(512), uid: Some(1000), gid: Some(1000), permissions: Some(33188), atime: Some(1763438455), mtime: Some(1763438454), ext_count: None }
+[2025-11-18T04:00:55.665420750Z TRACE sunset_sftp::sftphandler::sftphandler] New buffer len 0 bytes 
+[2025-11-18T04:00:55.665429106Z TRACE sunset_sftp::sftphandler::sftphandler] Process checking buf len 0
+[2025-11-18T04:00:55.665497840Z TRACE sunset_sftp::sftphandler::sftphandler] Exiting process with Ok(())
+[2025-11-18T04:00:55.665556398Z TRACE sunset_sftp::sftphandler::sftphandler] SFTP: About to read bytes from SSH Channel
+[2025-11-18T04:00:55.666039369Z DEBUG sunset_sftp::sftphandler::sftphandler] SFTP <---- received: 54 bytes
+[2025-11-18T04:00:55.666069600Z TRACE sunset_sftp::sftphandler::sftphandler] SFTP <---- received: [0, 0, 0, 50, 17, 0, 0, 0, 3, 0, 0, 0, 41, 46, 47, 100, 101, 109, 111, 47, 115, 102, 116, 112, 47, 115, 116, 100, 47, 116, 101, 115, 116, 105, 110, 103, 47, 111, 117, 116, 47, 46, 47, 53, 49, 50, 66, 95, 114, 97, 110, 100, 111, 109]
+[2025-11-18T04:00:55.666080764Z TRACE sunset_sftp::sftphandler::sftphandler] Received 54 bytes to process
+[2025-11-18T04:00:55.666084654Z TRACE sunset_sftp::sftphandler::sftphandler] Entering loop to process the full received buffer
+[2025-11-18T04:00:55.666088265Z DEBUG sunset_sftp::sftphandler::sftphandler] <=======================[ SFTP Process State: Idle ]=======================> Buffer remaining: 54
+[2025-11-18T04:00:55.666092392Z DEBUG sunset_sftp::sftphandler::sftphandler] Creating a source: buf_len = 54
+[2025-11-18T04:00:55.666118188Z DEBUG sunset_sftp::sftphandler::sftphandler] Handling general request: Stat(ReqId(3), Stat { file_path: TextString("./demo/sftp/std/testing/out/./512B_random") })
+[2025-11-18T04:00:55.666146165Z DEBUG sunset_demo_sftp_std::demosftpserver] SftpServer ListStats: file_path = "./demo/sftp/std/testing/out/./512B_random"
+[2025-11-18T04:00:55.666184638Z DEBUG sunset_sftp::sftphandler::sftphandler] List stats for "./demo/sftp/std/testing/out/./512B_random" is Attrs { size: Some(512), uid: Some(1000), gid: Some(1000), permissions: Some(33188), atime: Some(1763438455), mtime: Some(1763438454), ext_count: None }
+[2025-11-18T04:00:55.666220106Z TRACE sunset_sftp::sftphandler::sftphandler] New buffer len 0 bytes 
+[2025-11-18T04:00:55.666227360Z TRACE sunset_sftp::sftphandler::sftphandler] Process checking buf len 0
+[2025-11-18T04:00:55.666231188Z TRACE sunset_sftp::sftphandler::sftphandler] Exiting process with Ok(())
+[2025-11-18T04:00:55.666234727Z TRACE sunset_sftp::sftphandler::sftphandler] SFTP: About to read bytes from SSH Channel
+[2025-11-18T04:00:55.666614742Z DEBUG sunset_sftp::sftphandler::sftphandler] SFTP <---- received: 62 bytes
+[2025-11-18T04:00:55.666676839Z TRACE sunset_sftp::sftphandler::sftphandler] SFTP <---- received: [0, 0, 0, 58, 3, 0, 0, 0, 4, 0, 0, 0, 41, 46, 47, 100, 101, 109, 111, 47, 115, 102, 116, 112, 47, 115, 116, 100, 47, 116, 101, 115, 116, 105, 110, 103, 47, 111, 117, 116, 47, 46, 47, 53, 49, 50, 66, 95, 114, 97, 110, 100, 111, 109, 0, 0, 0, 1, 0, 0, 0, 0]
+[2025-11-18T04:00:55.666693899Z TRACE sunset_sftp::sftphandler::sftphandler] Received 62 bytes to process
+[2025-11-18T04:00:55.666721753Z TRACE sunset_sftp::sftphandler::sftphandler] Entering loop to process the full received buffer
+[2025-11-18T04:00:55.666728760Z DEBUG sunset_sftp::sftphandler::sftphandler] <=======================[ SFTP Process State: Idle ]=======================> Buffer remaining: 62
+[2025-11-18T04:00:55.666734903Z DEBUG sunset_sftp::sftphandler::sftphandler] Creating a source: buf_len = 62
+[2025-11-18T04:00:55.666740110Z DEBUG sunset_sftp::sftphandler::sftphandler] Handling general request: Open(ReqId(4), Open { filename: Filename(TextString("./demo/sftp/std/testing/out/./512B_random")), pflags: SSH_FXF_READ, attrs: Attrs { size: None, uid: None, gid: None, permissions: None, atime: None, mtime: None, ext_count: None } })
+[2025-11-18T04:00:55.666752653Z DEBUG sunset_demo_sftp_std::demosftpserver] Open file: filename = "./demo/sftp/std/testing/out/./512B_random", mode = SSH_FXF_READ
+[2025-11-18T04:00:55.666757016Z DEBUG sunset_demo_sftp_std::demosftpserver] File open for read/write access: can_read=true, can_write=false
+[2025-11-18T04:00:55.666781248Z DEBUG sunset_demo_sftp_std::demosftpserver] Filename ""./demo/sftp/std/testing/out/./512B_random"" will have the obscured file handle: Ok(DemoOpaqueFileHandle { tiny_hash: [55, 15, 63, 111] })
+[2025-11-18T04:00:55.666806961Z TRACE sunset_sftp::sftphandler::sftphandler] New buffer len 0 bytes 
+[2025-11-18T04:00:55.666833560Z TRACE sunset_sftp::sftphandler::sftphandler] Process checking buf len 0
+[2025-11-18T04:00:55.666859870Z TRACE sunset_sftp::sftphandler::sftphandler] Exiting process with Ok(())
+[2025-11-18T04:00:55.666886644Z TRACE sunset_sftp::sftphandler::sftphandler] SFTP: About to read bytes from SSH Channel
+[2025-11-18T04:00:55.667464094Z DEBUG sunset_sftp::sftphandler::sftphandler] SFTP <---- received: 29 bytes
+[2025-11-18T04:00:55.667505150Z TRACE sunset_sftp::sftphandler::sftphandler] SFTP <---- received: [0, 0, 0, 25, 5, 0, 0, 0, 5, 0, 0, 0, 4, 55, 15, 63, 111, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 128, 0]
+[2025-11-18T04:00:55.667515666Z TRACE sunset_sftp::sftphandler::sftphandler] Received 29 bytes to process
+[2025-11-18T04:00:55.667519565Z TRACE sunset_sftp::sftphandler::sftphandler] Entering loop to process the full received buffer
+[2025-11-18T04:00:55.667523198Z DEBUG sunset_sftp::sftphandler::sftphandler] <=======================[ SFTP Process State: Idle ]=======================> Buffer remaining: 29
+[2025-11-18T04:00:55.667527684Z DEBUG sunset_sftp::sftphandler::sftphandler] Creating a source: buf_len = 29
+[2025-11-18T04:00:55.667556248Z DEBUG sunset_sftp::sftphandler::sftphandler] Handling general request: Read(ReqId(5), Read { handle: FileHandle(BinString(len=4)), offset: 0, len: 32768 })
+[2025-11-18T04:00:55.667586365Z DEBUG sunset_demo_sftp_std::demosftpserver] SftpServer Read operation: handle = DemoOpaqueFileHandle { tiny_hash: [55, 15, 63, 111] }, filepath = "./demo/sftp/std/testing/out/./512B_random", offset = 0, len = 32768
+[2025-11-18T04:00:55.667608467Z WARN  sunset_demo_sftp_std::demosftpserver] Read operation: length + offset > file length. Clipping ( 32768 + 0 > 512)
+[2025-11-18T04:00:55.667633306Z DEBUG sunset_demo_sftp_std::demosftpserver] Starting reading loop: remaining = 512
+[2025-11-18T04:00:55.667666531Z DEBUG sunset_demo_sftp_std::demosftpserver] Finished sending data
+[2025-11-18T04:00:55.667692091Z TRACE sunset_sftp::sftphandler::sftphandler] New buffer len 0 bytes 
+[2025-11-18T04:00:55.667700600Z TRACE sunset_sftp::sftphandler::sftphandler] Process checking buf len 0
+[2025-11-18T04:00:55.667704438Z TRACE sunset_sftp::sftphandler::sftphandler] Exiting process with Ok(())
+[2025-11-18T04:00:55.667729555Z TRACE sunset_sftp::sftphandler::sftphandler] SFTP: About to read bytes from SSH Channel
+[2025-11-18T04:00:55.713066511Z DEBUG sunset_sftp::sftphandler::sftphandler] SFTP <---- received: 29 bytes
+[2025-11-18T04:00:55.713107103Z TRACE sunset_sftp::sftphandler::sftphandler] SFTP <---- received: [0, 0, 0, 25, 5, 0, 0, 0, 6, 0, 0, 0, 4, 55, 15, 63, 111, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 126, 0]
+[2025-11-18T04:00:55.713116827Z TRACE sunset_sftp::sftphandler::sftphandler] Received 29 bytes to process
+[2025-11-18T04:00:55.713120696Z TRACE sunset_sftp::sftphandler::sftphandler] Entering loop to process the full received buffer
+[2025-11-18T04:00:55.713124369Z DEBUG sunset_sftp::sftphandler::sftphandler] <=======================[ SFTP Process State: Idle ]=======================> Buffer remaining: 29
+[2025-11-18T04:00:55.713129041Z DEBUG sunset_sftp::sftphandler::sftphandler] Creating a source: buf_len = 29
+[2025-11-18T04:00:55.713134649Z DEBUG sunset_sftp::sftphandler::sftphandler] Handling general request: Read(ReqId(6), Read { handle: FileHandle(BinString(len=4)), offset: 512, len: 32256 })
+[2025-11-18T04:00:55.713142644Z DEBUG sunset_demo_sftp_std::demosftpserver] SftpServer Read operation: handle = DemoOpaqueFileHandle { tiny_hash: [55, 15, 63, 111] }, filepath = "./demo/sftp/std/testing/out/./512B_random", offset = 512, len = 32256
+[2025-11-18T04:00:55.713156751Z INFO  sunset_demo_sftp_std::demosftpserver] offset is larger than file length, sending EOF
+[2025-11-18T04:00:55.713163511Z TRACE sunset_sftp::sftphandler::sftphandler] New buffer len 0 bytes 
+[2025-11-18T04:00:55.713189492Z TRACE sunset_sftp::sftphandler::sftphandler] Process checking buf len 0
+[2025-11-18T04:00:55.713196540Z TRACE sunset_sftp::sftphandler::sftphandler] Exiting process with Ok(())
+[2025-11-18T04:00:55.713200728Z TRACE sunset_sftp::sftphandler::sftphandler] SFTP: About to read bytes from SSH Channel
+[2025-11-18T04:00:55.713610407Z DEBUG sunset_sftp::sftphandler::sftphandler] SFTP <---- received: 17 bytes
+[2025-11-18T04:00:55.713647800Z TRACE sunset_sftp::sftphandler::sftphandler] SFTP <---- received: [0, 0, 0, 13, 4, 0, 0, 0, 7, 0, 0, 0, 4, 55, 15, 63, 111]
+[2025-11-18T04:00:55.713656525Z TRACE sunset_sftp::sftphandler::sftphandler] Received 17 bytes to process
+[2025-11-18T04:00:55.713660343Z TRACE sunset_sftp::sftphandler::sftphandler] Entering loop to process the full received buffer
+[2025-11-18T04:00:55.713663954Z DEBUG sunset_sftp::sftphandler::sftphandler] <=======================[ SFTP Process State: Idle ]=======================> Buffer remaining: 17
+[2025-11-18T04:00:55.713668225Z DEBUG sunset_sftp::sftphandler::sftphandler] Creating a source: buf_len = 17
+[2025-11-18T04:00:55.713672875Z DEBUG sunset_sftp::sftphandler::sftphandler] Handling general request: Close(ReqId(7), Close { handle: FileHandle(BinString(len=4)) })
+[2025-11-18T04:00:55.713678710Z DEBUG sunset_demo_sftp_std::demosftpserver] SftpServer Close operation on file "./demo/sftp/std/testing/out/./512B_random" was successful
+[2025-11-18T04:00:55.713691067Z TRACE sunset_sftp::sftphandler::sftphandler] New buffer len 0 bytes 
+[2025-11-18T04:00:55.713694741Z TRACE sunset_sftp::sftphandler::sftphandler] Process checking buf len 0
+[2025-11-18T04:00:55.713698280Z TRACE sunset_sftp::sftphandler::sftphandler] Exiting process with Ok(())
+[2025-11-18T04:00:55.713701769Z TRACE sunset_sftp::sftphandler::sftphandler] SFTP: About to read bytes from SSH Channel
+[2025-11-18T04:00:55.714137882Z DEBUG sunset_sftp::sftphandler::sftphandler] SFTP <---- received: 54 bytes
+[2025-11-18T04:00:55.714168771Z TRACE sunset_sftp::sftphandler::sftphandler] SFTP <---- received: [0, 0, 0, 50, 7, 0, 0, 0, 8, 0, 0, 0, 41, 46, 47, 100, 101, 109, 111, 47, 115, 102, 116, 112, 47, 115, 116, 100, 47, 116, 101, 115, 116, 105, 110, 103, 47, 111, 117, 116, 47, 46, 47, 49, 54, 107, 66, 95, 114, 97, 110, 100, 111, 109]
+[2025-11-18T04:00:55.714181489Z TRACE sunset_sftp::sftphandler::sftphandler] Received 54 bytes to process
+[2025-11-18T04:00:55.714185317Z TRACE sunset_sftp::sftphandler::sftphandler] Entering loop to process the full received buffer
+[2025-11-18T04:00:55.714188939Z DEBUG sunset_sftp::sftphandler::sftphandler] <=======================[ SFTP Process State: Idle ]=======================> Buffer remaining: 54
+[2025-11-18T04:00:55.714193034Z DEBUG sunset_sftp::sftphandler::sftphandler] Creating a source: buf_len = 54
+[2025-11-18T04:00:55.714216906Z DEBUG sunset_sftp::sftphandler::sftphandler] Handling general request: LStat(ReqId(8), LStat { file_path: TextString("./demo/sftp/std/testing/out/./16kB_random") })
+[2025-11-18T04:00:55.714246807Z DEBUG sunset_demo_sftp_std::demosftpserver] SftpServer ListStats: file_path = "./demo/sftp/std/testing/out/./16kB_random"
+[2025-11-18T04:00:55.714286124Z DEBUG sunset_sftp::sftphandler::sftphandler] List stats for "./demo/sftp/std/testing/out/./16kB_random" is Attrs { size: Some(16384), uid: Some(1000), gid: Some(1000), permissions: Some(33188), atime: Some(1763438455), mtime: Some(1763438454), ext_count: None }
+[2025-11-18T04:00:55.714319174Z TRACE sunset_sftp::sftphandler::sftphandler] New buffer len 0 bytes 
+[2025-11-18T04:00:55.714326356Z TRACE sunset_sftp::sftphandler::sftphandler] Process checking buf len 0
+[2025-11-18T04:00:55.714349487Z TRACE sunset_sftp::sftphandler::sftphandler] Exiting process with Ok(())
+[2025-11-18T04:00:55.714374768Z TRACE sunset_sftp::sftphandler::sftphandler] SFTP: About to read bytes from SSH Channel
+[2025-11-18T04:00:55.714840299Z DEBUG sunset_sftp::sftphandler::sftphandler] SFTP <---- received: 54 bytes
+[2025-11-18T04:00:55.714870345Z TRACE sunset_sftp::sftphandler::sftphandler] SFTP <---- received: [0, 0, 0, 50, 17, 0, 0, 0, 9, 0, 0, 0, 41, 46, 47, 100, 101, 109, 111, 47, 115, 102, 116, 112, 47, 115, 116, 100, 47, 116, 101, 115, 116, 105, 110, 103, 47, 111, 117, 116, 47, 46, 47, 49, 54, 107, 66, 95, 114, 97, 110, 100, 111, 109]
+[2025-11-18T04:00:55.714881622Z TRACE sunset_sftp::sftphandler::sftphandler] Received 54 bytes to process
+[2025-11-18T04:00:55.714885419Z TRACE sunset_sftp::sftphandler::sftphandler] Entering loop to process the full received buffer
+[2025-11-18T04:00:55.714889072Z DEBUG sunset_sftp::sftphandler::sftphandler] <=======================[ SFTP Process State: Idle ]=======================> Buffer remaining: 54
+[2025-11-18T04:00:55.714893177Z DEBUG sunset_sftp::sftphandler::sftphandler] Creating a source: buf_len = 54
+[2025-11-18T04:00:55.714918891Z DEBUG sunset_sftp::sftphandler::sftphandler] Handling general request: Stat(ReqId(9), Stat { file_path: TextString("./demo/sftp/std/testing/out/./16kB_random") })
+[2025-11-18T04:00:55.714946879Z DEBUG sunset_demo_sftp_std::demosftpserver] SftpServer ListStats: file_path = "./demo/sftp/std/testing/out/./16kB_random"
+[2025-11-18T04:00:55.714985578Z DEBUG sunset_sftp::sftphandler::sftphandler] List stats for "./demo/sftp/std/testing/out/./16kB_random" is Attrs { size: Some(16384), uid: Some(1000), gid: Some(1000), permissions: Some(33188), atime: Some(1763438455), mtime: Some(1763438454), ext_count: None }
+[2025-11-18T04:00:55.715021828Z TRACE sunset_sftp::sftphandler::sftphandler] New buffer len 0 bytes 
+[2025-11-18T04:00:55.715028969Z TRACE sunset_sftp::sftphandler::sftphandler] Process checking buf len 0
+[2025-11-18T04:00:55.715032828Z TRACE sunset_sftp::sftphandler::sftphandler] Exiting process with Ok(())
+[2025-11-18T04:00:55.715036357Z TRACE sunset_sftp::sftphandler::sftphandler] SFTP: About to read bytes from SSH Channel
+[2025-11-18T04:00:55.715466142Z DEBUG sunset_sftp::sftphandler::sftphandler] SFTP <---- received: 62 bytes
+[2025-11-18T04:00:55.715495179Z TRACE sunset_sftp::sftphandler::sftphandler] SFTP <---- received: [0, 0, 0, 58, 3, 0, 0, 0, 10, 0, 0, 0, 41, 46, 47, 100, 101, 109, 111, 47, 115, 102, 116, 112, 47, 115, 116, 100, 47, 116, 101, 115, 116, 105, 110, 103, 47, 111, 117, 116, 47, 46, 47, 49, 54, 107, 66, 95, 114, 97, 110, 100, 111, 109, 0, 0, 0, 1, 0, 0, 0, 0]
+[2025-11-18T04:00:55.715506652Z TRACE sunset_sftp::sftphandler::sftphandler] Received 62 bytes to process
+[2025-11-18T04:00:55.715510500Z TRACE sunset_sftp::sftphandler::sftphandler] Entering loop to process the full received buffer
+[2025-11-18T04:00:55.715514122Z DEBUG sunset_sftp::sftphandler::sftphandler] <=======================[ SFTP Process State: Idle ]=======================> Buffer remaining: 62
+[2025-11-18T04:00:55.715518218Z DEBUG sunset_sftp::sftphandler::sftphandler] Creating a source: buf_len = 62
+[2025-11-18T04:00:55.715543684Z DEBUG sunset_sftp::sftphandler::sftphandler] Handling general request: Open(ReqId(10), Open { filename: Filename(TextString("./demo/sftp/std/testing/out/./16kB_random")), pflags: SSH_FXF_READ, attrs: Attrs { size: None, uid: None, gid: None, permissions: None, atime: None, mtime: None, ext_count: None } })
+[2025-11-18T04:00:55.715573792Z DEBUG sunset_demo_sftp_std::demosftpserver] Open file: filename = "./demo/sftp/std/testing/out/./16kB_random", mode = SSH_FXF_READ
+[2025-11-18T04:00:55.715601357Z DEBUG sunset_demo_sftp_std::demosftpserver] File open for read/write access: can_read=true, can_write=false
+[2025-11-18T04:00:55.715645088Z DEBUG sunset_demo_sftp_std::demosftpserver] Filename ""./demo/sftp/std/testing/out/./16kB_random"" will have the obscured file handle: Ok(DemoOpaqueFileHandle { tiny_hash: [204, 179, 134, 195] })
+[2025-11-18T04:00:55.715675926Z TRACE sunset_sftp::sftphandler::sftphandler] New buffer len 0 bytes 
+[2025-11-18T04:00:55.715683221Z TRACE sunset_sftp::sftphandler::sftphandler] Process checking buf len 0
+[2025-11-18T04:00:55.715706260Z TRACE sunset_sftp::sftphandler::sftphandler] Exiting process with Ok(())
+[2025-11-18T04:00:55.715731798Z TRACE sunset_sftp::sftphandler::sftphandler] SFTP: About to read bytes from SSH Channel
+[2025-11-18T04:00:55.716266753Z DEBUG sunset_sftp::sftphandler::sftphandler] SFTP <---- received: 29 bytes
+[2025-11-18T04:00:55.716297673Z TRACE sunset_sftp::sftphandler::sftphandler] SFTP <---- received: [0, 0, 0, 25, 5, 0, 0, 0, 11, 0, 0, 0, 4, 204, 179, 134, 195, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 128, 0]
+[2025-11-18T04:00:55.716307592Z TRACE sunset_sftp::sftphandler::sftphandler] Received 29 bytes to process
+[2025-11-18T04:00:55.716311482Z TRACE sunset_sftp::sftphandler::sftphandler] Entering loop to process the full received buffer
+[2025-11-18T04:00:55.716315124Z DEBUG sunset_sftp::sftphandler::sftphandler] <=======================[ SFTP Process State: Idle ]=======================> Buffer remaining: 29
+[2025-11-18T04:00:55.716338348Z DEBUG sunset_sftp::sftphandler::sftphandler] Creating a source: buf_len = 29
+[2025-11-18T04:00:55.716366994Z DEBUG sunset_sftp::sftphandler::sftphandler] Handling general request: Read(ReqId(11), Read { handle: FileHandle(BinString(len=4)), offset: 0, len: 32768 })
+[2025-11-18T04:00:55.716379578Z DEBUG sunset_demo_sftp_std::demosftpserver] SftpServer Read operation: handle = DemoOpaqueFileHandle { tiny_hash: [204, 179, 134, 195] }, filepath = "./demo/sftp/std/testing/out/./16kB_random", offset = 0, len = 32768
+[2025-11-18T04:00:55.716412001Z WARN  sunset_demo_sftp_std::demosftpserver] Read operation: length + offset > file length. Clipping ( 32768 + 0 > 16384)
+[2025-11-18T04:00:55.716438867Z DEBUG sunset_demo_sftp_std::demosftpserver] Starting reading loop: remaining = 16384
+[2025-11-18T04:00:55.762253804Z DEBUG sunset_demo_sftp_std::demosftpserver] Finished sending data
+[2025-11-18T04:00:55.762324452Z TRACE sunset_sftp::sftphandler::sftphandler] New buffer len 0 bytes 
+[2025-11-18T04:00:55.762334053Z TRACE sunset_sftp::sftphandler::sftphandler] Process checking buf len 0
+[2025-11-18T04:00:55.762339033Z TRACE sunset_sftp::sftphandler::sftphandler] Exiting process with Ok(())
+[2025-11-18T04:00:55.762343859Z TRACE sunset_sftp::sftphandler::sftphandler] SFTP: About to read bytes from SSH Channel
+[2025-11-18T04:00:55.763463786Z DEBUG sunset_sftp::sftphandler::sftphandler] SFTP <---- received: 29 bytes
+[2025-11-18T04:00:55.763502124Z TRACE sunset_sftp::sftphandler::sftphandler] SFTP <---- received: [0, 0, 0, 25, 5, 0, 0, 0, 12, 0, 0, 0, 4, 204, 179, 134, 195, 0, 0, 0, 0, 0, 0, 64, 0, 0, 0, 64, 0]
+[2025-11-18T04:00:55.763512085Z TRACE sunset_sftp::sftphandler::sftphandler] Received 29 bytes to process
+[2025-11-18T04:00:55.763515943Z TRACE sunset_sftp::sftphandler::sftphandler] Entering loop to process the full received buffer
+[2025-11-18T04:00:55.763519689Z DEBUG sunset_sftp::sftphandler::sftphandler] <=======================[ SFTP Process State: Idle ]=======================> Buffer remaining: 29
+[2025-11-18T04:00:55.763524350Z DEBUG sunset_sftp::sftphandler::sftphandler] Creating a source: buf_len = 29
+[2025-11-18T04:00:55.763551062Z DEBUG sunset_sftp::sftphandler::sftphandler] Handling general request: Read(ReqId(12), Read { handle: FileHandle(BinString(len=4)), offset: 16384, len: 16384 })
+[2025-11-18T04:00:55.763582548Z DEBUG sunset_demo_sftp_std::demosftpserver] SftpServer Read operation: handle = DemoOpaqueFileHandle { tiny_hash: [204, 179, 134, 195] }, filepath = "./demo/sftp/std/testing/out/./16kB_random", offset = 16384, len = 16384
+[2025-11-18T04:00:55.763619096Z INFO  sunset_demo_sftp_std::demosftpserver] offset is larger than file length, sending EOF
+[2025-11-18T04:00:55.763630240Z TRACE sunset_sftp::sftphandler::sftphandler] New buffer len 0 bytes 
+[2025-11-18T04:00:55.763652990Z TRACE sunset_sftp::sftphandler::sftphandler] Process checking buf len 0
+[2025-11-18T04:00:55.763678303Z TRACE sunset_sftp::sftphandler::sftphandler] Exiting process with Ok(())
+[2025-11-18T04:00:55.763705405Z TRACE sunset_sftp::sftphandler::sftphandler] SFTP: About to read bytes from SSH Channel
+[2025-11-18T04:00:55.764155975Z DEBUG sunset_sftp::sftphandler::sftphandler] SFTP <---- received: 17 bytes
+[2025-11-18T04:00:55.764185908Z TRACE sunset_sftp::sftphandler::sftphandler] SFTP <---- received: [0, 0, 0, 13, 4, 0, 0, 0, 13, 0, 0, 0, 4, 204, 179, 134, 195]
+[2025-11-18T04:00:55.764194664Z TRACE sunset_sftp::sftphandler::sftphandler] Received 17 bytes to process
+[2025-11-18T04:00:55.764198554Z TRACE sunset_sftp::sftphandler::sftphandler] Entering loop to process the full received buffer
+[2025-11-18T04:00:55.764202165Z DEBUG sunset_sftp::sftphandler::sftphandler] <=======================[ SFTP Process State: Idle ]=======================> Buffer remaining: 17
+[2025-11-18T04:00:55.764206333Z DEBUG sunset_sftp::sftphandler::sftphandler] Creating a source: buf_len = 17
+[2025-11-18T04:00:55.764231398Z DEBUG sunset_sftp::sftphandler::sftphandler] Handling general request: Close(ReqId(13), Close { handle: FileHandle(BinString(len=4)) })
+[2025-11-18T04:00:55.764260054Z DEBUG sunset_demo_sftp_std::demosftpserver] SftpServer Close operation on file "./demo/sftp/std/testing/out/./16kB_random" was successful
+[2025-11-18T04:00:55.764296274Z TRACE sunset_sftp::sftphandler::sftphandler] New buffer len 0 bytes 
+[2025-11-18T04:00:55.764304793Z TRACE sunset_sftp::sftphandler::sftphandler] Process checking buf len 0
+[2025-11-18T04:00:55.764308498Z TRACE sunset_sftp::sftphandler::sftphandler] Exiting process with Ok(())
+[2025-11-18T04:00:55.764331608Z TRACE sunset_sftp::sftphandler::sftphandler] SFTP: About to read bytes from SSH Channel
+[2025-11-18T04:00:55.764773803Z DEBUG sunset_sftp::sftphandler::sftphandler] SFTP <---- received: 54 bytes
+[2025-11-18T04:00:55.764804712Z TRACE sunset_sftp::sftphandler::sftphandler] SFTP <---- received: [0, 0, 0, 50, 7, 0, 0, 0, 14, 0, 0, 0, 41, 46, 47, 100, 101, 109, 111, 47, 115, 102, 116, 112, 47, 115, 116, 100, 47, 116, 101, 115, 116, 105, 110, 103, 47, 111, 117, 116, 47, 46, 47, 54, 52, 107, 66, 95, 114, 97, 110, 100, 111, 109]
+[2025-11-18T04:00:55.764816370Z TRACE sunset_sftp::sftphandler::sftphandler] Received 54 bytes to process
+[2025-11-18T04:00:55.764820229Z TRACE sunset_sftp::sftphandler::sftphandler] Entering loop to process the full received buffer
+[2025-11-18T04:00:55.764823841Z DEBUG sunset_sftp::sftphandler::sftphandler] <=======================[ SFTP Process State: Idle ]=======================> Buffer remaining: 54
+[2025-11-18T04:00:55.764827926Z DEBUG sunset_sftp::sftphandler::sftphandler] Creating a source: buf_len = 54
+[2025-11-18T04:00:55.764852549Z DEBUG sunset_sftp::sftphandler::sftphandler] Handling general request: LStat(ReqId(14), LStat { file_path: TextString("./demo/sftp/std/testing/out/./64kB_random") })
+[2025-11-18T04:00:55.764883345Z DEBUG sunset_demo_sftp_std::demosftpserver] SftpServer ListStats: file_path = "./demo/sftp/std/testing/out/./64kB_random"
+[2025-11-18T04:00:55.764924143Z DEBUG sunset_sftp::sftphandler::sftphandler] List stats for "./demo/sftp/std/testing/out/./64kB_random" is Attrs { size: Some(65536), uid: Some(1000), gid: Some(1000), permissions: Some(33188), atime: Some(1763438455), mtime: Some(1763438455), ext_count: None }
+[2025-11-18T04:00:55.764963604Z TRACE sunset_sftp::sftphandler::sftphandler] New buffer len 0 bytes 
+[2025-11-18T04:00:55.764971959Z TRACE sunset_sftp::sftphandler::sftphandler] Process checking buf len 0
+[2025-11-18T04:00:55.764995049Z TRACE sunset_sftp::sftphandler::sftphandler] Exiting process with Ok(())
+[2025-11-18T04:00:55.765003425Z TRACE sunset_sftp::sftphandler::sftphandler] SFTP: About to read bytes from SSH Channel
+[2025-11-18T04:00:55.765431183Z DEBUG sunset_sftp::sftphandler::sftphandler] SFTP <---- received: 54 bytes
+[2025-11-18T04:00:55.765462833Z TRACE sunset_sftp::sftphandler::sftphandler] SFTP <---- received: [0, 0, 0, 50, 17, 0, 0, 0, 15, 0, 0, 0, 41, 46, 47, 100, 101, 109, 111, 47, 115, 102, 116, 112, 47, 115, 116, 100, 47, 116, 101, 115, 116, 105, 110, 103, 47, 111, 117, 116, 47, 46, 47, 54, 52, 107, 66, 95, 114, 97, 110, 100, 111, 109]
+[2025-11-18T04:00:55.765475027Z TRACE sunset_sftp::sftphandler::sftphandler] Received 54 bytes to process
+[2025-11-18T04:00:55.765479616Z TRACE sunset_sftp::sftphandler::sftphandler] Entering loop to process the full received buffer
+[2025-11-18T04:00:55.765483248Z DEBUG sunset_sftp::sftphandler::sftphandler] <=======================[ SFTP Process State: Idle ]=======================> Buffer remaining: 54
+[2025-11-18T04:00:55.765508077Z DEBUG sunset_sftp::sftphandler::sftphandler] Creating a source: buf_len = 54
+[2025-11-18T04:00:55.765518377Z DEBUG sunset_sftp::sftphandler::sftphandler] Handling general request: Stat(ReqId(15), Stat { file_path: TextString("./demo/sftp/std/testing/out/./64kB_random") })
+[2025-11-18T04:00:55.765524664Z DEBUG sunset_demo_sftp_std::demosftpserver] SftpServer ListStats: file_path = "./demo/sftp/std/testing/out/./64kB_random"
+[2025-11-18T04:00:55.765539511Z DEBUG sunset_sftp::sftphandler::sftphandler] List stats for "./demo/sftp/std/testing/out/./64kB_random" is Attrs { size: Some(65536), uid: Some(1000), gid: Some(1000), permissions: Some(33188), atime: Some(1763438455), mtime: Some(1763438455), ext_count: None }
+[2025-11-18T04:00:55.765567746Z TRACE sunset_sftp::sftphandler::sftphandler] New buffer len 0 bytes 
+[2025-11-18T04:00:55.765574887Z TRACE sunset_sftp::sftphandler::sftphandler] Process checking buf len 0
+[2025-11-18T04:00:55.765578529Z TRACE sunset_sftp::sftphandler::sftphandler] Exiting process with Ok(())
+[2025-11-18T04:00:55.765584693Z TRACE sunset_sftp::sftphandler::sftphandler] SFTP: About to read bytes from SSH Channel
+[2025-11-18T04:00:55.766011422Z DEBUG sunset_sftp::sftphandler::sftphandler] SFTP <---- received: 62 bytes
+[2025-11-18T04:00:55.766042939Z TRACE sunset_sftp::sftphandler::sftphandler] SFTP <---- received: [0, 0, 0, 58, 3, 0, 0, 0, 16, 0, 0, 0, 41, 46, 47, 100, 101, 109, 111, 47, 115, 102, 116, 112, 47, 115, 116, 100, 47, 116, 101, 115, 116, 105, 110, 103, 47, 111, 117, 116, 47, 46, 47, 54, 52, 107, 66, 95, 114, 97, 110, 100, 111, 109, 0, 0, 0, 1, 0, 0, 0, 0]
+[2025-11-18T04:00:55.766054566Z TRACE sunset_sftp::sftphandler::sftphandler] Received 62 bytes to process
+[2025-11-18T04:00:55.766058425Z TRACE sunset_sftp::sftphandler::sftphandler] Entering loop to process the full received buffer
+[2025-11-18T04:00:55.766062047Z DEBUG sunset_sftp::sftphandler::sftphandler] <=======================[ SFTP Process State: Idle ]=======================> Buffer remaining: 62
+[2025-11-18T04:00:55.766066132Z DEBUG sunset_sftp::sftphandler::sftphandler] Creating a source: buf_len = 62
+[2025-11-18T04:00:55.766090518Z DEBUG sunset_sftp::sftphandler::sftphandler] Handling general request: Open(ReqId(16), Open { filename: Filename(TextString("./demo/sftp/std/testing/out/./64kB_random")), pflags: SSH_FXF_READ, attrs: Attrs { size: None, uid: None, gid: None, permissions: None, atime: None, mtime: None, ext_count: None } })
+[2025-11-18T04:00:55.766123105Z DEBUG sunset_demo_sftp_std::demosftpserver] Open file: filename = "./demo/sftp/std/testing/out/./64kB_random", mode = SSH_FXF_READ
+[2025-11-18T04:00:55.766149220Z DEBUG sunset_demo_sftp_std::demosftpserver] File open for read/write access: can_read=true, can_write=false
+[2025-11-18T04:00:55.766195904Z DEBUG sunset_demo_sftp_std::demosftpserver] Filename ""./demo/sftp/std/testing/out/./64kB_random"" will have the obscured file handle: Ok(DemoOpaqueFileHandle { tiny_hash: [195, 17, 206, 102] })
+[2025-11-18T04:00:55.766227102Z TRACE sunset_sftp::sftphandler::sftphandler] New buffer len 0 bytes 
+[2025-11-18T04:00:55.766235097Z TRACE sunset_sftp::sftphandler::sftphandler] Process checking buf len 0
+[2025-11-18T04:00:55.766238842Z TRACE sunset_sftp::sftphandler::sftphandler] Exiting process with Ok(())
+[2025-11-18T04:00:55.766260810Z TRACE sunset_sftp::sftphandler::sftphandler] SFTP: About to read bytes from SSH Channel
+[2025-11-18T04:00:55.766789201Z DEBUG sunset_sftp::sftphandler::sftphandler] SFTP <---- received: 29 bytes
+[2025-11-18T04:00:55.766822477Z TRACE sunset_sftp::sftphandler::sftphandler] SFTP <---- received: [0, 0, 0, 25, 5, 0, 0, 0, 17, 0, 0, 0, 4, 195, 17, 206, 102, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 128, 0]
+[2025-11-18T04:00:55.766831871Z TRACE sunset_sftp::sftphandler::sftphandler] Received 29 bytes to process
+[2025-11-18T04:00:55.766835771Z TRACE sunset_sftp::sftphandler::sftphandler] Entering loop to process the full received buffer
+[2025-11-18T04:00:55.766839445Z DEBUG sunset_sftp::sftphandler::sftphandler] <=======================[ SFTP Process State: Idle ]=======================> Buffer remaining: 29
+[2025-11-18T04:00:55.766843509Z DEBUG sunset_sftp::sftphandler::sftphandler] Creating a source: buf_len = 29
+[2025-11-18T04:00:55.766849148Z DEBUG sunset_sftp::sftphandler::sftphandler] Handling general request: Read(ReqId(17), Read { handle: FileHandle(BinString(len=4)), offset: 0, len: 32768 })
+[2025-11-18T04:00:55.766857575Z DEBUG sunset_demo_sftp_std::demosftpserver] SftpServer Read operation: handle = DemoOpaqueFileHandle { tiny_hash: [195, 17, 206, 102] }, filepath = "./demo/sftp/std/testing/out/./64kB_random", offset = 0, len = 32768
+[2025-11-18T04:00:55.766872742Z DEBUG sunset_demo_sftp_std::demosftpserver] Starting reading loop: remaining = 32768
+[2025-11-18T04:00:55.818563436Z DEBUG sunset_demo_sftp_std::demosftpserver] Finished sending data
+[2025-11-18T04:00:55.818607218Z TRACE sunset_sftp::sftphandler::sftphandler] New buffer len 0 bytes 
+[2025-11-18T04:00:55.818615470Z TRACE sunset_sftp::sftphandler::sftphandler] Process checking buf len 0
+[2025-11-18T04:00:55.818619627Z TRACE sunset_sftp::sftphandler::sftphandler] Exiting process with Ok(())
+[2025-11-18T04:00:55.818623455Z TRACE sunset_sftp::sftphandler::sftphandler] SFTP: About to read bytes from SSH Channel
+[2025-11-18T04:00:55.819563191Z DEBUG sunset_sftp::sftphandler::sftphandler] SFTP <---- received: 58 bytes
+[2025-11-18T04:00:55.819598515Z TRACE sunset_sftp::sftphandler::sftphandler] SFTP <---- received: [0, 0, 0, 25, 5, 0, 0, 0, 18, 0, 0, 0, 4, 195, 17, 206, 102, 0, 0, 0, 0, 0, 0, 128, 0, 0, 0, 128, 0, 0, 0, 0, 25, 5, 0, 0, 0, 19, 0, 0, 0, 4, 195, 17, 206, 102, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 128, 0]
+[2025-11-18T04:00:55.819610441Z TRACE sunset_sftp::sftphandler::sftphandler] Received 58 bytes to process
+[2025-11-18T04:00:55.819614320Z TRACE sunset_sftp::sftphandler::sftphandler] Entering loop to process the full received buffer
+[2025-11-18T04:00:55.819618065Z DEBUG sunset_sftp::sftphandler::sftphandler] <=======================[ SFTP Process State: Idle ]=======================> Buffer remaining: 58
+[2025-11-18T04:00:55.819622459Z DEBUG sunset_sftp::sftphandler::sftphandler] Creating a source: buf_len = 58
+[2025-11-18T04:00:55.819628046Z DEBUG sunset_sftp::sftphandler::sftphandler] Handling general request: Read(ReqId(18), Read { handle: FileHandle(BinString(len=4)), offset: 32768, len: 32768 })
+[2025-11-18T04:00:55.819634909Z DEBUG sunset_demo_sftp_std::demosftpserver] SftpServer Read operation: handle = DemoOpaqueFileHandle { tiny_hash: [195, 17, 206, 102] }, filepath = "./demo/sftp/std/testing/out/./64kB_random", offset = 32768, len = 32768
+[2025-11-18T04:00:55.819649798Z DEBUG sunset_demo_sftp_std::demosftpserver] Starting reading loop: remaining = 32768
+[2025-11-18T04:00:55.868682151Z DEBUG sunset_demo_sftp_std::demosftpserver] Finished sending data
+[2025-11-18T04:00:55.868726129Z TRACE sunset_sftp::sftphandler::sftphandler] New buffer len 29 bytes 
+[2025-11-18T04:00:55.868734330Z TRACE sunset_sftp::sftphandler::sftphandler] Process checking buf len 29
+[2025-11-18T04:00:55.868738569Z DEBUG sunset_sftp::sftphandler::sftphandler] <=======================[ SFTP Process State: Idle ]=======================> Buffer remaining: 29
+[2025-11-18T04:00:55.868743220Z DEBUG sunset_sftp::sftphandler::sftphandler] Creating a source: buf_len = 29
+[2025-11-18T04:00:55.868749167Z DEBUG sunset_sftp::sftphandler::sftphandler] Handling general request: Read(ReqId(19), Read { handle: FileHandle(BinString(len=4)), offset: 65536, len: 32768 })
+[2025-11-18T04:00:55.868756535Z DEBUG sunset_demo_sftp_std::demosftpserver] SftpServer Read operation: handle = DemoOpaqueFileHandle { tiny_hash: [195, 17, 206, 102] }, filepath = "./demo/sftp/std/testing/out/./64kB_random", offset = 65536, len = 32768
+[2025-11-18T04:00:55.868770940Z INFO  sunset_demo_sftp_std::demosftpserver] offset is larger than file length, sending EOF
+[2025-11-18T04:00:55.868777412Z TRACE sunset_sftp::sftphandler::sftphandler] New buffer len 0 bytes 
+[2025-11-18T04:00:55.868781096Z TRACE sunset_sftp::sftphandler::sftphandler] Process checking buf len 0
+[2025-11-18T04:00:55.868784635Z TRACE sunset_sftp::sftphandler::sftphandler] Exiting process with Ok(())
+[2025-11-18T04:00:55.868788329Z TRACE sunset_sftp::sftphandler::sftphandler] SFTP: About to read bytes from SSH Channel
+[2025-11-18T04:00:55.869538429Z DEBUG sunset_sftp::sftphandler::sftphandler] SFTP <---- received: 17 bytes
+[2025-11-18T04:00:55.869571994Z TRACE sunset_sftp::sftphandler::sftphandler] SFTP <---- received: [0, 0, 0, 13, 4, 0, 0, 0, 20, 0, 0, 0, 4, 195, 17, 206, 102]
+[2025-11-18T04:00:55.869581419Z TRACE sunset_sftp::sftphandler::sftphandler] Received 17 bytes to process
+[2025-11-18T04:00:55.869585236Z TRACE sunset_sftp::sftphandler::sftphandler] Entering loop to process the full received buffer
+[2025-11-18T04:00:55.869588920Z DEBUG sunset_sftp::sftphandler::sftphandler] <=======================[ SFTP Process State: Idle ]=======================> Buffer remaining: 17
+[2025-11-18T04:00:55.869593468Z DEBUG sunset_sftp::sftphandler::sftphandler] Creating a source: buf_len = 17
+[2025-11-18T04:00:55.869598643Z DEBUG sunset_sftp::sftphandler::sftphandler] Handling general request: Close(ReqId(20), Close { handle: FileHandle(BinString(len=4)) })
+[2025-11-18T04:00:55.869605013Z DEBUG sunset_demo_sftp_std::demosftpserver] SftpServer Close operation on file "./demo/sftp/std/testing/out/./64kB_random" was successful
+[2025-11-18T04:00:55.869617021Z TRACE sunset_sftp::sftphandler::sftphandler] New buffer len 0 bytes 
+[2025-11-18T04:00:55.869620848Z TRACE sunset_sftp::sftphandler::sftphandler] Process checking buf len 0
+[2025-11-18T04:00:55.869624378Z TRACE sunset_sftp::sftphandler::sftphandler] Exiting process with Ok(())
+[2025-11-18T04:00:55.869627928Z TRACE sunset_sftp::sftphandler::sftphandler] SFTP: About to read bytes from SSH Channel
+[2025-11-18T04:00:55.870109675Z DEBUG sunset_sftp::sftphandler::sftphandler] SFTP <---- received: 54 bytes
+[2025-11-18T04:00:55.870147304Z TRACE sunset_sftp::sftphandler::sftphandler] SFTP <---- received: [0, 0, 0, 50, 7, 0, 0, 0, 21, 0, 0, 0, 41, 46, 47, 100, 101, 109, 111, 47, 115, 102, 116, 112, 47, 115, 116, 100, 47, 116, 101, 115, 116, 105, 110, 103, 47, 111, 117, 116, 47, 46, 47, 54, 53, 107, 66, 95, 114, 97, 110, 100, 111, 109]
+[2025-11-18T04:00:55.870158911Z TRACE sunset_sftp::sftphandler::sftphandler] Received 54 bytes to process
+[2025-11-18T04:00:55.870162780Z TRACE sunset_sftp::sftphandler::sftphandler] Entering loop to process the full received buffer
+[2025-11-18T04:00:55.870166381Z DEBUG sunset_sftp::sftphandler::sftphandler] <=======================[ SFTP Process State: Idle ]=======================> Buffer remaining: 54
+[2025-11-18T04:00:55.870170487Z DEBUG sunset_sftp::sftphandler::sftphandler] Creating a source: buf_len = 54
+[2025-11-18T04:00:55.870174983Z DEBUG sunset_sftp::sftphandler::sftphandler] Handling general request: LStat(ReqId(21), LStat { file_path: TextString("./demo/sftp/std/testing/out/./65kB_random") })
+[2025-11-18T04:00:55.870181579Z DEBUG sunset_demo_sftp_std::demosftpserver] SftpServer ListStats: file_path = "./demo/sftp/std/testing/out/./65kB_random"
+[2025-11-18T04:00:55.870202528Z DEBUG sunset_sftp::sftphandler::sftphandler] List stats for "./demo/sftp/std/testing/out/./65kB_random" is Attrs { size: Some(66560), uid: Some(1000), gid: Some(1000), permissions: Some(33188), atime: Some(1763438455), mtime: Some(1763438455), ext_count: None }
+[2025-11-18T04:00:55.870216543Z TRACE sunset_sftp::sftphandler::sftphandler] New buffer len 0 bytes 
+[2025-11-18T04:00:55.870220267Z TRACE sunset_sftp::sftphandler::sftphandler] Process checking buf len 0
+[2025-11-18T04:00:55.870223797Z TRACE sunset_sftp::sftphandler::sftphandler] Exiting process with Ok(())
+[2025-11-18T04:00:55.870227316Z TRACE sunset_sftp::sftphandler::sftphandler] SFTP: About to read bytes from SSH Channel
+[2025-11-18T04:00:55.870631336Z DEBUG sunset_sftp::sftphandler::sftphandler] SFTP <---- received: 54 bytes
+[2025-11-18T04:00:55.870661073Z TRACE sunset_sftp::sftphandler::sftphandler] SFTP <---- received: [0, 0, 0, 50, 17, 0, 0, 0, 22, 0, 0, 0, 41, 46, 47, 100, 101, 109, 111, 47, 115, 102, 116, 112, 47, 115, 116, 100, 47, 116, 101, 115, 116, 105, 110, 103, 47, 111, 117, 116, 47, 46, 47, 54, 53, 107, 66, 95, 114, 97, 110, 100, 111, 109]
+[2025-11-18T04:00:55.870672957Z TRACE sunset_sftp::sftphandler::sftphandler] Received 54 bytes to process
+[2025-11-18T04:00:55.870718725Z TRACE sunset_sftp::sftphandler::sftphandler] Entering loop to process the full received buffer
+[2025-11-18T04:00:55.870723098Z DEBUG sunset_sftp::sftphandler::sftphandler] <=======================[ SFTP Process State: Idle ]=======================> Buffer remaining: 54
+[2025-11-18T04:00:55.870727224Z DEBUG sunset_sftp::sftphandler::sftphandler] Creating a source: buf_len = 54
+[2025-11-18T04:00:55.870752393Z DEBUG sunset_sftp::sftphandler::sftphandler] Handling general request: Stat(ReqId(22), Stat { file_path: TextString("./demo/sftp/std/testing/out/./65kB_random") })
+[2025-11-18T04:00:55.870781152Z DEBUG sunset_demo_sftp_std::demosftpserver] SftpServer ListStats: file_path = "./demo/sftp/std/testing/out/./65kB_random"
+[2025-11-18T04:00:55.870823699Z DEBUG sunset_sftp::sftphandler::sftphandler] List stats for "./demo/sftp/std/testing/out/./65kB_random" is Attrs { size: Some(66560), uid: Some(1000), gid: Some(1000), permissions: Some(33188), atime: Some(1763438455), mtime: Some(1763438455), ext_count: None }
+[2025-11-18T04:00:55.870854805Z TRACE sunset_sftp::sftphandler::sftphandler] New buffer len 0 bytes 
+[2025-11-18T04:00:55.870861977Z TRACE sunset_sftp::sftphandler::sftphandler] Process checking buf len 0
+[2025-11-18T04:00:55.870884809Z TRACE sunset_sftp::sftphandler::sftphandler] Exiting process with Ok(())
+[2025-11-18T04:00:55.870909864Z TRACE sunset_sftp::sftphandler::sftphandler] SFTP: About to read bytes from SSH Channel
+[2025-11-18T04:00:55.871287348Z DEBUG sunset_sftp::sftphandler::sftphandler] SFTP <---- received: 62 bytes
+[2025-11-18T04:00:55.871316292Z TRACE sunset_sftp::sftphandler::sftphandler] SFTP <---- received: [0, 0, 0, 58, 3, 0, 0, 0, 23, 0, 0, 0, 41, 46, 47, 100, 101, 109, 111, 47, 115, 102, 116, 112, 47, 115, 116, 100, 47, 116, 101, 115, 116, 105, 110, 103, 47, 111, 117, 116, 47, 46, 47, 54, 53, 107, 66, 95, 114, 97, 110, 100, 111, 109, 0, 0, 0, 1, 0, 0, 0, 0]
+[2025-11-18T04:00:55.871327775Z TRACE sunset_sftp::sftphandler::sftphandler] Received 62 bytes to process
+[2025-11-18T04:00:55.871331624Z TRACE sunset_sftp::sftphandler::sftphandler] Entering loop to process the full received buffer
+[2025-11-18T04:00:55.871335235Z DEBUG sunset_sftp::sftphandler::sftphandler] <=======================[ SFTP Process State: Idle ]=======================> Buffer remaining: 62
+[2025-11-18T04:00:55.871358994Z DEBUG sunset_sftp::sftphandler::sftphandler] Creating a source: buf_len = 62
+[2025-11-18T04:00:55.871386025Z DEBUG sunset_sftp::sftphandler::sftphandler] Handling general request: Open(ReqId(23), Open { filename: Filename(TextString("./demo/sftp/std/testing/out/./65kB_random")), pflags: SSH_FXF_READ, attrs: Attrs { size: None, uid: None, gid: None, permissions: None, atime: None, mtime: None, ext_count: None } })
+[2025-11-18T04:00:55.871401984Z DEBUG sunset_demo_sftp_std::demosftpserver] Open file: filename = "./demo/sftp/std/testing/out/./65kB_random", mode = SSH_FXF_READ
+[2025-11-18T04:00:55.871407159Z DEBUG sunset_demo_sftp_std::demosftpserver] File open for read/write access: can_read=true, can_write=false
+[2025-11-18T04:00:55.871429652Z DEBUG sunset_demo_sftp_std::demosftpserver] Filename ""./demo/sftp/std/testing/out/./65kB_random"" will have the obscured file handle: Ok(DemoOpaqueFileHandle { tiny_hash: [220, 94, 228, 181] })
+[2025-11-18T04:00:55.871437802Z TRACE sunset_sftp::sftphandler::sftphandler] New buffer len 0 bytes 
+[2025-11-18T04:00:55.871441475Z TRACE sunset_sftp::sftphandler::sftphandler] Process checking buf len 0
+[2025-11-18T04:00:55.871465748Z TRACE sunset_sftp::sftphandler::sftphandler] Exiting process with Ok(())
+[2025-11-18T04:00:55.871472755Z TRACE sunset_sftp::sftphandler::sftphandler] SFTP: About to read bytes from SSH Channel
+[2025-11-18T04:00:55.872012803Z DEBUG sunset_sftp::sftphandler::sftphandler] SFTP <---- received: 29 bytes
+[2025-11-18T04:00:55.872042880Z TRACE sunset_sftp::sftphandler::sftphandler] SFTP <---- received: [0, 0, 0, 25, 5, 0, 0, 0, 24, 0, 0, 0, 4, 220, 94, 228, 181, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 128, 0]
+[2025-11-18T04:00:55.872051955Z TRACE sunset_sftp::sftphandler::sftphandler] Received 29 bytes to process
+[2025-11-18T04:00:55.872055834Z TRACE sunset_sftp::sftphandler::sftphandler] Entering loop to process the full received buffer
+[2025-11-18T04:00:55.872059467Z DEBUG sunset_sftp::sftphandler::sftphandler] <=======================[ SFTP Process State: Idle ]=======================> Buffer remaining: 29
+[2025-11-18T04:00:55.872063572Z DEBUG sunset_sftp::sftphandler::sftphandler] Creating a source: buf_len = 29
+[2025-11-18T04:00:55.872068357Z DEBUG sunset_sftp::sftphandler::sftphandler] Handling general request: Read(ReqId(24), Read { handle: FileHandle(BinString(len=4)), offset: 0, len: 32768 })
+[2025-11-18T04:00:55.872093875Z DEBUG sunset_demo_sftp_std::demosftpserver] SftpServer Read operation: handle = DemoOpaqueFileHandle { tiny_hash: [220, 94, 228, 181] }, filepath = "./demo/sftp/std/testing/out/./65kB_random", offset = 0, len = 32768
+[2025-11-18T04:00:55.872129796Z DEBUG sunset_demo_sftp_std::demosftpserver] Starting reading loop: remaining = 32768
+[2025-11-18T04:00:56.048175463Z DEBUG sunset_demo_sftp_std::demosftpserver] Finished sending data
+[2025-11-18T04:00:56.048246934Z TRACE sunset_sftp::sftphandler::sftphandler] New buffer len 0 bytes 
+[2025-11-18T04:00:56.048263223Z TRACE sunset_sftp::sftphandler::sftphandler] Process checking buf len 0
+[2025-11-18T04:00:56.048272051Z TRACE sunset_sftp::sftphandler::sftphandler] Exiting process with Ok(())
+[2025-11-18T04:00:56.048280180Z TRACE sunset_sftp::sftphandler::sftphandler] SFTP: About to read bytes from SSH Channel
+[2025-11-18T04:00:56.128752382Z DEBUG sunset_sftp::sftphandler::sftphandler] SFTP <---- received: 58 bytes
+[2025-11-18T04:00:56.128827475Z TRACE sunset_sftp::sftphandler::sftphandler] SFTP <---- received: [0, 0, 0, 25, 5, 0, 0, 0, 25, 0, 0, 0, 4, 220, 94, 228, 181, 0, 0, 0, 0, 0, 0, 128, 0, 0, 0, 128, 0, 0, 0, 0, 25, 5, 0, 0, 0, 26, 0, 0, 0, 4, 220, 94, 228, 181, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 128, 0]
+[2025-11-18T04:00:56.128947400Z TRACE sunset_sftp::sftphandler::sftphandler] Received 58 bytes to process
+[2025-11-18T04:00:56.129007450Z TRACE sunset_sftp::sftphandler::sftphandler] Entering loop to process the full received buffer
+[2025-11-18T04:00:56.129023039Z DEBUG sunset_sftp::sftphandler::sftphandler] <=======================[ SFTP Process State: Idle ]=======================> Buffer remaining: 58
+[2025-11-18T04:00:56.129073612Z DEBUG sunset_sftp::sftphandler::sftphandler] Creating a source: buf_len = 58
+[2025-11-18T04:00:56.129134588Z DEBUG sunset_sftp::sftphandler::sftphandler] Handling general request: Read(ReqId(25), Read { handle: FileHandle(BinString(len=4)), offset: 32768, len: 32768 })
+[2025-11-18T04:00:56.129197118Z DEBUG sunset_demo_sftp_std::demosftpserver] SftpServer Read operation: handle = DemoOpaqueFileHandle { tiny_hash: [220, 94, 228, 181] }, filepath = "./demo/sftp/std/testing/out/./65kB_random", offset = 32768, len = 32768
+[2025-11-18T04:00:56.129281842Z DEBUG sunset_demo_sftp_std::demosftpserver] Starting reading loop: remaining = 32768
+[2025-11-18T04:00:56.571741252Z DEBUG sunset_demo_sftp_std::demosftpserver] Finished sending data
+[2025-11-18T04:00:56.571788635Z TRACE sunset_sftp::sftphandler::sftphandler] New buffer len 29 bytes 
+[2025-11-18T04:00:56.571796620Z TRACE sunset_sftp::sftphandler::sftphandler] Process checking buf len 29
+[2025-11-18T04:00:56.571800725Z DEBUG sunset_sftp::sftphandler::sftphandler] <=======================[ SFTP Process State: Idle ]=======================> Buffer remaining: 29
+[2025-11-18T04:00:56.571805592Z DEBUG sunset_sftp::sftphandler::sftphandler] Creating a source: buf_len = 29
+[2025-11-18T04:00:56.571836934Z DEBUG sunset_sftp::sftphandler::sftphandler] Handling general request: Read(ReqId(26), Read { handle: FileHandle(BinString(len=4)), offset: 65536, len: 32768 })
+[2025-11-18T04:00:56.571867299Z DEBUG sunset_demo_sftp_std::demosftpserver] SftpServer Read operation: handle = DemoOpaqueFileHandle { tiny_hash: [220, 94, 228, 181] }, filepath = "./demo/sftp/std/testing/out/./65kB_random", offset = 65536, len = 32768
+[2025-11-18T04:00:56.571887909Z WARN  sunset_demo_sftp_std::demosftpserver] Read operation: length + offset > file length. Clipping ( 32768 + 65536 > 66560)
+[2025-11-18T04:00:56.571912048Z DEBUG sunset_demo_sftp_std::demosftpserver] Starting reading loop: remaining = 1024
+[2025-11-18T04:00:56.571973714Z DEBUG sunset_demo_sftp_std::demosftpserver] Finished sending data
+[2025-11-18T04:00:56.571998913Z TRACE sunset_sftp::sftphandler::sftphandler] New buffer len 0 bytes 
+[2025-11-18T04:00:56.572006229Z TRACE sunset_sftp::sftphandler::sftphandler] Process checking buf len 0
+[2025-11-18T04:00:56.572010056Z TRACE sunset_sftp::sftphandler::sftphandler] Exiting process with Ok(())
+[2025-11-18T04:00:56.572013740Z TRACE sunset_sftp::sftphandler::sftphandler] SFTP: About to read bytes from SSH Channel
+[2025-11-18T04:00:56.612043057Z DEBUG sunset_sftp::sftphandler::sftphandler] SFTP <---- received: 29 bytes
+[2025-11-18T04:00:56.612080511Z TRACE sunset_sftp::sftphandler::sftphandler] SFTP <---- received: [0, 0, 0, 25, 5, 0, 0, 0, 27, 0, 0, 0, 4, 220, 94, 228, 181, 0, 0, 0, 0, 0, 1, 4, 0, 0, 0, 124, 0]
+[2025-11-18T04:00:56.612090348Z TRACE sunset_sftp::sftphandler::sftphandler] Received 29 bytes to process
+[2025-11-18T04:00:56.612094268Z TRACE sunset_sftp::sftphandler::sftphandler] Entering loop to process the full received buffer
+[2025-11-18T04:00:56.612097901Z DEBUG sunset_sftp::sftphandler::sftphandler] <=======================[ SFTP Process State: Idle ]=======================> Buffer remaining: 29
+[2025-11-18T04:00:56.612102737Z DEBUG sunset_sftp::sftphandler::sftphandler] Creating a source: buf_len = 29
+[2025-11-18T04:00:56.612129695Z DEBUG sunset_sftp::sftphandler::sftphandler] Handling general request: Read(ReqId(27), Read { handle: FileHandle(BinString(len=4)), offset: 66560, len: 31744 })
+[2025-11-18T04:00:56.612159638Z DEBUG sunset_demo_sftp_std::demosftpserver] SftpServer Read operation: handle = DemoOpaqueFileHandle { tiny_hash: [220, 94, 228, 181] }, filepath = "./demo/sftp/std/testing/out/./65kB_random", offset = 66560, len = 31744
+[2025-11-18T04:00:56.612179991Z INFO  sunset_demo_sftp_std::demosftpserver] offset is larger than file length, sending EOF
+[2025-11-18T04:00:56.612188727Z TRACE sunset_sftp::sftphandler::sftphandler] New buffer len 0 bytes 
+[2025-11-18T04:00:56.612192482Z TRACE sunset_sftp::sftphandler::sftphandler] Process checking buf len 0
+[2025-11-18T04:00:56.612213977Z TRACE sunset_sftp::sftphandler::sftphandler] Exiting process with Ok(())
+[2025-11-18T04:00:56.612221015Z TRACE sunset_sftp::sftphandler::sftphandler] SFTP: About to read bytes from SSH Channel
+[2025-11-18T04:00:56.612667861Z DEBUG sunset_sftp::sftphandler::sftphandler] SFTP <---- received: 17 bytes
+[2025-11-18T04:00:56.612702804Z TRACE sunset_sftp::sftphandler::sftphandler] SFTP <---- received: [0, 0, 0, 13, 4, 0, 0, 0, 28, 0, 0, 0, 4, 220, 94, 228, 181]
+[2025-11-18T04:00:56.612711519Z TRACE sunset_sftp::sftphandler::sftphandler] Received 17 bytes to process
+[2025-11-18T04:00:56.612715368Z TRACE sunset_sftp::sftphandler::sftphandler] Entering loop to process the full received buffer
+[2025-11-18T04:00:56.612719288Z DEBUG sunset_sftp::sftphandler::sftphandler] <=======================[ SFTP Process State: Idle ]=======================> Buffer remaining: 17
+[2025-11-18T04:00:56.612723435Z DEBUG sunset_sftp::sftphandler::sftphandler] Creating a source: buf_len = 17
+[2025-11-18T04:00:56.612750280Z DEBUG sunset_sftp::sftphandler::sftphandler] Handling general request: Close(ReqId(28), Close { handle: FileHandle(BinString(len=4)) })
+[2025-11-18T04:00:56.612779163Z DEBUG sunset_demo_sftp_std::demosftpserver] SftpServer Close operation on file "./demo/sftp/std/testing/out/./65kB_random" was successful
+[2025-11-18T04:00:56.612796758Z TRACE sunset_sftp::sftphandler::sftphandler] New buffer len 0 bytes 
+[2025-11-18T04:00:56.612819138Z TRACE sunset_sftp::sftphandler::sftphandler] Process checking buf len 0
+[2025-11-18T04:00:56.612828162Z TRACE sunset_sftp::sftphandler::sftphandler] Exiting process with Ok(())
+[2025-11-18T04:00:56.612832453Z TRACE sunset_sftp::sftphandler::sftphandler] SFTP: About to read bytes from SSH Channel
+[2025-11-18T04:00:56.613342157Z DEBUG sunset_sftp::sftphandler::sftphandler] SFTP <---- received: 0 bytes
+[2025-11-18T04:00:56.613381792Z TRACE sunset_sftp::sftphandler::sftphandler] SFTP <---- received: []
+[2025-11-18T04:00:56.613390528Z DEBUG sunset_sftp::sftphandler::sftphandler] client disconnected
+[2025-11-18T04:00:56.613394932Z DEBUG sunset_sftp::sftphandler::sftphandler] Processing returned: Err(ClientDisconnected)
+[2025-11-18T04:00:56.613402269Z WARN  sunset_demo_sftp_std] sftp_loop finished: Err(ChannelEOF)
+[2025-11-18T04:00:56.613409008Z WARN  sunset_demo_common::server] Ended with error ChannelEOF
+[2025-11-18T04:00:56.613464932Z INFO  sunset_demo_common::server] Listening on TCP:22...
