@@ -1,6 +1,7 @@
-use crate::error::SftpResult;
+use crate::error::{SftpError, SftpResult};
 use crate::proto::{
-    ENCODED_BASE_NAME_SFTP_PACKET_LENGTH, MAX_NAME_ENTRY_SIZE, NameEntry, PFlags,
+    ENCODED_BASE_DATA_SFTP_PACKET_LENGTH, ENCODED_BASE_NAME_SFTP_PACKET_LENGTH,
+    MAX_NAME_ENTRY_SIZE, NameEntry, PFlags,
 };
 use crate::server::SftpSink;
 use crate::sftphandler::SftpOutputProducer;
@@ -11,7 +12,6 @@ use crate::{
 
 use sunset::sshwire::SSHEncode;
 
-use core::marker::PhantomData;
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
 
@@ -67,18 +67,21 @@ where
         Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
     }
     /// Reads from a file that has previously being opened for reading
-    fn read(
+    #[allow(unused)]
+    async fn read<const N: usize>(
         &mut self,
         opaque_file_handle: &T,
         offset: u64,
-        _reply: &mut ReadReply<'_, '_>,
-    ) -> SftpOpResult<()> {
+        len: u32,
+        reply: &ReadReply<'_, N>,
+    ) -> SftpResult<()> {
         log::error!(
-            "SftpServer Read operation not defined: handle = {:?}, offset = {:?}",
+            "SftpServer Read operation not defined: handle = {:?}, offset = {:?}, len = {:?}",
             opaque_file_handle,
-            offset
+            offset,
+            len
         );
-        Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
+        Err(SftpError::FileServerError(StatusCode::SSH_FX_OP_UNSUPPORTED))
     }
     /// Writes to a file that has previously being opened for writing
     fn write(
@@ -156,25 +159,65 @@ where
 /// A reference structure passed to the [`SftpServer::read()`] method to
 /// allow replying with the read data.
 
-pub struct ReadReply<'g, 'a> {
-    chan: ChanOut<'g, 'a>,
+pub struct ReadReply<'g, const N: usize> {
+    /// The request Id that will be use`d in the response
+    req_id: ReqId,
+
+    /// Immutable writer
+    chan_out: &'g SftpOutputProducer<'g, N>,
 }
 
-impl<'g, 'a> ReadReply<'g, 'a> {
-    /// **This is a work in progress**
-    ///
-    /// Reply with a slice containing the read data
-    /// It can be called several times to send multiple data chunks
-    ///
-    /// **Important**: The first reply should contain the header
-    #[allow(unused_variables)]
-    pub fn reply(self, data: &[u8]) {}
-}
+impl<'g, const N: usize> ReadReply<'g, N> {
+    /// New instances can only be created within the crate. Users can only
+    /// use other public methods to use it.
+    pub(crate) fn new(
+        req_id: ReqId,
+        chan_out: &'g SftpOutputProducer<'g, N>,
+    ) -> Self {
+        ReadReply { req_id, chan_out }
+    }
 
-// TODO Implement correct Channel Out
-pub struct ChanOut<'g, 'a> {
-    _phantom_g: PhantomData<&'g ()>, // 'g look what these might be ChanIO lifetime
-    _phantom_a: PhantomData<&'a ()>, // a' Why the second lifetime if ChanIO only needs one
+    // TODO Make this enforceable
+    // TODO Document
+    pub async fn send_header(&self, offset: u64, data_len: u32) -> SftpResult<()> {
+        debug!(
+            "ReadReply: Sending header for request id {:?}: offset = {:?}, data length = {:?}",
+            self.req_id, offset, data_len
+        );
+        let mut s = [0u8; N];
+        let mut sink = SftpSink::new(&mut s);
+
+        // Encoding length field
+        (data_len + ENCODED_BASE_DATA_SFTP_PACKET_LENGTH).enc(&mut sink)?;
+        // Encoding packet type
+        103u8.enc(&mut sink)?; // TODO Replace hack with 
+        // Encoding req_id
+        self.req_id.enc(&mut sink)?;
+        // string data length
+        data_len.enc(&mut sink)?;
+
+        let payload = sink.payload_slice();
+        debug!(
+            "Sending header:  len = {:?}, content = {:?}",
+            payload.len(),
+            payload
+        );
+        // Sending payload_slice since we are not making use of the sink sftpPacket length calculation
+        self.chan_out.send_data(payload).await?;
+        Ok(())
+    }
+
+    /// Sends a buffer with data
+    ///
+    /// Call this
+    pub async fn send_data(&self, buff: &[u8]) -> SftpResult<()> {
+        self.chan_out.send_data(buff).await
+    }
+
+    /// Sends EOF meaning that there is no more files in the directory
+    pub async fn send_eof(&self) -> SftpResult<()> {
+        self.chan_out.send_status(self.req_id, StatusCode::SSH_FX_EOF, "").await
+    }
 }
 
 /// Uses for [`DirReply`] to:

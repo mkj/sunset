@@ -7,7 +7,7 @@ use crate::proto::{
     SftpNum, SftpPacket, Stat, StatusCode,
 };
 use crate::requestholder::{RequestHolder, RequestHolderError};
-use crate::server::DirReply;
+use crate::server::{DirReply, ReadReply};
 use crate::sftperror::SftpResult;
 use crate::sftphandler::sftpoutputchannelhandler::{
     SftpOutputPipe, SftpOutputProducer,
@@ -658,6 +658,45 @@ where
                         .send_status(req_id, status, "Error Reading Directory")
                         .await?;
                 };
+            }
+            SftpPacket::Read(req_id, read) => {
+                match file_server
+                    .read(
+                        &T::try_from(&read.handle)?,
+                        read.offset,
+                        read.len,
+                        &ReadReply::new(req_id, output_producer),
+                    )
+                    .await
+                {
+                    Ok(()) => {
+                        // debug!("List stats for {} is {:?}", path, attrs);
+
+                        // output_producer
+                        //     .send_packet(&SftpPacket::Attrs(req_id, attrs))
+                        //     .await?;
+                    }
+                    Err(error) => {
+                        error!("Error reading data: {:?}", error);
+                        if let SftpError::FileServerError(status) = error {
+                            output_producer
+                                .send_status(
+                                    req_id,
+                                    status,
+                                    "Could not list attributes",
+                                )
+                                .await?;
+                        } else {
+                            output_producer
+                                .send_status(
+                                    req_id,
+                                    StatusCode::SSH_FX_FAILURE,
+                                    "Could not list attributes",
+                                )
+                                .await?;
+                        }
+                    }
+                }
             }
             SftpPacket::LStat(req_id, LStat { file_path: path }) => {
                 match file_server.stats(false, path.as_str()?) {

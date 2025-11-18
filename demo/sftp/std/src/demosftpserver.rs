@@ -3,6 +3,7 @@ use crate::{
     demoopaquefilehandle::DemoOpaqueFileHandle,
 };
 
+use sunset_sftp::error::SftpResult;
 use sunset_sftp::handles::{OpaqueFileHandleManager, PathFinder};
 use sunset_sftp::protocol::{Attrs, Filename, NameEntry, PFlags, StatusCode};
 use sunset_sftp::server::helpers::DirEntriesCollection;
@@ -13,9 +14,8 @@ use sunset_sftp::server::{
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
 use std::fs;
-use std::{fs::File, os::unix::fs::FileExt, path::Path};
-
 use std::os::unix::fs::PermissionsExt;
+use std::{fs::File, os::unix::fs::FileExt, path::Path};
 
 #[derive(Debug)]
 pub(crate) enum PrivatePathHandle {
@@ -220,18 +220,99 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
         }
     }
 
-    fn read(
+    async fn read<const N: usize>(
         &mut self,
         opaque_file_handle: &DemoOpaqueFileHandle,
         offset: u64,
-        _reply: &mut ReadReply<'_, '_>,
-    ) -> SftpOpResult<()> {
-        log::error!(
-            "SftpServer Read operation not defined: handle = {:?}, offset = {:?}",
-            opaque_file_handle,
-            offset
-        );
-        Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
+        len: u32,
+        reply: &ReadReply<'_, N>,
+    ) -> SftpResult<()> {
+        if let PrivatePathHandle::File(private_file_handle) = self
+            .handles_manager
+            .get_private_as_mut_ref(opaque_file_handle)
+            .ok_or(StatusCode::SSH_FX_FAILURE)?
+        {
+            log::debug!(
+                "SftpServer Read operation: handle = {:?}, filepath = {:?}, offset = {:?}, len = {:?}",
+                opaque_file_handle,
+                private_file_handle.path,
+                offset,
+                len
+            );
+            let permissions_poxit = private_file_handle.permissions.unwrap_or(0o000);
+            if (permissions_poxit & 0o444) == 0 {
+                error!(
+                    "No read permissions for file {:?}",
+                    private_file_handle.path
+                );
+                return Err(StatusCode::SSH_FX_PERMISSION_DENIED.into());
+            };
+
+            let file_len = private_file_handle
+                .file
+                .metadata()
+                .map_err(|err| {
+                    error!("Could not read the file length: {:?}", err);
+                    StatusCode::SSH_FX_FAILURE
+                })?
+                .len();
+
+            if offset >= file_len {
+                info!("offset is larger than file length, sending EOF");
+                reply.send_eof().await.map_err(|err| {
+                    error!("Could not sent EOF: {:?}", err);
+                    StatusCode::SSH_FX_FAILURE
+                })?;
+                return Ok(());
+            }
+
+            let read_len = if file_len >= len as u64 + offset {
+                len
+            } else {
+                warn!("Read operation: length + offset > file length. Clipping ( {:?} + {:?} > {:?})",
+                len, offset, file_len);
+                (file_len - offset).try_into().unwrap_or(u32::MAX)
+            };
+
+            reply.send_header(offset, read_len).await?;
+
+            const ARBITRARY_BUFFER_LENGTH: usize = 1024;
+
+            let mut read_buff = [0u8; ARBITRARY_BUFFER_LENGTH];
+
+            let mut running_offset = offset;
+            let mut remaining = read_len as usize;
+
+            debug!("Starting reading loop: remaining = {}", remaining);
+            while remaining > 0 {
+                let next_read_len: usize = remaining.min(read_buff.len());
+                debug!("next_read_len = {}", next_read_len);
+                let br = private_file_handle
+                    .file
+                    .read_at(&mut read_buff[..next_read_len], running_offset)
+                    .map_err(|err| {
+                        error!("read error: {:?}", err);
+                        StatusCode::SSH_FX_FAILURE
+                    })?;
+                debug!("{} bytes readed", br);
+                reply.send_data(&read_buff[..br.min(remaining)]).await?;
+                debug!("Read sent {} bytes", br.min(remaining));
+                debug!("remaining {} bytes. {} byte read", remaining, br);
+
+                remaining =
+                    remaining.checked_sub(br).ok_or(StatusCode::SSH_FX_FAILURE)?;
+                debug!(
+                    "after substracting {} bytes, there are {} bytes remaining",
+                    br, remaining
+                );
+                running_offset = running_offset
+                    .checked_add(br as u64)
+                    .ok_or(StatusCode::SSH_FX_FAILURE)?;
+            }
+            debug!("Finished sending data");
+            return Ok(());
+        }
+        Err(StatusCode::SSH_FX_PERMISSION_DENIED.into())
     }
 
     fn write(
