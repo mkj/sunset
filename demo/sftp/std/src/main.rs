@@ -210,7 +210,7 @@ async fn main(spawner: Spawner) {
             "sunset_demo_sftp_std::demosftpserver",
             log::LevelFilter::Debug,
         )
-        .filter_module("sunset_sftp::sftphandler", log::LevelFilter::Debug)
+        .filter_module("sunset_sftp::sftphandler", log::LevelFilter::Trace)
         .filter_module(
             "sunset_sftp::sftphandler::sftpoutputchannelhandler",
             log::LevelFilter::Info,
