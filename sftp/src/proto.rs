@@ -268,6 +268,20 @@ pub struct Data<'a> {
     pub data: BinString<'a>,
 }
 
+/// This is the encoded length for the [`Data`] Sftp Response.
+///
+/// This considers the Packet type (1), the request ID (4),  and the data string
+/// length (4)
+///
+/// - It excludes explicitly length field for the SftpPacket
+/// - It excludes explicitly length of the data string content
+///
+/// It is defined a single source of truth for what is the length for the
+/// encoded [`SftpPacket::Data`] variant
+///
+/// See [Responses from the Server to the Client](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.4)
+pub(crate) const ENCODED_BASE_DATA_SFTP_PACKET_LENGTH: u32 = 1 + 4 + 4;
+
 /// Struct to hold `SSH_FXP_NAME` response.
 /// See [SSH_FXP_NAME in Responses from the Server to the Client](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-7)
 #[derive(Debug, SSHEncode, SSHDecode)]

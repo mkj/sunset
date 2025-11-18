@@ -61,6 +61,11 @@ impl From<RequestHolderError> for SftpError {
         SftpError::RequestHolderError(value)
     }
 }
+// impl From<FileServerError> for SftpError {
+//     fn from(value: FileServerError) -> Self {
+//         SftpError::FileServerError(value)
+//     }
+// }
 
 impl From<SftpError> for WireError {
     fn from(value: SftpError) -> Self {
