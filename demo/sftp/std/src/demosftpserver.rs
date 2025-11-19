@@ -17,6 +17,9 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::{fs::File, os::unix::fs::FileExt, path::Path};
 
+// Used during read operations
+const ARBITRARY_READ_BUFFER_LENGTH: usize = 1024;
+
 #[derive(Debug)]
 pub(crate) enum PrivatePathHandle {
     File(PrivateFileHandle),
@@ -258,7 +261,10 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
                 .len();
 
             if offset >= file_len {
-                info!("offset is larger than file length, sending EOF");
+                info!(
+                    "offset is larger than file length, sending EOF for {:?}",
+                    private_file_handle.path
+                );
                 reply.send_eof().await.map_err(|err| {
                     error!("Could not sent EOF: {:?}", err);
                     StatusCode::SSH_FX_FAILURE
@@ -269,16 +275,14 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
             let read_len = if file_len >= len as u64 + offset {
                 len
             } else {
-                warn!("Read operation: length + offset > file length. Clipping ( {:?} + {:?} > {:?})",
+                debug!("Read operation: length + offset > file length. Clipping ( {:?} + {:?} > {:?})",
                 len, offset, file_len);
                 (file_len - offset).try_into().unwrap_or(u32::MAX)
             };
 
-            reply.send_header(offset, read_len).await?;
+            reply.send_header(read_len).await?;
 
-            const ARBITRARY_BUFFER_LENGTH: usize = 1024;
-
-            let mut read_buff = [0u8; ARBITRARY_BUFFER_LENGTH];
+            let mut read_buff = [0u8; ARBITRARY_READ_BUFFER_LENGTH];
 
             let mut running_offset = offset;
             let mut remaining = read_len as usize;

@@ -61,7 +61,7 @@ impl<'de> SftpSource<'de> {
     /// the result will contains garbage
     pub(crate) fn peak_packet_type(&self) -> WireResult<SftpNum> {
         if self.buffer.len() <= SFTP_FIELD_ID_INDEX {
-            error!(
+            debug!(
                 "Peak packet type failed: buffer len <= SFTP_FIELD_ID_INDEX ( {:?} <= {:?})",
                 self.buffer.len(),
                 SFTP_FIELD_ID_INDEX

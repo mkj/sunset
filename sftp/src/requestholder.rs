@@ -167,7 +167,7 @@ impl<'a> RequestHolder<'a> {
             .unwrap_or(0);
 
         if complete_to_id_index > 0 {
-            warn!(
+            debug!(
                 "The held fragment len = {:?}, is insufficient to peak \
                 the length and type. Will append {:?} to reach the \
                 id field index: {:?}",
