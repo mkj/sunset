@@ -219,7 +219,16 @@ impl Channels {
         let ch = self.get_mut(num)?;
         ch.finished_input(len);
         if let Some(w) = ch.check_window_adjust()? {
-            s.send(w)?;
+            // The send buffer may be full. Ignore the failure and hope another adjustment is
+            // sent later. TODO improve this.
+            match s.send(w) {
+                Ok(_) => ch.pending_adjust = 0,
+                Err(Error::NoRoom { .. }) => {
+                    // TODO better retry rather than hoping a retry occurs
+                    debug!("noroom for adjustment")
+                }
+                error => return error,
+            }
         }
         Ok(())
     }
@@ -1009,11 +1018,12 @@ impl Channel {
     }
 
     /// Returns a window adjustment packet if required
-    fn check_window_adjust(&mut self) -> Result<Option<Packet<'_>>> {
-        let num = self.send.as_mut().trap()?.num;
+    ///
+    /// Does not reset the adjustment to 0, should be done by caller on successful send.
+    fn check_window_adjust(&self) -> Result<Option<Packet<'_>>> {
+        let num = self.send.as_ref().trap()?.num;
         if self.pending_adjust > self.full_window / 2 {
             let adjust = self.pending_adjust as u32;
-            self.pending_adjust = 0;
             let p = packets::ChannelWindowAdjust { num, adjust }.into();
             Ok(Some(p))
         } else {
