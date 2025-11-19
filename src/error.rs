@@ -5,11 +5,14 @@ use log::{debug, error, info, log, trace, warn};
 use core::fmt;
 use core::fmt::Arguments;
 
-use snafu::{prelude::*, Backtrace, Location};
+use snafu::prelude::*;
 
 use heapless::String;
 
 use crate::channel::ChanNum;
+
+#[allow(unused_imports)]
+use snafu::{Backtrace, Location};
 
 // TODO: can we make Snafu not require Debug?
 

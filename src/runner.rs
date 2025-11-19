@@ -698,7 +698,7 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
             self.conn.channels.term_window_change(chan.0, winch, &mut s)
         } else {
             trace!("winch as server");
-            Err(Error::BadUsage {})
+            Err(error::BadUsage.build())
         }
     }
 

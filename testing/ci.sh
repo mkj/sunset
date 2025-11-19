@@ -42,7 +42,8 @@ cargo test --doc
 cd stdasync
 # only test lib since some examples are broken
 cargo test --lib
-cargo build --example sunsetc
+# test backtrace feature too
+cargo build --example sunsetc --features sunset/backtrace
 # with/without release to test debug_assertions
 cargo build --release --example sunsetc
 )
