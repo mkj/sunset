@@ -92,7 +92,14 @@ impl DemoServer for StdDemo {
         let ssh_loop_inner = async {
             loop {
                 let mut ph = ProgressHolder::new();
-                let ev = serv.progress(&mut ph).await?;
+                let ev = match serv.progress(&mut ph).await {
+                    Ok(event) => event,
+                    Err(e) => {
+                        error!("server  progress failed: {:?}", e); // NoRoom: 2048 Bytes Output buffer
+                        return Err(e);
+                    }
+                };
+
                 trace!("ev {ev:?}");
                 match ev {
                     ServEvent::SessionShell(a) => {
@@ -148,7 +155,7 @@ impl DemoServer for StdDemo {
 
                 // TODO Do some research to find reasonable default buffer lengths
                 let mut buffer_in = [0u8; 512];
-                let mut incomplete_request_buffer = [0u8; 256];
+                let mut incomplete_request_buffer = [0u8; 512];
 
                 match {
                     let stdio = serv.stdio(ch).await?;
@@ -156,7 +163,7 @@ impl DemoServer for StdDemo {
                         "./demo/sftp/std/testing/out/".to_string(),
                     );
 
-                    SftpHandler::<DemoOpaqueFileHandle, DemoSftpServer, 512>::new(
+                    SftpHandler::<DemoOpaqueFileHandle, DemoSftpServer, 2048>::new(
                         &mut file_server,
                         &mut incomplete_request_buffer,
                     )
@@ -206,15 +213,17 @@ async fn listen(
 async fn main(spawner: Spawner) {
     env_logger::builder()
         .filter_level(log::LevelFilter::Info)
-        .filter_module(
-            "sunset_demo_sftp_std::demosftpserver",
-            log::LevelFilter::Debug,
-        )
-        .filter_module("sunset_sftp::sftphandler", log::LevelFilter::Trace)
-        .filter_module(
-            "sunset_sftp::sftphandler::sftpoutputchannelhandler",
-            log::LevelFilter::Debug,
-        )
+        // .filter_module(
+        //     "sunset_demo_sftp_std::demosftpserver",
+        //     log::LevelFilter::Debug,
+        // )
+        // .filter_module("sunset_sftp::sftphandler", log::LevelFilter::Trace)
+        // .filter_module("sunset_sftp", log::LevelFilter::Trace)
+        // .filter_module("sunset_sftp::sftpsource", log::LevelFilter::Debug)
+        // .filter_module(
+        //     "sunset_sftp::sftphandler::sftpoutputchannelhandler",
+        //     log::LevelFilter::Debug,
+        // )
         // .filter_module("sunset::channel", log::LevelFilter::Trace)
         // .filter_module("sunset_async::async_sunset", log::LevelFilter::Trace)
         // .filter_module("sunset_sftp::sftpsink", log::LevelFilter::Info)
