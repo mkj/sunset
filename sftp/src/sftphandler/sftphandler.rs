@@ -139,7 +139,7 @@ where
                     {
                         match e {
                             RequestHolderError::RanOut => {
-                                warn!(
+                                debug!(
                                     "There was not enough bytes in the buffer_in. \
                                                 We will continue adding bytes"
                                 );
@@ -148,7 +148,7 @@ where
                                 continue;
                             }
                             RequestHolderError::WireError(WireError::RanOut) => {
-                                warn!(
+                                debug!(
                                     "WIRE ERROR: There was not enough bytes in the buffer_in. \
                                                 We will continue adding bytes"
                                 );
@@ -157,7 +157,7 @@ where
                                 continue;
                             }
                             RequestHolderError::NoRoom => {
-                                warn!(
+                                debug!(
                                     "The request holder is full but the request in is incomplete. \
                                                 We will try to decode it"
                                 );
@@ -310,7 +310,7 @@ where
                                         "",
                                     )
                                     .await?;
-                                info!("Finished multi part Write Request");
+                                debug!("Finished multi part Write Request");
                                 self.state = SftpHandleState::Idle;
                             }
                         }
@@ -375,8 +375,8 @@ where
                         }
                         Err(e) => match e {
                             WireError::RanOut => {
-                                warn!(
-                                    "RanOut for the SFTP Packet in the source buffer: {:?}",
+                                debug!(
+                                    "The packet cannot fit in the receiving buffer: It will be handled in parts ({:?})",
                                     e
                                 );
 
@@ -394,7 +394,7 @@ where
                                             SftpHandleState::ProcessingLongRequest;
                                     }
                                     Err(e) => {
-                                        error!("Error handle_ran_out");
+                                        debug!("Error handle_ran_out : {:?}", e);
                                         match e {
                                             SftpError::WireError(
                                                 WireError::RanOut,
@@ -408,6 +408,10 @@ where
                                                 continue;
                                             }
                                             _ => {
+                                                error!(
+                                                    "Error handle_ran_out: No Could not be catch {:?}",
+                                                    e
+                                                );
                                                 return Err(SunsetError::Bug.into());
                                             }
                                         }
