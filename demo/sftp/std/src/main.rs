@@ -163,7 +163,7 @@ impl DemoServer for StdDemo {
                         "./demo/sftp/std/testing/out/".to_string(),
                     );
 
-                    SftpHandler::<DemoOpaqueFileHandle, DemoSftpServer, 2048>::new(
+                    SftpHandler::<DemoOpaqueFileHandle, DemoSftpServer, 512>::new(
                         &mut file_server,
                         &mut incomplete_request_buffer,
                     )
@@ -213,19 +213,21 @@ async fn listen(
 async fn main(spawner: Spawner) {
     env_logger::builder()
         .filter_level(log::LevelFilter::Info)
-        // .filter_module(
-        //     "sunset_demo_sftp_std::demosftpserver",
-        //     log::LevelFilter::Debug,
-        // )
-        // .filter_module("sunset_sftp::sftphandler", log::LevelFilter::Trace)
+        .filter_module(
+            "sunset_demo_sftp_std::demosftpserver",
+            log::LevelFilter::Debug,
+        )
+        .filter_module("sunset_sftp::sftphandler", log::LevelFilter::Trace)
         // .filter_module("sunset_sftp", log::LevelFilter::Trace)
         // .filter_module("sunset_sftp::sftpsource", log::LevelFilter::Debug)
-        // .filter_module(
-        //     "sunset_sftp::sftphandler::sftpoutputchannelhandler",
-        //     log::LevelFilter::Debug,
-        // )
+        .filter_module(
+            "sunset_sftp::sftphandler::sftpoutputchannelhandler",
+            log::LevelFilter::Info,
+        )
         // .filter_module("sunset::channel", log::LevelFilter::Trace)
         // .filter_module("sunset_async::async_sunset", log::LevelFilter::Trace)
+        .filter_module("sunset::runner", log::LevelFilter::Debug)
+        // .filter_module("sunset::traffic", log::LevelFilter::Trace)
         // .filter_module("sunset_sftp::sftpsink", log::LevelFilter::Info)
         // .filter_module("sunset_sftp::sftpsource", log::LevelFilter::Info)
         // .filter_module("sunset_sftp::sftpserver", log::LevelFilter::Info)
