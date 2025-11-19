@@ -154,9 +154,7 @@ impl<'a> TrafIn<'a> {
 
     /// Returns a reference to the decrypted payload buffer if ready,
     /// and the `seq` of that packet.
-    // TODO: only pub for testing
-    // pub(crate) fn payload(&mut self) -> Option<(&[u8], u32)> {
-    pub fn payload(&self) -> Option<(&[u8], u32)> {
+    pub(crate) fn payload(&self) -> Option<(&[u8], u32)> {
         match self.state {
             RxState::InPayload { len, seq } => {
                 let payload = &self.buf[SSH_PAYLOAD_START..SSH_PAYLOAD_START + len];
