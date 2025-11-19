@@ -7,7 +7,7 @@ REMOTE_HOST="192.168.69.2"
 REMOTE_USER="any"
 
 # Define test files
-FILES=("512B_random" "16kB_random" "64kB_random" "65kB_random")
+FILES=("512B_random" "16kB_random" "64kB_random" "65kB_random" "2048kB_random")
 
 # Generate random data files
 echo "Generating random data files..."
