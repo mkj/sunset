@@ -128,11 +128,12 @@ where
 
         trace!("Received {:} bytes to process", buf.len());
 
-        if !matches!(self.state, SftpHandleState::Fragmented(_))
-            & buf.len().lt(&SFTP_MINIMUM_PACKET_LEN)
-        {
-            return Err(WireError::PacketWrong.into());
-        }
+        // TODO: Should go out. fragmented packet handling should take care of it
+        // if !matches!(self.state, SftpHandleState::Fragmented(_))
+        //     & buf.len().lt(&SFTP_MINIMUM_PACKET_LEN)
+        // {
+        //     return Err(WireError::PacketWrong.into());
+        // }
 
         trace!("Entering loop to process the full received buffer");
         while buf.len() > 0 {
