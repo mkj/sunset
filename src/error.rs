@@ -8,6 +8,9 @@ use snafu::prelude::*;
 
 use crate::channel::ChanNum;
 
+#[allow(unused_imports)]
+use snafu::{Backtrace, Location};
+
 // TODO: can we make Snafu not require Debug?
 
 /// The Sunset error type.
