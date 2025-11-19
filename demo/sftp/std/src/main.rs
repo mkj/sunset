@@ -213,8 +213,10 @@ async fn main(spawner: Spawner) {
         .filter_module("sunset_sftp::sftphandler", log::LevelFilter::Trace)
         .filter_module(
             "sunset_sftp::sftphandler::sftpoutputchannelhandler",
-            log::LevelFilter::Info,
+            log::LevelFilter::Debug,
         )
+        // .filter_module("sunset::channel", log::LevelFilter::Trace)
+        // .filter_module("sunset_async::async_sunset", log::LevelFilter::Trace)
         // .filter_module("sunset_sftp::sftpsink", log::LevelFilter::Info)
         // .filter_module("sunset_sftp::sftpsource", log::LevelFilter::Info)
         // .filter_module("sunset_sftp::sftpserver", log::LevelFilter::Info)
@@ -222,7 +224,6 @@ async fn main(spawner: Spawner) {
         // .filter_module("sunset::encrypt", log::LevelFilter::Info)
         // .filter_module("sunset::conn", log::LevelFilter::Info)
         // .filter_module("sunset::kex", log::LevelFilter::Info)
-        // .filter_module("sunset_async::async_sunset", log::LevelFilter::Info)
         // .filter_module("async_io", log::LevelFilter::Info)
         // .filter_module("polling", log::LevelFilter::Info)
         // .filter_module("embassy_net", log::LevelFilter::Info)

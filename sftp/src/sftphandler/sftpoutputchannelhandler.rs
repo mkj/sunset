@@ -87,7 +87,7 @@ impl<'a, const N: usize> SftpOutputConsumer<'a, N> {
                 _total = *lock;
             }
 
-            debug!("Output Consumer: Reads {rl} bytes. Total {_total}");
+            debug!("Output Consumer: ---> Reads {rl} bytes. Total {_total}");
             if rl > 0 {
                 self.ssh_chan_out.write_all(&buf[..rl]).await?;
                 debug!("Output Consumer: Written {:?} bytes ", &buf[..rl].len());
@@ -156,7 +156,7 @@ impl<'a, const N: usize> SftpOutputProducer<'a, N> {
             _total = *lock;
         }
 
-        debug!("Output Producer: Sends {:?} bytes. Total {_total}", buf.len());
+        debug!("Output Producer: <--- Sends {:?} bytes. Total {_total}", buf.len());
         trace!("Output Producer: Sending buffer {:?}", buf);
 
         // writer.write_all(buf); // ??? error[E0596]: cannot borrow `*writer` as mutable, as it is behind a `&` reference
