@@ -27,7 +27,7 @@ pub const MAX_USERNAME: usize = 31;
 
 /// Maximum username for client or server
 ///
-/// 32 is the limit for various Linux APIs like wtmp
+/// 31 is the limit for various Linux APIs like wtmp
 #[cfg(feature = "larger")]
 pub const MAX_USERNAME: usize = 256;
 

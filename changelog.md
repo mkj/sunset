@@ -1,5 +1,37 @@
 # Sunset Changelog
 
+# unreleased
+
+### Added
+
+- Add server authentication helpers `matches_username()`,
+  `matches_password()`.
+
+- Add environment session variable support
+
+- Add mlkem768x25519 hybrid post-quantum key exchange
+  Enabled by `mlkem` feature, will soon be default.
+
+### Fixed
+
+- Fix public key authentication. Github #30
+
+- Don't fail in some circumstances during key exchange when
+  packets are received in particular order. Github #25, Github #27
+
+- Fix a hang where channels wouldn't get woken for more output
+  after the SSH stream was written out. Github #25
+
+- Fix using sshwire-derive outside of sunset
+
+- Fix winch signal for sunsetc (regression in 0.3.0)
+
+### Changed
+
+- Log a better warning when host key signatures fail
+
+- Improve exit code handling in sunsetc
+
 ## 0.3.0 - 2025-06-16
 
 ### Changed

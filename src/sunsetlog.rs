@@ -1,8 +1,6 @@
 #[cfg(test)]
 use simplelog::{self, LevelFilter, TestLogger};
 
-pub use ::log::{debug, error, info, log, trace, warn};
-
 #[cfg(test)]
 pub fn init_test_log() {
     let conf =

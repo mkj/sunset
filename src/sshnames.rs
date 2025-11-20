@@ -82,7 +82,7 @@ pub enum ChanFail {
 /// SSH agent message numbers
 ///
 /// [draft-miller-ssh-agent](https://datatracker.ietf.org/doc/html/draft-miller-ssh-agent-14#section-5.1)
-#[allow(non_camel_case_types)]
+#[expect(non_camel_case_types)]
 #[derive(Debug, PartialEq, Eq, Copy, Clone, Hash)]
 pub enum AgentMessageNum {
     SSH_AGENT_FAILURE = 5,

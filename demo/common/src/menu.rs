@@ -391,7 +391,7 @@ where
                         Some(arg) => {
                             match menu.items.iter().find(|i| i.command == arg) {
                                 Some(item) => {
-                                    self.print_long_help(&item);
+                                    self.print_long_help(item);
                                 }
                                 None => {
                                     writeln!(
@@ -406,7 +406,7 @@ where
                         _ => {
                             writeln!(self.context, "AVAILABLE ITEMS:").unwrap();
                             for item in menu.items {
-                                self.print_short_help(&item);
+                                self.print_short_help(item);
                             }
                             if self.depth != 0 {
                                 self.print_short_help(&Item {

@@ -3,9 +3,8 @@ mod tests {
     use crate::error::Error;
     use crate::packets::*;
     use crate::packets::{Packet, ParseContext};
+    use crate::sshwire;
     use crate::sshwire::BinString;
-    use crate::{packets, sshwire};
-    use pretty_hex::PrettyHex;
     use simplelog::{self, LevelFilter, TestLogger};
 
     pub fn init_log() {

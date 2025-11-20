@@ -12,12 +12,10 @@ use tokio::net::UnixStream;
 
 use sunset_sshwire_derive::*;
 
-use crate::*;
 use sshwire::{
-    BinString, Blob, SSHDecode, SSHEncode, SSHSink, SSHSource, TextString,
-    WireError, WireResult,
+    Blob, SSHDecode, SSHEncode, SSHSink, SSHSource, TextString, WireError,
+    WireResult,
 };
-use sshwire::{SSHDecodeEnum, SSHEncodeEnum};
 use sunset::sshnames::*;
 use sunset::sshwire;
 use sunset::{AuthSigMsg, OwnedSig, PubKey, SignKey, Signature};

@@ -9,13 +9,9 @@ use {
 use zeroize::Zeroize;
 
 use crate::channel::{ChanData, ChanNum};
-use crate::encrypt::{
-    KeyState, KeysRecv, KeysSend, SSH_LENGTH_SIZE, SSH_PAYLOAD_START,
-};
+use crate::encrypt::{KeyState, KeysRecv, KeysSend, SSH_PAYLOAD_START};
 use crate::ident::RemoteVersion;
-use crate::packets::Packet;
 use crate::*;
-use pretty_hex::PrettyHex;
 
 // TODO: if smoltcp exposed both ends of a CircularBuffer to recv()
 // we could perhaps just work directly in smoltcp's provided buffer?
@@ -158,9 +154,7 @@ impl<'a> TrafIn<'a> {
 
     /// Returns a reference to the decrypted payload buffer if ready,
     /// and the `seq` of that packet.
-    // TODO: only pub for testing
-    // pub(crate) fn payload(&mut self) -> Option<(&[u8], u32)> {
-    pub fn payload(&self) -> Option<(&[u8], u32)> {
+    pub(crate) fn payload(&self) -> Option<(&[u8], u32)> {
         match self.state {
             RxState::InPayload { len, seq } => {
                 let payload = &self.buf[SSH_PAYLOAD_START..SSH_PAYLOAD_START + len];
@@ -445,17 +439,14 @@ impl<'a> TrafOut<'a> {
     }
 
     pub fn consume_output(&mut self, l: usize) {
-        match self.state {
-            TxState::Write { ref mut idx, len } => {
-                let wlen = (len - *idx).min(l);
-                *idx += wlen;
+        if let TxState::Write { ref mut idx, len } = self.state {
+            let wlen = (len - *idx).min(l);
+            *idx += wlen;
 
-                if *idx == len {
-                    // all done, read the next packet
-                    self.state = TxState::Idle
-                }
+            if *idx == len {
+                // all done, read the next packet
+                self.state = TxState::Idle
             }
-            _ => (),
         }
     }
 

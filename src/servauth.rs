@@ -6,13 +6,12 @@ use {
 
 use crate::sshnames::*;
 use crate::*;
-use event::{CliEvent, ServEventId};
+use event::ServEventId;
 use kex::SessId;
 use packets::{AuthMethod, Packet, Userauth60, UserauthPkOk, UserauthRequest};
-use sshwire::{BinString, Blob};
 use traffic::TrafSend;
 
-use heapless::{String, Vec};
+use heapless::Vec;
 
 /// Server authentication context
 ///
@@ -29,7 +28,6 @@ pub(crate) struct ServAuth {
     /// Username previously used, as an array of bytes
     pub username: Option<Vec<u8, { config::MAX_USERNAME }>>,
 
-    // TODO Add setters for methods in Runner/SSHServer creation.
     /// Whether to advertise password authentication and present it to the application
     ///
     /// Enabled by default
@@ -53,6 +51,12 @@ impl Default for ServAuth {
 }
 
 impl ServAuth {
+    /// Configure which authentication methods are allowed
+    pub fn set_auth_methods(&mut self, password: bool, pubkey: bool) {
+        self.method_password = password;
+        self.method_pubkey = pubkey;
+    }
+
     /// Returns an event for the app, or `DispatchEvent::None` if auth failure
     /// has been returned immediately.
     pub fn request(
@@ -75,7 +79,7 @@ impl ServAuth {
             match Vec::from_slice(p.username.0) {
                 Result::Ok(u) => self.username = Some(u),
                 Result::Err(_) => {
-                    warn!("Client tried too long username");
+                    warn!("Client tried too long username, {}", p.username.0.len());
                     return error::SSHProtoUnsupported.fail();
                 }
             }
@@ -130,7 +134,12 @@ impl ServAuth {
         // Extract the signature separately. The message for the signature
         // includes the auth packet without the signature part.
         let (key, sig) = match &mut p.method {
-            AuthMethod::PubKey(m) => (&m.pubkey.0, m.sig.take()),
+            AuthMethod::PubKey(m) => {
+                let sig = m.sig.take();
+                // When we have a signature, we need to set force_sig=true so that the encoded message for verification has the boolean set correctly
+                m.force_sig = sig.is_some();
+                (&m.pubkey.0, sig)
+            }
             _ => return Err(Error::bug()),
         };
 
@@ -202,7 +211,7 @@ impl ServAuth {
         };
 
         let msg = auth::AuthSigMsg::new(p.clone(), sess_id);
-        match sig_type.verify(key, &msg, &sig) {
+        match sig_type.verify(key, &msg, sig) {
             Ok(()) => true,
             Err(e) => {
                 trace!("sig failed  {e}");

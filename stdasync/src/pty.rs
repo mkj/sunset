@@ -10,7 +10,7 @@ use nix::sys::termios::Termios;
 
 use sunset::config::*;
 use sunset::packets::WinChange;
-use sunset::{Pty, Result, Runner};
+use sunset::{Pty, Result};
 
 /// Returns the size of the current terminal
 pub fn win_size() -> Result<WinChange, IoError> {

@@ -48,7 +48,7 @@ impl<'a> SSHClient<'a> {
     ) -> Result<CliEvent<'f, 'a>> {
         match self.sunset.progress(ph).await? {
             Event::Cli(x) => Ok(x),
-            Event::None => return Ok(CliEvent::PollAgain),
+            Event::None => Ok(CliEvent::PollAgain),
             Event::Progressed => Ok(CliEvent::PollAgain),
             _ => Err(Error::bug()),
         }

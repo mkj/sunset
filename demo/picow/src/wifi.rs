@@ -64,7 +64,7 @@ pub(crate) async fn wifi_stack(
     );
 
     static STATE: StaticCell<cyw43::State> = StaticCell::new();
-    let state = STATE.init_with(|| cyw43::State::new());
+    let state = STATE.init_with(cyw43::State::new);
     let (net_device, control, runner) = cyw43::new(state, pwr, spi, fw).await;
     spawner.spawn(wifi_task(runner)).unwrap();
 

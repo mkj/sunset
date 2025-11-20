@@ -4,15 +4,9 @@ use {
     log::{debug, error, info, log, trace, warn},
 };
 
-use snafu::prelude::*;
-
-use crate::{packets::ChannelOpen, *};
+use crate::*;
 use cliauth::CliAuth;
-use heapless::String;
-use packets::{Packet, ParseContext, PubKey};
-use sign::SignKey;
-use sshnames::*;
-use traffic::TrafSend;
+use packets::ParseContext;
 
 #[derive(Default, Debug)]
 pub struct Client {

@@ -96,11 +96,11 @@ const AUTH_ITEM: Item<AsyncMenuBuf> = Item {
 };
 
 fn enter_top(context: &mut AsyncMenuBuf) {
-    let _ = writeln!(context, "In setup menu").unwrap();
+    writeln!(context, "In setup menu").unwrap();
 }
 
 fn enter_auth(context: &mut AsyncMenuBuf) {
-    let _ = writeln!(context, "In auth menu").unwrap();
+    writeln!(context, "In auth menu").unwrap();
 }
 
 fn do_auth_show(

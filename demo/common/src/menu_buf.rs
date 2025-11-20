@@ -17,7 +17,7 @@ impl AsyncMenuBuf {
         W: embedded_io_async::Write<Error = sunset::Error>,
     {
         let mut b = self.s.as_str().as_bytes();
-        while b.len() > 0 {
+        while !b.is_empty() {
             let l = w.write(b).await?;
             b = &b[l..];
         }

@@ -511,7 +511,7 @@ const SERIAL_ITEM: Item<MenuCtx> = Item {
 };
 
 fn enter_auth(context: &mut MenuCtx) {
-    let _ = writeln!(context, "In auth menu").unwrap();
+    writeln!(context, "In auth menu").unwrap();
 }
 
 fn endis(v: bool) -> &'static str {
@@ -571,7 +571,7 @@ fn do_clear_key(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx) {
 
 fn do_console_pw(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx) {
     let pw = args[0];
-    if pw.as_bytes().len() > MAX_PW_LEN {
+    if pw.len() > MAX_PW_LEN {
         let _ = writeln!(context, "Too long");
         return;
     }
@@ -612,7 +612,7 @@ fn do_console_clear_pw(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuC
 
 fn do_admin_pw(_item: &Item<MenuCtx>, args: &[&str], context: &mut MenuCtx) {
     let pw = args[0];
-    if pw.as_bytes().len() > MAX_PW_LEN {
+    if pw.len() > MAX_PW_LEN {
         let _ = writeln!(context, "Too long");
         return;
     }

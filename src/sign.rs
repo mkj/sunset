@@ -8,8 +8,6 @@ use {
     log::{debug, error, info, log, trace, warn},
 };
 
-use core::ops::Deref;
-
 use ed25519_dalek as dalek;
 use ed25519_dalek::{Signer, Verifier};
 use zeroize::ZeroizeOnDrop;
@@ -17,12 +15,12 @@ use zeroize::ZeroizeOnDrop;
 use crate::*;
 use packets::{Ed25519PubKey, Ed25519Sig, PubKey, Signature};
 use sshnames::*;
-use sshwire::{BinString, Blob, SSHEncode};
-
-use pretty_hex::PrettyHex;
+use sshwire::{Blob, SSHEncode};
 
 use core::mem::discriminant;
 
+// only required for some configurations
+#[allow(unused_imports)]
 use digest::Digest;
 
 // TODO remove once we use byupdate.
@@ -234,7 +232,6 @@ pub enum KeyType {
 ///
 /// This may hold the private key part locally
 /// or potentially send the signing requests to an SSH agent or other entity.
-// #[derive(ZeroizeOnDrop, Clone, PartialEq)]
 #[derive(ZeroizeOnDrop, Clone, PartialEq, Eq)]
 pub enum SignKey {
     // TODO: we could just have the 32 byte seed here to save memory, but
@@ -457,12 +454,5 @@ impl TryFrom<ssh_key::PrivateKey> for SignKey {
 
 #[cfg(test)]
 pub(crate) mod tests {
-
-    use crate::*;
-    use packets;
-    use sign::*;
-    use sshnames::SSH_NAME_ED25519;
-    use sunsetlog::init_test_log;
-
     // TODO: tests for sign()/verify() and invalid signatures
 }

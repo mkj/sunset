@@ -6,7 +6,6 @@
 //! [`AgentClient`] can communicate with a separate `ssh-agent` for signing.
 //!
 //! `sunsetc` example is usable as a day-to-day SSH client on Linux.
-#![allow(unused_imports)]
 // avoid mysterious missing awaits
 #![deny(unused_must_use)]
 
@@ -27,4 +26,3 @@ pub use cmdline_client::CmdlineClient;
 pub use agent::AgentClient;
 
 // for sshwire derive
-use sunset::sshwire;

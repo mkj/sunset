@@ -6,16 +6,12 @@ use {
     log::{debug, error, info, log, trace, warn},
 };
 
-use chacha20::cipher::{
-    KeyIvInit, StreamCipher, StreamCipherSeek, StreamCipherSeekCore,
-};
+use chacha20::cipher::{KeyIvInit, StreamCipher, StreamCipherSeek};
 use chacha20::ChaCha20;
 use digest::KeyInit;
-use poly1305::universal_hash::generic_array::GenericArray;
-use poly1305::universal_hash::UniversalHash;
 use poly1305::Poly1305;
 use subtle::ConstantTimeEq;
-use zeroize::{Zeroize, ZeroizeOnDrop};
+use zeroize::ZeroizeOnDrop;
 
 use crate::*;
 use encrypt::SSH_LENGTH_SIZE;

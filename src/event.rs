@@ -1,19 +1,11 @@
-/// Events used by applications running the SSH connection
-///
-/// These include hostkeys, authentication, and shell/command sessions
-use self::{
-    channel::Channel,
-    packets::{AuthMethod, MethodPubKey, UserauthRequest},
-};
-
 #[allow(unused_imports)]
 use {
     crate::error::{Error, Result, TrapBug},
     log::{debug, error, info, log, trace, warn},
+    subtle::ConstantTimeEq,
 };
 
 use core::fmt::Debug;
-use core::mem::Discriminant;
 
 use crate::*;
 use channel::{CliSessionExit, CliSessionOpener};
@@ -59,7 +51,6 @@ pub enum CliEvent<'g, 'a> {
     // ChanRequest(ChanRequest<'g, 'a>),
     // Banner { banner: TextString<'a>, language: TextString<'a> },
     /// The SSH connection is no longer running
-    #[allow(unused)]
     Defunct,
 
     /// No event was returned.
@@ -197,7 +188,7 @@ pub(crate) enum CliEventId {
     SessionOpened(ChanNum),
     SessionExit,
     Banner,
-    #[allow(unused)]
+    #[expect(unused)]
     Defunct,
     // TODO:
     // Disconnected
@@ -300,9 +291,11 @@ pub enum ServEvent<'g, 'a> {
     ///
     /// TODO details
     SessionPty(ServPtyRequest<'g, 'a>),
+    /// Server has received one environment variable.
+    /// Note: input strings are not sanitised.
+    SessionEnv(ServEnvironmentRequest<'g, 'a>),
 
     /// The SSH session is no longer running
-    #[allow(unused)]
     Defunct,
 
     /// No event was returned.
@@ -325,6 +318,7 @@ impl Debug for ServEvent<'_, '_> {
             Self::SessionExec(_) => "SessionExec",
             Self::SessionSubsystem(_) => "SessionSubsystem",
             Self::SessionPty(_) => "SessionPty",
+            Self::SessionEnv(_) => "Environment",
             Self::Defunct => "Defunct",
             Self::PollAgain => "PollAgain",
         };
@@ -362,6 +356,17 @@ impl<'g, 'a> ServPasswordAuth<'g, 'a> {
         self.raw_username()?.as_str()
     }
 
+    /// Perform a constant-time comparison of the user-presented username against a passed string.
+    pub fn matches_username(
+        &self,
+        username: impl core::convert::AsRef<str>,
+    ) -> bool {
+        match self.username() {
+            Ok(u) => u.as_bytes().ct_eq(username.as_ref().as_bytes()).into(),
+            _ => false,
+        }
+    }
+
     /// Retrieve the password presented by the user.
     ///
     /// When comparing with an expected password or hash, take
@@ -369,6 +374,20 @@ impl<'g, 'a> ServPasswordAuth<'g, 'a> {
     /// by using [`subtle`](https://docs.rs/subtle/latest/subtle/) crate.
     pub fn password(&self) -> Result<&str> {
         self.raw_password()?.as_str()
+    }
+
+    /// Perform a constant-time comparison of the user-presented password against a passed string.
+    /// # Caution
+    /// This is better than a naive comparison, but passwords should be hashed and stored using a
+    /// platform-appropriate password hashing function. Consider bcrypt, argon2, or pbkdf2.
+    pub fn matches_password(
+        &self,
+        password: impl core::convert::AsRef<str>,
+    ) -> bool {
+        match self.password() {
+            Ok(p) => p.as_bytes().ct_eq(password.as_ref().as_bytes()).into(),
+            _ => false,
+        }
     }
 
     /// Accept the presented password.
@@ -381,6 +400,35 @@ impl<'g, 'a> ServPasswordAuth<'g, 'a> {
     pub fn reject(mut self) -> Result<()> {
         self.done = true;
         self.runner.resume_servauth(false)
+    }
+
+    /// Enable or disable password authentication for subsequent attempts.
+    ///
+    /// # Caution
+    /// Enabling or disabling authentication methods based on username can
+    /// unintentionally enable user enumeration attacks.
+    pub fn enable_password_auth(&mut self, enabled: bool) -> Result<()> {
+        let (_, pubkey) = self.runner.get_auth_methods()?;
+        self.runner.set_auth_methods(enabled, pubkey)
+    }
+
+    /// Enable or disable public key authentication for subsequent attempts.
+    ///
+    /// # Caution
+    /// Enabling or disabling authentication methods based on username can
+    /// unintentionally enable user enumeration attacks.
+    pub fn enable_pubkey_auth(&mut self, enabled: bool) -> Result<()> {
+        let (password, _) = self.runner.get_auth_methods()?;
+        self.runner.set_auth_methods(password, enabled)
+    }
+
+    /// Configure which authentication methods are allowed for subsequent attempts.
+    ///
+    /// # Caution
+    /// Enabling or disabling authentication methods based on username can
+    /// unintentionally enable user enumeration attacks.
+    pub fn set_auth_methods(&mut self, password: bool, pubkey: bool) -> Result<()> {
+        self.runner.set_auth_methods(password, pubkey)
     }
 
     pub fn raw_username(&self) -> Result<TextString<'_>> {
@@ -451,6 +499,35 @@ impl<'g, 'a> ServPubkeyAuth<'g, 'a> {
         self.runner.resume_servauth(false)
     }
 
+    /// Enable or disable password authentication for subsequent attempts.
+    ///
+    /// # Caution
+    /// Enabling or disabling authentication methods based on username can
+    /// unintentionally enable user enumeration attacks.
+    pub fn enable_password_auth(&mut self, enabled: bool) -> Result<()> {
+        let (_, pubkey) = self.runner.get_auth_methods()?;
+        self.runner.set_auth_methods(enabled, pubkey)
+    }
+
+    /// Enable or disable public key authentication for subsequent attempts.
+    ///
+    /// # Caution
+    /// Enabling or disabling authentication methods based on username can
+    /// unintentionally enable user enumeration attacks.
+    pub fn enable_pubkey_auth(&mut self, enabled: bool) -> Result<()> {
+        let (password, _) = self.runner.get_auth_methods()?;
+        self.runner.set_auth_methods(password, enabled)
+    }
+
+    /// Configure which authentication methods are allowed for subsequent attempts.
+    ///
+    /// # Caution
+    /// Enabling or disabling authentication methods based on username can
+    /// unintentionally enable user enumeration attacks.
+    pub fn set_auth_methods(&mut self, password: bool, pubkey: bool) -> Result<()> {
+        self.runner.set_auth_methods(password, pubkey)
+    }
+
     pub fn raw_username(&self) -> Result<TextString<'_>> {
         self.runner.fetch_servusername()
     }
@@ -482,6 +559,17 @@ impl<'g, 'a> ServFirstAuth<'g, 'a> {
         self.raw_username()?.as_str()
     }
 
+    /// Perform a constant-time comparison of the user-presented username against a passed string.
+    pub fn matches_username(
+        &self,
+        username: impl core::convert::AsRef<str>,
+    ) -> bool {
+        match self.username() {
+            Ok(u) => u.as_bytes().ct_eq(username.as_ref().as_bytes()).into(),
+            _ => false,
+        }
+    }
+
     /// Allow the user to log in.
     ///
     /// No further authentication challenges will be requested.
@@ -498,6 +586,35 @@ impl<'g, 'a> ServFirstAuth<'g, 'a> {
     pub fn reject(mut self) -> Result<()> {
         self.done = true;
         self.runner.resume_servauth(false)
+    }
+
+    /// Enable or disable password authentication for this session.
+    ///
+    /// # Caution
+    /// Enabling or disabling authentication methods based on username can
+    /// unintentionally enable user enumeration attacks.
+    pub fn enable_password_auth(&mut self, enabled: bool) -> Result<()> {
+        let (_, pubkey) = self.runner.get_auth_methods()?;
+        self.runner.set_auth_methods(enabled, pubkey)
+    }
+
+    /// Enable or disable public key authentication for this session.
+    ///
+    /// # Caution
+    /// Enabling or disabling authentication methods based on username can
+    /// unintentionally enable user enumeration attacks.
+    pub fn enable_pubkey_auth(&mut self, enabled: bool) -> Result<()> {
+        let (password, _) = self.runner.get_auth_methods()?;
+        self.runner.set_auth_methods(password, enabled)
+    }
+
+    /// Configure which authentication methods are allowed.
+    ///
+    /// # Caution
+    /// Enabling or disabling authentication methods based on username can
+    /// unintentionally enable user enumeration attacks.
+    pub fn set_auth_methods(&mut self, password: bool, pubkey: bool) -> Result<()> {
+        self.runner.set_auth_methods(password, pubkey)
     }
 
     pub fn raw_username(&self) -> Result<TextString<'_>> {
@@ -723,6 +840,69 @@ impl Drop for ServPtyRequest<'_, '_> {
     }
 }
 
+/// An environment variable request
+///
+pub struct ServEnvironmentRequest<'g, 'a> {
+    runner: &'g mut Runner<'a, Server>,
+    num: ChanNum,
+    done: bool,
+}
+
+impl<'g, 'a> ServEnvironmentRequest<'g, 'a> {
+    fn new(runner: &'g mut Runner<'a, Server>, num: ChanNum) -> Self {
+        Self { runner, num, done: false }
+    }
+
+    /// Indicate that the request succeeded.
+    ///
+    /// Note that if the peer didn't request a reply, this call
+    /// will not do anything.
+    pub fn succeed(mut self) -> Result<()> {
+        self.done = true;
+        self.runner.resume_chanreq(true)
+    }
+
+    /// Indicate that the request failed.
+    ///
+    /// Note that if the peer didn't request a reply, this call
+    /// will not do anything.
+    /// Does not need to be called explicitly, also occurs on drop without `accept()`
+    pub fn fail(mut self) -> Result<()> {
+        self.done = true;
+        self.runner.resume_chanreq(false)
+    }
+
+    /// Return the associated channel number.
+    ///
+    /// This will correspond to a `ChanHandle::num()`
+    /// from a previous [`ServOpenSession`] event.
+    pub fn channel(&self) -> ChanNum {
+        self.num
+    }
+
+    /// Retrieve the name of the environment variable (from NAME=VALUE pair).
+    pub fn name(&self) -> Result<&str> {
+        self.raw_name()?.as_str()
+    }
+
+    /// Retrieve the raw name of the environment variable.
+    fn raw_name(&self) -> Result<TextString<'_>> {
+        self.runner.fetch_env_name()
+    }
+
+    /// Retrieve the value of the environment variable (from NAME=VALUE pair).
+    pub fn value(&self) -> Result<&str> {
+        self.raw_value()?.as_str()
+    }
+
+    /// Retrieve the raw value of the environment variable.
+    fn raw_value(&self) -> Result<TextString<'_>> {
+        self.runner.fetch_env_value()
+    }
+
+    // TODO: does the app care about wantreply?
+}
+
 // Only small values should be stored inline.
 // Larger state is retrieved from the current packet via Runner::fetch_*()
 #[derive(Debug, Clone)]
@@ -748,7 +928,10 @@ pub(crate) enum ServEventId {
     SessionPty {
         num: ChanNum,
     },
-    #[allow(unused)]
+    Environment {
+        num: ChanNum,
+    },
+    #[expect(unused)]
     Defunct,
     // TODO:
     // Disconnected
@@ -801,6 +984,10 @@ impl ServEventId {
                 debug_assert!(matches!(p, Some(Packet::ChannelRequest(_))));
                 Ok(ServEvent::SessionPty(ServPtyRequest::new(runner, num)))
             }
+            Self::Environment { num } => {
+                debug_assert!(matches!(p, Some(Packet::ChannelRequest(_))));
+                Ok(ServEvent::SessionEnv(ServEnvironmentRequest::new(runner, num)))
+            }
             Self::Defunct => Ok(ServEvent::Defunct),
         }
     }
@@ -818,6 +1005,7 @@ impl ServEventId {
             | Self::SessionShell { .. }
             | Self::SessionExec { .. }
             | Self::SessionSubsystem { .. }
+            | Self::Environment { .. }
             | Self::SessionPty { .. } => true,
         }
     }

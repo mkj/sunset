@@ -2,7 +2,7 @@
 //!
 //! A [`Packet`] can be encoded/decoded to the
 //! SSH Binary Packet Protocol using [`sshwire`].
-//! SSH packet format is described in [RFC4253](https://tools.ietf.org/html/rfc5643) SSH Transport
+//! SSH packet format is described in [RFC4253](https://tools.ietf.org/html/rfc4253#section-6) SSH Transport
 
 #[allow(unused_imports)]
 use {
@@ -15,7 +15,6 @@ use core::fmt::{Debug, Display};
 
 #[cfg(feature = "arbitrary")]
 use arbitrary::Arbitrary;
-use heapless::String;
 use pretty_hex::PrettyHex;
 
 use sunset_sshwire_derive::*;
@@ -24,9 +23,9 @@ use crate::*;
 use namelist::NameList;
 use sign::{OwnedSig, SigType};
 use sshnames::*;
+use sshwire::SSHEncodeEnum;
 use sshwire::{BinString, Blob, TextString};
 use sshwire::{SSHDecode, SSHEncode, SSHSink, SSHSource, WireError, WireResult};
-use sshwire::{SSHDecodeEnum, SSHEncodeEnum};
 
 #[cfg(feature = "rsa")]
 use rsa::traits::PublicKeyParts;
@@ -360,6 +359,16 @@ impl PubKey<'_> {
             _ => false,
         };
         Ok(m)
+    }
+
+    #[cfg(feature = "openssh-key")]
+    pub fn fingerprint(
+        &self,
+        hash_alg: ssh_key::HashAlg,
+    ) -> Result<ssh_key::Fingerprint> {
+        let ssh_key: ssh_key::PublicKey = self.try_into()?;
+
+        Ok(ssh_key.fingerprint(hash_alg))
     }
 }
 
@@ -711,6 +720,8 @@ pub enum ChannelReqType<'a> {
     Subsystem(Subsystem<'a>),
     #[sshwire(variant = "window-change")]
     WinChange(WinChange),
+    #[sshwire(variant = "env")]
+    Environment(Environment<'a>),
     #[sshwire(variant = "signal")]
     Signal(Signal<'a>),
     #[sshwire(variant = "exit-status")]
@@ -725,7 +736,6 @@ pub enum ChannelReqType<'a> {
     // Other requests that aren't implemented at present:
     // auth-agent-req@openssh.com
     // x11-req
-    // env
     // xon-xoff
     #[sshwire(unknown)]
     Unknown(Unknown<'a>),
@@ -764,6 +774,14 @@ pub struct WinChange {
     pub rows: u32,
     pub width: u32,
     pub height: u32,
+}
+
+/// An environment variable
+#[derive(Debug, SSHEncode, SSHDecode)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
+pub struct Environment<'a> {
+    pub name: TextString<'a>,
+    pub value: TextString<'a>,
 }
 
 /// A unix signal channel request
@@ -823,7 +841,7 @@ pub struct DirectTcpip<'a> {
 pub struct Unknown<'a>(pub &'a [u8]);
 
 impl<'a> Unknown<'a> {
-    fn new(u: &'a [u8]) -> Self {
+    pub fn new(u: &'a [u8]) -> Self {
         let u = Unknown(u);
         trace!("saw unknown variant \"{u}\"");
         u
@@ -864,7 +882,7 @@ pub struct ParseContext {
 
     // Set to true if an unknown variant is encountered.
     // Packet length checks should be omitted in that case.
-    pub(crate) seen_unknown: bool,
+    pub seen_unknown: bool,
 }
 
 impl ParseContext {
@@ -1070,11 +1088,11 @@ messagetypes![
 #[cfg(test)]
 mod tests {
     use crate::packets::*;
-    use crate::sshnames::*;
-    use crate::sshwire::tests::{assert_serialize_equal, test_roundtrip};
+
+    use crate::packets;
+    use crate::sshwire::tests::test_roundtrip;
     use crate::sshwire::{packet_from_bytes, write_ssh};
     use crate::sunsetlog::init_test_log;
-    use crate::{packets, sshwire};
     use pretty_hex::PrettyHex;
 
     #[test]
