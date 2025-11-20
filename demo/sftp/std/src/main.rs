@@ -95,8 +95,16 @@ impl DemoServer for StdDemo {
                 let ev = match serv.progress(&mut ph).await {
                     Ok(event) => event,
                     Err(e) => {
-                        error!("server  progress failed: {:?}", e); // NoRoom: 2048 Bytes Output buffer
-                        return Err(e);
+                        match e {
+                            Error::NoRoom {} => {
+                                warn!("NoRoom triggered. Trying again");
+                                continue;
+                            }
+                            _ => {
+                                error!("server  progress failed: {:?}", e); // NoRoom: 2048 Bytes Output buffer
+                                return Err(e);
+                            }
+                        }
                     }
                 };
 
@@ -214,19 +222,23 @@ async fn main(spawner: Spawner) {
     env_logger::builder()
         .filter_level(log::LevelFilter::Info)
         .filter_module(
-            "sunset_demo_sftp_std::demosftpserver",
+            "sunset_sftp::sftphandler::sftphandler",
             log::LevelFilter::Debug,
         )
-        .filter_module("sunset_sftp::sftphandler", log::LevelFilter::Trace)
+        // .filter_module(
+        //     "sunset_demo_sftp_std::demosftpserver",
+        //     log::LevelFilter::Debug,
+        // )
+        // .filter_module("sunset_sftp::sftphandler", log::LevelFilter::Trace)
         // .filter_module("sunset_sftp", log::LevelFilter::Trace)
         // .filter_module("sunset_sftp::sftpsource", log::LevelFilter::Debug)
-        .filter_module(
-            "sunset_sftp::sftphandler::sftpoutputchannelhandler",
-            log::LevelFilter::Info,
-        )
+        // .filter_module(
+        //     "sunset_sftp::sftphandler::sftpoutputchannelhandler",
+        //     log::LevelFilter::Info,
+        // )
         // .filter_module("sunset::channel", log::LevelFilter::Trace)
         // .filter_module("sunset_async::async_sunset", log::LevelFilter::Trace)
-        .filter_module("sunset::runner", log::LevelFilter::Debug)
+        // .filter_module("sunset::runner", log::LevelFilter::Debug)
         // .filter_module("sunset::traffic", log::LevelFilter::Trace)
         // .filter_module("sunset_sftp::sftpsink", log::LevelFilter::Info)
         // .filter_module("sunset_sftp::sftpsource", log::LevelFilter::Info)

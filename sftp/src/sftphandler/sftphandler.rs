@@ -477,7 +477,16 @@ where
         let processing_loop = async {
             loop {
                 trace!("SFTP: About to read bytes from SSH Channel");
-                let lr = chan_in.read(buffer_in).await?;
+                let lr: usize = match chan_in.read(buffer_in).await {
+                    Ok(lr) => lr,
+                    Err(e) => match e {
+                        SunsetError::NoRoom {} => {
+                            error!("SSH channel is full");
+                            continue;
+                        }
+                        _ => return Err(e.into()),
+                    },
+                };
 
                 debug!("SFTP <---- received: {:?} bytes", lr);
                 trace!("SFTP <---- received: {:?}", &buffer_in[0..lr]);
@@ -493,11 +502,11 @@ where
         };
         match select(processing_loop, output_consumer_loop).await {
             embassy_futures::select::Either::First(r) => {
-                debug!("Processing returned: {:?}", r);
+                error!("Processing returned: {:?}", r);
                 r
             }
             embassy_futures::select::Either::Second(r) => {
-                warn!("Output consumer returned: {:?}", r);
+                error!("Output consumer returned: {:?}", r);
                 r
             }
         }
