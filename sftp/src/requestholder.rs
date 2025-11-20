@@ -1,4 +1,7 @@
-use crate::{proto, sftpsource::SftpSource};
+use crate::{
+    proto::{self, SFTP_FIELD_LEN_LENGTH},
+    sftpsource::SftpSource,
+};
 
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
@@ -49,7 +52,7 @@ pub(crate) type RequestHolderResult<T> = Result<T, RequestHolderError>;
 /// - `reset`: reset counters and flags to allow `try_hold` a new request
 ///
 #[derive(Debug)]
-pub struct RequestHolder<'a> {
+pub(crate) struct RequestHolder<'a> {
     /// The buffer used to contain the data for the request
     buffer: &'a mut [u8],
     /// The index of the last byte in the buffer containing usable data
@@ -63,13 +66,18 @@ pub struct RequestHolder<'a> {
 impl<'a> RequestHolder<'a> {
     /// The buffer will be used to hold a full request. Choose a
     /// reasonable size for this buffer.
-    pub fn new(buffer: &'a mut [u8]) -> Self {
+    pub(crate) fn new(buffer: &'a mut [u8]) -> Self {
         RequestHolder {
             buffer: buffer,
             buffer_fill_index: 0,
             busy: false,
             appended: 0,
         }
+    }
+
+    /// Returns the maximum request size that the holder can hold.
+    pub(crate) fn capacity(&self) -> usize {
+        self.buffer.len() - SFTP_FIELD_LEN_LENGTH
     }
 
     /// Uses the internal buffer to store a copy of the provided slice
@@ -84,7 +92,7 @@ impl<'a> RequestHolder<'a> {
     /// - Ok(usize): the number of bytes read from the slice
     ///
     /// - `Err(Busy)`: If there has been a call to `try_hold` without a call to `reset`
-    pub fn try_hold(&mut self, slice: &[u8]) -> RequestHolderResult<usize> {
+    pub(crate) fn try_hold(&mut self, slice: &[u8]) -> RequestHolderResult<usize> {
         if self.busy {
             return Err(RequestHolderError::Busy);
         }
@@ -101,7 +109,7 @@ impl<'a> RequestHolder<'a> {
     /// Resets the `appended()` counter.
     ///
     /// Will not clear the previous data from the buffer.
-    pub fn reset(&mut self) -> () {
+    pub(crate) fn reset(&mut self) -> () {
         self.busy = false;
         self.buffer_fill_index = 0;
         self.appended = 0;
@@ -124,7 +132,7 @@ impl<'a> RequestHolder<'a> {
     /// - `Err(Empty)`: If the structure has not been loaded with `try_hold`
     ///
     /// - `Err(Bug)`: An unexpected condition arises
-    pub fn try_append_for_valid_request(
+    pub(crate) fn try_append_for_valid_request(
         &mut self,
         slice_in: &[u8],
     ) -> RequestHolderResult<()> {
@@ -252,7 +260,7 @@ impl<'a> RequestHolder<'a> {
     }
 
     /// Gets a reference to the slice that it is holding
-    pub fn try_get_ref(&self) -> RequestHolderResult<&[u8]> {
+    pub(crate) fn try_get_ref(&self) -> RequestHolderResult<&[u8]> {
         if self.busy {
             debug!(
                 "Returning reference to: {:?}",
@@ -264,18 +272,18 @@ impl<'a> RequestHolder<'a> {
         }
     }
 
-    pub fn is_full(&mut self) -> bool {
+    pub(crate) fn is_full(&mut self) -> bool {
         self.buffer_fill_index == self.buffer.len()
     }
 
     #[allow(unused)]
     /// Returns true if it has a slice in its buffer
-    pub fn is_busy(&self) -> bool {
+    pub(crate) fn is_busy(&self) -> bool {
         self.busy
     }
 
     /// Returns the bytes appened in the last call to `try_append_for_valid_request`
-    pub fn appended(&self) -> usize {
+    pub(crate) fn appended(&self) -> usize {
         self.appended
     }
 
