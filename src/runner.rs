@@ -393,12 +393,7 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
             return Ok(0);
         }
 
-        self.traf_in
-            .input(&mut self.keys, &mut self.conn.remote_version, buf)
-            .inspect(|value| {
-                // TODO Jubeor. Remove this inspection
-                debug!("wire input bytes ({:?}): {:?}", *value, &buf[..*value])
-            })
+        self.traf_in.input(&mut self.keys, &mut self.conn.remote_version, buf)
     }
 
     // Whether [`input()`](input) is ready
@@ -536,10 +531,7 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
         }
 
         let (len, complete) = self.traf_in.read_channel(chan.0, dt, buf);
-        // TODO Jubeor. Remove this if block
-        if len != 0 {
-            debug!("read_channel buff ({len:?}): {:?}", &buf[..len]);
-        }
+
         if let Some(x) = complete {
             self.finished_read_channel(chan, x)?;
         }
