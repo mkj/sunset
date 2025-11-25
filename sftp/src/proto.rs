@@ -41,6 +41,7 @@ pub const SFTP_FIELD_REQ_ID_LEN: usize = 4;
 /// SFTP SSH_FXP_WRITE Packet cannot be shorter than this (len:4+pnum:1+rid:4+hand:4+0+data:4+0 bytes = 17 bytes) [draft-ietf-secsh-filexfer-02](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.4)
 // pub const SFTP_MINIMUM_WRITE_PACKET_LEN: usize = 17;
 
+#[allow(unused)]
 /// SFTP SSH_FXP_WRITE Packet request id field index  [draft-ietf-secsh-filexfer-02](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.4)
 pub const SFTP_WRITE_REQID_INDEX: usize = 5;
 
@@ -210,8 +211,15 @@ pub struct Write<'a> {
     /// The offset for the read operation
     pub offset: u64,
 
-    pub data: BinString<'a>,
+    pub data_len: u32,
+    // pub data: BinString<'a>, // TODO: Find an elegant way to process the write process
 }
+
+// TODO: This cannot work because we would need a length field
+// #[derive(Debug, SSHEncode, SSHDecode)]
+// pub struct WriteData<'a> {
+//     pub data_slice: &'a [u8],
+// }
 
 /// Used for `ssh_fxp_lstat` [response](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.8).
 /// LSTAT does not follow symbolic links
@@ -364,7 +372,7 @@ pub struct ResponseAttributes {
 
 // Requests/Responses data types
 
-#[derive(Debug, SSHEncode, SSHDecode, Clone, Copy, PartialEq)]
+#[derive(Debug, SSHEncode, SSHDecode, Clone, Copy, PartialEq, Eq)]
 pub struct ReqId(pub u32);
 
 /// For more information see [Responses from the Server to the Client](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-7)
@@ -595,7 +603,7 @@ macro_rules! sftpmessages {
     ) => {
         paste! {
             /// Represent a subset of the SFTP packet types defined by draft-ietf-secsh-filexfer-02
-            #[derive(Debug, Clone, PartialEq, FromPrimitive, SSHEncode)]
+            #[derive(Debug, Copy, Clone, PartialEq, Eq, FromPrimitive, SSHEncode)]
             #[repr(u8)]
             #[allow(non_camel_case_types)]
             pub enum SftpNum {
@@ -656,7 +664,7 @@ macro_rules! sftpmessages {
                 (1..=1).contains(&(u8::from(self.clone())))
             }
 
-            fn is_request(&self) -> bool {
+            pub(crate) fn is_request(&self) -> bool {
                 // TODO SSH_FXP_EXTENDED
                 (3..=20).contains(&(u8::from(self.clone())))
             }
@@ -862,7 +870,7 @@ macro_rules! sftpmessages {
                     },
                     Err(e) => {
                         match e {
-                            WireError::UnknownPacket{..} if !s.packet_fits()? => Err(WireError::RanOut),
+                            WireError::UnknownPacket{..} if !s.packet_fits() => Err(WireError::RanOut),
                             _ => Err(e)
                         }
 

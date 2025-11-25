@@ -1,7 +1,7 @@
 use crate::error::{SftpError, SftpResult};
 use crate::proto::{
     ENCODED_BASE_DATA_SFTP_PACKET_LENGTH, ENCODED_BASE_NAME_SFTP_PACKET_LENGTH,
-    MAX_NAME_ENTRY_SIZE, NameEntry, PFlags, SftpNum, SftpPacket,
+    MAX_NAME_ENTRY_SIZE, NameEntry, PFlags, SftpNum,
 };
 use crate::server::SftpSink;
 use crate::sftphandler::SftpOutputProducer;

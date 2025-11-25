@@ -1,14 +1,9 @@
-use crate::error::{SftpError, SftpResult};
-use crate::handles::OpaqueFileHandle;
 use crate::proto::{
-    ReqId, SFTP_FIELD_ID_INDEX, SFTP_FIELD_LEN_INDEX, SFTP_FIELD_LEN_LENGTH,
-    SFTP_FIELD_REQ_ID_INDEX, SFTP_FIELD_REQ_ID_LEN, SFTP_MINIMUM_PACKET_LEN,
-    SFTP_WRITE_REQID_INDEX, SftpNum,
+    SFTP_FIELD_ID_INDEX, SFTP_FIELD_LEN_INDEX, SFTP_FIELD_LEN_LENGTH,
+    SFTP_FIELD_REQ_ID_INDEX, SFTP_FIELD_REQ_ID_LEN, SftpNum,
 };
-use crate::protocol::FileHandle;
-use crate::sftphandler::PartialWriteRequestTracker;
 
-use sunset::sshwire::{BinString, SSHDecode, SSHSource, WireError, WireResult};
+use sunset::sshwire::{SSHSource, WireError, WireResult};
 
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
@@ -101,9 +96,6 @@ impl<'de> SftpSource<'de> {
     ///
     ///  This does not advance the reading index
     ///
-    /// This does not consider the length field itself
-    /// Useful to observe the packet fields in special conditions where a `dec(s)`
-    /// would fail
     ///
     /// **Warning**: will only work in well formed packets, in other case the result
     /// will contains garbage
@@ -117,76 +109,11 @@ impl<'de> SftpSource<'de> {
     /// in the source  
     /// **Warning**: will only work in well formed packets, in other case
     /// the result will contains garbage
-    pub fn packet_fits(&self) -> WireResult<bool> {
-        Ok(self.buffer.len() >= self.peak_total_packet_len()? as usize)
-    }
-
-    /// Assuming that the buffer contains a [`proto::Write`] request packet initial
-    /// bytes and not its totality:
-    ///
-    /// **Returns**:
-    ///
-    /// - An [`OpaqueFileHandle`] to guide the Write operation,
-    /// - Request ID as [`ReqId`],
-    /// - Offset as [`u64`]
-    /// - Data in the buffer as [`BinString`]
-    /// - [`PartialWriteRequestTracker`] to handle subsequent portions of the request
-    ///
-    /// **Warning**: will only work in well formed write packets, in other case
-    /// the result will contains garbage
-    pub(crate) fn dec_packet_partial_write_content_and_get_tracker<
-        T: OpaqueFileHandle,
-    >(
-        &mut self,
-    ) -> SftpResult<(T, ReqId, u64, BinString<'de>, PartialWriteRequestTracker<T>)>
-    {
-        if self.buffer.len() < SFTP_MINIMUM_PACKET_LEN {
-            return Err(WireError::RanOut.into());
+    pub fn packet_fits(&self) -> bool {
+        match self.peak_total_packet_len() {
+            Ok(len) => self.buffer.len() >= len as usize,
+            Err(_) => false,
         }
-
-        match self.peak_packet_type()? {
-            SftpNum::SSH_FXP_WRITE => {}
-            _ => return Err(SftpError::NotSupported),
-        };
-
-        self.index = SFTP_WRITE_REQID_INDEX;
-        let req_id = ReqId::dec(self)?;
-        let file_handle = FileHandle::dec(self)?;
-
-        let offset = u64::dec(self)?;
-        let data_len = u32::dec(self)?;
-
-        let data_len_in_buffer = self.buffer.len() - self.index;
-        let data_in_buffer = BinString(self.take(data_len_in_buffer)?);
-
-        let remain_data_len = data_len - data_len_in_buffer as u32;
-        let remain_data_offset = offset + data_len_in_buffer as u64;
-        trace!(
-            "Request ID = {:?}, Handle = {:?}, offset = {:?}, data length in buffer = {:?}, data in current buffer {:?} ",
-            req_id, file_handle, offset, data_len_in_buffer, data_in_buffer
-        );
-
-        let write_tracker = PartialWriteRequestTracker::new(
-            req_id,
-            OpaqueFileHandle::try_from(&file_handle)?,
-            remain_data_len,
-            remain_data_offset,
-        )?;
-
-        let obscured_file_handle = OpaqueFileHandle::try_from(&file_handle)?;
-        Ok((obscured_file_handle, req_id, offset, data_in_buffer, write_tracker))
-    }
-
-    /// Used to decode a slice of [`SSHSource`] as a single BinString
-    ///
-    /// It will not use the first four bytes as u32 for length, instead
-    /// it will use the length of the data received and use it to set the
-    /// length of the returned BinString.
-    pub(crate) fn dec_as_binstring(
-        &mut self,
-        len: usize,
-    ) -> WireResult<BinString<'_>> {
-        Ok(BinString(self.take(len)?))
     }
 
     pub fn peak_packet_req_id(&self) -> WireResult<u32> {
@@ -202,14 +129,15 @@ impl<'de> SftpSource<'de> {
         }
     }
 
-    /// Discards the first elements of the  
-    pub fn consume_first(&mut self, len: usize) -> WireResult<()> {
-        if len > self.buffer.len() {
-            Err(WireError::RanOut)
-        } else {
-            self.index = len;
-            Ok(())
-        }
+    pub fn buffer_used(&self) -> &[u8] {
+        &self.buffer[..self.index]
+    }
+
+    /// returns a slice on the held buffer and makes it unavailable for further  
+    /// decodes.
+    pub fn consume_all(&mut self) -> &[u8] {
+        self.index = self.buffer.len();
+        self.buffer
     }
 }
 
@@ -234,18 +162,18 @@ mod local_tests {
     #[test]
     fn peaking_len() {
         let buffer_status = status_buffer();
-        let sink = SftpSource::new(&buffer_status);
+        let source = SftpSource::new(&buffer_status);
 
-        let read_packet_len = sink.peak_packet_len().unwrap();
+        let read_packet_len = source.peak_packet_len().unwrap();
         let original_packet_len = 23u32;
         assert_eq!(original_packet_len, read_packet_len);
     }
     #[test]
     fn peaking_total_len() {
         let buffer_status = status_buffer();
-        let sink = SftpSource::new(&buffer_status);
+        let source = SftpSource::new(&buffer_status);
 
-        let read_total_packet_len = sink.peak_total_packet_len().unwrap();
+        let read_total_packet_len = source.peak_total_packet_len().unwrap();
         let original_total_packet_len = 23u32 + 4u32;
         assert_eq!(original_total_packet_len, read_total_packet_len);
     }
@@ -253,16 +181,16 @@ mod local_tests {
     #[test]
     fn peaking_type() {
         let buffer_status = status_buffer();
-        let sink = SftpSource::new(&buffer_status);
-        let read_packet_type = sink.peak_packet_type().unwrap();
+        let source = SftpSource::new(&buffer_status);
+        let read_packet_type = source.peak_packet_type().unwrap();
         let original_packet_type = SftpNum::from(101u8);
         assert_eq!(original_packet_type, read_packet_type);
     }
     #[test]
     fn peaking_req_id() {
         let buffer_status = status_buffer();
-        let sink = SftpSource::new(&buffer_status);
-        let read_req_id = sink.peak_packet_req_id().unwrap();
+        let source = SftpSource::new(&buffer_status);
+        let read_req_id = source.peak_packet_req_id().unwrap();
         let original_req_id = 16u32;
         assert_eq!(original_req_id, read_req_id);
     }
@@ -270,15 +198,31 @@ mod local_tests {
     #[test]
     fn packet_does_fit() {
         let buffer_status = status_buffer();
-        let sink = SftpSource::new(&buffer_status);
-        assert_eq!(true, sink.packet_fits().unwrap());
+        let source = SftpSource::new(&buffer_status);
+        assert_eq!(true, source.packet_fits());
     }
 
     #[test]
     fn packet_does_not_fit() {
         let buffer_status = status_buffer();
         let no_room_buffer = &buffer_status[..buffer_status.len() - 2];
-        let sink = SftpSource::new(no_room_buffer);
-        assert_eq!(false, sink.packet_fits().unwrap());
+        let source = SftpSource::new(no_room_buffer);
+        assert_eq!(false, source.packet_fits());
+    }
+
+    #[test]
+    fn consume_all_remaining() {
+        let inc_array: [u8; 512] = core::array::from_fn(|i| (i % 255) as u8);
+        let mut source = SftpSource::new(&inc_array);
+        let _consumed = source.consume_all();
+        assert_eq!(0usize, source.remaining());
+    }
+
+    #[test]
+    fn consume_all_consumed() {
+        let inc_array: [u8; 512] = core::array::from_fn(|i| (i % 255) as u8);
+        let mut source = SftpSource::new(&inc_array);
+        let consumed = source.consume_all();
+        assert_eq!(inc_array.len(), consumed.len());
     }
 }

@@ -1,6 +1,6 @@
 use crate::protocol::StatusCode;
 
-use crate::requestholder::RequestHolderError;
+use crate::sftphandler::requestholder::RequestHolderError;
 use sunset::Error as SunsetError;
 use sunset::sshwire::WireError;
 
