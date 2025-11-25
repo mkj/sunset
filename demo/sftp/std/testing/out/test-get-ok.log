@@ -1,0 +1,64 @@
+# Server
+
+[2025-11-25T06:50:18.099281543Z DEBUG sunset_sftp::sftphandler::sftphandler] <=======================[ SFTP Process State: Idle ]=======================> Buffer remaining: 29
+[2025-11-25T06:50:18.099286120Z DEBUG sunset_sftp::sftphandler::sftphandler] Creating a source: buf_len = 29
+[2025-11-25T06:50:18.099290277Z DEBUG sunset_sftp::sftphandler::sftphandler] source: SftpSource { buffer: [0, 0, 0, 25, 5, 0, 0, 0, 95, 0, 0, 0, 4, 250, 89, 118, 250, 0, 0, 0, 0, 0, 31, 128, 0, 0, 0, 128, 0], index: 0 }
+[2025-11-25T06:50:18.099298850Z DEBUG sunset_sftp::sftphandler::sftphandler] Got a valid request SSH_FXP_READ
+[2025-11-25T06:50:18.099303697Z DEBUG sunset_sftp::sftphandler::sftphandler] <=======================[ SFTP Process State: ProcessRequest { sftp_num: SSH_FXP_READ } ]=======================> Buffer remaining: 0
+[2025-11-25T06:50:18.099308605Z DEBUG sunset_sftp::sftphandler::sftphandler] Read request: Read(ReqId(95), Read { handle: FileHandle(BinString(len=4)), offset: 2064384, len: 32768 })
+[2025-11-25T06:50:18.105182953Z DEBUG sunset_sftp::sftphandler::sftphandler] Whole buffer processed. Getting more data
+[2025-11-25T06:50:18.105227743Z DEBUG sunset_sftp::sftphandler::sftphandler] SFTP <---- received: 29 bytes
+[2025-11-25T06:50:18.105236126Z DEBUG sunset_sftp::sftphandler::sftphandler] <=======================[ SFTP Process State: Idle ]=======================> Buffer remaining: 29
+[2025-11-25T06:50:18.105241014Z DEBUG sunset_sftp::sftphandler::sftphandler] Creating a source: buf_len = 29
+[2025-11-25T06:50:18.105245260Z DEBUG sunset_sftp::sftphandler::sftphandler] source: SftpSource { buffer: [0, 0, 0, 25, 5, 0, 0, 0, 96, 0, 0, 0, 4, 250, 89, 118, 250, 0, 0, 0, 0, 0, 32, 0, 0, 0, 0, 128, 0], index: 0 }
+[2025-11-25T06:50:18.105254224Z DEBUG sunset_sftp::sftphandler::sftphandler] Got a valid request SSH_FXP_READ
+[2025-11-25T06:50:18.105259022Z DEBUG sunset_sftp::sftphandler::sftphandler] <=======================[ SFTP Process State: ProcessRequest { sftp_num: SSH_FXP_READ } ]=======================> Buffer remaining: 0
+[2025-11-25T06:50:18.105287155Z DEBUG sunset_sftp::sftphandler::sftphandler] Read request: Read(ReqId(96), Read { handle: FileHandle(BinString(len=4)), offset: 2097152, len: 32768 })
+[2025-11-25T06:50:18.105326967Z INFO  sunset_demo_sftp_std::demosftpserver] offset is larger than file length, sending EOF for "./demo/sftp/std/testing/out/./2048kB_random"
+[2025-11-25T06:50:18.105355682Z DEBUG sunset_sftp::sftphandler::sftphandler] Whole buffer processed. Getting more data
+[2025-11-25T06:50:18.106505167Z DEBUG sunset_sftp::sftphandler::sftphandler] SFTP <---- received: 17 bytes
+[2025-11-25T06:50:18.106547733Z DEBUG sunset_sftp::sftphandler::sftphandler] <=======================[ SFTP Process State: Idle ]=======================> Buffer remaining: 17
+[2025-11-25T06:50:18.106556397Z DEBUG sunset_sftp::sftphandler::sftphandler] Creating a source: buf_len = 17
+[2025-11-25T06:50:18.106560383Z DEBUG sunset_sftp::sftphandler::sftphandler] source: SftpSource { buffer: [0, 0, 0, 13, 4, 0, 0, 0, 97, 0, 0, 0, 4, 250, 89, 118, 250], index: 0 }
+[2025-11-25T06:50:18.106568636Z DEBUG sunset_sftp::sftphandler::sftphandler] Got a valid request SSH_FXP_CLOSE
+[2025-11-25T06:50:18.106573513Z DEBUG sunset_sftp::sftphandler::sftphandler] <=======================[ SFTP Process State: ProcessRequest { sftp_num: SSH_FXP_CLOSE } ]=======================> Buffer remaining: 0
+[2025-11-25T06:50:18.106612153Z DEBUG sunset_sftp::sftphandler::sftphandler] Whole buffer processed. Getting more data
+[2025-11-25T06:50:18.107404343Z DEBUG sunset_sftp::sftphandler::sftphandler] SFTP <---- received: 0 bytes
+[2025-11-25T06:50:18.107449914Z DEBUG sunset_sftp::sftphandler::sftphandler] client disconnected
+[2025-11-25T06:50:18.107457566Z ERROR sunset_sftp::sftphandler::sftphandler] Processing returned: Err(ClientDisconnected)
+[2025-11-25T06:50:18.107464357Z WARN  sunset_demo_sftp_std] sftp_loop finished: Err(ChannelEOF)
+[2025-11-25T06:50:18.107471177Z WARN  sunset_demo_common::server] Ended with error ChannelEOF
+[2025-11-25T06:50:18.107550140Z INFO  sunset_demo_common::server] Listening on TCP:22...
+
+
+# client
+
+debug3: Received data 2031616 -> 2064383
+debug3: Finish at 2129920 ( 2)
+debug3: Received reply T:103 I:95 R:1
+debug3: Received data 2064384 -> 2097151
+debug3: Finish at 2129920 ( 1)
+debug3: Received reply T:101 I:96 R:1
+2048kB_random                                                                                                                                                        100% 2048KB 260.3KB/s   00:07    
+debug3: Sent message SSH2_FXP_CLOSE I:97
+debug2: channel 0: rcvd adjust 519
+debug3: SSH2_FXP_STATUS 0
+sftp> 
+sftp> bye
+debug2: channel 0: read failed rfd 4 maxlen 2036: Broken pipe
+debug2: channel 0: read failed
+debug2: chan_shutdown_read: channel 0: (i0 o0 sock -1 wfd 4 efd 6 [write])
+debug2: channel 0: input open -> drain
+debug2: channel 0: ibuf empty
+debug2: channel 0: send eof
+debug3: send packet: type 96
+debug2: channel 0: input drain -> closed
+debug3: send packet: type 1
+client_loop: send disconnect: Broken pipe
+DOWNLOAD Test Results:
+=============
+Download PASS: 512B_random. Cleaning it
+Download PASS: 16kB_random. Cleaning it
+Download PASS: 64kB_random. Cleaning it
+Download PASS: 65kB_random. Cleaning it
+Download PASS: 2048kB_random. Cleaning it
