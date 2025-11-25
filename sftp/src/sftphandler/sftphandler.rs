@@ -298,6 +298,10 @@ where
                                     "",
                                 )
                                 .await?;
+                            buf = &buf[buf.len() - source.remaining()..];
+                            debug!(
+                                "Unknown Packet. clearing the buffer in place since it filts"
+                            );
                         }
                         Err(WireError::PacketWrong) => {
                             error!("Not a request: ");
@@ -369,7 +373,8 @@ where
                         match request {
                             // SftpPacket::Init(init_version_client) => todo!(),
                             // SftpPacket::Version(init_version_lowest) => todo!(),
-                            SftpPacket::Read(req_id, read) => {
+                            SftpPacket::Read(req_id, ref read) => {
+                                debug!("Read request: {:?}", request);
                                 if let Err(error) = self
                                     .file_server
                                     .read(
