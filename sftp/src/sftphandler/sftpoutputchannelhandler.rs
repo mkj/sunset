@@ -138,7 +138,6 @@ impl<'a, const N: usize> SftpOutputProducer<'a, N> {
         let mut sink = SftpSink::new(&mut buf);
         packet.encode_response(&mut sink)?;
         debug!("Output Producer: Sending packet {:?}", packet);
-        sink.finalize();
         Self::send_buffer(&self.writer, &sink.used_slice(), &self.counter).await;
         Ok(())
     }

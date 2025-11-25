@@ -104,11 +104,12 @@ impl<'a> RequestHolder<'a> {
     ///
     /// Resets the `appended()` counter.
     ///
-    /// Will not clear the previous data from the buffer.
+    /// Will **clear** the previous data from the buffer.
     pub(crate) fn reset(&mut self) -> () {
         self.busy = false;
         self.buffer_fill_index = 0;
         self.appended = 0;
+        self.buffer.fill(0);
     }
 
     /// Appends a byte at a time to the internal buffer and tries to

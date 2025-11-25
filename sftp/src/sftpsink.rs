@@ -31,7 +31,7 @@ impl<'g> SftpSink<'g> {
     ///
     /// **Returns** the final index in the buffer as a reference of the
     /// space used
-    pub fn finalize(&mut self) -> usize {
+    fn finalize(&mut self) -> usize {
         if self.index <= SFTP_FIELD_LEN_LENGTH {
             warn!("SftpSink trying to terminate it before pushing data");
             return 0;
@@ -94,6 +94,7 @@ impl<'g> SSHSink for SftpSink<'g> {
             self.index += 1;
         });
         trace!("Sink new index: {:}", self.index);
+        self.finalize();
         Ok(())
     }
 }
