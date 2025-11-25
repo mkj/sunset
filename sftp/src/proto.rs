@@ -1059,7 +1059,7 @@ mod proto_tests {
         println!("source = {:?}", source);
 
         match SftpPacket::decode_request(&mut source) {
-            Ok(SftpPacket::Open(req_id, open)) => {
+            Ok(SftpPacket::Open(_req_id, open)) => {
                 assert_eq!(PFlags::SSH_FXF_READ, open.pflags);
             }
             Ok(other) => panic!("Expected Open packet, got: {:?}", other),

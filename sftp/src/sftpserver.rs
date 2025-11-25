@@ -189,7 +189,8 @@ impl<'g, const N: usize> ReadReply<'g, N> {
     }
 
     // TODO Make this enforceable
-    /// Sends a header fro `SSH_FXP_DATA` response. This includes the total
+    // TODO Automate encoding the SftpPacket
+    /// Sends a header for `SSH_FXP_DATA` response. This includes the total
     /// response length, the packet type, request id and data length
     ///
     /// The packet data content, excluding the length must be sent using
@@ -202,16 +203,10 @@ impl<'g, const N: usize> ReadReply<'g, N> {
         let mut s = [0u8; N];
         let mut sink = SftpSink::new(&mut s);
 
-        // Encoding length field
-        (data_len + ENCODED_BASE_DATA_SFTP_PACKET_LENGTH).enc(&mut sink)?;
-        // Encoding packet type
-        u8::from(SftpNum::SSH_FXP_DATA).enc(&mut sink)?;
-        // Encoding req_id
-        self.req_id.enc(&mut sink)?;
-        // string data length
-        data_len.enc(&mut sink)?;
+        let payload =
+            ReadReply::<N>::encode_data_header(&mut sink, self.req_id, data_len)?;
 
-        let payload = sink.payload_slice();
+        // let payload = sink.payload_slice();
         debug!(
             "Sending header:  len = {:?}, content = {:?}",
             payload.len(),
@@ -245,6 +240,49 @@ impl<'g, const N: usize> ReadReply<'g, N> {
         self.chan_out
             .send_status(ReqId(self.req_id.0 + 1), StatusCode::SSH_FX_EOF, "")
             .await
+    }
+
+    fn encode_data_header(
+        sink: &'g mut SftpSink<'g>,
+        req_id: ReqId,
+        data_len: u32,
+    ) -> Result<&'g [u8], SftpError> {
+        (data_len + ENCODED_BASE_DATA_SFTP_PACKET_LENGTH).enc(sink)?;
+        u8::from(SftpNum::SSH_FXP_DATA).enc(sink)?;
+        req_id.enc(sink)?;
+        data_len.enc(sink)?;
+        Ok(sink.payload_slice())
+    }
+}
+
+#[cfg(test)]
+mod read_reply_tests {
+    use super::*;
+
+    #[cfg(test)]
+    extern crate std;
+    // #[cfg(test)]
+    // use std::println;
+
+    #[test]
+    fn compose_header() {
+        const N: usize = 512;
+
+        let req_id = ReqId(42);
+        let data_len = 128;
+        let mut buffer = [0u8; N];
+        let mut sink = SftpSink::new(&mut buffer);
+
+        let payload =
+            ReadReply::<N>::encode_data_header(&mut sink, req_id, data_len).unwrap();
+
+        // println!("{payload:?}");
+
+        // println!("{:?}", &u32::from_be_bytes(payload[..4].try_into().unwrap()));
+        assert_eq!(
+            data_len + ENCODED_BASE_DATA_SFTP_PACKET_LENGTH,
+            u32::from_be_bytes(payload[..4].try_into().unwrap())
+        );
     }
 }
 
@@ -283,6 +321,7 @@ impl<'g, const N: usize> DirReply<'g, N> {
     }
 
     // TODO Make this enforceable
+    // TODO Automate encoding the SftpPacket
     /// Sends the header to the client with the number of files as [`NameEntry`] and the [`SSHEncode`]
     /// length of all these [`NameEntry`] items
     pub async fn send_header(
@@ -297,20 +336,19 @@ impl<'g, const N: usize> DirReply<'g, N> {
         let mut s = [0u8; N];
         let mut sink = SftpSink::new(&mut s);
 
-        // We need to consider the packet type, Id and count fields
-        // This way I collect data required for the header and collect
-        // valid entries into a vector (only std)
-        (items_encoded_len + ENCODED_BASE_NAME_SFTP_PACKET_LENGTH).enc(&mut sink)?;
-        u8::from(SftpNum::SSH_FXP_NAME).enc(&mut sink)?;
-        self.req_id.enc(&mut sink)?;
-        count.enc(&mut sink)?;
-        let payload = sink.payload_slice();
+        let payload = DirReply::<N>::encode_data_header(
+            &mut sink,
+            self.req_id,
+            items_encoded_len,
+            count,
+        )?;
+
         debug!(
             "Sending header:  len = {:?}, content = {:?}",
             payload.len(),
             payload
         );
-        self.chan_out.send_data(sink.payload_slice()).await?;
+        self.chan_out.send_data(payload).await?;
         Ok(())
     }
 
@@ -332,6 +370,56 @@ impl<'g, const N: usize> DirReply<'g, N> {
     pub async fn send_eof(&self) -> SftpResult<()> {
         self.chan_out.send_status(self.req_id, StatusCode::SSH_FX_EOF, "").await
     }
+
+    fn encode_data_header(
+        sink: &'g mut SftpSink<'g>,
+        req_id: ReqId,
+        items_encoded_len: u32,
+        count: u32,
+    ) -> Result<&'g [u8], SftpError> {
+        // We need to consider the packet type, Id and count fields
+        // This way I collect data required for the header and collect
+        // valid entries into a vector (only std)
+        (items_encoded_len + ENCODED_BASE_NAME_SFTP_PACKET_LENGTH).enc(sink)?;
+        u8::from(SftpNum::SSH_FXP_NAME).enc(sink)?;
+        req_id.enc(sink)?;
+        count.enc(sink)?;
+
+        Ok(sink.payload_slice())
+    }
+}
+
+#[cfg(test)]
+mod dir_reply_tests {
+    use super::*;
+
+    #[cfg(test)]
+    extern crate std;
+    // #[cfg(test)]
+    // use std::println;
+
+    #[test]
+    fn compose_header() {
+        const N: usize = 512;
+
+        let req_id = ReqId(42);
+        let data_len = 128;
+        let count = 128;
+        let mut buffer = [0u8; N];
+        let mut sink = SftpSink::new(&mut buffer);
+
+        let payload =
+            DirReply::<N>::encode_data_header(&mut sink, req_id, data_len, count)
+                .unwrap();
+
+        // println!("{payload:?}");
+
+        // println!("{:?}", &u32::from_be_bytes(payload[..4].try_into().unwrap()));
+        assert_eq!(
+            data_len + ENCODED_BASE_NAME_SFTP_PACKET_LENGTH,
+            u32::from_be_bytes(payload[..4].try_into().unwrap())
+        );
+    }
 }
 
 pub mod helpers {
@@ -347,7 +435,7 @@ pub mod helpers {
     /// as it would be serialized to the wire.
     ///
     /// Use this function to calculate the total length of a collection
-    /// of NameEntrys in order to send a correct response Name header
+    /// of `NameEntry`s in order to send a correct response Name header
     pub fn get_name_entry_len(name_entry: &NameEntry<'_>) -> SftpResult<u32> {
         let mut buf = [0u8; MAX_NAME_ENTRY_SIZE];
         let mut temp_sink = SftpSink::new(&mut buf);

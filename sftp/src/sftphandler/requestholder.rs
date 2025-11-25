@@ -340,7 +340,7 @@ mod local_test {
         assert!(rh.valid_request().is_none());
 
         rh.try_hold(&buff_data[..5]).unwrap();
-        assert!(rh.try_append_for_valid_request(&buff_data[5..10]).is_err());
+        assert!(rh.try_appending_for_valid_request(&buff_data[5..10]).is_err());
     }
 
     #[test]
