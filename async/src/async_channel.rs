@@ -80,7 +80,10 @@ impl ErrorType for ChanIO<'_> {
 }
 
 impl Read for ChanIO<'_> {
-    async fn read(&mut self, buf: &mut [u8]) -> core::result::Result<usize, sunset::Error> {
+    async fn read(
+        &mut self,
+        buf: &mut [u8],
+    ) -> core::result::Result<usize, sunset::Error> {
         poll_fn(|cx| self.sunset.poll_read_channel(cx, self.num, self.dt, buf))
             .await
             .map_err(Into::into)
@@ -88,7 +91,10 @@ impl Read for ChanIO<'_> {
 }
 
 impl Write for ChanIO<'_> {
-    async fn write(&mut self, buf: &[u8]) -> core::result::Result<usize, sunset::Error> {
+    async fn write(
+        &mut self,
+        buf: &[u8],
+    ) -> core::result::Result<usize, sunset::Error> {
         poll_fn(|cx| self.sunset.poll_write_channel(cx, self.num, self.dt, buf))
             .await
             .map_err(Into::into)
@@ -245,13 +251,19 @@ impl ErrorType for ChanOut<'_> {
 }
 
 impl Read for ChanInOut<'_> {
-    async fn read(&mut self, buf: &mut [u8]) -> core::result::Result<usize, sunset::Error> {
+    async fn read(
+        &mut self,
+        buf: &mut [u8],
+    ) -> core::result::Result<usize, sunset::Error> {
         self.0.read(buf).await
     }
 }
 
 impl Write for ChanInOut<'_> {
-    async fn write(&mut self, buf: &[u8]) -> core::result::Result<usize, sunset::Error> {
+    async fn write(
+        &mut self,
+        buf: &[u8],
+    ) -> core::result::Result<usize, sunset::Error> {
         self.0.write(buf).await
     }
 
@@ -261,13 +273,19 @@ impl Write for ChanInOut<'_> {
 }
 
 impl Read for ChanIn<'_> {
-    async fn read(&mut self, buf: &mut [u8]) -> core::result::Result<usize, sunset::Error> {
+    async fn read(
+        &mut self,
+        buf: &mut [u8],
+    ) -> core::result::Result<usize, sunset::Error> {
         self.0.read(buf).await
     }
 }
 
 impl Write for ChanOut<'_> {
-    async fn write(&mut self, buf: &[u8]) -> core::result::Result<usize, sunset::Error> {
+    async fn write(
+        &mut self,
+        buf: &[u8],
+    ) -> core::result::Result<usize, sunset::Error> {
         self.0.write(buf).await
     }
 

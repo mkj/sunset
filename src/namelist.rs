@@ -112,7 +112,6 @@ impl From<CapacityError> for Error {
     }
 }
 
-
 impl<'a> From<&'a LocalNames> for NameList<'a> {
     fn from(s: &'a LocalNames) -> Self {
         NameList::Local(s)
