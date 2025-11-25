@@ -10,7 +10,7 @@ description = "Async for Sunset SSH"
 [dependencies]
 embassy-sync = { version = "0.7" }
 embassy-futures = { version = "0.1" }
-embedded-io-async = "0.6"
+embedded-io-async = "0.7"
 portable-atomic.workspace = true
 
 sunset = { workspace = true, features = ["embedded-io"] }

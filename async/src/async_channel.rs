@@ -80,20 +80,27 @@ impl ErrorType for ChanIO<'_> {
 }
 
 impl Read for ChanIO<'_> {
-    async fn read(&mut self, buf: &mut [u8]) -> Result<usize, sunset::Error> {
-        poll_fn(|cx| self.sunset.poll_read_channel(cx, self.num, self.dt, buf)).await
+    async fn read(&mut self, buf: &mut [u8]) -> core::result::Result<usize, sunset::Error> {
+        poll_fn(|cx| self.sunset.poll_read_channel(cx, self.num, self.dt, buf))
+            .await
+            .map_err(Into::into)
     }
 }
 
 impl Write for ChanIO<'_> {
-    async fn write(&mut self, buf: &[u8]) -> Result<usize, sunset::Error> {
+    async fn write(&mut self, buf: &[u8]) -> core::result::Result<usize, sunset::Error> {
         poll_fn(|cx| self.sunset.poll_write_channel(cx, self.num, self.dt, buf))
             .await
+            .map_err(Into::into)
     }
 
     // TODO: not sure how easy end-to-end flush is
-    // async fn flush(&mut self) -> Result<(), Self::Error> {
-    // }
+    async fn flush(&mut self) -> core::result::Result<(), sunset::Error> {
+        // No-op flush: underlying SSH channel does not expose an explicit
+        // flush operation via the sunset ChanCore API, so treat flush as
+        // immediately successful.
+        Ok(())
+    }
 }
 
 // Public wrappers for In only
@@ -238,25 +245,33 @@ impl ErrorType for ChanOut<'_> {
 }
 
 impl Read for ChanInOut<'_> {
-    async fn read(&mut self, buf: &mut [u8]) -> Result<usize, sunset::Error> {
+    async fn read(&mut self, buf: &mut [u8]) -> core::result::Result<usize, sunset::Error> {
         self.0.read(buf).await
     }
 }
 
 impl Write for ChanInOut<'_> {
-    async fn write(&mut self, buf: &[u8]) -> Result<usize, sunset::Error> {
+    async fn write(&mut self, buf: &[u8]) -> core::result::Result<usize, sunset::Error> {
         self.0.write(buf).await
+    }
+
+    async fn flush(&mut self) -> core::result::Result<(), sunset::Error> {
+        self.0.flush().await
     }
 }
 
 impl Read for ChanIn<'_> {
-    async fn read(&mut self, buf: &mut [u8]) -> Result<usize, sunset::Error> {
+    async fn read(&mut self, buf: &mut [u8]) -> core::result::Result<usize, sunset::Error> {
         self.0.read(buf).await
     }
 }
 
 impl Write for ChanOut<'_> {
-    async fn write(&mut self, buf: &[u8]) -> Result<usize, sunset::Error> {
+    async fn write(&mut self, buf: &[u8]) -> core::result::Result<usize, sunset::Error> {
         self.0.write(buf).await
+    }
+
+    async fn flush(&mut self) -> core::result::Result<(), sunset::Error> {
+        self.0.flush().await
     }
 }

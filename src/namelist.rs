@@ -13,7 +13,7 @@ use ascii::{AsciiChar::Comma, AsciiStr};
 use sunset_sshwire_derive::{SSHDecode, SSHEncode};
 
 use crate::*;
-use heapless::Vec;
+use heapless::{CapacityError, Vec};
 use sshwire::{SSHDecode, SSHEncode, SSHSink, SSHSource, WireResult};
 
 // Used for lists of:
@@ -100,11 +100,19 @@ impl<'a> TryFrom<&'a str> for NameList<'a> {
 
 // for tests
 impl TryFrom<&[&'static str]> for LocalNames {
-    type Error = ();
-    fn try_from(s: &[&'static str]) -> Result<Self, ()> {
+    type Error = sunset::error::Error;
+    fn try_from(s: &[&'static str]) -> Result<Self, Error> {
         Ok(Self(Vec::from_slice(s)?))
     }
 }
+
+impl From<CapacityError> for Error {
+    fn from(_e: CapacityError) -> Error {
+        error::NoRoom.build()
+    }
+}
+
+
 impl<'a> From<&'a LocalNames> for NameList<'a> {
     fn from(s: &'a LocalNames) -> Self {
         NameList::Local(s)

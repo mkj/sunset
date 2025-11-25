@@ -232,6 +232,12 @@ impl embedded_io::Error for Error {
     }
 }
 
+// Implement the standard/core Error trait so this error type can be used
+// where a `core::error::Error` / `std::error::Error` is expected.
+// `snafu::Snafu` already provides `Display` and `Debug` implementations.
+#[cfg_attr(not(feature = "std"), allow(unused))]
+impl core::error::Error for Error {}
+
 /// A Sunset-specific Result type.
 pub type Result<T, E = Error> = core::result::Result<T, E>;
 
