@@ -12,6 +12,7 @@ sunset-sshwire-derive.workspace = true
 sunset-async.workspace = true
 
 log = { version = "0.4", features = ["release_max_level_trace"] }
+heapless = "0.9"
 rpassword = "7.2"
 argh = "0.1"
 
@@ -20,7 +21,7 @@ ssh-key = { version = "0.6", default-features = false, features = [ "std"] }
 embassy-sync = { version = "0.7" }
 embassy-futures = { version = "0.1" }
 
-embedded-io-async = "0.6"
+embedded-io-async = "0.7"
 
 # "net" for AsyncFd on unix
 tokio = { version = "1.25", features = ["net", "io-util", "signal"] }
@@ -29,9 +30,6 @@ futures = "0.3"
 libc = "0.2"
 nix = "0.26"
 
-heapless = "0.8"
-
-# TODO
 pretty-hex = "0.4"
 
 [features]
@@ -46,7 +44,7 @@ zeroize = "1.5"
 tokio = { version = "1.25", features = ["full"] }
 
 # adapters for tokio and async-std
-embedded-io-adapters = { version = "0.6", features = ["tokio-1"] }
+embedded-io-adapters = { version = "0.7", features = ["tokio-1"] }
 
 simplelog = "0.12"
 # for simplelog

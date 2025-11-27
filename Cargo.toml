@@ -88,7 +88,7 @@ larger = []
 [dev-dependencies]
 # examples want std::error
 snafu = { version = "0.8", default-features = true }
-anyhow = { version = "1.0" }
+anyhow = { version = "1" }
 pretty-hex = "0.4"
 simplelog = { version = "0.12", features = ["test"] }
 
