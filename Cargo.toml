@@ -29,9 +29,9 @@ arbitrary = { version = "1.4", features = ["derive_arbitrary"] }
 [dependencies]
 sunset-sshwire-derive = { workspace = true }
 
-snafu = { version = "0.8", default-features = false, features = ["rust_1_65"] }
+snafu = { version = "0.8", default-features = false, features = ["rust_1_81"] }
 log = { version = "0.4" }
-heapless = "0.8"
+heapless = "0.9"
 
 # allows avoiding utf8 for SSH identifier names
 ascii = { version = "1.0", default-features = false }
@@ -62,7 +62,8 @@ rsa = { version = "0.9", default-features = false, optional = true, features = [
 # TODO: getrandom feature is a workaround for missing ssh-key dependency with rsa. fixed in pending 0.6
 ssh-key = { version = "0.6", default-features = false, optional = true, features = ["getrandom"] }
 
-embedded-io = { version = "0.6", optional = true }
+embedded-io = { version = "0.7", optional = true }
+embedded-io-async = { version = "0.7", optional = true }
 
 # for debug printing
 pretty-hex = { version = "0.4", default-features = false }
@@ -87,7 +88,7 @@ larger = []
 [dev-dependencies]
 # examples want std::error
 snafu = { version = "0.8", default-features = true }
-anyhow = { version = "1.0" }
+anyhow = { version = "1" }
 pretty-hex = "0.4"
 simplelog = { version = "0.12", features = ["test"] }
 

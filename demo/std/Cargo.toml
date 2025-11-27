@@ -22,8 +22,8 @@ log = { version = "0.4" }
 # default regex feature is huge
 env_logger = { version = "0.11", default-features=false, features = ["auto-color", "humantime"] }
 
-embedded-io-async = "0.6"
-heapless = "0.8"
+embedded-io-async = "0.7"
+heapless = "0.9"
 
 # for tuntap
 libc = "0.2.101"

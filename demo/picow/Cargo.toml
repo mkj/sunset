@@ -34,7 +34,7 @@ rtt-target = { version = "0.6", features = ["log"] }
 
 pretty-hex = { version = "0.4", default-features = false }
 
-snafu = { version = "0.8", default-features = false, features = ["rust_1_65"] }
+snafu = { version = "0.8", default-features = false, features = ["rust_1_81"] }
 
 cortex-m = { version = "0.7.6", features = ["critical-section-single-core"]}
 cortex-m-rt = "0.7.0"
@@ -43,7 +43,7 @@ embedded-hal = "1.0"
 embedded-hal-async = "1.0"
 # embedded-hal-bus need to match embassy-net-wiznet's version
 embedded-hal-bus = { version = "0.1", features = ["async"], optional = true }
-embedded-io-async = "0.6"
+embedded-io-async = "0.7"
 embedded-storage-async = "0.4"
 heapless = "0.8"
 
