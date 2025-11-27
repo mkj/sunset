@@ -285,8 +285,6 @@ impl<T> TrapBug<T> for Option<T> {
     }
 }
 
-impl core::error::Error for Error {}
-
 impl From<Utf8Error> for Error {
     fn from(_e: Utf8Error) -> Error {
         Error::BadString

@@ -29,7 +29,7 @@ arbitrary = { version = "1.4", features = ["derive_arbitrary"] }
 [dependencies]
 sunset-sshwire-derive = { workspace = true }
 
-snafu = { version = "0.8", default-features = false, features = ["rust_1_65"] }
+snafu = { version = "0.8", default-features = false, features = ["rust_1_65", "unstable-core-error"] }
 log = { version = "0.4" }
 heapless = "0.9"
 
