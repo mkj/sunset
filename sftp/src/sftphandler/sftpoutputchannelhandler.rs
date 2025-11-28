@@ -67,7 +67,7 @@ impl<const N: usize> SftpOutputPipe<N> {
 
 /// Consumer that takes ownership of [`ChanOut`]. It pipes the data received
 /// from a [`PipeReader`] into the channel
-pub struct SftpOutputConsumer<'a, const N: usize> {
+pub(crate) struct SftpOutputConsumer<'a, const N: usize> {
     reader: PipeReader<'a, SunsetRawMutex, N>,
     ssh_chan_out: ChanOut<'a>,
     counter: &'a CounterMutex,

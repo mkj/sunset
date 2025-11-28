@@ -1,6 +1,6 @@
 use crate::error::{SftpError, SftpResult};
 use crate::proto::{
-    ENCODED_BASE_DATA_SFTP_PACKET_LENGTH, ENCODED_BASE_NAME_SFTP_PACKET_LENGTH,
+    ENCODED_SSH_FXP_DATA_MIN_LENGTH, ENCODED_BASE_NAME_SFTP_PACKET_LENGTH,
     MAX_NAME_ENTRY_SIZE, NameEntry, PFlags, SftpNum,
 };
 use crate::server::SftpSink;
@@ -67,13 +67,28 @@ where
         Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
     }
     /// Reads from a file that has previously being opened for reading
+    /// 
+    /// ## Notes to the implementer:
+    ///
+    /// The implementer is expected to use the parameter `reply` [`DirReply`] to:
+    ///
+    /// - In case of no more data is to be sent, call `reply.send_eof()`
+    /// - There is more data to be sent from an open file:
+    ///     1. Call `reply.send_header()` with the length of data to be sent
+    ///     2. Call `reply.send_data()` once or multiple times to send all the data announced
+    ///     3. Do not call `reply.send_eof()` during this [`readdir`] method call
+    /// 
+
+    /// If the length communicated in the header does not match the total length of the data 
+    /// sent using `reply.send_data()`, the SFTP session will be broken.
+    /// 
     #[allow(unused)]
     async fn read<const N: usize>(
         &mut self,
         opaque_file_handle: &T,
         offset: u64,
         len: u32,
-        reply: &ReadReply<'_, N>,
+        reply: &mut ReadReply<'_, N>,
     ) -> SftpResult<()> {
         log::error!(
             "SftpServer Read operation not defined: handle = {:?}, offset = {:?}, len = {:?}",
@@ -119,6 +134,10 @@ where
     ///     2. Call `reply.send_item()` for each of the items announced to be sent
     ///     3. Do not call `reply.send_eof()` during this [`readdir`] method call
     ///
+    /// If the length communicated in the header does not match the total length of all
+    /// the items sent using `reply.send_item()`, the SFTP session will be
+    /// broken.
+    /// 
     /// The server is expected to keep track of the number of items that remain to be sent
     /// to the client since the client will only stop asking for more elements in the
     /// directory when a read dir request is answer with an reply.send_eof()
@@ -127,7 +146,7 @@ where
     async fn readdir<const N: usize>(
         &mut self,
         opaque_dir_handle: &T,
-        reply: &DirReply<'_, N>,
+        reply: &mut DirReply<'_, N>,
     ) -> SftpOpResult<()> {
         log::error!(
             "SftpServer ReadDir operation not defined: handle = {:?}",
@@ -176,6 +195,10 @@ pub struct ReadReply<'g, const N: usize> {
 
     /// Immutable writer
     chan_out: &'g SftpOutputProducer<'g, N>,
+    /// Length of data to be sent as announced in [`ReadReply::send_header`]
+    data_len: u32,
+    /// Length of data sent so far using [`ReadReply::send_data`]
+    data_sent_len: u32,
 }
 
 impl<'g, const N: usize> ReadReply<'g, N> {
@@ -185,7 +208,7 @@ impl<'g, const N: usize> ReadReply<'g, N> {
         req_id: ReqId,
         chan_out: &'g SftpOutputProducer<'g, N>,
     ) -> Self {
-        ReadReply { req_id, chan_out }
+        ReadReply { req_id, chan_out, data_len:0, data_sent_len:0 }
     }
 
     // TODO Make this enforceable
@@ -195,7 +218,7 @@ impl<'g, const N: usize> ReadReply<'g, N> {
     ///
     /// The packet data content, excluding the length must be sent using
     /// [`ReadReply::send_data`]
-    pub async fn send_header(&self, data_len: u32) -> SftpResult<()> {
+    pub async fn send_header(&mut self, data_len: u32) -> SftpResult<()> {
         debug!(
             "ReadReply: Sending header for request id {:?}: data length = {:?}",
             self.req_id, data_len
@@ -206,7 +229,6 @@ impl<'g, const N: usize> ReadReply<'g, N> {
         let payload =
             ReadReply::<N>::encode_data_header(&mut sink, self.req_id, data_len)?;
 
-        // let payload = sink.payload_slice();
         debug!(
             "Sending header:  len = {:?}, content = {:?}",
             payload.len(),
@@ -214,6 +236,7 @@ impl<'g, const N: usize> ReadReply<'g, N> {
         );
         // Sending payload_slice since we are not making use of the sink sftpPacket length calculation
         self.chan_out.send_data(payload).await?;
+        self.data_len = data_len;
         Ok(())
     }
 
@@ -221,8 +244,10 @@ impl<'g, const N: usize> ReadReply<'g, N> {
     /// the announced data length
     ///
     /// **Important**: Call this after you have called `send_header`
-    pub async fn send_data(&self, buff: &[u8]) -> SftpResult<()> {
-        self.chan_out.send_data(buff).await
+    pub async fn send_data(&mut self, buff: &[u8]) -> SftpResult<()> {
+        self.chan_out.send_data(buff).await?;
+        self.data_sent_len += buff.len() as u32;
+        Ok(())
     }
 
     /// Sends EOF meaning that there is no more data to be sent
@@ -231,15 +256,13 @@ impl<'g, const N: usize> ReadReply<'g, N> {
         self.chan_out.send_status(self.req_id, StatusCode::SSH_FX_EOF, "").await
     }
 
-    /// Sends EOF with request id increased by one
-    ///
-    /// **Warning**: This is an experimental patch to resolve the situations where a response gets
-    /// stuck
-    ///
-    pub async fn send_eof_plus_one(&self) -> SftpResult<()> {
-        self.chan_out
-            .send_status(ReqId(self.req_id.0 + 1), StatusCode::SSH_FX_EOF, "")
-            .await
+    /// Indicates whether all the data announced in the header has been sent
+    /// 
+    /// returns 0 when all data has been sent
+    /// returns >0 when there is still data to be sent
+    /// returns <0 when too much data has been sent
+    pub fn read_diff(&self) -> i32 {
+        (self.data_len as i32) - (self.data_sent_len as i32)
     }
 
     fn encode_data_header(
@@ -247,9 +270,14 @@ impl<'g, const N: usize> ReadReply<'g, N> {
         req_id: ReqId,
         data_len: u32,
     ) -> Result<&'g [u8], SftpError> {
-        (data_len + ENCODED_BASE_DATA_SFTP_PACKET_LENGTH).enc(sink)?;
+        
+        // length field
+        (data_len + ENCODED_SSH_FXP_DATA_MIN_LENGTH).enc(sink)?;
+        // packet type (1)
         u8::from(SftpNum::SSH_FXP_DATA).enc(sink)?;
+        // request id (4)
         req_id.enc(sink)?;
+        // data length (4)
         data_len.enc(sink)?;
         Ok(sink.payload_slice())
     }
@@ -276,14 +304,12 @@ mod read_reply_tests {
         let payload =
             ReadReply::<N>::encode_data_header(&mut sink, req_id, data_len).unwrap();
 
-        // println!("{payload:?}");
-
-        // println!("{:?}", &u32::from_be_bytes(payload[..4].try_into().unwrap()));
         assert_eq!(
-            data_len + ENCODED_BASE_DATA_SFTP_PACKET_LENGTH,
+            data_len + ENCODED_SSH_FXP_DATA_MIN_LENGTH,
             u32::from_be_bytes(payload[..4].try_into().unwrap())
         );
     }
+
 }
 
 /// Uses for [`DirReply`] to:
@@ -302,9 +328,12 @@ mod read_reply_tests {
 pub struct DirReply<'g, const N: usize> {
     /// The request Id that will be use`d in the response
     req_id: ReqId,
-
     /// Immutable writer
     chan_out: &'g SftpOutputProducer<'g, N>,
+    /// Length of data to be sent as announced in [`ReadReply::send_header`]
+    data_len: u32,
+    /// Length of data sent so far using [`ReadReply::send_data`]
+    data_sent_len: u32,
 }
 
 impl<'g, const N: usize> DirReply<'g, N> {
@@ -317,7 +346,7 @@ impl<'g, const N: usize> DirReply<'g, N> {
         chan_out: &'g SftpOutputProducer<'g, N>,
     ) -> Self {
         // DirReply { chan_out: chan_out_wrapper, req_id }
-        DirReply { req_id, chan_out }
+        DirReply { req_id, chan_out, data_len:0, data_sent_len:0 }
     }
 
     // TODO Make this enforceable
@@ -325,7 +354,7 @@ impl<'g, const N: usize> DirReply<'g, N> {
     /// Sends the header to the client with the number of files as [`NameEntry`] and the [`SSHEncode`]
     /// length of all these [`NameEntry`] items
     pub async fn send_header(
-        &self,
+        &mut self,
         count: u32,
         items_encoded_len: u32,
     ) -> SftpResult<()> {
@@ -349,13 +378,14 @@ impl<'g, const N: usize> DirReply<'g, N> {
             payload
         );
         self.chan_out.send_data(payload).await?;
+        self.data_len = items_encoded_len;
         Ok(())
     }
 
     /// Sends a directory item to the client as a [`NameEntry`]
     ///
     /// Call this
-    pub async fn send_item(&self, name_entry: &NameEntry<'_>) -> SftpResult<()> {
+    pub async fn send_item(&mut self, name_entry: &NameEntry<'_>) -> SftpResult<()> {
         let mut buffer = [0u8; MAX_NAME_ENTRY_SIZE];
         let mut sftp_sink = SftpSink::new(&mut buffer);
         name_entry.enc(&mut sftp_sink).map_err(|err| {
@@ -363,12 +393,23 @@ impl<'g, const N: usize> DirReply<'g, N> {
             StatusCode::SSH_FX_FAILURE
         })?;
 
-        self.chan_out.send_data(sftp_sink.payload_slice()).await
+        self.chan_out.send_data(sftp_sink.payload_slice()).await?;
+        self.data_sent_len += sftp_sink.payload_len() as u32;
+        Ok(())
     }
 
     /// Sends EOF meaning that there is no more files in the directory
     pub async fn send_eof(&self) -> SftpResult<()> {
         self.chan_out.send_status(self.req_id, StatusCode::SSH_FX_EOF, "").await
+    }
+
+    /// Indicates whether all the data announced in the header has been sent
+    /// 
+    /// returns 0 when all data has been sent
+    /// returns >0 when there is still data to be sent
+    /// returns <0 when too much data has been sent
+    pub fn read_diff(&self) -> i32 {
+        (self.data_len as i32) - (self.data_sent_len as i32)
     }
 
     fn encode_data_header(
@@ -387,6 +428,7 @@ impl<'g, const N: usize> DirReply<'g, N> {
 
         Ok(sink.payload_slice())
     }
+
 }
 
 #[cfg(test)]
@@ -516,7 +558,7 @@ impl DirEntriesCollection {
     /// Returns a [`ReadStatus`]
     pub async fn send_response<const N: usize>(
         &self,
-        reply: &DirReply<'_, N>,
+        reply: &mut DirReply<'_, N>,
     ) -> SftpOpResult<ReadStatus> {
         self.send_entries_header(reply).await?;
         self.send_entries(reply).await?;
@@ -528,7 +570,7 @@ impl DirEntriesCollection {
     /// element
     async fn send_entries_header<const N: usize>(
         &self,
-        reply: &DirReply<'_, N>,
+        reply: &mut DirReply<'_, N>,
     ) -> SftpOpResult<()> {
         reply.send_header(self.count, self.encoded_length).await.map_err(|e| {
             debug!("Could not send header {e:?}");
@@ -539,7 +581,7 @@ impl DirEntriesCollection {
     /// Sends the entries in the ReadDir iterator back to the client
     async fn send_entries<const N: usize>(
         &self,
-        reply: &DirReply<'_, N>,
+        reply: &mut DirReply<'_, N>,
     ) -> SftpOpResult<()> {
         for entry in &self.entries {
             let filename = entry.file_name().to_string_lossy().into_owned();

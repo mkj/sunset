@@ -176,7 +176,7 @@ where
                                                 "",
                                             )
                                             .await?;
-                                        debug!("Still in buffer: {buf:?}");
+                                        trace!("Still in buffer: {buf:?}");
                                         self.state = HandlerState::Idle;
                                     } else {
                                         self.state =
@@ -255,7 +255,7 @@ where
                     self.request_holder.reset();
                     debug!("Creating a source: buf_len = {:?}", buf.len());
                     let mut source = SftpSource::new(&buf);
-                    debug!("source: {source:?}");
+                    trace!("source: {source:?}");
 
                     match SftpPacket::decode_request(&mut source) {
                         Ok(request) => {
@@ -375,13 +375,15 @@ where
                             // SftpPacket::Version(init_version_lowest) => todo!(),
                             SftpPacket::Read(req_id, ref read) => {
                                 debug!("Read request: {:?}", request);
+
+                                let mut reply = ReadReply::new(req_id, output_producer);
                                 if let Err(error) = self
                                     .file_server
                                     .read(
                                         &T::try_from(&read.handle)?,
                                         read.offset,
                                         read.len,
-                                        &ReadReply::new(req_id, output_producer),
+                                        &mut reply,
                                     )
                                     .await
                                 {
@@ -405,6 +407,25 @@ where
                                             .await?;
                                     }
                                 };
+
+                                match reply.read_diff() {
+                                    diff if diff > 0 => {
+                                        debug!(
+                                            "ReadReply not completed after read operation. Still need to send {} bytes",
+                                            diff
+                                        );
+                                        return Err(SunsetError::Bug.into());
+                                    }
+                                    diff if diff < 0 => {
+                                        error!(
+                                            "ReadReply has sent more data than announced: {} bytes extra",
+                                            -diff
+                                        );
+                                        return Err(SunsetError::Bug.into());
+                                    }
+                                    _ => {}
+                                }
+                                  
                                 self.state = HandlerState::Idle;
                             }
                             SftpPacket::LStat(req_id, LStat { file_path: path }) => {
@@ -468,11 +489,12 @@ where
                                 self.state = HandlerState::Idle;
                             }
                             SftpPacket::ReadDir(req_id, read_dir) => {
+                                let mut reply = DirReply::new(req_id, output_producer);
                                 if let Err(status) = self
                                     .file_server
                                     .readdir(
                                         &T::try_from(&read_dir.handle)?,
-                                        &DirReply::new(req_id, output_producer),
+                                        &mut reply,
                                     )
                                     .await
                                 {
@@ -486,6 +508,23 @@ where
                                         )
                                         .await?;
                                 };
+                                match reply.read_diff() {
+                                    diff if diff > 0 => {
+                                        debug!(
+                                            "DirReply not completed after read operation. Still need to send {} bytes",
+                                            diff
+                                        );
+                                        return Err(SunsetError::Bug.into());
+                                    }
+                                    diff if diff < 0 => {
+                                        error!(
+                                            "DirReply has sent more data than announced: {} bytes extra",
+                                            -diff
+                                        );
+                                        return Err(SunsetError::Bug.into());
+                                    }
+                                    _ => {}
+                                }
                                 self.state = HandlerState::Idle;
                             }
                             SftpPacket::OpenDir(req_id, open_dir) => {
@@ -588,7 +627,7 @@ where
                                     .realpath(path_info.path.as_str()?)
                                 {
                                     Ok(name_entry) => {
-                                        let dir_reply =
+                                        let mut dir_reply =
                                             DirReply::new(req_id, output_producer);
                                         let encoded_len =
                                                 crate::sftpserver::helpers::get_name_entry_len(&name_entry)?;
@@ -604,6 +643,12 @@ where
                                             .send_header(1, encoded_len)
                                             .await?;
                                         dir_reply.send_item(&name_entry).await?;
+                                        if dir_reply.read_diff() != 0 {
+                                            error!(
+                                                "PathInfo reply not completed after sending the only item"
+                                            );
+                                            return Err(SunsetError::Bug.into());
+                                        }
                                     }
                                     Err(code) => {
                                         output_producer

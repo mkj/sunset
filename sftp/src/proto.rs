@@ -288,7 +288,7 @@ pub struct Data<'a> {
 /// encoded [`SftpPacket::Data`] variant
 ///
 /// See [Responses from the Server to the Client](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.4)
-pub(crate) const ENCODED_BASE_DATA_SFTP_PACKET_LENGTH: u32 = 1 + 4 + 4;
+pub(crate) const ENCODED_SSH_FXP_DATA_MIN_LENGTH: u32 = 1 + 4 + 4;
 
 /// Struct to hold `SSH_FXP_NAME` response.
 /// See [SSH_FXP_NAME in Responses from the Server to the Client](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-7)

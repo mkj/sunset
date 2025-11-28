@@ -228,7 +228,7 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
         opaque_file_handle: &DemoOpaqueFileHandle,
         offset: u64,
         len: u32,
-        reply: &ReadReply<'_, N>,
+        reply: &mut ReadReply<'_, N>,
     ) -> SftpResult<()> {
         if let PrivatePathHandle::File(private_file_handle) = self
             .handles_manager
@@ -369,7 +369,7 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
     async fn readdir<const N: usize>(
         &mut self,
         opaque_dir_handle: &DemoOpaqueFileHandle,
-        reply: &DirReply<'_, N>,
+        reply: &mut DirReply<'_, N>,
     ) -> SftpOpResult<()> {
         debug!("read dir for  {:?}", opaque_dir_handle);
 
@@ -402,7 +402,7 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
                 let name_entry_collection = DirEntriesCollection::new(dir_iterator);
 
                 let response_read_status =
-                    name_entry_collection.send_response(reply).await?;
+                    name_entry_collection.send_response( reply).await?;
 
                 dir.read_status = response_read_status;
                 return Ok(());
