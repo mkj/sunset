@@ -995,7 +995,6 @@ mod proto_tests {
         ];
 
         let _ = status_packet.encode_response(&mut sink);
-        sink.finalize();
 
         assert_eq!(&expected_status_packet_slice, sink.used_slice());
     }
