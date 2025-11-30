@@ -29,9 +29,12 @@ for file in "${FILES[@]}"; do
     mv "./${file}" "./out/${file}"
 done
 
+echo "Output folder content:"
+
+ls ./out -l
 
 echo "Downloading files..."
-sftp -vvvvv -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR ${REMOTE_USER}@${REMOTE_HOST}  << EOF
+sftp -vvvvv -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=DEBUG ${REMOTE_USER}@${REMOTE_HOST}  << EOF
 $(printf 'get ./%s\n' "${FILES[@]}")
 
 bye

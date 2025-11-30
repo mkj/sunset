@@ -15,7 +15,7 @@ dd if=/dev/random bs=1048576 count=100 of=./100MB_random 2>/dev/null
 echo "Uploading files to ${REMOTE_USER}@${REMOTE_HOST}..."
 
 # Upload all files
-sftp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR ${REMOTE_USER}@${REMOTE_HOST} -vvv << EOF
+sftp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=DEBUG ${REMOTE_USER}@${REMOTE_HOST} -vvv << EOF
 $(printf 'put ./%s\n' "${FILES[@]}")
 bye
 EOF
