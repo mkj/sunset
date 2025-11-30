@@ -223,23 +223,22 @@ async fn main(spawner: Spawner) {
         .filter_level(log::LevelFilter::Info)
         .filter_module(
             "sunset_sftp::sftphandler::sftphandler",
-            log::LevelFilter::Debug,
+            log::LevelFilter::Trace,
         )
-        // .filter_module(
-        //     "sunset_sftp::sftphandler::requestholder",
-        //     log::LevelFilter::Debug,
-        // )
+        .filter_module(
+            "sunset_sftp::sftphandler::requestholder",
+            log::LevelFilter::Trace,
+        )
         .filter_module(
             "sunset_demo_sftp_std::demosftpserver",
-            log::LevelFilter::Debug,
+            log::LevelFilter::Trace,
         )
-        // .filter_module("sunset_sftp::sftphandler", log::LevelFilter::Trace)
         // .filter_module("sunset_sftp", log::LevelFilter::Trace)
         // .filter_module("sunset_sftp::sftpsource", log::LevelFilter::Debug)
-        // .filter_module(
-        //     "sunset_sftp::sftphandler::sftpoutputchannelhandler",
-        //     log::LevelFilter::Debug,
-        // )
+        .filter_module(
+            "sunset_sftp::sftphandler::sftpoutputchannelhandler",
+            log::LevelFilter::Trace,
+        )
         //
         // .filter_module("sunset::channel", log::LevelFilter::Trace)
         // .filter_module("sunset_async::async_sunset", log::LevelFilter::Trace)

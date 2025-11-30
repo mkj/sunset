@@ -171,7 +171,7 @@ impl<'a> RequestHolder<'a> {
                 let mut source = SftpSource::new(self.try_get_ref()?);
                 if let Ok(pt) = source.peak_packet_type() {
                     if !pt.is_request() {
-                        error!("The request candidate is not a request {pt:?}");
+                        error!("The request candidate is not a request: {pt:?}");
                         return Err(RequestHolderError::NotRequest);
                     }
                 } else {
