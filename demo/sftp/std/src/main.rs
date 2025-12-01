@@ -219,43 +219,25 @@ async fn listen(
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
-    env_logger::builder()
-        .filter_level(log::LevelFilter::Info)
-        .filter_module(
-            "sunset_sftp::sftphandler::sftphandler",
-            log::LevelFilter::Trace,
-        )
-        .filter_module(
-            "sunset_sftp::sftphandler::requestholder",
-            log::LevelFilter::Trace,
-        )
-        .filter_module(
-            "sunset_demo_sftp_std::demosftpserver",
-            log::LevelFilter::Trace,
-        )
-        // .filter_module("sunset_sftp", log::LevelFilter::Trace)
-        // .filter_module("sunset_sftp::sftpsource", log::LevelFilter::Debug)
-        .filter_module(
-            "sunset_sftp::sftphandler::sftpoutputchannelhandler",
-            log::LevelFilter::Trace,
-        )
-        //
-        // .filter_module("sunset::channel", log::LevelFilter::Trace)
-        // .filter_module("sunset_async::async_sunset", log::LevelFilter::Trace)
-        // .filter_module("sunset::runner", log::LevelFilter::Debug)
-        // .filter_module("sunset::traffic", log::LevelFilter::Trace)
-        // .filter_module("sunset_sftp::sftpsink", log::LevelFilter::Info)
-        // .filter_module("sunset_sftp::sftpsource", log::LevelFilter::Info)
-        // .filter_module("sunset_sftp::sftpserver", log::LevelFilter::Info)
-        // .filter_module("sunset::runner", log::LevelFilter::Info)
-        // .filter_module("sunset::encrypt", log::LevelFilter::Info)
-        // .filter_module("sunset::conn", log::LevelFilter::Info)
-        // .filter_module("sunset::kex", log::LevelFilter::Info)
-        // .filter_module("async_io", log::LevelFilter::Info)
-        // .filter_module("polling", log::LevelFilter::Info)
-        // .filter_module("embassy_net", log::LevelFilter::Info)
-        .format_timestamp_nanos()
-        .init();
+    let log_path = std::env::var("RUST_LOG_FILE").ok();
+
+    let mut builder = env_logger::Builder::new();
+
+    builder.filter_level(log::LevelFilter::Trace);
+    // if std::env::var("RUST_LOG").is_err() {
+    // } else {
+    //     builder.filter_level(log::LevelFilter::Debug);
+    // }
+    builder.format_timestamp_nanos();
+
+    if let Some(path) = log_path {
+        let file = std::fs::File::create(path).expect("Failed to create log file");
+        builder.target(env_logger::Target::Pipe(Box::new(file)));
+    } else {
+        builder.target(env_logger::Target::Stdout);
+    }
+
+    builder.init();
 
     spawner.spawn(main_task(spawner)).unwrap();
 }

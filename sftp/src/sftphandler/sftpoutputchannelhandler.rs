@@ -165,10 +165,13 @@ impl<'a, const N: usize> SftpOutputProducer<'a, N> {
             if buf.len() == 0 {
                 break;
             }
-            trace!("Sending buffer {:?}", buf);
 
             let bytes_sent = writer.write(&buf).await;
             buf = &buf[bytes_sent..];
+            trace!(
+                "Output Producer: sent {bytes_sent:?}. {:?} bytes remain ",
+                buf.len()
+            );
         }
     }
 }
