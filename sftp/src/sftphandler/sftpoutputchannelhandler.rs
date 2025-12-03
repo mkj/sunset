@@ -166,6 +166,7 @@ impl<'a, const N: usize> SftpOutputProducer<'a, N> {
                 break;
             }
 
+            trace!("Output Producer: Tries to send {:?} bytes", buf.len());
             let bytes_sent = writer.write(&buf).await;
             buf = &buf[bytes_sent..];
             trace!(

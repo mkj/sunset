@@ -306,7 +306,7 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
                 remaining =
                     remaining.checked_sub(br).ok_or(StatusCode::SSH_FX_FAILURE)?;
                 trace!(
-                    "after substracting {} bytes, there are {} bytes remaining",
+                    "after subtracting {} bytes, there are {} bytes remaining",
                     br,
                     remaining
                 );
@@ -402,7 +402,7 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
                 let name_entry_collection = DirEntriesCollection::new(dir_iterator);
 
                 let response_read_status =
-                    name_entry_collection.send_response( reply).await?;
+                    name_entry_collection.send_response(reply).await?;
 
                 dir.read_status = response_read_status;
                 return Ok(());
