@@ -102,15 +102,12 @@ where
     /// the request in the local system
     /// - `incomplete_request_buffer`: used to deal with fragmented
     /// packets during [`SftpHandler::process`]
-    pub fn new(
-        file_server: &'a mut S,
-        incomplete_request_buffer: &'a mut [u8],
-    ) -> Self {
+    pub fn new(file_server: &'a mut S, request_buffer: &'a mut [u8]) -> Self {
         SftpHandler {
             file_server,
             // partial_write_request_tracker: None,
             state: HandlerState::default(),
-            request_holder: RequestHolder::new(incomplete_request_buffer),
+            request_holder: RequestHolder::new(request_buffer),
             _marker: core::marker::PhantomData,
         }
     }
@@ -376,7 +373,8 @@ where
                             SftpPacket::Read(req_id, ref read) => {
                                 debug!("Read request: {:?}", request);
 
-                                let mut reply = ReadReply::new(req_id, output_producer);
+                                let mut reply =
+                                    ReadReply::new(req_id, output_producer);
                                 if let Err(error) = self
                                     .file_server
                                     .read(
@@ -425,7 +423,7 @@ where
                                     }
                                     _ => {}
                                 }
-                                  
+
                                 self.state = HandlerState::Idle;
                             }
                             SftpPacket::LStat(req_id, LStat { file_path: path }) => {
@@ -489,7 +487,8 @@ where
                                 self.state = HandlerState::Idle;
                             }
                             SftpPacket::ReadDir(req_id, read_dir) => {
-                                let mut reply = DirReply::new(req_id, output_producer);
+                                let mut reply =
+                                    DirReply::new(req_id, output_producer);
                                 if let Err(status) = self
                                     .file_server
                                     .readdir(

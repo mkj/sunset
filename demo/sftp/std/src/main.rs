@@ -163,7 +163,7 @@ impl DemoServer for StdDemo {
 
                 // TODO Do some research to find reasonable default buffer lengths
                 let mut buffer_in = [0u8; 512];
-                let mut incomplete_request_buffer = [0u8; 512];
+                let mut request_buffer = [0u8; 512];
 
                 match {
                     let stdio = serv.stdio(ch).await?;
@@ -173,7 +173,7 @@ impl DemoServer for StdDemo {
 
                     SftpHandler::<DemoOpaqueFileHandle, DemoSftpServer, 512>::new(
                         &mut file_server,
-                        &mut incomplete_request_buffer,
+                        &mut request_buffer,
                     )
                     .process_loop(stdio, &mut buffer_in)
                     .await?;
