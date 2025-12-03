@@ -6,6 +6,8 @@ use core::fmt::Arguments;
 
 use snafu::prelude::*;
 
+use heapless::String;
+
 use crate::channel::ChanNum;
 
 #[allow(unused_imports)]

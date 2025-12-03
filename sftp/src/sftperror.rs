@@ -81,29 +81,14 @@ impl From<SftpError> for SunsetError {
         match value {
             SftpError::SunsetError(error) => error,
             SftpError::WireError(wire_error) => wire_error.into(),
-            SftpError::NotInitialized => {
+            SftpError::NotInitialized
+            | SftpError::NotSupported
+            | SftpError::AlreadyInitialized
+            | SftpError::MalformedPacket
+            | SftpError::RequestHolderError(_)
+            | SftpError::FileServerError(_) => {
                 warn!("Casting error loosing information: {:?}", value);
-                SunsetError::PacketWrong {}
-            }
-            SftpError::NotSupported => {
-                warn!("Casting error loosing information: {:?}", value);
-                SunsetError::PacketWrong {}
-            }
-            SftpError::AlreadyInitialized => {
-                warn!("Casting error loosing information: {:?}", value);
-                SunsetError::PacketWrong {}
-            }
-            SftpError::MalformedPacket => {
-                warn!("Casting error loosing information: {:?}", value);
-                SunsetError::PacketWrong {}
-            }
-            SftpError::RequestHolderError(_) => {
-                warn!("Casting error loosing information: {:?}", value);
-                SunsetError::Bug
-            }
-            SftpError::FileServerError(_) => {
-                warn!("Casting error loosing information: {:?}", value);
-                SunsetError::Bug
+                sunset::error::PacketWrong.build()
             }
             SftpError::ClientDisconnected => SunsetError::ChannelEOF,
         }
