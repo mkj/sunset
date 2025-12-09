@@ -15,10 +15,10 @@ REMOTE_USER="any"
 # Generate random data files
 echo "Generating random data files..."
 # Define test files
-FILES=("100MB_random")
+FILES=("1MB_random")
 
 echo "Generating random data files..."
-dd if=/dev/random bs=1048576 count=100 of=./100MB_random 2>/dev/null
+dd if=/dev/random bs=1048576 count=1 of=./1MB_random 2>/dev/null
 echo "Uploading files to ${REMOTE_USER}@${REMOTE_HOST}..."
 
 echo "Moving to the server folder..."
@@ -28,7 +28,7 @@ done
 
 echo "Downloading files..."
 sftp -vvvvv -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=DEBUG ${REMOTE_USER}@${REMOTE_HOST} 2>&1 << EOF
-$(printf 'get ./%s\n' "${FILES[@]}")
+$(printf 'get %s\n' "${FILES[@]}")
 bye
 EOF
 

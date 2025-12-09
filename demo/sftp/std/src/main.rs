@@ -230,12 +230,14 @@ async fn main(spawner: Spawner) {
     // }
     builder.format_timestamp_nanos();
 
-    if let Some(path) = log_path {
-        let file = std::fs::File::create(path).expect("Failed to create log file");
-        builder.target(env_logger::Target::Pipe(Box::new(file)));
-    } else {
-        builder.target(env_logger::Target::Stdout);
-    }
+    // if let Some(path) = log_path {
+    //     let file = std::fs::File::create(path).expect("Failed to create log file");
+    //     builder.target(env_logger::Target::Pipe(Box::new(file)));
+    // } else {
+    //     builder.target(env_logger::Target::Stdout);
+    // }
+
+    builder.target(env_logger::Target::Stdout);
 
     builder.init();
 
