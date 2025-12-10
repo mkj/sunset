@@ -990,13 +990,11 @@ mod proto_tests {
 
     #[test]
     fn test_data_roundtrip() {
-        let file_handle = b"handle123".as_slice();
         let data_slice = b"Hello, world!".as_slice();
         let mut buff = [0u8; 512];
         let data_packet = SftpPacket::Data(
             ReqId(10),
             Data {
-                handle: FileHandle{0: BinString(file_handle)},
                 data: BinString(data_slice),
             },
         );
@@ -1014,7 +1012,6 @@ mod proto_tests {
         match SftpPacket::decode_response(&mut source) {
             Ok(SftpPacket::Data(req_id, data)) => {
                 assert_eq!(req_id, ReqId(10));
-                assert_eq!(data.handle, FileHandle{0: BinString(file_handle)});
                 assert_eq!(data.data, BinString(data_slice));
             }
             Ok(other) => panic!("Expected Data packet, got: {:?}", other),
