@@ -365,7 +365,8 @@ where
                                 "Unexpected SftpPacket: {:?}",
                                 request.sftp_num()
                             );
-                            return Err(SunsetError::BadUsage {}.into());
+                            // return Err(SunsetError::BadUsage.build().into())
+                            return Err(sunset::error::BadUsage.build().into());
                         }
                         match request {
                             // SftpPacket::Init(init_version_client) => todo!(),
@@ -707,7 +708,7 @@ where
                 let lr: usize = match chan_in.read(buffer_in).await {
                     Ok(lr) => lr,
                     Err(e) => match e {
-                        SunsetError::NoRoom {} => {
+                        SunsetError::NoRoom { .. } => {
                             error!("SSH channel is full");
                             continue;
                         }

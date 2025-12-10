@@ -96,8 +96,9 @@ impl DemoServer for StdDemo {
                     Ok(event) => event,
                     Err(e) => {
                         match e {
-                            Error::NoRoom {} => {
+                            Error::NoRoom { .. } => {
                                 warn!("NoRoom triggered. Trying again");
+                                panic!();
                                 continue;
                             }
                             _ => {
@@ -223,7 +224,7 @@ async fn main(spawner: Spawner) {
 
     let mut builder = env_logger::Builder::new();
 
-    builder.filter_level(log::LevelFilter::Trace);
+    builder.filter_level(log::LevelFilter::Debug);
     // if std::env::var("RUST_LOG").is_err() {
     // } else {
     //     builder.filter_level(log::LevelFilter::Debug);

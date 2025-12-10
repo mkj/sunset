@@ -597,6 +597,8 @@ impl<'a, CS: CliServ> ChanCore for AsyncSunset<'a, CS> {
             return Pending;
         };
 
+        assert!(!buf.iter().all(|c| *c == 0x0));
+
         let (runner, h) = inner.fetch(num)?;
         let l = runner.write_channel(h, dt, buf);
         if let Ok(0) = l {
