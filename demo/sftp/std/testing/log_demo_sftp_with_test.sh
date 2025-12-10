@@ -77,19 +77,27 @@ echo "Running ${TEST_FILE}. Logging all data to ${LOG_DIR} with prefix ${TIME_ST
 ${TEST_FILE} | awk '{ cmd = "date -u +\"[%Y-%m-%dT%H:%M:%S.%NZ]\""; cmd | getline timestamp; print timestamp, $0; close(cmd) }' > $LOG_DIR/${TIME_STAMP}_${BASE_NAME}_client.log 2>&1 &
 TEST_FILE_PID=$!
 
+kill_test(){
+    echo "traped signal, killing test file process ${TEST_FILE_PID}"
+    kill -SIGTERM $TEST_FILE_PID
+}
 cleanup() {
     echo "Cleaning up..."
+    if kill -0 $TSHARK_PID 2>/dev/null; then
+        echo "Killing tshark process ${TSHARK_PID}"
     kill -SIGTERM $TSHARK_PID
-    kill -SIGTERM $STRACE_PID
-    kill -SIGTERM $TEST_FILE_PID
+    fi
+    if kill -0 $STRACE_PID 2>/dev/null; then
+        echo "Killing strace process ${STRACE_PID}"
+        kill -SIGTERM $STRACE_PID
+    fi
     echo "Cleanup done."
 }
 
-trap cleanup SIGINT SIGTERM EXIT
+trap kill_test SIGINT SIGTERM
 
 echo "If stuck use Ctrl+C to stop the script and cleanup."
 wait "$TEST_FILE_PID"
-
 echo "Finished executing ${TEST_FILE}"
 
 cleanup

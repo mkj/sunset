@@ -268,10 +268,6 @@ pub struct Handle<'a> {
 /// Used for `ssh_fxp_data` [responses](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-7).
 #[derive(Debug, SSHEncode, SSHDecode)]
 pub struct Data<'a> {
-    /// Handle for the file referred
-    pub handle: FileHandle<'a>,
-    /// Offset in the data read
-    pub offset: u64,
     /// raw data
     pub data: BinString<'a>,
 }
@@ -824,22 +820,28 @@ macro_rules! sftpmessages {
             /// Decode a response.
             ///
             /// Used by a SFTP client. Does not include the length field.
-            pub fn decode_response<'de>(s: &mut SftpSource<'de>) -> WireResult<(ReqId, Self)>
+            pub fn decode_response<'de>(s: &mut SftpSource<'de>) -> WireResult<Self>
                 where
                 // S: SftpSource<'de>,
                 'a: 'de, // 'a must outlive 'de and 'de must outlive 'a so they have matching lifetimes
                 'de: 'a
             {
-                let num = SftpNum::from(u8::dec(s)?);
+                let packet_length = u32::dec(s)?;
+                trace!("Packet field len = {:?}, buffer len = {:?}", packet_length, s.remaining());
+                match Self::dec(s) {
+                    Ok(sftp_packet)=> {
+                        if !sftp_packet.sftp_num().is_response()
+                        {
+                            Err(WireError::PacketWrong)
+                        }else{
+                            Ok(sftp_packet)
 
-                if !num.is_response() {
-                    return Err(WireError::PacketWrong)
-                    // return error::SSHProto.fail();
-                    // Not an error in the SSHProtocol rather the SFTP Protocol.
+                        }
+                    },
+                    Err(e) => {
+                        Err(e)
+                    }
                 }
-
-                let id = ReqId(u32::dec(s)?);
-                Ok((id, Self::dec(s)?))
             }
 
 
@@ -876,6 +878,22 @@ macro_rules! sftpmessages {
 
                     }
                 }
+            }
+
+            /// Decode a a packet without checking if it is request or response
+            ///
+            /// Used by a SFTP server. Does not include the length field.
+            ///
+            /// It will fail if the received packet is a response, no valid or incomplete packet
+            pub fn decode<'de>(s: &mut SftpSource<'de>) -> WireResult<Self>
+                where
+                // S: SftpSource<'de>,
+                'a: 'de, // 'a must outlive 'de and 'de must outlive 'a so they have matching lifetimes
+                'de: 'a
+            {
+                let packet_length = u32::dec(s)?;
+                trace!("Packet field len = {:?}, buffer remaining = {:?}", packet_length, s.remaining());
+                Self::dec(s)
             }
 
             // TODO Maybe change WireResult -> SftpResult and SSHSink to SftpSink?
@@ -969,6 +987,40 @@ mod proto_tests {
     extern crate std;
     #[cfg(test)]
     use std::println;
+
+    #[test]
+    fn test_data_roundtrip() {
+        let file_handle = b"handle123".as_slice();
+        let data_slice = b"Hello, world!".as_slice();
+        let mut buff = [0u8; 512];
+        let data_packet = SftpPacket::Data(
+            ReqId(10),
+            Data {
+                handle: FileHandle{0: BinString(file_handle)},
+                data: BinString(data_slice),
+            },
+        );
+
+        let mut sink = SftpSink::new(&mut buff);
+        data_packet.encode_response(&mut sink).expect("Failed to encode response");
+        println!(
+            "data_packet encoded_len = {:?}, encoded = {:?}",
+            sink.payload_len(),
+            sink.payload_slice()
+        );
+        let mut source = SftpSource::new(sink.used_slice());
+        println!("source = {:?}", source);
+
+        match SftpPacket::decode_response(&mut source) {
+            Ok(SftpPacket::Data(req_id, data)) => {
+                assert_eq!(req_id, ReqId(10));
+                assert_eq!(data.handle, FileHandle{0: BinString(file_handle)});
+                assert_eq!(data.data, BinString(data_slice));
+            }
+            Ok(other) => panic!("Expected Data packet, got: {:?}", other),
+            Err(e) => panic!("Failed to decode packet: {:?}", e),
+        }
+    }
 
     #[test]
     fn test_status_encoding() {

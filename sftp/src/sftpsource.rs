@@ -116,6 +116,14 @@ impl<'de> SftpSource<'de> {
         }
     }
 
+    /// Peaks the buffer for packet request id [`u32`]. This does not advance
+    /// the reading index
+    ///
+    /// Useful to observe the packet fields in special conditions where a
+    /// `dec(s)` would fail
+    ///
+    /// **Warning**: will only work in well formed packets, in other case
+    /// the result will contains garbage
     pub fn peak_packet_req_id(&self) -> WireResult<u32> {
         if self.buffer.len() < SFTP_FIELD_REQ_ID_INDEX + SFTP_FIELD_REQ_ID_LEN {
             Err(WireError::RanOut)
