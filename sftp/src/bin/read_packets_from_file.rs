@@ -1,9 +1,7 @@
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::env;
-use env_logger;
-use log::{error, info, warn};
-use sunset::ChanData;
+
 use sunset_sftp::SftpSource;
 use sunset_sftp::protocol::{NameEntry, SftpPacket};
 use sunset::sshwire::{SSHDecode, SSHSource};
@@ -19,11 +17,6 @@ use sunset::sshwire::{SSHDecode, SSHSource};
 /// where `<file_path>` is the path to the file containing the packets.
 /// 
 fn main() {
-    // env_logger::Builder::new()
-    // .filter_level(log::LevelFilter::Trace)
-    // .filter_module("sunset_sftp::sftpsource", log::LevelFilter::Info)
-    // .format_timestamp_nanos()
-    // .init();
     
     let args: Vec<String> = env::args().collect();
     
@@ -84,5 +77,4 @@ fn main() {
         let last_used = used - prev_used;
         println!("Last 9 bytes : {:?}, Lines {:?}-{used}, Counters: ({last_used}/{used}) [last/total decoded]\n", &source.buffer_used()[used-9..], prev_used+1 );
     }
-    // source.decode_all_packets().expect("Failed to decode packets");
 }
