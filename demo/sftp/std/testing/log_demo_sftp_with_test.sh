@@ -71,7 +71,7 @@ echo "Changing back to the starting directory: $START_PWD"
 cd $START_PWD
 
 echo "Cleaning up previous run files"
-rm -f -r ./*_random ./out/*_random
+rm -f ./*_random ./out/*_random
 
 echo "Running ${TEST_FILE}. Logging all data to ${LOG_DIR} with prefix ${TIME_STAMP}."
 ${TEST_FILE} | awk '{ cmd = "date -u +\"[%Y-%m-%dT%H:%M:%S.%NZ]\""; cmd | getline timestamp; print timestamp, $0; close(cmd) }' > $LOG_DIR/${TIME_STAMP}_${BASE_NAME}_client.log 2>&1 &

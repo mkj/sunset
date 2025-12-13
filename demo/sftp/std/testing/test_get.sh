@@ -3,7 +3,7 @@
 echo "Testing Multiple GETs..."
 
 echo "Cleaning up previous run files"
-rm -f -r ./*_random ./out/*_random
+rm -f ./*_random ./out/*_random
 
 
 # Set remote server details

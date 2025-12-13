@@ -33,6 +33,6 @@ for file in "${FILES[@]}"; do
 done
 
 echo "Cleaning up local files..."
-rm -f -r ./*_random ./out/*_random
+rm -f ./*_random ./out/*_random
 
 echo "Upload test completed."

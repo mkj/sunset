@@ -24,4 +24,4 @@ bye
 EOF
 
 echo "Cleaning up local files..."
-rm -f -r ./*_random ./out/*_random
+rm -f ./*_random ./out/*_random
