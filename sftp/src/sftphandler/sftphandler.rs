@@ -360,6 +360,7 @@ where
                     // a full valid request (Lets call this an invariant)
 
                     if let Some(request) = self.request_holder.valid_request() {
+                        debug!("sftp packet {:#x?}", request);
                         if !request.sftp_num().is_request() {
                             error!(
                                 "Unexpected SftpPacket: {:?}",
