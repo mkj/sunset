@@ -108,7 +108,7 @@ impl<'a, const N: usize> SftpOutputConsumer<'a, N> {
                 _total = *lock;
             }
 
-            debug!("Output Consumer: ---> Reads {rl} bytes. Total {_total}");
+            trace!("Output Consumer: ---> Reads {rl} bytes. Total {_total}");
             let mut scanning_buffer = &buf[..rl];
             if rl > 0 {
                 // Replaced write_all with loop to handle partial writes to discard issues in write_all
@@ -192,7 +192,7 @@ impl<'a, const N: usize> SftpOutputProducer<'a, N> {
             _total = *lock;
         }
 
-        debug!("Output Producer: <--- Sends {:?} bytes. Total {_total}", buf.len());
+        trace!("Output Producer: <--- Sends {:?} bytes. Total {_total}", buf.len());
         trace!("Output Producer: Sending buffer {:?}", buf);
 
         // writer.write_all(buf); // ??? error[E0596]: cannot borrow `*writer` as mutable, as it is behind a `&` reference
