@@ -414,7 +414,7 @@ impl<CS: CliServ> Conn<CS> {
         s: &mut TrafSend,
     ) -> Result<Dispatched, Error> {
         // TODO: perhaps could consolidate packet client vs server checks
-        trace!("Incoming {packet:#?}");
+        debug!("Incoming {packet:#x?}");
         let mut disp = Dispatched::default();
 
         self.check_packet(&packet)?;

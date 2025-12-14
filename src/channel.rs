@@ -442,7 +442,7 @@ impl Channels {
                 let chan = self.get_mut(ChanNum(p.num))?;
                 let send = chan.send.as_mut().trap()?;
                 send.window = send.window.saturating_add(p.adjust as usize);
-                trace!("new window {}", send.window);
+                debug!("new window add {}, {}", p.adjust, send.window);
                 // Wake any writers that might have been blocked.
                 chan.wake_write(None, is_client);
             }
