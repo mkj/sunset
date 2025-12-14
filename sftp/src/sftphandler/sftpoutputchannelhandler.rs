@@ -118,9 +118,9 @@ impl<'a, const N: usize> SftpOutputConsumer<'a, N> {
                         scanning_buffer.len()
                     );
                     let wl = self.ssh_chan_out.write(scanning_buffer).await?;
-                    debug!("Output Consumer: Written {:?} bytes ", wl);
+                    trace!("Output Consumer: Written {:?} bytes ", wl);
                     if wl< scanning_buffer.len() {
-                        debug!("Output Consumer: ChanOut accepted only part of the buffer");
+                        trace!("Output Consumer: ChanOut accepted only part of the buffer");
                     }
                     trace!(
                         "Output Consumer: Bytes written {:?}",
@@ -128,7 +128,7 @@ impl<'a, const N: usize> SftpOutputConsumer<'a, N> {
                     );
                     scanning_buffer = &scanning_buffer[wl..];
                 }
-                debug!("Output Consumer: Finished writing all bytes in read buffer");
+                trace!("Output Consumer: Finished writing all bytes in read buffer");
             } else {
                 error!("Output Consumer: Empty array received");
             }
