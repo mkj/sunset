@@ -100,4 +100,7 @@ echo "If stuck use Ctrl+C to stop the script and cleanup."
 wait "$TEST_FILE_PID"
 echo "Finished executing ${TEST_FILE}"
 
+echo "extracting TX/RX data from log file..."
+./extract_txrx.sh $RUST_LOG_FILE
+
 cleanup
