@@ -16,7 +16,7 @@ sunset-sshwire-derive = { version = "0.2", path = "../sshwire-derive" }
 
 
 embedded-io-async = "0.6"
-num_enum = {version = "0.7.4"}
+num_enum = {version = "0.7.4", default-features = false}
 paste = "1.0"
 log = "0.4"
 embassy-sync = "0.7.2"
