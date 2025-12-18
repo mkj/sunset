@@ -219,27 +219,11 @@ async fn listen(
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
-    let log_path = std::env::var("RUST_LOG_FILE").ok();
-
-    let mut builder = env_logger::Builder::new();
-
-    builder.filter_level(log::LevelFilter::Trace);
-    // if std::env::var("RUST_LOG").is_err() {
-    // } else {
-    //     builder.filter_level(log::LevelFilter::Debug);
-    // }
-    builder.format_timestamp_nanos();
-
-    // if let Some(path) = log_path {
-    //     let file = std::fs::File::create(path).expect("Failed to create log file");
-    //     builder.target(env_logger::Target::Pipe(Box::new(file)));
-    // } else {
-    //     builder.target(env_logger::Target::Stdout);
-    // }
-
-    builder.target(env_logger::Target::Stdout);
-
-    builder.init();
+    env_logger::Builder::new()
+        .filter_level(log::LevelFilter::Trace)
+        .format_timestamp_nanos()
+        .target(env_logger::Target::Stdout)
+        .init();
 
     spawner.spawn(main_task(spawner)).unwrap();
 }

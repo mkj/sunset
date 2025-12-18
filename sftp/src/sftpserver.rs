@@ -83,20 +83,22 @@ where
     /// sent using `reply.send_data()`, the SFTP session will be broken.
     ///
     #[allow(unused)]
-    async fn read<const N: usize>(
+    fn read<const N: usize>(
         &mut self,
         opaque_file_handle: &T,
         offset: u64,
         len: u32,
         reply: &mut ReadReply<'_, N>,
-    ) -> SftpResult<()> {
-        log::error!(
-            "SftpServer Read operation not defined: handle = {:?}, offset = {:?}, len = {:?}",
-            opaque_file_handle,
-            offset,
-            len
-        );
-        Err(SftpError::FileServerError(StatusCode::SSH_FX_OP_UNSUPPORTED))
+    ) -> impl core::future::Future<Output = SftpResult<()>> {
+        async move {
+            log::error!(
+                "SftpServer Read operation not defined: handle = {:?}, offset = {:?}, len = {:?}",
+                opaque_file_handle,
+                offset,
+                len
+            );
+            Err(SftpError::FileServerError(StatusCode::SSH_FX_OP_UNSUPPORTED))
+        }
     }
     /// Writes to a file that has previously being opened for writing
     fn write(
@@ -143,16 +145,18 @@ where
     /// directory when a read dir request is answer with an reply.send_eof()
     ///
     #[allow(unused_variables)]
-    async fn readdir<const N: usize>(
+    fn readdir<const N: usize>(
         &mut self,
         opaque_dir_handle: &T,
         reply: &mut DirReply<'_, N>,
-    ) -> SftpOpResult<()> {
-        log::error!(
-            "SftpServer ReadDir operation not defined: handle = {:?}",
-            opaque_dir_handle
-        );
-        Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
+    ) -> impl core::future::Future<Output = SftpOpResult<()>> {
+        async move {
+            log::error!(
+                "SftpServer ReadDir operation not defined: handle = {:?}",
+                opaque_dir_handle
+            );
+            Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
+        }
     }
 
     /// Provides the real path of the directory specified
