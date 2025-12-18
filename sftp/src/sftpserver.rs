@@ -1,6 +1,6 @@
 use crate::error::{SftpError, SftpResult};
 use crate::proto::{
-    ENCODED_SSH_FXP_DATA_MIN_LENGTH, ENCODED_BASE_NAME_SFTP_PACKET_LENGTH,
+    ENCODED_BASE_NAME_SFTP_PACKET_LENGTH, ENCODED_SSH_FXP_DATA_MIN_LENGTH,
     MAX_NAME_ENTRY_SIZE, NameEntry, PFlags, SftpNum,
 };
 use crate::server::SftpSink;
@@ -67,7 +67,7 @@ where
         Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
     }
     /// Reads from a file that has previously being opened for reading
-    /// 
+    ///
     /// ## Notes to the implementer:
     ///
     /// The implementer is expected to use the parameter `reply` [`DirReply`] to:
@@ -77,11 +77,11 @@ where
     ///     1. Call `reply.send_header()` with the length of data to be sent
     ///     2. Call `reply.send_data()` once or multiple times to send all the data announced
     ///     3. Do not call `reply.send_eof()` during this [`readdir`] method call
-    /// 
+    ///
 
-    /// If the length communicated in the header does not match the total length of the data 
+    /// If the length communicated in the header does not match the total length of the data
     /// sent using `reply.send_data()`, the SFTP session will be broken.
-    /// 
+    ///
     #[allow(unused)]
     async fn read<const N: usize>(
         &mut self,
@@ -137,7 +137,7 @@ where
     /// If the length communicated in the header does not match the total length of all
     /// the items sent using `reply.send_item()`, the SFTP session will be
     /// broken.
-    /// 
+    ///
     /// The server is expected to keep track of the number of items that remain to be sent
     /// to the client since the client will only stop asking for more elements in the
     /// directory when a read dir request is answer with an reply.send_eof()
@@ -208,7 +208,7 @@ impl<'g, const N: usize> ReadReply<'g, N> {
         req_id: ReqId,
         chan_out: &'g SftpOutputProducer<'g, N>,
     ) -> Self {
-        ReadReply { req_id, chan_out, data_len:0, data_sent_len:0 }
+        ReadReply { req_id, chan_out, data_len: 0, data_sent_len: 0 }
     }
 
     // TODO Make this enforceable
@@ -257,7 +257,7 @@ impl<'g, const N: usize> ReadReply<'g, N> {
     }
 
     /// Indicates whether all the data announced in the header has been sent
-    /// 
+    ///
     /// returns 0 when all data has been sent
     /// returns >0 when there is still data to be sent
     /// returns <0 when too much data has been sent
@@ -270,7 +270,6 @@ impl<'g, const N: usize> ReadReply<'g, N> {
         req_id: ReqId,
         data_len: u32,
     ) -> Result<&'g [u8], SftpError> {
-        
         // length field
         (data_len + ENCODED_SSH_FXP_DATA_MIN_LENGTH).enc(sink)?;
         // packet type (1)
@@ -309,7 +308,6 @@ mod read_reply_tests {
             u32::from_be_bytes(payload[..4].try_into().unwrap())
         );
     }
-
 }
 
 /// Uses for [`DirReply`] to:
@@ -346,7 +344,7 @@ impl<'g, const N: usize> DirReply<'g, N> {
         chan_out: &'g SftpOutputProducer<'g, N>,
     ) -> Self {
         // DirReply { chan_out: chan_out_wrapper, req_id }
-        DirReply { req_id, chan_out, data_len:0, data_sent_len:0 }
+        DirReply { req_id, chan_out, data_len: 0, data_sent_len: 0 }
     }
 
     // TODO Make this enforceable
@@ -404,7 +402,7 @@ impl<'g, const N: usize> DirReply<'g, N> {
     }
 
     /// Indicates whether all the data announced in the header has been sent
-    /// 
+    ///
     /// returns 0 when all data has been sent
     /// returns >0 when there is still data to be sent
     /// returns <0 when too much data has been sent
@@ -428,7 +426,6 @@ impl<'g, const N: usize> DirReply<'g, N> {
 
         Ok(sink.payload_slice())
     }
-
 }
 
 #[cfg(test)]

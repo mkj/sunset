@@ -119,8 +119,10 @@ impl<'a, const N: usize> SftpOutputConsumer<'a, N> {
                     );
                     let wl = self.ssh_chan_out.write(scanning_buffer).await?;
                     debug!("Output Consumer: Written {:?} bytes ", wl);
-                    if wl< scanning_buffer.len() {
-                        debug!("Output Consumer: ChanOut accepted only part of the buffer");
+                    if wl < scanning_buffer.len() {
+                        debug!(
+                            "Output Consumer: ChanOut accepted only part of the buffer"
+                        );
                     }
                     trace!(
                         "Output Consumer: Bytes written {:?}",

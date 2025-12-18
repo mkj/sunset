@@ -992,12 +992,8 @@ mod proto_tests {
     fn test_data_roundtrip() {
         let data_slice = b"Hello, world!".as_slice();
         let mut buff = [0u8; 512];
-        let data_packet = SftpPacket::Data(
-            ReqId(10),
-            Data {
-                data: BinString(data_slice),
-            },
-        );
+        let data_packet =
+            SftpPacket::Data(ReqId(10), Data { data: BinString(data_slice) });
 
         let mut sink = SftpSink::new(&mut buff);
         data_packet.encode_response(&mut sink).expect("Failed to encode response");
