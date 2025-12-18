@@ -360,12 +360,6 @@ impl SSHEncode for Name {
     }
 }
 
-// TODO: Is this really necessary?
-#[derive(Debug, SSHEncode, SSHDecode)]
-pub struct ResponseAttributes {
-    pub attrs: Attrs,
-}
-
 // Requests/Responses data types
 
 #[derive(Debug, SSHEncode, SSHDecode, Clone, Copy, PartialEq, Eq)]
@@ -437,11 +431,11 @@ impl SSHEncode for StatusCode {
 
 // TODO: Implement extensions. Low in priority
 /// Provided to provide a mechanism to implement extensions
-#[derive(Debug, SSHEncode, SSHDecode)]
-pub struct ExtPair<'a> {
-    pub name: &'a str,
-    pub data: BinString<'a>,
-}
+// #[derive(Debug, SSHEncode, SSHDecode)]
+// pub struct ExtPair<'a> {
+//     pub name: &'a str,
+//     pub data: BinString<'a>,
+// }
 
 /// Files attributes to describe Files as SFTP v3 specification
 ///
@@ -680,12 +674,15 @@ macro_rules! sftpmessages {
         #[derive(Debug)]
         pub enum SftpPacket<'a> {
                 $(
+                    #[doc = concat!("Initialization packet: ", $init_ssh_fxp_name)]
                     $init_packet_variant($init_packet_type),
                 )*
                 $(
+                    #[doc = concat!("Request packet: ", $request_ssh_fxp_name)]
                     $request_packet_variant(ReqId, $request_packet_type),
                 )*
                 $(
+                    #[doc = concat!("Response packet: ", $response_ssh_fxp_name)]
                     $response_packet_variant(ReqId, $response_packet_type),
                 )*
 

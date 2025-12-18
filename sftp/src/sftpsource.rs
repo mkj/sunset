@@ -136,7 +136,9 @@ impl<'de> SftpSource<'de> {
             Ok(u32::from_be_bytes(bytes))
         }
     }
-
+    /// Returns a slice on the used portion of the held buffer.
+    ///
+    /// This does not modify the internal index
     pub fn buffer_used(&self) -> &[u8] {
         &self.buffer[..self.index]
     }
