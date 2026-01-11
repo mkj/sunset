@@ -1,6 +1,6 @@
 [package]
 name = "sunset-async"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2021"
 repository = "https://github.com/mkj/sunset"
 categories = ["network-programming", "embedded", "no-std"]

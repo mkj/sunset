@@ -1,5 +1,25 @@
 # `sunset-stdasync` Changelog
 
+## 0.4.0 - 2026-01-11
+
+### Fixed
+
+- `CmdlineClient`: fix exit code, flush logs on completio n
+
+- `sunsetc`: fix winch signal being lost (regression in 0.3.0)
+
+### Added
+
+- `sunsetc`: `--version` argument
+
+- `sunsetc`: Allow `%p` in tracefile filename for PID
+
+### Changed
+
+- `sunsetc`: buffer tracefile output for performance
+
+- `sunsetc`: escape banner sent from a server
+
 ## 0.3.0 - 2025-06-16
 
 ### Changed

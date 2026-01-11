@@ -1,11 +1,11 @@
 # Sunset Changelog
 
-# unreleased
+## 0.4.0 - 2026-01-11
 
 ### Added
 
 - Add server authentication helpers `matches_username()`,
-  `matches_password()`.
+  `matches_password()` for constant time comparison.
 
 - Add environment session variable support
 
@@ -14,7 +14,8 @@
 
 ### Fixed
 
-- Fix public key authentication. Github #30
+- Fix public key authentication for the server, previously signatures
+  would not validate. Github #30
 
 - Don't fail in some circumstances during key exchange when
   packets are received in particular order. Github #25, Github #27
@@ -24,13 +25,24 @@
 
 - Fix using sshwire-derive outside of sunset
 
-- Fix winch signal for sunsetc (regression in 0.3.0)
-
 ### Changed
+
+- Server auth events such as `ServFirstAuth` can enable or disable
+  password or public key auth for subsequent attempts. Now no authentication methods are enabled by default, they must be explicitly enabled with eg `enable_password_auth()`, `enable_pubkey_auth()`.
+
+- Minimum Rust version is 1.87
+
+- `Channels::by_handle_mut()` renamed from `from_handle_mut()` to be
+  more idiomatic.
 
 - Log a better warning when host key signatures fail
 
-- Improve exit code handling in sunsetc
+- Code size improvements.
+
+- Fail with `PacketWrong` when calling an event method, rather
+  than on a subsequent `progress()` call.
+
+- CI scripts now build in `target/ci` rather than `testing/target`
 
 ## 0.3.0 - 2025-06-16
 

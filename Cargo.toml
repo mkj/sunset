@@ -1,6 +1,6 @@
 [package]
 name = "sunset"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2021"
 description = "A SSH library suitable for embedded and larger programs"
 repository = "https://github.com/mkj/sunset"
@@ -18,9 +18,9 @@ members = [
 ]
 
 [workspace.dependencies]
-sunset = { path = ".", version = "0.3" }
+sunset = { path = ".", version = "0.4" }
 sunset-sshwire-derive = { version = "0.2", path = "sshwire-derive" }
-sunset-async = { path = "async", version = "0.3" }
+sunset-async = { path = "async", version = "0.4" }
 sunset-demo-common = { path = "demo/common" }
 
 portable-atomic = "1"

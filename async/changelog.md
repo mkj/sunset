@@ -1,5 +1,12 @@
 # `sunset-async` Changelog
 
+## 0.4.0 - 2026-01-11
+
+- Fix discarded channel input data. If async `progress()`
+  ran before `ChanIn` data was consumed, it could result
+  in discarded data. This didn't seem to affect sunsetc,
+  but could affect other applications.
+
 ## 0.3.0 - 2025-06-16
 
 ### Changed
