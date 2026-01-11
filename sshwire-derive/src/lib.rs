@@ -283,6 +283,11 @@ fn encode_enum(
                     let atts = take_field_atts(&var.attributes)?;
 
                     let mut rhs = StreamBuilder::new();
+                    if let Some(val) = &var.value {
+                        // Avoid users expecting enum values to be encoded.
+                        // Could be implemented if needed.
+                        return Err(Error::Custom { error: "sunset_sshwire_derive::SSHEncode currently does not encode enum discriminants.".into(), span: Some(val.span())})
+                    }
                     match var.fields {
                         None => {
                             // Unit enum
@@ -300,7 +305,7 @@ fn encode_enum(
                             }
 
                         }
-                        _ => return Err(Error::Custom { error: "SSHEncode currently only implements Unit or single value enum variants.".into(), span: None})
+                        _ => return Err(Error::Custom { error: "sunset_sshwire_derive::SSHEncode currently only implements Unit or single value enum variants.".into(), span: None})
                     }
 
                     match_arm.puncts("=>");
@@ -372,7 +377,7 @@ fn encode_enum_names(
                             })?;
 
                         }
-                        _ => return Err(Error::Custom { error: "SSHEncode currently only implements Unit or single value enum variants.".into(), span: None})
+                        _ => return Err(Error::Custom { error: "sunset_sshwire_derive::SSHEncode currently only implements Unit or single value enum variants.".into(), span: None})
                     }
 
                     match_arm.puncts("=>");
