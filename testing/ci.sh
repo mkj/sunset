@@ -3,7 +3,7 @@
 set -v
 set -e
 
-export CARGO_TARGET_DIR=testing/target
+export CARGO_TARGET_DIR=target/ci
 
 # Set OFFLINE=1 to avoid rustup. cargo might still run offline.
 
