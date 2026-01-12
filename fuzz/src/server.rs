@@ -41,10 +41,12 @@ fn serv_event(input: &mut FuzzInput, ev: Event, state: &mut State) -> Result<()>
         ServEvent::Hostkeys(h) => {
             h.hostkeys(core::slice::from_ref(&&state.conf.key))?;
         }
-        ServEvent::FirstAuth(h) => {
+        ServEvent::FirstAuth(mut h) => {
             assert!(!state.authed);
             assert!(!state.firstauth);
             state.firstauth = true;
+            h.enable_password_auth(true).unwrap();
+            h.enable_pubkey_auth(true).unwrap();
             black_box(h.username()?);
             if input.chance(0.9)? {
                 state.authed = true;

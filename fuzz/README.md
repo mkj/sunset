@@ -81,7 +81,7 @@ Minimise a corpus
 Install [`honggfuzz-rs`](https://github.com/rust-fuzz/honggfuzz-rs)
 
 ```
-HFUZZ_INPUT=$HOME/tmp/fuzzsunset/afl61/m_fuzz-server/queue HFUZZ_BUILD_ARGS="--profile=fuzz --features honggfuzz" RUSTFLAGS='-C target-cpu=native'  HFUZZ_RUN_ARGS='-n24  --dict server.dict ' cargo hfuzz run fuzz-server
+HFUZZ_INPUT=$HOME/tmp/fuzzsunset/afl61/m_fuzz-server/queue HFUZZ_BUILD_ARGS="--profile=fuzz --features honggfuzz" RUSTFLAGS='-C target-cpu=native'  HFUZZ_RUN_ARGS='-n24  --dict server.dict ' nice cargo hfuzz run fuzz-server
 ```
 
 Add `-M` to the `HFUZZ_RUN_ARGS` to minimise a corpus in-place.

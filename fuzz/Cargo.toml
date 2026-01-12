@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-honggfuzz = { version = "=0.5.57", optional = true }
+honggfuzz = { version = "=0.5.58", optional = true }
 afl = { version = "*", optional = true }
 sunset = { workspace = true, features = ["arbitrary"] }
 sunset-sshwire-derive.workspace = true
