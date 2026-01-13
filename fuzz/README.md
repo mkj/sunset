@@ -9,6 +9,8 @@ debug assertions are enabled.
 
 Decryption and signature verification is disabled.
 
+https://github.com/mkj/sunset-fuzz-corpus has a fuzz corpus, updated occasionally.
+
 ## Input
 
 The input is treated as
