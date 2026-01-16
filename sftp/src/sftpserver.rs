@@ -51,20 +51,34 @@ where
     T: OpaqueFileHandle,
 {
     /// Opens a file for reading/writing
-    fn open(&'_ mut self, path: &str, mode: &PFlags) -> SftpOpResult<T> {
-        log::error!(
-            "SftpServer Open operation not defined: path = {:?}, attrs = {:?}",
-            path,
-            mode
-        );
-        Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
+    fn open(
+        &'_ mut self,
+        path: &str,
+        mode: &PFlags,
+    ) -> impl core::future::Future<Output = SftpOpResult<T>> {
+        async move {
+            log::error!(
+                "SftpServer Open operation not defined: path = {:?}, attrs = {:?}",
+                path,
+                mode
+            );
+            Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
+        }
     }
 
     /// Close either a file or directory handle
-    fn close(&mut self, handle: &T) -> SftpOpResult<()> {
-        log::error!("SftpServer Close operation not defined: handle = {:?}", handle);
+    fn close(
+        &mut self,
+        handle: &T,
+    ) -> impl core::future::Future<Output = SftpOpResult<()>> {
+        async move {
+            log::error!(
+                "SftpServer Close operation not defined: handle = {:?}",
+                handle
+            );
 
-        Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
+            Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
+        }
     }
     /// Reads from a file that has previously being opened for reading
     ///
@@ -106,20 +120,27 @@ where
         opaque_file_handle: &T,
         offset: u64,
         buf: &[u8],
-    ) -> SftpOpResult<()> {
-        log::error!(
-            "SftpServer Write operation not defined: handle = {:?}, offset = {:?}, buf = {:?}",
-            opaque_file_handle,
-            offset,
-            buf
-        );
-        Ok(())
+    ) -> impl core::future::Future<Output = SftpOpResult<()>> {
+        async move {
+            log::error!(
+                "SftpServer Write operation not defined: handle = {:?}, offset = {:?}, buf = {:?}",
+                opaque_file_handle,
+                offset,
+                buf
+            );
+            Ok(())
+        }
     }
 
     /// Opens a directory and returns a handle
-    fn opendir(&mut self, dir: &str) -> SftpOpResult<T> {
-        log::error!("SftpServer OpenDir operation not defined: dir = {:?}", dir);
-        Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
+    fn opendir(
+        &mut self,
+        dir: &str,
+    ) -> impl core::future::Future<Output = SftpOpResult<T>> {
+        async move {
+            log::error!("SftpServer OpenDir operation not defined: dir = {:?}", dir);
+            Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
+        }
     }
 
     /// Reads the list of items in a directory and returns them using the [`DirReply`]
@@ -160,23 +181,36 @@ where
     }
 
     /// Provides the real path of the directory specified
-    fn realpath(&mut self, dir: &str) -> SftpOpResult<NameEntry<'_>> {
-        log::error!("SftpServer RealPath operation not defined: dir = {:?}", dir);
-        Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
+    fn realpath(
+        &mut self,
+        dir: &str,
+    ) -> impl core::future::Future<Output = SftpOpResult<NameEntry<'_>>> {
+        async move {
+            log::error!(
+                "SftpServer RealPath operation not defined: dir = {:?}",
+                dir
+            );
+            Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
+        }
     }
 
     /// Provides the stats of the given file path
-    fn stats(&mut self, follow_links: bool, file_path: &str) -> SftpOpResult<Attrs> {
-        log::error!(
-            "SftpServer Stats operation not defined: follow_link = {:?}, \
-            file_path = {:?}",
-            follow_links,
-            file_path
-        );
-        Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
+    fn stats(
+        &mut self,
+        follow_links: bool,
+        file_path: &str,
+    ) -> impl core::future::Future<Output = SftpOpResult<Attrs>> {
+        async move {
+            log::error!(
+                "SftpServer Stats operation not defined: follow_link = {:?}, \
+                file_path = {:?}",
+                follow_links,
+                file_path
+            );
+            Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
+        }
     }
 }
-
 // TODO Define this
 /// A reference structure passed to the [`SftpServer::read()`] method to
 /// allow replying with the read data.

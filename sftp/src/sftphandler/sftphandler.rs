@@ -159,11 +159,11 @@ where
 
                             let data = &buf[..used];
                             buf = &buf[used..];
-                            match self.file_server.write(
-                                &T::try_from(&write.handle)?,
-                                *offset,
-                                data,
-                            ) {
+                            match self
+                                .file_server
+                                .write(&T::try_from(&write.handle)?, *offset, data)
+                                .await
+                            {
                                 Ok(_) => {
                                     if remaining_data == 0 {
                                         output_producer
@@ -427,7 +427,11 @@ where
                                 self.state = HandlerState::Idle;
                             }
                             SftpPacket::LStat(req_id, LStat { file_path: path }) => {
-                                match self.file_server.stats(false, path.as_str()?) {
+                                match self
+                                    .file_server
+                                    .stats(false, path.as_str()?)
+                                    .await
+                                {
                                     Ok(attrs) => {
                                         debug!(
                                             "List stats for {} is {:?}",
@@ -457,7 +461,11 @@ where
                                 self.state = HandlerState::Idle;
                             }
                             SftpPacket::Stat(req_id, Stat { file_path: path }) => {
-                                match self.file_server.stats(true, path.as_str()?) {
+                                match self
+                                    .file_server
+                                    .stats(true, path.as_str()?)
+                                    .await
+                                {
                                     Ok(attrs) => {
                                         debug!(
                                             "List stats for {} is {:?}",
@@ -530,6 +538,7 @@ where
                                 match self
                                     .file_server
                                     .opendir(open_dir.dirname.as_str()?)
+                                    .await
                                 {
                                     Ok(opaque_file_handle) => {
                                         let response = SftpPacket::Handle(
@@ -560,6 +569,7 @@ where
                                 match self
                                     .file_server
                                     .close(&T::try_from(&close.handle)?)
+                                    .await
                                 {
                                     Ok(_) => {
                                         output_producer
@@ -594,6 +604,7 @@ where
                                 match self
                                     .file_server
                                     .open(open.filename.as_str()?, &open.pflags)
+                                    .await
                                 {
                                     Ok(opaque_file_handle) => {
                                         let response = SftpPacket::Handle(
@@ -624,6 +635,7 @@ where
                                 match self
                                     .file_server
                                     .realpath(path_info.path.as_str()?)
+                                    .await
                                 {
                                     Ok(name_entry) => {
                                         let mut dir_reply =

@@ -107,7 +107,7 @@ impl DemoSftpServer {
 }
 
 impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
-    fn open(
+    async fn open(
         &mut self,
         filename: &str,
         mode: &PFlags,
@@ -153,7 +153,7 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
         fh
     }
 
-    fn opendir(&mut self, dir: &str) -> SftpOpResult<DemoOpaqueFileHandle> {
+    async fn opendir(&mut self, dir: &str) -> SftpOpResult<DemoOpaqueFileHandle> {
         debug!("Open Directory = {:?}", dir);
 
         let dir_handle = self.handles_manager.insert(
@@ -172,7 +172,7 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
         dir_handle
     }
 
-    fn realpath(&mut self, dir: &str) -> SftpOpResult<NameEntry<'_>> {
+    async fn realpath(&mut self, dir: &str) -> SftpOpResult<NameEntry<'_>> {
         info!("finding path for: {:?}", dir);
         let name_entry = NameEntry {
             filename: Filename::from(self.base_path.as_str()),
@@ -191,7 +191,7 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
         Ok(name_entry)
     }
 
-    fn close(
+    async fn close(
         &mut self,
         opaque_file_handle: &DemoOpaqueFileHandle,
     ) -> SftpOpResult<()> {
@@ -320,7 +320,7 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
         Err(StatusCode::SSH_FX_PERMISSION_DENIED.into())
     }
 
-    fn write(
+    async fn write(
         &mut self,
         opaque_file_handle: &DemoOpaqueFileHandle,
         offset: u64,
@@ -416,7 +416,11 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
         }
     }
 
-    fn stats(&mut self, follow_links: bool, file_path: &str) -> SftpOpResult<Attrs> {
+    async fn stats(
+        &mut self,
+        follow_links: bool,
+        file_path: &str,
+    ) -> SftpOpResult<Attrs> {
         log::debug!("SftpServer ListStats: file_path = {:?}", file_path);
         let file_path = Path::new(file_path);
 
