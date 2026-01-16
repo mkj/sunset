@@ -1,4 +1,4 @@
-use crate::error::{self, Error, Result, TrapBug};
+use crate::error::{self, Error, Result};
 
 pub(crate) const OUR_VERSION: &[u8] = b"SSH-2.0-Sunset-1";
 
@@ -164,8 +164,8 @@ impl RemoteVersion {
 #[rustfmt::skip]
 mod tests {
     use crate::ident;
-    use crate::error::{Error,TrapBug,Result};
-    use crate::sunsetlog::init_test_log;
+    use crate::error::{Error,Result};
+    
 
     // Tests as a client, allowing leading ignored lines
     fn test_version(v: &str, split: usize, expect: &str) -> Result<usize> {

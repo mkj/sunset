@@ -7,12 +7,14 @@ repository = "https://github.com/mkj/sunset"
 categories = ["network-programming", "embedded", "no-std"]
 license = "0BSD"
 keywords = ["ssh"]
+rust-version = "1.87"
 
 [workspace]
 members = [
     "demo/picow",
     "demo/std", "fuzz",
     "sftp",
+    "demo/sftp/std",
     "stdasync",
     # workspace.dependencies paths are automatic
 ]
@@ -77,7 +79,6 @@ mlkem = ["dep:ml-kem"]
 openssh-key = ["ssh-key"]
 # implements embedded_io::Error for sunset::Error
 embedded-io = ["dep:embedded-io"]
-
 # Arbitrary for fuzzing. std is required for derive(Arbitrary)
 arbitrary = ["dep:arbitrary", "std"]
 

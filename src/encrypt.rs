@@ -13,12 +13,8 @@ use core::fmt;
 use core::fmt::Debug;
 use core::num::Wrapping;
 
-use aes::{
-    cipher::{BlockSizeUser, KeyIvInit, KeySizeUser, StreamCipher},
-    Aes256,
-};
-use hmac::{Hmac, Mac};
-use pretty_hex::PrettyHex;
+use aes::cipher::{BlockSizeUser, KeyIvInit, KeySizeUser, StreamCipher};
+use hmac::Mac;
 use sha2::Digest as Sha2DigestForTrait;
 use zeroize::ZeroizeOnDrop;
 
@@ -26,7 +22,6 @@ use crate::*;
 use kex::{self, SessId};
 use ssh_chapoly::SSHChaPoly;
 use sshnames::*;
-use sshwire::hash_mpint;
 
 // TODO: check that Ctr32 is sufficient. Should be OK with SSH rekeying.
 type Aes256Ctr32BE = ctr::Ctr32BE<aes::Aes256>;
@@ -135,7 +130,9 @@ impl KeyState {
         buf: &mut [u8],
     ) -> Result<usize, Error> {
         let e = self.enc.encrypt(payload_len, buf, self.seq_encrypt.0);
-        self.seq_encrypt += 1;
+        if !matches!(e, Err(Error::NoRoom { .. })) {
+            self.seq_encrypt += 1;
+        }
         e
     }
 
@@ -420,7 +417,7 @@ impl KeysRecv {
         let sublength = if self.cipher.is_aead() { SSH_LENGTH_SIZE } else { 0 };
         let len = buf.len() - size_integ - sublength;
 
-        if len % size_block != 0 {
+        if !len.is_multiple_of(size_block) {
             debug!("Bad packet, not multiple of block size");
             return error::SSHProto.fail();
         }

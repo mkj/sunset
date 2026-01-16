@@ -1,12 +1,11 @@
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
 
-use std::fs::{File, OpenOptions};
+use std::fs::File;
 use std::io;
 use std::io::{BufRead, Read, Write};
 use std::path::{Path, PathBuf};
 
-use crate::*;
 use sunset::packets::PubKey;
 
 type OpenSSHKey = ssh_key::PublicKey;
@@ -45,7 +44,7 @@ where
 const USER_KNOWN_HOSTS: &str = ".ssh/known_hosts";
 
 fn user_known_hosts() -> Result<PathBuf, KnownHostsError> {
-    // home_dir() works fine on linux.
+    // home_dir() was undeprecated in 1.87
     #[allow(deprecated)]
     let p = std::env::home_dir().ok_or_else(|| KnownHostsError::Other {
         msg: "Failed getting home directory".into(),
@@ -118,20 +117,18 @@ pub fn check_known_hosts_file(
 
         if pubk.algorithm() != known_key.algorithm() {
             debug!("Line {line}, Ignoring other-format existing key {known_key:?}")
+        } else if pubk.key_data() == known_key.key_data() {
+            debug!("Line {line}, found matching key");
+            return Ok(());
         } else {
-            if pubk.key_data() == known_key.key_data() {
-                debug!("Line {line}, found matching key");
-                return Ok(());
-            } else {
-                let fp = known_key.fingerprint(Default::default());
-                println!("\nHost key mismatch for {match_host} in ~/.ssh/known_hosts line {line}\n\
-                    Existing key has fingerprint {fp}\n");
-                return Err(KnownHostsError::Mismatch {
-                    path: p.to_path_buf(),
-                    line,
-                    existing: known_key,
-                });
-            }
+            let fp = known_key.fingerprint(Default::default());
+            println!("\nHost key mismatch for {match_host} in ~/.ssh/known_hosts line {line}\n\
+                Existing key has fingerprint {fp}\n");
+            return Err(KnownHostsError::Mismatch {
+                path: p.to_path_buf(),
+                line,
+                existing: known_key,
+            });
         }
     }
 

@@ -1,19 +1,16 @@
 use embassy_futures::select::Either;
-use futures::pin_mut;
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
 use sunset::event::CliEvent;
-use sunset::packets::WinChange;
 
 use core::fmt::Debug;
-use core::str::FromStr;
 use std::process::ExitCode;
 
-use sunset::{sshnames, AuthSigMsg, OwnedSig, Pty, SignKey};
-use sunset::{Error, Result, Runner, SessionCommand};
+use sunset::{sshnames, Pty, SignKey};
+use sunset::{Error, Result, SessionCommand};
 use sunset_async::*;
 
-use embassy_sync::channel::{Channel, Receiver, Sender};
+use embassy_sync::channel::Channel;
 use embassy_sync::signal::Signal;
 use embedded_io_async::{Read as _, Write as _};
 use std::collections::VecDeque;
@@ -21,9 +18,6 @@ use std::collections::VecDeque;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::signal::unix::{signal, SignalKind};
-
-use futures::FutureExt;
-use futures::{future::Fuse, select_biased};
 
 use crate::pty::win_size;
 use crate::AgentClient;
@@ -325,7 +319,10 @@ impl CmdlineClient {
                         }
                     }
                     CliEvent::Banner(b) => {
-                        println!("Banner from server:\n{}", b.banner()?)
+                        println!(
+                            "Banner from server:\n{}",
+                            EscapeBanner(b.banner()?)
+                        )
                     }
                     CliEvent::Defunct => {
                         trace!("break defunct");
@@ -366,6 +363,22 @@ impl CmdlineClient {
             (io, Some(extin))
         };
         Ok((io, extin))
+    }
+}
+
+/// Disallows ascii control characters, allows newlines.
+struct EscapeBanner<'a>(&'a str);
+
+impl core::fmt::Display for EscapeBanner<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for c in self.0.chars() {
+            if c.is_control() && c != '\n' {
+                f.write_str(".")?;
+            } else {
+                write!(f, "{}", c)?;
+            }
+        }
+        Ok(())
     }
 }
 

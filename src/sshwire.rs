@@ -12,11 +12,9 @@ use {
 };
 
 use core::convert::AsRef;
-use core::fmt::{self, Debug, Display};
+use core::fmt::{Debug, Display};
 use core::str::FromStr;
-use digest::Output;
 use pretty_hex::PrettyHex;
-use snafu::{prelude::*, Location};
 
 use ascii::{AsAsciiStr, AsciiChar, AsciiStr};
 
@@ -126,7 +124,7 @@ pub fn packet_from_bytes<'a>(b: &'a [u8], ctx: &ParseContext) -> Result<Packet<'
     let mut s = DecodeBytes { input: b, parse_ctx: ctx };
     let p = Packet::dec(&mut s)?;
 
-    if s.input.len() != 0 && !s.ctx().seen_unknown {
+    if !s.input.is_empty() && !s.ctx().seen_unknown {
         // No length check if the packet had an unknown variant
         // - it skipped parsing the remainder of the packet.
         Err(Error::WrongPacketLength)
@@ -199,7 +197,7 @@ impl<'a> SSHSink for EncodeBytes<'a> {
             return Err(WireError::NoRoom);
         }
         // keep the borrow checker happy
-        let tmp = core::mem::replace(&mut self.target, &mut []);
+        let tmp = core::mem::take(&mut self.target);
         let t;
         (t, self.target) = tmp.split_at_mut(v.len());
         t.copy_from_slice(v);
@@ -486,6 +484,12 @@ impl SSHEncode for u32 {
     }
 }
 
+impl SSHEncode for u64 {
+    fn enc(&self, s: &mut dyn SSHSink) -> WireResult<()> {
+        s.push(&self.to_be_bytes())
+    }
+}
+
 // no length prefix
 impl SSHEncode for &[u8] {
     fn enc(&self, s: &mut dyn SSHSink) -> WireResult<()> {
@@ -555,6 +559,16 @@ impl<'de> SSHDecode<'de> for u32 {
     }
 }
 
+impl<'de> SSHDecode<'de> for u64 {
+    fn dec<S>(s: &mut S) -> WireResult<Self>
+    where
+        S: SSHSource<'de>,
+    {
+        let t = s.take(core::mem::size_of::<u64>())?;
+        Ok(u64::from_be_bytes(t.try_into().unwrap()))
+    }
+}
+
 /// Decodes a SSH name string. Must be ASCII
 /// without control characters. RFC4251 section 6.
 pub fn try_as_ascii(t: &[u8]) -> WireResult<&AsciiStr> {
@@ -569,7 +583,7 @@ pub fn try_as_ascii_str(t: &[u8]) -> WireResult<&str> {
     try_as_ascii(t).map(AsciiStr::as_str)
 }
 
-impl<'de: 'a, 'a> SSHDecode<'de> for &'a str {
+impl<'de> SSHDecode<'de> for &'de str {
     fn dec<S>(s: &mut S) -> WireResult<Self>
     where
         S: SSHSource<'de>,
@@ -580,7 +594,7 @@ impl<'de: 'a, 'a> SSHDecode<'de> for &'a str {
     }
 }
 
-impl<'de: 'a, 'a> SSHDecode<'de> for &'de AsciiStr {
+impl<'de> SSHDecode<'de> for &'de AsciiStr {
     fn dec<S>(s: &mut S) -> WireResult<&'de AsciiStr>
     where
         S: SSHSource<'de>,

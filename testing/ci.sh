@@ -42,7 +42,8 @@ cargo test --doc
 cd stdasync
 # only test lib since some examples are broken
 cargo test --lib
-cargo build --example sunsetc
+# test backtrace feature too
+cargo build --example sunsetc --features sunset/backtrace
 # with/without release to test debug_assertions
 cargo build --release --example sunsetc
 )
@@ -72,6 +73,15 @@ cargo bloat --release --crates | tee "$OUT/picow-bloat-crates.txt"
 cargo build --release --no-default-features --features w5500,romfw
 )
 size target/thumbv6m-none-eabi/release/sunset-demo-picow | tee "$OUT/picow-size.txt"
+
+(
+cd demo/sftp/std
+cargo build --release
+cargo test --release
+cargo bloat --release -n 100 | tee "$OUT/sftp-std-bloat.txt"
+cargo bloat --release --crates | tee "$OUT/sftp-std-bloat-crates.txt"
+)
+size ./target/release/sunset-demo-sftp-std | tee "$OUT/sftp-std-size.txt"
 
 (
 cd fuzz

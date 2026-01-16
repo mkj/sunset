@@ -8,25 +8,21 @@ use {
 
 use core::num::NonZeroUsize;
 use core::task::Waker;
-use core::{marker::PhantomData, mem};
 
-use heapless::{Deque, String, Vec};
+use heapless::{String, Vec};
 
 use crate::{runner::set_waker, *};
 use config::*;
 use conn::DispatchEvent;
-use conn::Dispatched;
 use event::{CliEventId, ServEventId};
 use packets::{
-    ChannelData, ChannelDataExt, ChannelOpen, ChannelOpenFailure, ChannelOpenType,
-    ChannelReqType, ChannelRequest, Packet,
+    ChannelData, ChannelDataExt, ChannelOpen, ChannelOpenType, ChannelReqType,
+    ChannelRequest, Packet,
 };
 use runner::ChanHandle;
 use sshnames::*;
 use sshwire::{BinString, SSHEncodeEnum, TextString};
 use traffic::TrafSend;
-
-use snafu::ErrorCompat;
 
 pub(crate) struct Channels {
     ch: [Option<Channel>; config::MAX_CHANNELS],
@@ -73,7 +69,7 @@ impl Channels {
         let ch = self.get_any(num)?;
 
         match ch.state {
-            ChanState::InOpen | ChanState::Opening { .. } => {
+            ChanState::InOpen | ChanState::Opening => {
                 error::BadChannel { num }.fail()
             }
             _ => Ok(ch),
@@ -94,18 +90,14 @@ impl Channels {
         let ch = self.get_any_mut(num)?;
 
         match ch.state {
-            ChanState::InOpen | ChanState::Opening { .. } => {
+            ChanState::InOpen | ChanState::Opening => {
                 error::BadChannel { num }.fail()
             }
             _ => Ok(ch),
         }
     }
 
-    pub fn _from_handle(&self, handle: &ChanHandle) -> &Channel {
-        self.get(handle.0).unwrap()
-    }
-
-    pub fn from_handle_mut(&mut self, handle: &ChanHandle) -> &mut Channel {
+    pub fn by_handle_mut(&mut self, handle: &ChanHandle) -> &mut Channel {
         self.get_mut(handle.0).unwrap()
     }
 
@@ -219,17 +211,26 @@ impl Channels {
         let ch = self.get_mut(num)?;
         ch.finished_input(len);
         if let Some(w) = ch.check_window_adjust()? {
-            s.send(w)?;
+            // The send buffer may be full. Ignore the failure and hope another adjustment is
+            // sent later. TODO improve this.
+            match s.send(w) {
+                Ok(_) => ch.pending_adjust = 0,
+                Err(Error::NoRoom { .. }) => {
+                    // TODO better retry rather than hoping a retry occurs
+                    debug!("noroom for adjustment")
+                }
+                error => return error,
+            }
         }
         Ok(())
     }
 
     pub(crate) fn have_recv_eof(&self, num: ChanNum) -> bool {
-        self.get(num).map_or(false, |c| c.have_recv_eof())
+        self.get(num).is_ok_and(|c| c.have_recv_eof())
     }
 
     pub(crate) fn is_closed(&self, num: ChanNum) -> bool {
-        self.get(num).map_or(false, |c| c.is_closed())
+        self.get(num).is_ok_and(|c| c.is_closed())
     }
 
     pub(crate) fn send_allowed(&self, num: ChanNum) -> Option<usize> {
@@ -237,7 +238,7 @@ impl Channels {
     }
 
     pub(crate) fn valid_send(&self, num: ChanNum, dt: ChanData) -> bool {
-        self.get(num).map_or(false, |c| c.valid_send(dt))
+        self.get(num).is_ok_and(|c| c.valid_send(dt))
     }
 
     /// Wake the channel with a ready input data packet.
@@ -467,18 +468,13 @@ impl Channels {
                     // Discard the data, sunset can't handle this
                     debug!("Ignoring unexpected dt data, code {}", p.code);
                     ch.finished_input(p.data.0.len());
+                } else if let Some(len) = NonZeroUsize::new(p.data.0.len()) {
+                    // TODO check we are expecting input and dt is valid.
+                    let di =
+                        DataIn { num: ChanNum(p.num), dt: ChanData::Stderr, len };
+                    ev = DispatchEvent::Data(di);
                 } else {
-                    if let Some(len) = NonZeroUsize::new(p.data.0.len()) {
-                        // TODO check we are expecting input and dt is valid.
-                        let di = DataIn {
-                            num: ChanNum(p.num),
-                            dt: ChanData::Stderr,
-                            len,
-                        };
-                        ev = DispatchEvent::Data(di);
-                    } else {
-                        trace!("Zero length channeldataext");
-                    }
+                    trace!("Zero length channeldataext");
                 }
             }
             Packet::ChannelEof(p) => {
@@ -565,7 +561,28 @@ impl Channels {
                 req:
                     ChannelReqType::Subsystem(packets::Subsystem { subsystem: command }),
                 ..
-            }) => Ok(command.clone()),
+            }) => Ok(*command),
+            _ => Err(Error::bug()),
+        }
+    }
+
+    pub fn fetch_env_name<'p>(&self, p: &Packet<'p>) -> Result<TextString<'p>> {
+        match p {
+            Packet::ChannelRequest(ChannelRequest {
+                req: ChannelReqType::Environment(packets::Environment { name, .. }),
+                ..
+            }) => Ok(*name),
+            _ => Err(Error::bug()),
+        }
+    }
+
+    pub fn fetch_env_value<'p>(&self, p: &Packet<'p>) -> Result<TextString<'p>> {
+        match p {
+            Packet::ChannelRequest(ChannelRequest {
+                req:
+                    ChannelReqType::Environment(packets::Environment { name: _, value }),
+                ..
+            }) => Ok(*value),
             _ => Err(Error::bug()),
         }
     }
@@ -815,22 +832,30 @@ impl Channel {
     pub fn wake_read(&mut self, dt: ChanData, is_client: bool) {
         match dt {
             ChanData::Normal => {
-                self.read_waker.take().map(|w| w.wake());
+                if let Some(w) = self.read_waker.take() {
+                    w.wake()
+                }
             }
             ChanData::Stderr => {
                 if is_client {
-                    self.ext_waker.take().map(|w| w.wake());
+                    if let Some(w) = self.ext_waker.take() {
+                        w.wake()
+                    }
                 }
             }
         }
     }
 
     pub fn wake_write(&mut self, dt: Option<ChanData>, is_client: bool) {
-        if dt == Some(ChanData::Normal) || dt == None {
-            self.read_waker.take().map(|w| w.wake());
+        if dt == Some(ChanData::Normal) || dt.is_none() {
+            if let Some(w) = self.read_waker.take() {
+                w.wake()
+            }
         }
-        if !is_client && (dt == Some(ChanData::Normal) || dt == None) {
-            self.ext_waker.take().map(|w| w.wake());
+        if !is_client && (dt == Some(ChanData::Normal) || dt.is_none()) {
+            if let Some(w) = self.ext_waker.take() {
+                w.wake()
+            }
         }
     }
 
@@ -899,6 +924,9 @@ impl Channel {
             }
             ChannelReqType::Pty(_) => {
                 Ok(DispatchEvent::ServEvent(ServEventId::SessionPty { num }))
+            }
+            ChannelReqType::Environment(_) => {
+                Ok(DispatchEvent::ServEvent(ServEventId::Environment { num }))
             }
             _ => {
                 if let ChannelReqType::Unknown(u) = &p.req {
@@ -1009,11 +1037,12 @@ impl Channel {
     }
 
     /// Returns a window adjustment packet if required
-    fn check_window_adjust(&mut self) -> Result<Option<Packet<'_>>> {
-        let num = self.send.as_mut().trap()?.num;
+    ///
+    /// Does not reset the adjustment to 0, should be done by caller on successful send.
+    fn check_window_adjust(&self) -> Result<Option<Packet<'_>>> {
+        let num = self.send.as_ref().trap()?.num;
         if self.pending_adjust > self.full_window / 2 {
             let adjust = self.pending_adjust as u32;
-            self.pending_adjust = 0;
             let p = packets::ChannelWindowAdjust { num, adjust }.into();
             Ok(Some(p))
         } else {
@@ -1133,7 +1162,6 @@ impl<'g, 'a> CliSessionOpener<'g, 'a> {
     ///
     /// This must be sent prior to requesting a shell or command.
     /// Shells using a PTY will only receive data on the stdin FD, not stderr.
-
     // TODO: set a flag in the channel so that it drops data on stderr, to
     // avoid waiting forever for a consumer?
     pub fn pty(&mut self, pty: channel::Pty) -> Result<()> {

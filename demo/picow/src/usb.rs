@@ -84,10 +84,10 @@ pub(crate) async fn task(
     let usb_fut = usb.run();
 
     // console via SSH on if00
-    let io0_run = console_if00_run(&global, cdc0);
+    let io0_run = console_if00_run(global, cdc0);
 
     // Admin menu on if02
-    let io2_run = menu_if02_run(&global, cdc2);
+    let io2_run = menu_if02_run(global, cdc2);
 
     // keyboard
     // let hid_run = keyboard::run(&global, hid);
@@ -192,9 +192,9 @@ impl<'a, D: Driver<'a>> Read for CDCRead<'a, '_, D> {
 
         let b = self.fill_buf().await?;
         let n = ret.len().min(b.len());
-        (&mut ret[..n]).copy_from_slice(&b[..n]);
+        ret[..n].copy_from_slice(&b[..n]);
         self.consume(n);
-        return Ok(n);
+        Ok(n)
     }
 }
 
@@ -214,7 +214,7 @@ impl<'a, D: Driver<'a>> BufRead for CDCRead<'a, '_, D> {
         }
         debug_assert!(self.end > 0);
 
-        return Ok(&self.buf[self.start..self.end]);
+        Ok(&self.buf[self.start..self.end])
     }
 
     fn consume(&mut self, amt: usize) {

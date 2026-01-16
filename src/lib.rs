@@ -8,11 +8,9 @@
 #![forbid(unsafe_code)]
 // avoids headscratching
 #![deny(unused_must_use)]
-// XXX unused_imports only during dev churn
-#![allow(unused_imports)]
-
 // Static allocations hit this inherently.
-#[allow(clippy::large_enum_variant)]
+#![allow(clippy::large_enum_variant)]
+
 pub mod config;
 pub mod packets;
 pub mod sshnames;
@@ -47,7 +45,7 @@ mod termmodes;
 mod traffic;
 
 use conn::DispatchEvent;
-use event::{CliEventId, ServEventId};
+use event::CliEventId;
 
 // Application API
 pub use sshwire::TextString;

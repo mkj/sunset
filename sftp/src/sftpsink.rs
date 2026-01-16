@@ -1,0 +1,100 @@
+use crate::proto::SFTP_FIELD_LEN_LENGTH;
+
+use sunset::sshwire::{SSHSink, WireError};
+
+#[allow(unused_imports)]
+use log::{debug, error, info, log, trace, warn};
+
+/// A implementation fo [`SSHSink`] that observes some constraints for
+/// SFTP packets
+///
+/// **Important**: It needs to be [`SftpSink::finalize`] to add the packet
+/// len
+#[derive(Default)]
+pub struct SftpSink<'g> {
+    buffer: &'g mut [u8],
+    index: usize,
+}
+
+impl<'g> SftpSink<'g> {
+    /// Initializes the Sink, with the particularity that it will leave
+    /// [`crate::proto::SFTP_FIELD_LEN_LENGTH`] bytes empty at the
+    /// start of the buffer that will contain the total packet length
+    /// once the [`SftpSink::finalize`] method is called
+    pub fn new(s: &'g mut [u8]) -> Self {
+        SftpSink { buffer: s, index: SFTP_FIELD_LEN_LENGTH }
+    }
+
+    // TODO: Why don't you compute this every time that a new field is added?
+    /// Finalise the buffer by prepending the packet length field,
+    /// excluding the field itself.
+    ///
+    /// **Returns** the final index in the buffer as a reference of the
+    /// space used
+    fn finalize(&mut self) -> usize {
+        if self.index <= SFTP_FIELD_LEN_LENGTH {
+            warn!("SftpSink trying to terminate it before pushing data");
+            return 0;
+        } // size is 0
+        let used_size = self.payload_len() as u32;
+
+        used_size
+            .to_be_bytes()
+            .iter()
+            .enumerate()
+            .for_each(|(i, v)| self.buffer[i] = *v);
+
+        self.index
+    }
+
+    /// Auxiliary method to allow seen the len used by the encoded payload
+    pub fn payload_len(&self) -> usize {
+        self.index - SFTP_FIELD_LEN_LENGTH
+    }
+
+    /// Auxiliary method to allow an immutable reference to the encoded payload
+    /// excluding the `u32` length field prepended to it
+    pub fn payload_slice(&self) -> &[u8] {
+        &self.buffer
+            [SFTP_FIELD_LEN_LENGTH..SFTP_FIELD_LEN_LENGTH + self.payload_len()]
+    }
+
+    /// Auxiliary method to allow an immutable reference to the full used
+    /// data (includes the prepended length field)
+    ///
+    /// **Important:** Call this after [`SftpSink::finalize()`]
+    pub fn used_slice(&self) -> &[u8] {
+        debug!(
+            "SftpSink used_slice called, total len: {}. Index: {}",
+            SFTP_FIELD_LEN_LENGTH + self.payload_len(),
+            self.index
+        );
+        &self.buffer[..SFTP_FIELD_LEN_LENGTH + self.payload_len()]
+    }
+
+    /// Reset the index and cleans the length field
+    pub fn reset(&mut self) -> () {
+        debug!("SftpSink reset called when index was {:?}", self.index);
+        self.index = SFTP_FIELD_LEN_LENGTH;
+        for i in 0..SFTP_FIELD_LEN_LENGTH {
+            self.buffer[i] = 0;
+        }
+    }
+}
+
+impl<'g> SSHSink for SftpSink<'g> {
+    fn push(&mut self, v: &[u8]) -> sunset::sshwire::WireResult<()> {
+        if v.len() + self.index > self.buffer.len() {
+            return Err(WireError::NoRoom);
+        }
+        trace!("Sink index: {:}", self.index);
+        v.iter().for_each(|val| {
+            trace!("Writing val {:} at index {:}", *val, self.index);
+            self.buffer[self.index] = *val;
+            self.index += 1;
+        });
+        trace!("Sink new index: {:}", self.index);
+        self.finalize();
+        Ok(())
+    }
+}

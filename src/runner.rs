@@ -4,21 +4,13 @@ use {
     log::{debug, error, info, log, trace, warn},
 };
 
-use core::{
-    hash::Hash,
-    mem::discriminant,
-    task::{Poll, Waker},
-};
+use core::{hash::Hash, mem::discriminant, task::Waker};
 
-use pretty_hex::PrettyHex;
-
-use crate::packets::{Packet, Subsystem};
 use crate::*;
 use channel::{ChanData, ChanNum};
 use channel::{CliSessionExit, CliSessionOpener};
 use encrypt::KeyState;
 use event::{CliEvent, CliEventId, Event, ServEvent, ServEventId};
-use packets::{ChannelData, ChannelDataExt};
 use traffic::{TrafIn, TrafOut};
 
 use conn::{CliServ, Conn, DispatchEvent, Dispatched};
@@ -262,6 +254,19 @@ impl<'a> Runner<'a, server::Server> {
         self.traf_in.done_payload();
         r
     }
+
+    pub(crate) fn set_auth_methods(
+        &mut self,
+        password: bool,
+        pubkey: bool,
+    ) -> Result<()> {
+        self.conn.set_auth_methods(password, pubkey)
+    }
+
+    pub(crate) fn get_auth_methods(&self) -> Result<(bool, bool)> {
+        let auth = &self.conn.server()?.auth;
+        Ok((auth.method_password, auth.method_pubkey))
+    }
 }
 
 impl<'a, CS: CliServ> Runner<'a, CS> {
@@ -373,7 +378,7 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
 
     pub(crate) fn packet(&self) -> Result<Option<packets::Packet<'_>>> {
         if let Some((payload, _seq)) = self.traf_in.payload() {
-            self.conn.packet(payload).map(|p| Some(p))
+            self.conn.packet(payload).map(Some)
         } else {
             Ok(None)
         }
@@ -387,6 +392,7 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
         if !self.is_input_ready() {
             return Ok(0);
         }
+
         self.traf_in.input(&mut self.keys, &mut self.conn.remote_version, buf)
     }
 
@@ -489,7 +495,7 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
 
         let len = self.write_channel_ready(chan, dt)?;
         let len = match len {
-            Some(l) if l == 0 => return Ok(0),
+            Some(0) => return Ok(0),
             Some(l) => l,
             None => return Err(Error::ChannelEOF),
         };
@@ -525,6 +531,7 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
         }
 
         let (len, complete) = self.traf_in.read_channel(chan.0, dt, buf);
+
         if let Some(x) = complete {
             self.finished_read_channel(chan, x)?;
         }
@@ -647,7 +654,7 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
         dt: ChanData,
         waker: &Waker,
     ) {
-        self.conn.channels.from_handle_mut(ch).set_read_waker(
+        self.conn.channels.by_handle_mut(ch).set_read_waker(
             dt,
             CS::is_client(),
             waker,
@@ -660,7 +667,7 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
         dt: ChanData,
         waker: &Waker,
     ) {
-        self.conn.channels.from_handle_mut(ch).set_write_waker(
+        self.conn.channels.by_handle_mut(ch).set_write_waker(
             dt,
             CS::is_client(),
             waker,
@@ -688,7 +695,7 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
             self.conn.channels.term_window_change(chan.0, winch, &mut s)
         } else {
             trace!("winch as server");
-            Err(Error::BadUsage {})
+            Err(error::BadUsage.build())
         }
     }
 
@@ -765,6 +772,7 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
                 | DispatchEvent::ServEvent(ServEventId::SessionExec { .. })
                 | DispatchEvent::ServEvent(ServEventId::SessionSubsystem { .. })
                 | DispatchEvent::ServEvent(ServEventId::SessionPty { .. })
+                | DispatchEvent::ServEvent(ServEventId::Environment { .. })
         ));
     }
 
@@ -787,6 +795,20 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
         let p = self.conn.packet(payload)?;
         self.conn.channels.fetch_servcommand(&p)
     }
+
+    pub(crate) fn fetch_env_name(&self) -> Result<TextString<'_>> {
+        Self::check_chanreq(&self.resume_event);
+        let (payload, _seq) = self.traf_in.payload().trap()?;
+        let p = self.conn.packet(payload)?;
+        self.conn.channels.fetch_env_name(&p)
+    }
+
+    pub(crate) fn fetch_env_value(&self) -> Result<TextString<'_>> {
+        Self::check_chanreq(&self.resume_event);
+        let (payload, _seq) = self.traf_in.payload().trap()?;
+        let p = self.conn.packet(payload)?;
+        self.conn.channels.fetch_env_value(&p)
+    }
 }
 
 /// Sets a waker, waking any existing waker
@@ -798,7 +820,9 @@ pub(crate) fn set_waker(store_waker: &mut Option<Waker>, new_waker: &Waker) {
         }
     }
 
-    store_waker.take().map(|w| w.wake());
+    if let Some(w) = store_waker.take() {
+        w.wake()
+    }
     *store_waker = Some(new_waker.clone())
 }
 

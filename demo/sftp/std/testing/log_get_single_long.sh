@@ -1,0 +1,1 @@
+./log_demo_sftp_with_test.sh ./test_get_long.sh

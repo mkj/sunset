@@ -12,21 +12,14 @@ use {
     log::{debug, error, info, log, trace, warn},
 };
 
-use core::char::MAX;
-use core::task::{Poll, Waker};
-
-use heapless::Vec;
 use pretty_hex::PrettyHex;
 
 use crate::*;
 use channel::{Channels, CliSessionExit};
 use client::Client;
-use config::MAX_CHANNELS;
-use event::{CliEvent, ServEvent};
 use kex::{AlgoConfig, Kex, SessId};
 use packets::{Packet, ParseContext};
 use server::Server;
-use sshnames::*;
 use traffic::TrafSend;
 
 /// The core state of a SSH instance.
@@ -69,7 +62,7 @@ enum ConnState {
 
 // must_use so return values can't be forgotten in Conn::dispatch_packet
 #[must_use]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub(crate) enum DispatchEvent {
     /// Incoming channel data
     Data(channel::DataIn),
@@ -80,13 +73,8 @@ pub(crate) enum DispatchEvent {
     /// Connection state has changed, should poll again
     Progressed,
     /// No event
+    #[default]
     None,
-}
-
-impl Default for DispatchEvent {
-    fn default() -> Self {
-        Self::None
-    }
 }
 
 impl DispatchEvent {
@@ -115,10 +103,7 @@ impl DispatchEvent {
     }
 
     pub(crate) fn is_event(&self) -> bool {
-        match self {
-            Self::CliEvent(_) | Self::ServEvent(_) => true,
-            _ => false,
-        }
+        matches!(self, Self::CliEvent(_) | Self::ServEvent(_))
     }
 }
 
@@ -210,7 +195,7 @@ impl CliServ for server::Server {
         Some(self)
     }
 
-    #[allow(private_interfaces)]
+    #[expect(private_interfaces)]
     fn dispatch_into_event<'a, 'g>(
         runner: &'g mut Runner<'a, Self>,
         disp: DispatchEvent,
@@ -706,7 +691,7 @@ impl Conn<Server> {
         if auth.authed && matches!(self.state, ConnState::PreAuth) {
             self.state = ConnState::Authed;
         }
-        return Ok(());
+        Ok(())
     }
 
     pub(crate) fn resume_servauth_pkok(
@@ -717,11 +702,17 @@ impl Conn<Server> {
         let p = self.packet(payload)?;
         self.server()?.auth.resume_pkok(p, s)
     }
+
+    pub(crate) fn set_auth_methods(
+        &mut self,
+        password: bool,
+        pubkey: bool,
+    ) -> Result<()> {
+        let auth = &mut self.mut_server()?.auth;
+        auth.set_auth_methods(password, pubkey);
+        Ok(())
+    }
 }
 
 #[cfg(test)]
-mod tests {
-    use crate::conn::*;
-    use crate::error::Error;
-    use crate::sunsetlog::*;
-}
+mod tests {}

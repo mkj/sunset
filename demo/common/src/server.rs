@@ -42,7 +42,7 @@ pub async fn listen(
             continue;
         }
 
-        let r = session(&mut socket, &config, demo).await;
+        let r = session(&mut socket, config, demo).await;
         if let Err(e) = r {
             warn!("Ended with error {e:#?}");
         }
@@ -118,6 +118,7 @@ impl DemoCommon {
             ServEvent::PubkeyAuth(a) => self.handle_pubkey(a),
             ServEvent::OpenSession(a) => self.open_session(a),
             ServEvent::SessionPty(a) => a.succeed(),
+            ServEvent::SessionEnv(a) => a.succeed(),
             ServEvent::SessionSubsystem(a) => {
                 info!("Ignored request for subsystem '{}'", a.command()?);
                 Ok(())
@@ -163,14 +164,15 @@ impl DemoCommon {
         a.reject()
     }
 
-    fn handle_firstauth(&self, a: ServFirstAuth) -> Result<()> {
+    fn handle_firstauth(&mut self, mut a: ServFirstAuth) -> Result<()> {
         let username = a.username()?;
         if !self.is_admin(username) && self.config.console_noauth {
             info!("Allowing auth for user {username}");
             return a.allow();
         };
 
-        // a.pubkey().password()
+        // Explicitly enable password authentication
+        a.enable_password_auth(true)?;
         Ok(())
     }
 
