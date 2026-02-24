@@ -117,7 +117,7 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
         let can_write = u32::from(mode) & u32::from(&PFlags::SSH_FXF_WRITE) > 0;
         let can_read = u32::from(mode) & u32::from(&PFlags::SSH_FXF_READ) > 0;
 
-        debug!(
+        info!(
             "File open for read/write access: can_read={:?}, can_write={:?}",
             can_read, can_write
         );
@@ -154,7 +154,7 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
     }
 
     async fn opendir(&mut self, dir: &str) -> SftpOpResult<DemoOpaqueFileHandle> {
-        debug!("Open Directory = {:?}", dir);
+        info!("Open Directory = {:?}", dir);
 
         let dir_handle = self.handles_manager.insert(
             PrivatePathHandle::Directory(PrivateDirHandle {
@@ -198,7 +198,7 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
         if let Some(handle) = self.handles_manager.remove(opaque_file_handle) {
             match handle {
                 PrivatePathHandle::File(private_file_handle) => {
-                    debug!(
+                    info!(
                         "SftpServer Close operation on file {:?} was successful",
                         private_file_handle.path
                     );
@@ -206,7 +206,7 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
                     Ok(())
                 }
                 PrivatePathHandle::Directory(private_dir_handle) => {
-                    debug!(
+                    info!(
                         "SftpServer Close operation on dir {:?} was successful",
                         private_dir_handle.path
                     );
@@ -371,7 +371,7 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
         opaque_dir_handle: &DemoOpaqueFileHandle,
         reply: &mut DirReply<'_, N>,
     ) -> SftpOpResult<()> {
-        debug!("read dir for  {:?}", opaque_dir_handle);
+        info!("read dir for {:?}", opaque_dir_handle);
 
         if let PrivatePathHandle::Directory(dir) = self
             .handles_manager
@@ -392,7 +392,7 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
             debug!("path: {:?}", dir_path);
 
             if dir_path.is_dir() {
-                debug!("SftpServer ReadDir operation path = {:?}", dir_path);
+                info!("SftpServer ReadDir operation path = {:?}", dir_path);
 
                 let dir_iterator = fs::read_dir(dir_path).map_err(|err| {
                     error!("could not get the directory {:?}: {:?}", path_str, err);

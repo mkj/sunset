@@ -220,7 +220,7 @@ async fn listen(
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     env_logger::Builder::new()
-        .filter_level(log::LevelFilter::Trace)
+        .filter_level(log::LevelFilter::Info)
         .format_timestamp_nanos()
         .target(env_logger::Target::Stdout)
         .init();
