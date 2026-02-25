@@ -50,7 +50,7 @@ pub const SFTP_WRITE_REQID_INDEX: usize = 5;
 
 /// Considering the definition in [Section 7](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-7)
 /// for handle maximum length
-pub const SSH_FXP_HANDLE_MAX_LEN: u32 = 256;
+pub const _SSH_FXP_HANDLE_MAX_LEN: u32 = 256;
 
 /// The maximum size for full paths is only limited by the u32 where ssh strings lengths are contained. This causes that different platforms use different maximum path lengths.
 /// We need to make a choice in this implementation. Since it is targeting embedded devices I am going to set it short, since influence the length of the [[requestHolder]] that needs to be allocated
@@ -133,7 +133,6 @@ pub struct Open<'a> {
 }
 
 /// Flags for Open RequestFor more information see [Opening, creating and closing files](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.3)
-/// TODO: Reference! This is packed as u32 since that is the field data type in specs
 #[derive(Debug, FromPrimitive, PartialEq)]
 #[repr(u32)]
 #[allow(non_camel_case_types, missing_docs)]
@@ -164,8 +163,7 @@ impl<'de> SSHDecode<'de> for PFlags {
     }
 }
 
-// TODO: Implement an automatic from implementation for u32 to Status code
-// This is prone to errors if we update PFlags enum
+// This is prone to errors if we update PFlags enum: Unlikely
 impl From<&PFlags> for u32 {
     fn from(value: &PFlags) -> Self {
         match value {
@@ -231,15 +229,10 @@ pub struct Write<'a> {
     /// The offset for the read operation
     pub offset: u64,
 
+    /// The data length to be written. Given that it can be arbitrary long, the data is not decoded
+    /// Instead the data_len is used in [[SftpHandler.Process]] to generate SftpServer.Write calls
     pub data_len: u32,
-    // pub data: BinString<'a>, // TODO: Find an elegant way to process the write process
 }
-
-// TODO: This cannot work because we would need a length field
-// #[derive(Debug, SSHEncode, SSHDecode)]
-// pub struct WriteData<'a> {
-//     pub data_slice: &'a [u8],
-// }
 
 /// Used for `ssh_fxp_lstat` [response](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.8).
 /// LSTAT does not follow symbolic links
@@ -386,7 +379,6 @@ impl SSHEncode for Name {
 pub struct ReqId(pub u32);
 
 /// For more information see [Responses from the Server to the Client](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-7)
-/// TODO: Reference! This is packed as u32 since that is the field data type in specs
 #[derive(Debug, FromPrimitive)]
 #[repr(u32)]
 #[allow(non_camel_case_types, missing_docs)]
@@ -423,8 +415,7 @@ impl<'de> SSHDecode<'de> for StatusCode {
     }
 }
 
-// TODO: Implement an automatic from implementation for u32 to Status code
-// This is prone to errors if we update StatusCode enum
+// This is prone to errors if we update StatusCode enum: Unlikely to change
 impl From<&StatusCode> for u32 {
     fn from(value: &StatusCode) -> Self {
         match value {
@@ -998,8 +989,7 @@ mod proto_tests {
     use super::*;
     use crate::server::SftpSink;
 
-    // TODO: Create tests for every SftpPacket. A good starting point is a
-    // roadtrip test
+    // TODO: There are always more test that can be done
 
     #[cfg(test)]
     extern crate std;
@@ -1073,7 +1063,6 @@ mod proto_tests {
             atime: Some(4),
             mtime: Some(5),
             ext_count: None,
-            // ext_count: Some(10), // TODO: This does not get deserialized
         };
 
         let mut sink = SftpSink::new(&mut buff);

@@ -99,7 +99,15 @@ pub struct DemoSftpServer<OFH: OpaqueFileHandle> {
 
 impl<OFH: OpaqueFileHandle> DemoSftpServer<OFH> {
     pub fn new(base_path: String) -> Self {
-        // TODO What if the base_path does not exist? Create it or Return error?
+        if !Path::new(&base_path).exists() {
+            debug!("Base path {:?} does not exist. Creating it", base_path);
+            if let Err(err) = fs::create_dir_all(&base_path) {
+                error!("Could not create the base path {:?}: {:?}", base_path, err);
+                panic!();
+            }
+        } else {
+            debug!("Base path {:?} already exists", base_path);
+        }
         DemoSftpServer { base_path, handles_manager: DemoFileHandleManager::new() }
     }
 }
@@ -390,7 +398,7 @@ impl<OFH: OpaqueFileHandle> SftpServer<'_, OFH> for DemoSftpServer<OFH> {
                     StatusCode::SSH_FX_PERMISSION_DENIED
                 })?;
 
-                let name_entry_collection = DirEntriesCollection::new(dir_iterator);
+                let name_entry_collection = DirEntriesCollection::new(dir_iterator)?;
 
                 let response_read_status =
                     name_entry_collection.send_response(reply).await?;

@@ -7,7 +7,6 @@ use sunset::sshwire::WireError;
 use core::convert::From;
 use log::warn;
 
-// TODO Use it more broadly where reasonable
 /// Errors that are specific to this SFTP lib
 #[derive(Debug)]
 pub enum SftpError {

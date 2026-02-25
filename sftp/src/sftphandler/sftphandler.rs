@@ -315,8 +315,6 @@ where
                             debug!("Got a valid request {:?}", request.sftp_num());
                             self.request_holder.try_hold(&source.buffer_used())?;
 
-                            buf = &buf[buf.len() - source.remaining()..];
-
                             // We got the request. Moving on to process it before deserializing more
                             // data
                             skip_checking_buffer = true;
@@ -725,14 +723,18 @@ where
                                 }
                                 self.state = HandlerState::Idle;
                             }
-                            // SftpPacket::Status(req_id, status) => todo!(),
-                            // SftpPacket::Handle(req_id, handle) => todo!(),
-                            // SftpPacket::Data(req_id, data) => todo!(),
-                            // SftpPacket::Name(req_id, name) => todo!(),
-                            // SftpPacket::Attrs(req_id, attrs) => todo!(),
-                            _ => {
-
-                                // TODO: Use a catch all
+                            SftpPacket::Init(..)
+                            | SftpPacket::Version(..)
+                            | SftpPacket::Status(..)
+                            | SftpPacket::Handle(..)
+                            | SftpPacket::Data(..)
+                            | SftpPacket::Name(..)
+                            | SftpPacket::Attrs(..) => {
+                                error!(
+                                    "Unexpected SftpPacket in ProcessRequest state: {:?}",
+                                    request.sftp_num()
+                                );
+                                return Err(SunsetError::BadUsage {}.into());
                             }
                         }
                     } else {

@@ -38,7 +38,6 @@ impl<const N: usize> SftpOutputPipe<N> {
         }
     }
 
-    // TODO: Check if it panics when called twice
     /// Get a Consumer and Producer pair so the producer can send data to the
     /// output channel without mutable borrows.
     ///
@@ -76,27 +75,6 @@ pub(crate) struct SftpOutputConsumer<'a, const N: usize> {
 impl<'a, const N: usize> SftpOutputConsumer<'a, N> {
     /// Run it to start the piping
     pub async fn receive_task(&mut self) -> SftpResult<()> {
-        // TODO: Revert to the simpler version once the root cause of the stall is found
-        // debug!("Running SftpOutout Consumer Reader task");
-        // let mut buf = [0u8; N];
-        // loop {
-        //     let rl = self.reader.read(&mut buf).await;
-        //     let mut _total = 0;
-        //     {
-        //         let mut lock = self.counter.lock().await;
-        //         *lock += rl;
-        //         _total = *lock;
-        //     }
-
-        //     debug!("Output Consumer: ---> Reads {rl} bytes. Total {_total}");
-        //     if rl > 0 {
-        //         self.ssh_chan_out.write_all(&buf[..rl]).await?;
-        //         debug!("Output Consumer: Written {:?} bytes ", &buf[..rl].len());
-        //         trace!("Output Consumer: Bytes written {:?}", &buf[..rl]);
-        //     } else {
-        //         error!("Output Consumer: Empty array received");
-        //     }
-        // }
         debug!("Running SftpOutout Consumer Reader task");
         let mut buf = [0u8; N];
         loop {

@@ -31,7 +31,6 @@ pub type SftpOpResult<T> = core::result::Result<T, StatusCode>;
 /// - [Scanning Directories](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.7)
 #[derive(PartialEq, Debug, Default)]
 pub enum ReadStatus {
-    // TODO Ideally this will contain an OwnedFileHandle
     /// There is more data to be read therefore the [`SftpServer`] will
     /// send more data in the next read request.
     #[default]
@@ -211,7 +210,7 @@ where
         }
     }
 }
-// TODO Define this
+
 /// A reference structure passed to the [`SftpServer::read()`] method to
 /// allow replying with the read data.
 /// Uses for [`ReadReply`] to:
@@ -533,10 +532,6 @@ use std::{
 #[cfg(feature = "std")]
 /// This is a helper structure to make ReadDir into something manageable for
 /// [`DirReply`]
-///
-/// WIP: Not stable. It has know issues and most likely it's methods will change
-///
-/// TODO: It does not include longname and that may be an issue
 #[derive(Debug)]
 pub struct DirEntriesCollection {
     /// Number of elements
@@ -552,7 +547,7 @@ impl DirEntriesCollection {
     /// Creates this DirEntriesCollection so linux std users do not need to
     /// translate `std` directory elements into Sftp structures before sending a response
     /// back to the client
-    pub fn new(dir_iterator: ReadDir) -> Self {
+    pub fn new(dir_iterator: ReadDir) -> SftpOpResult<Self> {
         use log::info;
 
         let mut encoded_length = 0;
@@ -570,21 +565,22 @@ impl DirEntriesCollection {
                 let mut buffer = [0u8; MAX_NAME_ENTRY_SIZE];
                 let mut sftp_sink = SftpSink::new(&mut buffer);
                 name_entry.enc(&mut sftp_sink).ok()?;
-                //TODO remove this unchecked casting
-                encoded_length += sftp_sink.payload_len() as u32;
+                encoded_length += u32::try_from(sftp_sink.payload_len())
+                    .map_err(|_| StatusCode::SSH_FX_FAILURE)
+                    .ok()?;
                 Some(entry)
             })
             .collect();
 
-        //TODO remove this unchecked casting
-        let count = entries.len() as u32;
+        let count =
+            u32::try_from(entries.len()).map_err(|_| StatusCode::SSH_FX_FAILURE)?;
 
         info!(
             "Processed {} entries, estimated serialized length: {}",
             count, encoded_length
         );
 
-        Self { count, encoded_length, entries }
+        Ok(Self { count, encoded_length, entries })
     }
 
     /// Using the provided [`DirReply`] sends a response taking care of
