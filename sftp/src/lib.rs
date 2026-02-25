@@ -93,6 +93,8 @@ pub mod server {
     }
     pub use crate::sftpsink::SftpSink;
     pub use sunset::sshwire::SSHEncode;
+
+    pub use crate::proto::MAX_REQUEST_LEN;
 }
 
 /// Handles and helpers used by the [`sftpserver::SftpServer`] trait implementer

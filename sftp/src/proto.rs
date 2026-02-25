@@ -49,10 +49,30 @@ pub const SFTP_WRITE_REQID_INDEX: usize = 5;
 // pub const SFTP_WRITE_HANDLE_INDEX: usize = 9;
 
 /// Considering the definition in [Section 7](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-7)
+/// for handle maximum length
+pub const SSH_FXP_HANDLE_MAX_LEN: u32 = 256;
+
+/// The maximum size for full paths is only limited by the u32 where ssh strings lengths are contained. This causes that different platforms use different maximum path lengths.
+/// We need to make a choice in this implementation. Since it is targeting embedded devices I am going to set it short, since influence the length of the [[requestHolder]] that needs to be allocated
+/// to compose fragmented requests.
+#[cfg(not(any(feature = "long-paths-4096", feature = "long-paths-1024")))]
+pub const MAX_PATH_LEN: usize = 256;
+#[cfg(feature = "long-paths-1024")]
+pub const MAX_PATH_LEN: usize = 1024; // PATH_MAX for macOS
+#[cfg(feature = "long-paths-4096")]
+pub const MAX_PATH_LEN: usize = 4096; // Linux glibc PATH_MAX is typically 4096 bytes
+
+/// Maximum request size, considering [[MAX_PATH_LEN]] but not counting the data payload.
+/// At this moment in time, the longest request is `ssh_fxp_open`
+pub const MAX_REQUEST_LEN: usize = 4 + MAX_PATH_LEN // Filename string
+                                + 4 // PFlags (u32)
+                                + 32; // Attrs (Max 32Bytes not counting extensions)
+
+/// Considering the definition in [Section 7](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-7)
 /// for `SSH_FXP_READDIR`
 ///
-/// (4 + 256) bytes for path, (4 + 0) bytes for empty long path and 72 bytes for the attributes ( 32/4*7 + 64/4 * 1 = 72)
-pub const MAX_NAME_ENTRY_SIZE: usize = 4 + 256 + 4 + 72;
+/// (4 + 256) bytes for filename, (4 + 0) bytes for empty long filename and 72 bytes for the attributes ( 32/4*7 + 64/4 * 1 = 72)
+pub const MAX_NAME_ENTRY_SIZE: usize = 4 + MAX_PATH_LEN + 4 + 72;
 
 // TODO is utf8 enough, or does this need to be an opaque binstring?
 /// See [SSH_FXP_NAME in Responses from the Server to the Client](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-7)
@@ -961,6 +981,7 @@ sftpmessages! [
             (12, ReadDir, ReadDir<'a>, "ssh_fxp_readdir"),
             (16, PathInfo, PathInfo<'a>, "ssh_fxp_realpath"),
             (17, Stat, Stat<'a>, "ssh_fxp_stat"),
+            // When adding requests, review MAX_REQUEST_LEN in order to adjust its value
         },
 
         response: {
