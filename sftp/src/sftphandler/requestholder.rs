@@ -1,5 +1,5 @@
 use crate::{
-    proto::{SftpNum, SftpPacket},
+    proto::{MAX_REQUEST_LEN, SftpNum, SftpPacket},
     sftpsource::SftpSource,
 };
 
@@ -11,7 +11,7 @@ use sunset::sshwire::WireError;
 pub enum RequestHolderError {
     /// The slice to hold is too long
     NoRoom,
-    /// The slice holder is keeping a slice already. Consideer cleaning
+    /// The slice holder is keeping a slice already. Consider cleaning
     Busy,
     /// The slice holder is empty
     Empty,
@@ -55,7 +55,7 @@ pub(crate) type RequestHolderResult<T> = Result<T, RequestHolderError>;
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct RequestHolder<'a> {
     /// The buffer used to contain the data for the request
-    buffer: &'a mut [u8],
+    buffer: &'a mut [u8; MAX_REQUEST_LEN],
     /// The index of the last byte in the buffer containing usable data
     buffer_fill_index: usize,
     /// Number of bytes appended in a previous `try_hold` or `try_append_for_valid_request` slice
@@ -67,7 +67,7 @@ pub(crate) struct RequestHolder<'a> {
 impl<'a> RequestHolder<'a> {
     /// The buffer will be used to hold a full request. Choose a
     /// reasonable size for this buffer.
-    pub(crate) fn new(buffer: &'a mut [u8]) -> Self {
+    pub(crate) fn new(buffer: &'a mut [u8; MAX_REQUEST_LEN]) -> Self {
         RequestHolder {
             buffer: buffer,
             buffer_fill_index: 0,
@@ -296,7 +296,6 @@ impl<'a> RequestHolder<'a> {
 #[cfg(test)]
 mod local_test {
     use super::*;
-    // use crate::requestholder::RequestHolder;
 
     #[cfg(test)]
     extern crate std;
@@ -314,7 +313,7 @@ mod local_test {
     }
     #[test]
     fn valid_request_uses_filled_data() {
-        let mut clean_buffer = [0u8; 256];
+        let mut clean_buffer = [0u8; MAX_REQUEST_LEN];
         let buff_data = get_buffer_with_valid_request();
 
         let mut rh = RequestHolder::new(&mut clean_buffer);
@@ -330,7 +329,7 @@ mod local_test {
 
     #[test]
     fn try_appending_for_valid_request_uses_filled_data() {
-        let mut clean_buffer = [0u8; 256];
+        let mut clean_buffer = [0u8; MAX_REQUEST_LEN];
         let buff_data = get_buffer_with_valid_request();
 
         let mut rh = RequestHolder::new(&mut clean_buffer);
@@ -346,7 +345,7 @@ mod local_test {
 
     #[test]
     fn try_appending_for_valid_request_works() {
-        let mut clean_buffer = [0u8; 256];
+        let mut clean_buffer = [0u8; MAX_REQUEST_LEN];
         let buff_data = get_buffer_with_valid_request();
         println!("{buff_data:?}");
 

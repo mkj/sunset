@@ -1,6 +1,6 @@
 use sunset::*;
 use sunset_async::{ProgressHolder, SSHServer, SunsetMutex, SunsetRawMutex};
-use sunset_sftp::SftpHandler;
+use sunset_sftp::{server::MAX_REQUEST_LEN, SftpHandler};
 
 pub(crate) use sunset_demo_common as demo_common;
 
@@ -163,18 +163,20 @@ impl DemoServer for StdDemo {
 
                 // TODO Do some research to find reasonable default buffer lengths
                 let mut buffer_in = [0u8; 512];
-                let mut request_buffer = [0u8; 512];
+                let mut request_buffer = [0u8; MAX_REQUEST_LEN];
 
                 match {
                     let stdio = serv.stdio(ch).await?;
-                    let mut file_server = DemoSftpServer::new(
-                        "./demo/sftp/std/testing/out/".to_string(),
-                    );
+                    let mut file_server =
+                        DemoSftpServer::<DemoOpaqueFileHandle>::new(
+                            "./demo/sftp/std/testing/out/".to_string(),
+                        );
 
-                    SftpHandler::<DemoOpaqueFileHandle, DemoSftpServer, 512>::new(
-                        &mut file_server,
-                        &mut request_buffer,
-                    )
+                    SftpHandler::<
+                        DemoOpaqueFileHandle,
+                        DemoSftpServer<DemoOpaqueFileHandle>,
+                        512,
+                    >::new(&mut file_server, &mut request_buffer)
                     .process_loop(stdio, &mut buffer_in)
                     .await?;
 

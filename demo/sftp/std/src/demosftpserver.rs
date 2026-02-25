@@ -1,10 +1,7 @@
-use crate::{
-    demofilehandlemanager::DemoFileHandleManager,
-    demoopaquefilehandle::DemoOpaqueFileHandle,
-};
+use crate::demofilehandlemanager::DemoFileHandleManager;
 
 use sunset_sftp::error::SftpResult;
-use sunset_sftp::handles::{OpaqueFileHandleManager, PathFinder};
+use sunset_sftp::handles::{OpaqueFileHandle, OpaqueFileHandleManager, PathFinder};
 use sunset_sftp::protocol::{Attrs, Filename, NameEntry, PFlags, StatusCode};
 use sunset_sftp::server::helpers::DirEntriesCollection;
 use sunset_sftp::server::{
@@ -39,6 +36,7 @@ pub(crate) struct PrivateDirHandle {
     read_status: ReadStatus,
 }
 
+/// It is a better practice generating it on creation. Used to generate the opaque handles instead of using a constant
 static OPAQUE_SALT: &'static str = "12d%32";
 
 impl PathFinder for PrivatePathHandle {
@@ -94,24 +92,20 @@ impl PathFinder for PrivateDirHandle {
 }
 
 /// A basic demo server. Used as a demo and to test SFTP functionality
-pub struct DemoSftpServer {
+pub struct DemoSftpServer<OFH: OpaqueFileHandle> {
     base_path: String,
-    handles_manager: DemoFileHandleManager<DemoOpaqueFileHandle, PrivatePathHandle>,
+    handles_manager: DemoFileHandleManager<OFH, PrivatePathHandle>,
 }
 
-impl DemoSftpServer {
+impl<OFH: OpaqueFileHandle> DemoSftpServer<OFH> {
     pub fn new(base_path: String) -> Self {
         // TODO What if the base_path does not exist? Create it or Return error?
         DemoSftpServer { base_path, handles_manager: DemoFileHandleManager::new() }
     }
 }
 
-impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
-    async fn open(
-        &mut self,
-        filename: &str,
-        mode: &PFlags,
-    ) -> SftpOpResult<DemoOpaqueFileHandle> {
+impl<OFH: OpaqueFileHandle> SftpServer<'_, OFH> for DemoSftpServer<OFH> {
+    async fn open(&mut self, filename: &str, mode: &PFlags) -> SftpOpResult<OFH> {
         debug!("Open file: filename = {:?}, mode = {:?}", filename, mode);
 
         let can_write = u32::from(mode) & u32::from(&PFlags::SSH_FXF_WRITE) > 0;
@@ -153,7 +147,7 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
         fh
     }
 
-    async fn opendir(&mut self, dir: &str) -> SftpOpResult<DemoOpaqueFileHandle> {
+    async fn opendir(&mut self, dir: &str) -> SftpOpResult<OFH> {
         info!("Open Directory = {:?}", dir);
 
         let dir_handle = self.handles_manager.insert(
@@ -191,10 +185,7 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
         Ok(name_entry)
     }
 
-    async fn close(
-        &mut self,
-        opaque_file_handle: &DemoOpaqueFileHandle,
-    ) -> SftpOpResult<()> {
+    async fn close(&mut self, opaque_file_handle: &OFH) -> SftpOpResult<()> {
         if let Some(handle) = self.handles_manager.remove(opaque_file_handle) {
             match handle {
                 PrivatePathHandle::File(private_file_handle) => {
@@ -225,7 +216,7 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
 
     async fn read<const N: usize>(
         &mut self,
-        opaque_file_handle: &DemoOpaqueFileHandle,
+        opaque_file_handle: &OFH,
         offset: u64,
         len: u32,
         reply: &mut ReadReply<'_, N>,
@@ -322,7 +313,7 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
 
     async fn write(
         &mut self,
-        opaque_file_handle: &DemoOpaqueFileHandle,
+        opaque_file_handle: &OFH,
         offset: u64,
         buf: &[u8],
     ) -> SftpOpResult<()> {
@@ -368,7 +359,7 @@ impl SftpServer<'_, DemoOpaqueFileHandle> for DemoSftpServer {
 
     async fn readdir<const N: usize>(
         &mut self,
-        opaque_dir_handle: &DemoOpaqueFileHandle,
+        opaque_dir_handle: &OFH,
         reply: &mut DirReply<'_, N>,
     ) -> SftpOpResult<()> {
         info!("read dir for {:?}", opaque_dir_handle);
