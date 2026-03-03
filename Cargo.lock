@@ -795,9 +795,9 @@ dependencies = [
 
 [[package]]
 name = "embassy-futures"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1f878075b9794c1e4ac788c95b728f26aa6366d32eeb10c7051389f898f7d067"
+checksum = "dc2d050bdc5c21e0862a89256ed8029ae6c290a93aecefc73084b3002cdebb01"
 
 [[package]]
 name = "embassy-hal-internal"
@@ -924,15 +924,15 @@ dependencies = [
 
 [[package]]
 name = "embassy-sync"
-version = "0.7.0"
+version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cef1a8a1ea892f9b656de0295532ac5d8067e9830d49ec75076291fd6066b136"
+checksum = "73974a3edbd0bd286759b3d483540f0ebef705919a5f56f4fc7709066f71689b"
 dependencies = [
  "cfg-if",
  "critical-section",
  "embedded-io-async",
+ "futures-core",
  "futures-sink",
- "futures-util",
  "heapless",
 ]
 
@@ -1792,11 +1792,12 @@ dependencies = [
 
 [[package]]
 name = "num_enum"
-version = "0.7.3"
+version = "0.7.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4e613fc340b2220f734a8595782c551f1250e969d87d3be1ae0579e8d4065179"
+checksum = "b1207a7e20ad57b847bbddc6776b968420d38292bbfe2089accff5e19e82454c"
 dependencies = [
- "num_enum_derive 0.7.3",
+ "num_enum_derive 0.7.5",
+ "rustversion",
 ]
 
 [[package]]
@@ -1812,9 +1813,9 @@ dependencies = [
 
 [[package]]
 name = "num_enum_derive"
-version = "0.7.3"
+version = "0.7.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "af1844ef2428cc3e1cb900be36181049ef3d3193c63e43026cfe202983b27a56"
+checksum = "ff32365de1b6743cb203b710788263c44a03de03802daf96092f2da4fe6ba4d7"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1991,7 +1992,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "61d90fddc3d67f21bbf93683bc461b05d6a29c708caf3ffb79947d7ff7095406"
 dependencies = [
  "arrayvec",
- "num_enum 0.7.3",
+ "num_enum 0.7.5",
  "paste",
 ]
 
@@ -2740,7 +2741,7 @@ name = "sunset-async"
 version = "0.4.0"
 dependencies = [
  "embassy-futures",
- "embassy-sync 0.7.0",
+ "embassy-sync 0.7.2",
  "embedded-io-async",
  "log",
  "portable-atomic",
@@ -2757,7 +2758,7 @@ dependencies = [
  "embassy-futures",
  "embassy-net",
  "embassy-net-driver",
- "embassy-sync 0.7.0",
+ "embassy-sync 0.7.2",
  "embassy-time",
  "embedded-io-async",
  "heapless",
@@ -2787,7 +2788,7 @@ dependencies = [
  "embassy-net",
  "embassy-net-wiznet",
  "embassy-rp",
- "embassy-sync 0.7.0",
+ "embassy-sync 0.7.2",
  "embassy-time",
  "embassy-usb",
  "embassy-usb-driver",
@@ -2822,7 +2823,7 @@ dependencies = [
  "embassy-futures",
  "embassy-net",
  "embassy-net-tuntap",
- "embassy-sync 0.7.0",
+ "embassy-sync 0.7.2",
  "embassy-time",
  "embedded-io-async",
  "env_logger",
@@ -2851,6 +2852,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "sunset-sftp"
+version = "0.1.2"
+dependencies = [
+ "embassy-futures",
+ "embassy-sync 0.7.2",
+ "embedded-io-async",
+ "log",
+ "num_enum 0.7.5",
+ "paste",
+ "sunset",
+ "sunset-async",
+ "sunset-sshwire-derive",
+]
+
+[[package]]
 name = "sunset-sshwire-derive"
 version = "0.2.1"
 dependencies = [
@@ -2865,7 +2881,7 @@ dependencies = [
  "argh",
  "critical-section",
  "embassy-futures",
- "embassy-sync 0.7.0",
+ "embassy-sync 0.7.2",
  "embedded-io-adapters",
  "embedded-io-async",
  "futures",
