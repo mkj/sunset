@@ -21,13 +21,14 @@
 //!
 //! ## Basic features
 //!
-//!  - [ ] [SFTP Protocol Initialization](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-4) (Only SFTP V3 supported)
-//! - [ ] [Canonicalizing the Server-Side Path Name](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.11) support
-//! - [ ] [Open, close](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.3)
+//! - [x] [SFTP Protocol Initialization](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-4) (Only SFTP V3 supported)
+//! - [x] [Canonicalizing the Server-Side Path Name](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.11) support
+//! - [x] [Open, close](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.3)
 //! and [write](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.4)
-//! - [ ] Directory [Browsing](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.7)
-//! - [ ] File [read](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.4),
-//! - [ ] File [stats](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.8)
+//! - [x] Directory [Browsing](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.7)
+//! - [x] File [read](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.4),
+//! - [] File [write](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.4) with conditions. See [Server Channel Window length is reduced to zero when long data is sent from server to client](https://github.com/mkj/sunset/issues/40),
+//! - [x] File [stats](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.8)
 //!
 //! ## Minimal features for convenient usability
 //!
@@ -51,58 +52,58 @@
 #![warn(missing_docs)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
-// mod opaquefilehandle;
+mod opaquefilehandle;
 mod proto;
-// mod sftperror;
-// mod sftphandler;
-// mod sftpserver;
-// mod sftpsink;
+mod sftperror;
+mod sftphandler;
+mod sftpserver;
+mod sftpsink;
 mod sftpsource;
 
 // Main calling point for the library provided that the user implements
 // a [`server::SftpServer`].
 //
 // Please see basic usage at `../demo/sftd/std`
-// pub use sftphandler::SftpHandler;
+pub use sftphandler::SftpHandler;
 
 /// Source of SFTP packets
 ///
 /// Used to decode SFTP packets from a byte slice
 pub use sftpsource::SftpSource;
 
-// /// Structures and types used to add the details for the target system
-// /// Related to the implementation of the [`server::SftpServer`], which
-// /// is meant to be instantiated by the user and passed to [`SftpHandler`]
-// /// and has the task of executing client requests in the underlying system
-// pub mod server {
+/// Structures and types used to add the details for the target system
+/// Related to the implementation of the [`server::SftpServer`], which
+/// is meant to be instantiated by the user and passed to [`SftpHandler`]
+/// and has the task of executing client requests in the underlying system
+pub mod server {
 
-//     pub use crate::sftpserver::DirReply;
-//     pub use crate::sftpserver::ReadReply;
-//     pub use crate::sftpserver::ReadStatus;
-//     pub use crate::sftpserver::SftpOpResult;
-//     pub use crate::sftpserver::SftpServer;
-//     /// Helpers to reduce error prone tasks and hide some details that
-//     /// add complexity when implementing an [`SftpServer`]
-//     pub mod helpers {
-//         pub use crate::sftpserver::helpers::*;
+    pub use crate::sftpserver::DirReply;
+    pub use crate::sftpserver::ReadReply;
+    pub use crate::sftpserver::ReadStatus;
+    pub use crate::sftpserver::SftpOpResult;
+    pub use crate::sftpserver::SftpServer;
+    /// Helpers to reduce error prone tasks and hide some details that
+    /// add complexity when implementing an [`SftpServer`]
+    pub mod helpers {
+        pub use crate::sftpserver::helpers::*;
 
-//         #[cfg(feature = "std")]
-//         pub use crate::sftpserver::DirEntriesCollection;
-//         #[cfg(feature = "std")]
-//         pub use crate::sftpserver::get_file_attrs;
-//     }
-//     pub use crate::sftpsink::SftpSink;
-//     pub use sunset::sshwire::SSHEncode;
+        #[cfg(feature = "std")]
+        pub use crate::sftpserver::DirEntriesCollection;
+        #[cfg(feature = "std")]
+        pub use crate::sftpserver::get_file_attrs;
+    }
+    pub use crate::sftpsink::SftpSink;
+    pub use sunset::sshwire::SSHEncode;
 
-//     pub use crate::proto::MAX_REQUEST_LEN;
-// }
+    pub use crate::proto::MAX_REQUEST_LEN;
+}
 
 /// Handles and helpers used by the [`sftpserver::SftpServer`] trait implementer
-// pub mod handles {
-//     pub use crate::opaquefilehandle::OpaqueFileHandle;
-//     pub use crate::opaquefilehandle::OpaqueFileHandleManager;
-//     pub use crate::opaquefilehandle::PathFinder;
-// }
+pub mod handles {
+    pub use crate::opaquefilehandle::OpaqueFileHandle;
+    pub use crate::opaquefilehandle::OpaqueFileHandleManager;
+    pub use crate::opaquefilehandle::PathFinder;
+}
 
 /// SFTP Protocol types and structures
 pub mod protocol {
@@ -121,8 +122,8 @@ pub mod protocol {
     }
 }
 
-// /// Errors and results used in this crate
-// pub mod error {
-//     pub use crate::sftperror::SftpError;
-//     pub use crate::sftperror::SftpResult;
-// }
+/// Errors and results used in this crate
+pub mod error {
+    pub use crate::sftperror::SftpError;
+    pub use crate::sftperror::SftpResult;
+}
