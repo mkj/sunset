@@ -88,8 +88,8 @@ impl<'a> From<&'a str> for Filename<'a> {
 // TODO standardize the encoding of filenames as str
 impl<'a> Filename<'a> {
     ///
-    pub fn as_str(&self) -> Result<&'a str, WireError> {
-        core::str::from_utf8(self.0 .0).map_err(|_| WireError::BadString)
+    pub fn to_str(&self) -> Result<&'a str, sunset::Error> {
+        self.0.to_str()
     }
 }
 

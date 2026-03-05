@@ -1,6 +1,6 @@
 use crate::proto::{
-    SftpNum, SFTP_FIELD_ID_INDEX, SFTP_FIELD_LEN_INDEX, SFTP_FIELD_LEN_LENGTH,
-    SFTP_FIELD_REQ_ID_INDEX, SFTP_FIELD_REQ_ID_LEN,
+    SFTP_FIELD_ID_INDEX, SFTP_FIELD_LEN_INDEX, SFTP_FIELD_LEN_LENGTH,
+    SFTP_FIELD_REQ_ID_INDEX, SFTP_FIELD_REQ_ID_LEN, SftpNum,
 };
 
 use sunset::sshwire::{SSHSource, WireError, WireResult};
@@ -26,9 +26,7 @@ impl<'de> SSHSource<'de> for SftpSource<'de> {
         self.index += len;
         trace!(
             "slice returned: {:?}. original index {:?}, new index: {:?}",
-            slice,
-            original_index,
-            self.index
+            slice, original_index, self.index
         );
         Ok(slice)
     }
