@@ -1,4 +1,7 @@
 #!/bin/bash
+# Used to run sftp demo while logging all the interactions with strace and tshark.
+# The passed argument is the test file to run, for example: ./test_get_long.sh or ./test_get_short.sh
+# This script will be run once the sftp demo is running.
 
 TIME_STAMP=$(date +%Y%m%d_%H%M%S)
 TEST_FILE=$1
