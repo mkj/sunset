@@ -4,7 +4,6 @@ version = "0.1.2"
 edition = "2024"
 
 [features]
-default = []
 # long paths support, which allows paths up to 4096 bytes, by default paths are limited to 256 bytes
 long-paths-4096 = []
 long-paths-1024 = []

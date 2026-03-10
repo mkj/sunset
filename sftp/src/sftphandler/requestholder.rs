@@ -205,13 +205,16 @@ impl<'a> RequestHolder<'a> {
         if !self.busy {
             return None;
         }
-        let mut source = SftpSource::new(self.try_get_ref().unwrap_or(&[0]));
-        match SftpPacket::decode_request(&mut source) {
-            Ok(request) => {
-                return Some(request);
-            }
-            Err(..) => return None,
-        }
+        let Ok(buffer_ref) = self.try_get_ref() else {
+            return None;
+        };
+
+        let mut source = SftpSource::new(buffer_ref);
+
+        let Ok(request) = SftpPacket::decode_request(&mut source) else {
+            return None;
+        };
+        return Some(request);
     }
 
     /// Gets a reference to the slice that it is holding

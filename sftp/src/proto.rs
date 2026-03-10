@@ -936,7 +936,7 @@ macro_rules! sftpmessages {
         /// **Warning**: No Sequence Id can be infered from a Packet Type
         impl<'a> From<$request_packet_type> for SftpPacket<'a> {
             fn from(s: $request_packet_type) -> SftpPacket<'a> {
-                warn!("Casting from {:?} to SftpPacket cannot set Request Id",$request_ssh_fxp_name);
+                debug!("Casting from {:?} to SftpPacket cannot set Request Id",$request_ssh_fxp_name);
                 SftpPacket::$request_packet_variant(ReqId(0), s)
             }
         }
@@ -945,7 +945,7 @@ macro_rules! sftpmessages {
         /// **Warning**: No Sequence Id can be infered from a Packet Type
         impl<'a> From<$response_packet_type> for SftpPacket<'a> {
             fn from(s: $response_packet_type) -> SftpPacket<'a> {
-                warn!("Casting from {:?} to SftpPacket cannot set Request Id",$response_ssh_fxp_name);
+                debug!("Casting from {:?} to SftpPacket cannot set Request Id",$response_ssh_fxp_name);
                 SftpPacket::$response_packet_variant(ReqId(0), s)
             }
         }
