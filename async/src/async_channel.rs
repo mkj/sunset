@@ -113,7 +113,7 @@ impl Write for ChanIO<'_> {
 /// Otherwise ordering will be arbitrary, and if competing readers or writers
 /// are in different tasks, there will be churn as they continually wake
 /// each other up. Simultaneous single-reader and single-writer is fine.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct ChanIn<'g>(ChanIO<'g>);
 
 impl<'g> ChanIn<'g> {
@@ -131,6 +131,12 @@ impl<'g> ChanIn<'g> {
 impl Drop for ChanIn<'_> {
     fn drop(&mut self) {
         self.0.sunset.dec_read_chan(self.0.num, self.0.dt)
+    }
+}
+
+impl Clone for ChanIn<'_> {
+    fn clone(&self) -> Self {
+        Self::new(self.0.clone())
     }
 }
 
@@ -187,7 +193,7 @@ impl<'g> ChanOut<'g> {
 /// Otherwise ordering will be arbitrary, and if competing readers or writers
 /// are in different tasks, there will be churn as they continually wake
 /// each other up. Simultaneous single-reader and single-writer is fine.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct ChanInOut<'g>(ChanIO<'g>);
 
 impl<'g> ChanInOut<'g> {
@@ -222,6 +228,12 @@ impl<'g> ChanInOut<'g> {
 impl Drop for ChanInOut<'_> {
     fn drop(&mut self) {
         self.0.sunset.dec_read_chan(self.0.num, self.0.dt)
+    }
+}
+
+impl Clone for ChanInOut<'_> {
+    fn clone(&self) -> Self {
+        Self::new(self.0.clone())
     }
 }
 
