@@ -19,8 +19,6 @@ use sunset_stdasync::{AgentClient, CmdlineClient};
 
 use embedded_io_adapters::tokio_1::FromTokio;
 
-use zeroize::Zeroizing;
-
 use simplelog::*;
 use time::UtcOffset;
 
@@ -83,10 +81,6 @@ async fn run(args: Args) -> Result<ExitCode> {
     // sunsetc example here uses the normal threaded scheduler in order to test the
     // "multi-thread" feature (and as a more "default" example).
     let ssh_task = tokio::task::spawn(async move {
-        let mut rxbuf = Zeroizing::new(vec![0; 3000]);
-        let mut txbuf = Zeroizing::new(vec![0; 3000]);
-        let ssh = SSHClient::new(&mut rxbuf, &mut txbuf);
-
         // CmdlineClient implements the session logic for a commandline SSH client.
         let mut app =
             CmdlineClient::new(args.username.as_ref().unwrap(), &args.host);
@@ -120,6 +114,7 @@ async fn run(args: Args) -> Result<ExitCode> {
         let mut wsock = FromTokio::new(wsock);
 
         // SSH connection future
+        let ssh = SSHClient::new_owned();
         let ssh_fut = ssh.run(&mut rsock, &mut wsock);
 
         // Client session future
