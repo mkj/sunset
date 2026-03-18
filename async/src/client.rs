@@ -71,3 +71,12 @@ impl<'a> SSHClient<'a> {
         Ok(ChanInOut::new(self.sunset.add_channel(ch).await?))
     }
 }
+
+#[cfg(feature = "alloc")]
+impl SSHClient<'static> {
+    pub fn new_owned() -> Self {
+        let runner = Runner::<'static, _>::new_client_owned();
+        let sunset = AsyncSunset::new(runner);
+        Self { sunset }
+    }
+}

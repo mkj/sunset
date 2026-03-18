@@ -172,6 +172,16 @@ impl<'a> Runner<'a, client::Client> {
     }
 }
 
+#[cfg(feature = "alloc")]
+impl Runner<'static, client::Client> {
+    /// Create a client Runner with owned packet buffers.
+    ///
+    /// Only available running with `alloc` or `std` feature.
+    pub fn new_client_owned() -> Self {
+        Self::new_owned()
+    }
+}
+
 impl<'a> Runner<'a, server::Server> {
     /// `inbuf` and `outbuf` must be sized to fit the largest SSH packet allowed.
     pub fn new_server(
@@ -252,12 +262,26 @@ impl<'a> Runner<'a, server::Server> {
     }
 }
 
+#[cfg(feature = "alloc")]
+impl Runner<'static, server::Server> {
+    /// Create a server Runner with owned packet buffers.
+    ///
+    /// Only available running with `alloc` or `std` feature.
+    pub fn new_server_owned() -> Self {
+        Self::new_owned()
+    }
+}
+
 impl<'a, CS: CliServ> Runner<'a, CS> {
     pub fn new(inbuf: &'a mut [u8], outbuf: &'a mut [u8]) -> Runner<'a, CS> {
+        Self::new_traf(TrafIn::new(inbuf), TrafOut::new(outbuf))
+    }
+
+    fn new_traf(traf_in: TrafIn<'a>, traf_out: TrafOut<'a>) -> Runner<'a, CS> {
         Runner {
             conn: Conn::new(),
-            traf_in: TrafIn::new(inbuf),
-            traf_out: TrafOut::new(outbuf),
+            traf_in,
+            traf_out,
             keys: KeyState::new_cleartext(),
             output_waker: None,
             input_waker: None,
@@ -791,6 +815,13 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
         let (payload, _seq) = self.traf_in.payload().trap()?;
         let p = self.conn.packet(payload)?;
         self.conn.channels.fetch_env_value(&p)
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl<CS: CliServ> Runner<'static, CS> {
+    pub fn new_owned() -> Runner<'static, CS> {
+        Self::new_traf(TrafIn::new_owned(), TrafOut::new_owned())
     }
 }
 

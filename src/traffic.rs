@@ -1,4 +1,5 @@
 use core::fmt;
+use core::ops::{Deref, DerefMut};
 
 #[allow(unused_imports)]
 use {
@@ -6,12 +7,54 @@ use {
     log::{debug, error, info, log, trace, warn},
 };
 
-use zeroize::Zeroize;
+use zeroize::{Zeroize, ZeroizeOnDrop};
+
+#[cfg(feature = "alloc")]
+use alloc::boxed::Box;
 
 use crate::channel::{ChanData, ChanNum};
 use crate::encrypt::{KeyState, KeysRecv, KeysSend, SSH_PAYLOAD_START};
 use crate::ident::RemoteVersion;
 use crate::*;
+
+// Either a slice or boxed array.
+// Similar to managed::ManagedSlice.
+#[derive(ZeroizeOnDrop)]
+enum SliceOrVec<'a> {
+    Borrowed(&'a mut [u8]),
+
+    /// `'static` variant
+    #[cfg(feature = "alloc")]
+    Owned(Box<[u8; config::SSH_MAX_PACKET]>),
+}
+
+impl Deref for SliceOrVec<'_> {
+    type Target = [u8];
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Self::Borrowed(r) => r,
+            #[cfg(feature = "alloc")]
+            Self::Owned(r) => r.as_ref(),
+        }
+    }
+}
+
+impl DerefMut for SliceOrVec<'_> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        match self {
+            Self::Borrowed(r) => r,
+            #[cfg(feature = "alloc")]
+            Self::Owned(r) => r.as_mut(),
+        }
+    }
+}
+
+impl Zeroize for SliceOrVec<'_> {
+    fn zeroize(&mut self) {
+        self.deref_mut().zeroize();
+    }
+}
 
 // TODO: if smoltcp exposed both ends of a CircularBuffer to recv()
 // we could perhaps just work directly in smoltcp's provided buffer?
@@ -26,7 +69,7 @@ pub struct TrafIn<'a> {
     /// Should be sized to fit the largest packet allowed for input.
     /// Contains ciphertext or cleartext, decrypted in-place.
     /// Only contains a single SSH packet at a time.
-    buf: &'a mut [u8],
+    buf: SliceOrVec<'a>,
     state: RxState,
 }
 
@@ -63,7 +106,7 @@ impl core::fmt::Debug for TrafIn<'_> {
 
 impl<'a> TrafIn<'a> {
     pub fn new(buf: &'a mut [u8]) -> Self {
-        Self { buf, state: RxState::Idle }
+        Self { buf: SliceOrVec::Borrowed(buf), state: RxState::Idle }
     }
 
     pub fn is_input_ready(&self) -> bool {
@@ -308,7 +351,7 @@ pub(crate) struct TrafOut<'a> {
     /// Contains ciphertext or cleartext, encrypted in-place.
     /// Writing may contain multiple SSH packets to write out, encrypted
     /// in-place as they are written to `buf`.
-    buf: &'a mut [u8],
+    buf: SliceOrVec<'a>,
     state: TxState,
 }
 
@@ -338,9 +381,18 @@ impl core::fmt::Debug for TrafOut<'_> {
     }
 }
 
+#[cfg(feature = "alloc")]
+impl TrafIn<'static> {
+    pub fn new_owned() -> Self {
+        let mut s = Self::new(&mut []);
+        s.buf = SliceOrVec::Owned(Box::new([0; _]));
+        s
+    }
+}
+
 impl<'a> TrafOut<'a> {
     pub fn new(buf: &'a mut [u8]) -> Self {
-        Self { buf, state: TxState::Idle }
+        Self { buf: SliceOrVec::Borrowed(buf), state: TxState::Idle }
     }
 
     /// Serializes and and encrypts a packet to send
@@ -423,7 +475,7 @@ impl<'a> TrafOut<'a> {
             return Err(Error::bug());
         }
 
-        let len = ident::write_version(self.buf)?;
+        let len = ident::write_version(&mut self.buf)?;
         self.state = TxState::Write { idx: 0, len };
         Ok(())
     }
@@ -452,6 +504,15 @@ impl<'a> TrafOut<'a> {
 
     pub fn sender<'s>(&'s mut self, keys: &'s mut KeyState) -> TrafSend<'s, 'a> {
         TrafSend::new(self, keys)
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl TrafOut<'static> {
+    pub fn new_owned() -> Self {
+        let mut s = Self::new(&mut []);
+        s.buf = SliceOrVec::Owned(Box::new([0; _]));
+        s
     }
 }
 

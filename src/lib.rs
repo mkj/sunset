@@ -11,6 +11,9 @@
 // Static allocations hit this inherently.
 #![allow(clippy::large_enum_variant)]
 
+#[cfg(feature = "alloc")]
+extern crate alloc;
+
 pub mod config;
 pub mod packets;
 pub mod sshnames;

@@ -68,7 +68,8 @@ ecdsa = { version = "0.17.0-rc.17", default-features = false, optional = true , 
 
 [features]
 default = []
-std = ["snafu/std", "ssh-key/alloc", "larger", "mlkem"]
+std = ["snafu/std", "ssh-key/alloc", "larger", "mlkem", "alloc"]
+alloc = ["ssh-key/alloc"]
 backtrace = ["snafu/backtrace"]
 rsa = ["dep:rsa", "ssh-key/rsa"]
 mlkem = ["dep:ml-kem"]

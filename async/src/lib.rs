@@ -1,7 +1,7 @@
 //! Async for Sunset SSH
 //!
 //! This provides async for Sunset SSH.
-#![no_std]
+#![cfg_attr(not(any(feature = "std", test)), no_std)]
 #![forbid(unsafe_code)]
 // avoid mysterious missing awaits
 #![deny(unused_must_use)]

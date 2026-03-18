@@ -2,6 +2,12 @@
 pub const DEFAULT_WINDOW: usize = 1000;
 pub const DEFAULT_MAX_PACKET: usize = 1000;
 
+/// Maximum SSH packet size, from RFC4253.
+///
+/// Used to size buffers when using `alloc`
+#[allow(unused)]
+pub(crate) const SSH_MAX_PACKET: usize = 35000;
+
 // TODO: Perhaps instead of MAX_CHANNELS we could have a type alias
 // of either heapless::Vec<> or std::vec::Vec<>
 //
