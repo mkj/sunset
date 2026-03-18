@@ -232,10 +232,7 @@ impl CmdlineClient {
     ///
     /// Performs authentication, requests a shell or command, performs channel IO.
     /// Will return `Ok` after the session ends normally, or an error.
-    pub async fn run<'g: 'a, 'a>(
-        &mut self,
-        cli: &'g SSHClient<'a>,
-    ) -> Result<ExitCode> {
+    pub async fn run<'g, 'a>(&mut self, cli: &'g SSHClient<'a>) -> Result<ExitCode> {
         let mut io = None;
         let mut extin = None;
 
@@ -349,7 +346,7 @@ impl CmdlineClient {
     /// Requests a PTY or non-PTY session
     ///
     /// Sets up the PTY if required.
-    async fn open_session<'g: 'a, 'a>(
+    async fn open_session<'g, 'a>(
         &mut self,
         cli: &'g SSHClient<'a>,
     ) -> Result<(ChanInOut<'g>, Option<ChanIn<'g>>)> {

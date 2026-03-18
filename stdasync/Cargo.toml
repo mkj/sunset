@@ -48,5 +48,5 @@ simplelog = "0.12"
 # for simplelog
 time = { version = "0.3", features = ["local-offset"] }
 
-sunset-async = { workspace = true, features = ["multi-thread"] }
+sunset-async = { workspace = true, features = ["multi-thread", "std"] }
 critical-section = { version = "1.1", features = ["std"] }
