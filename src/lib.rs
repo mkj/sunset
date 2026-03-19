@@ -52,7 +52,7 @@ use conn::DispatchEvent;
 pub use sshwire::TextString;
 
 pub use auth::AuthSigMsg;
-pub use channel::{ChanData, ChanNum, CliSessionExit};
+pub use channel::{ChanData, ChanNum, CliSessionExit, CliSessionOpener};
 pub use channel::{ChanOpened, Pty, SessionCommand};
 pub use error::{Error, Result};
 pub use packets::{PubKey, Signature};
