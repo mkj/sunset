@@ -122,6 +122,11 @@ impl<'g> ChanIn<'g> {
         Self(io)
     }
 
+    /// Return the channel number.
+    pub fn num(&self) -> ChanNum {
+        self.0.num
+    }
+
     /// Wait until the channel closes.
     pub async fn until_closed(&self) -> Result<()> {
         self.0.until_closed().await
@@ -157,6 +162,11 @@ pub struct ChanOut<'g>(ChanIO<'g>);
 impl<'g> ChanOut<'g> {
     pub(crate) fn new(io: ChanIO<'g>) -> Self {
         Self(io)
+    }
+
+    /// Return the channel number.
+    pub fn num(&self) -> ChanNum {
+        self.0.num
     }
 
     /// Wait until the channel closes.
@@ -200,6 +210,11 @@ impl<'g> ChanInOut<'g> {
     pub(crate) fn new(io: ChanIO<'g>) -> Self {
         io.sunset.inc_read_chan(io.num, io.dt);
         Self(io)
+    }
+
+    /// Return the channel number.
+    pub fn num(&self) -> ChanNum {
+        self.0.num
     }
 
     /// Convert this into separate input and output.
