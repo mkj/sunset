@@ -46,7 +46,7 @@ impl<'de> SftpSource<'de> {
         debug!("New source with content: : {:?}", buffer);
         SftpSource { buffer: buffer, index: 0 }
     }
-    /// Peaks the buffer for packet type [`SftpNum`]. This does not advance
+    /// Peeks the buffer for packet type [`SftpNum`]. This does not advance
     /// the reading index
     ///
     /// Useful to observe the packet fields in special conditions where a
@@ -54,7 +54,7 @@ impl<'de> SftpSource<'de> {
     ///
     /// **Warning**: will only work in well formed packets, in other case
     /// the result will contains garbage
-    pub(crate) fn peak_packet_type(&self) -> WireResult<SftpNum> {
+    pub(crate) fn peek_packet_type(&self) -> WireResult<SftpNum> {
         if self.buffer.len() <= SFTP_FIELD_ID_INDEX {
             debug!(
                 "Peak packet type failed: buffer len <= SFTP_FIELD_ID_INDEX ( {:?} <= {:?})",
@@ -191,7 +191,7 @@ mod local_tests {
     fn peaking_type() {
         let buffer_status = status_buffer();
         let source = SftpSource::new(&buffer_status);
-        let read_packet_type = source.peak_packet_type().unwrap();
+        let read_packet_type = source.peek_packet_type().unwrap();
         let original_packet_type = SftpNum::from(101u8);
         assert_eq!(original_packet_type, read_packet_type);
     }

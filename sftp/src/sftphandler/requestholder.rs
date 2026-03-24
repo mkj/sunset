@@ -169,7 +169,7 @@ impl<'a> RequestHolder<'a> {
                 self.try_append_slice(&[slice[0]])?;
                 slice = &slice[1..];
                 let mut source = SftpSource::new(self.try_get_ref()?);
-                if let Ok(pt) = source.peak_packet_type() {
+                if let Ok(pt) = source.peek_packet_type() {
                     if !pt.is_request() {
                         error!("The request candidate is not a request: {pt:?}");
                         return Err(RequestHolderError::NotRequest);

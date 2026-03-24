@@ -193,8 +193,8 @@ where
         }
     }
 
-    /// Provides the stats of the given file path
-    fn stats(
+    /// Provides the attributes of the given file path
+    fn attrs(
         &mut self,
         follow_links: bool,
         file_path: &str,
