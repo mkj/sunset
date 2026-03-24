@@ -415,7 +415,7 @@ impl<OFH: OpaqueFileHandle> SftpServer<'_, OFH> for DemoSftpServer<OFH> {
         }
     }
 
-    async fn stats(
+    async fn attrs(
         &mut self,
         follow_links: bool,
         file_path: &str,
