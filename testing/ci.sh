@@ -79,7 +79,6 @@ cd demo/sftp/std
 cargo build
 cargo test
 )
-size ./target/release/sunset-demo-sftp-std | tee "$OUT/sftp-std-size.txt"
 
 (
 cd fuzz
