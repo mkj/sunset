@@ -733,11 +733,10 @@ macro_rules! sftpmessages {
         paste!{
 
 
-        impl<'a: 'de, 'de> SSHDecode<'de> for SftpPacket<'a>
-        where 'de: 'a // This implies that both lifetimes are equal
+        impl<'a> SSHDecode<'a> for SftpPacket<'a>
         {
             fn dec<S>(s: &mut S) -> WireResult<Self>
-            where S: SSHSource<'de> {
+            where S: SSHSource<'a> {
                 let packet_type_number = u8::dec(s)?;
 
                 let packet_type = SftpNum::from(packet_type_number);
