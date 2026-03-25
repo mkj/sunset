@@ -1,8 +1,8 @@
 use crate::sftpsource::SftpSource;
 
 use sunset::sshwire::{
-    BinString, SSHDecode, SSHEncode, SSHSink, SSHSource, TextString, WireError,
-    WireResult,
+    BinString, SSHDecode, SSHEncode, SSHEncodeEnum, SSHSink, SSHSource, TextString,
+    WireError, WireResult,
 };
 use sunset_sshwire_derive::{SSHDecode, SSHEncode};
 
@@ -604,30 +604,53 @@ macro_rules! sftpmessages {
     ) => {
         paste! {
             /// Represent a subset of the SFTP packet types defined by draft-ietf-secsh-filexfer-02
-            #[derive(Debug, Copy, Clone, PartialEq, Eq, FromPrimitive, SSHEncode)]
+            #[derive(Debug, Copy, Clone, PartialEq, Eq, FromPrimitive)]
             #[repr(u8)]
             #[allow(non_camel_case_types)]
             pub enum SftpNum {
                 $(
-                    #[sshwire(variant = $init_ssh_fxp_name)]
                     [<$init_ssh_fxp_name:upper>] = $init_message_num,
                 )*
 
                 $(
-                    #[sshwire(variant = $request_ssh_fxp_name)]
                     [<$request_ssh_fxp_name:upper>] = $request_message_num,
                 )*
 
                 $(
-                    #[sshwire(variant = $response_ssh_fxp_name)]
                     [<$response_ssh_fxp_name:upper>] = $response_message_num,
                 )*
 
-                #[sshwire(unknown)]
                 #[num_enum(catch_all)]
                 Other(u8),
             }
+            impl SSHEncode for SftpNum {
+                fn enc(&self, _: &mut dyn SSHSink) -> WireResult<()> {
+                    Ok(())
+                }
+            }
+
+            impl SSHEncodeEnum for SftpNum {
+                fn variant_name(&self) -> WireResult<&'static str> {
+                    let r = match self {
+                        $(
+                            Self::[<$init_ssh_fxp_name:upper>] => $init_ssh_fxp_name,
+                        )*
+                        $(
+                            Self::[<$request_ssh_fxp_name:upper>] => $request_ssh_fxp_name,
+                        )*
+                        $(
+                            Self::[<$response_ssh_fxp_name:upper>] => $response_ssh_fxp_name,
+                        )*
+                        Self::Other(_) => {
+                            return Err(WireError::UnknownVariant);
+                        }
+                    };
+                    #[allow(unreachable_code)] Ok(r)
+                }
+            }
+
         } // paste
+
 
         impl<'de> SSHDecode<'de> for SftpNum {
             fn dec<S>(s: &mut S) -> WireResult<Self>
