@@ -1,7 +1,9 @@
 use crate::demofilehandlemanager::DemoFileHandleManager;
 
 use sunset_sftp::error::SftpResult;
-use sunset_sftp::handles::{OpaqueFileHandle, OpaqueFileHandleManager, PathFinder};
+use sunset_sftp::handles::{
+    InitWithSeed, OpaqueFileHandle, OpaqueFileHandleManager, PathFinder,
+};
 use sunset_sftp::protocol::{Attrs, Filename, NameEntry, PFlags, StatusCode};
 use sunset_sftp::server::helpers::DirEntriesCollection;
 use sunset_sftp::server::{
@@ -10,6 +12,7 @@ use sunset_sftp::server::{
 
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
+
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::{fs::File, os::unix::fs::FileExt, path::Path};
@@ -92,12 +95,12 @@ impl PathFinder for PrivateDirHandle {
 }
 
 /// A basic demo server. Used as a demo and to test SFTP functionality
-pub struct DemoSftpServer<OFH: OpaqueFileHandle> {
+pub struct DemoSftpServer<OFH: OpaqueFileHandle + InitWithSeed> {
     base_path: String,
     handles_manager: DemoFileHandleManager<OFH, PrivatePathHandle>,
 }
 
-impl<OFH: OpaqueFileHandle> DemoSftpServer<OFH> {
+impl<OFH: OpaqueFileHandle + InitWithSeed> DemoSftpServer<OFH> {
     pub fn new(base_path: String) -> Self {
         if !Path::new(&base_path).exists() {
             debug!("Base path {:?} does not exist. Creating it", base_path);
@@ -112,7 +115,9 @@ impl<OFH: OpaqueFileHandle> DemoSftpServer<OFH> {
     }
 }
 
-impl<OFH: OpaqueFileHandle> SftpServer<'_, OFH> for DemoSftpServer<OFH> {
+impl<OFH: OpaqueFileHandle + InitWithSeed> SftpServer<'_, OFH>
+    for DemoSftpServer<OFH>
+{
     async fn open(&mut self, filename: &str, mode: &PFlags) -> SftpOpResult<OFH> {
         debug!("Open file: filename = {:?}, mode = {:?}", filename, mode);
 
