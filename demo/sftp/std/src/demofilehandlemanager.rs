@@ -1,11 +1,13 @@
-use sunset_sftp::handles::{OpaqueFileHandle, OpaqueFileHandleManager, PathFinder};
+use sunset_sftp::handles::{
+    InitWithSeed, OpaqueFileHandle, OpaqueFileHandleManager, PathFinder,
+};
 use sunset_sftp::protocol::StatusCode;
 
 use std::collections::HashMap; // Not enforced. Only for std. For no_std environments other solutions can be used to store Key, Value
 
 pub struct DemoFileHandleManager<K, V>
 where
-    K: OpaqueFileHandle,
+    K: OpaqueFileHandle + InitWithSeed,
     V: PathFinder,
 {
     handle_map: HashMap<K, V>,
@@ -13,7 +15,7 @@ where
 
 impl<K, V> DemoFileHandleManager<K, V>
 where
-    K: OpaqueFileHandle,
+    K: OpaqueFileHandle + InitWithSeed,
     V: PathFinder,
 {
     pub fn new() -> Self {
@@ -23,12 +25,12 @@ where
 
 impl<K, V> OpaqueFileHandleManager<K, V> for DemoFileHandleManager<K, V>
 where
-    K: OpaqueFileHandle,
+    K: OpaqueFileHandle + InitWithSeed,
     V: PathFinder,
 {
-    type Error = StatusCode;
+    type Err = StatusCode;
 
-    fn insert(&mut self, private_handle: V, salt: &str) -> Result<K, Self::Error> {
+    fn insert(&mut self, private_handle: V, salt: &str) -> Result<K, Self::Err> {
         if self
             .handle_map
             .iter()
@@ -37,9 +39,10 @@ where
             return Err(StatusCode::SSH_FX_PERMISSION_DENIED);
         }
 
-        let handle = K::new(
+        let handle = K::init_with_seed(
             format!("{:}-{:}", &private_handle.get_path_ref(), salt).as_str(),
-        );
+        )
+        .map_err(|_| StatusCode::SSH_FX_FAILURE)?;
 
         self.handle_map.insert(handle.clone(), private_handle);
         Ok(handle)

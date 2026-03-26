@@ -7,10 +7,6 @@ use sunset::sshwire::WireResult;
 pub trait OpaqueFileHandle:
     Sized + Clone + core::hash::Hash + PartialEq + Eq + core::fmt::Debug
 {
-    /// Creates a new instance using a given string slice as `seed` which
-    /// content should not clearly related to the seed
-    fn new(seed: &str) -> Self;
-
     /// Creates a new `OpaqueFileHandleTrait` copying the content of the `FileHandle`
     fn try_from(file_handle: &FileHandle<'_>) -> WireResult<Self>;
 
@@ -29,7 +25,17 @@ pub trait PathFinder {
     fn get_path_ref(&self) -> &str;
 }
 
-/// This trait is used to manage the OpaqueFile
+/// Used in the `OpaqueFileHandleManager` to generate a Key (OpaqueFileHandle) from a seed
+pub trait InitWithSeed: Sized {
+    /// The error type used for the implementation of `init_with_seed` useful to harmonize the error handling of the `OpaqueFileHandleManager` implementation
+    type Err;
+
+    /// Creates a new instance using a given string slice as `seed` which
+    /// content should not clearly related to the seed
+    fn init_with_seed(s: &str) -> Result<Self, Self::Err>;
+}
+
+/// This trait is used to manage the OpaqueFileHandles (K) together with the private handle (V) that contains the details of the file internally stored in the system
 ///
 /// The SFTP module user is not required to use it but instead is a suggestion for an exchangeable
 /// trait that facilitates structuring the store and retrieve of 'OpaqueFileHandleTrait' (K),
@@ -39,22 +45,18 @@ pub trait PathFinder {
 /// to look for the file path.
 pub trait OpaqueFileHandleManager<K, V>
 where
-    K: OpaqueFileHandle,
+    K: OpaqueFileHandle + InitWithSeed,
     V: PathFinder,
 {
     /// The error used for all the trait members returning an error
-    type Error;
-
-    // Excluded since it is too restrictive
-    // /// Performs any HandleManager Initialization
-    // fn new() -> Self;
+    type Err;
 
     /// Given the private_handle, stores it and return an opaque file handle
     ///
     /// Returns an error if the private_handle has a matching path as obtained from `PathFinder`
     ///
     /// Salt has been added to allow the user to add a factor that will mask how the opaque handle is generated
-    fn insert(&mut self, private_handle: V, salt: &str) -> Result<K, Self::Error>;
+    fn insert(&mut self, private_handle: V, salt: &str) -> Result<K, Self::Err>;
 
     ///
     fn remove(&mut self, opaque_handle: &K) -> Option<V>;
