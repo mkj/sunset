@@ -55,6 +55,14 @@ impl ChanIO<'_> {
     ) -> Result<()> {
         poll_fn(|cx| self.sunset.poll_term_window_change(cx, self.num, &winch)).await
     }
+
+    /// Send an EOF to indicate no more data will be sent on this channel.
+    ///
+    /// This should be called when the application has finished writing data
+    /// to the channel but may still want to read incoming data.
+    pub async fn send_eof(&self) -> Result<()> {
+        poll_fn(|cx| self.sunset.poll_send_eof(cx, self.num)).await
+    }
 }
 
 impl Drop for ChanIO<'_> {
@@ -173,6 +181,14 @@ impl<'g> ChanOut<'g> {
     ) -> Result<()> {
         self.0.term_window_change(winch).await
     }
+
+    /// Send an EOF to indicate no more data will be sent on this channel.
+    ///
+    /// This should be called when the application has finished writing data
+    /// to the channel but may still want to read incoming data.
+    pub async fn send_eof(&self) -> Result<()> {
+        self.0.send_eof().await
+    }
 }
 
 /// A bidirectional SSH channel.
@@ -222,6 +238,14 @@ impl<'g> ChanInOut<'g> {
         winch: sunset::packets::WinChange,
     ) -> Result<()> {
         self.0.term_window_change(winch).await
+    }
+
+    /// Send an EOF to indicate no more data will be sent on this channel.
+    ///
+    /// This should be called when the application has finished writing data
+    /// to the channel but may still want to read incoming data.
+    pub async fn send_eof(&self) -> Result<()> {
+        self.0.send_eof().await
     }
 }
 
