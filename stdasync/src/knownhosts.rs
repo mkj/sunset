@@ -16,7 +16,7 @@ pub enum KnownHostsError {
     Mismatch {
         path: PathBuf,
         line: usize,
-        existing: OpenSSHKey,
+        existing: Box<OpenSSHKey>,
     },
 
     /// User didn't accept new key
@@ -127,7 +127,7 @@ pub fn check_known_hosts_file(
             return Err(KnownHostsError::Mismatch {
                 path: p.to_path_buf(),
                 line,
-                existing: known_key,
+                existing: Box::new(known_key),
             });
         }
     }
