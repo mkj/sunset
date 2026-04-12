@@ -661,8 +661,8 @@ where
             return sunset::error::ChannelEOF.fail();
         }
         let b = &b[..n];
-        if let Err(_) = w.write_all(b).await {
-            info!("write error");
+        if let Err(e) = w.write_all(b).await {
+            info!("write error {e:?}");
         }
     }
     #[allow(unreachable_code)]

@@ -996,7 +996,7 @@ impl KexMlkemX25519 {
         let enc = ek
             .encapsulate(&mut rand_core::OsRng)
             .map_err(|_| error::BadKex.build())?;
-        let (ct, pq_secret) = enc.into();
+        let (ct, pq_secret) = enc;
         // TODO: check if this is another stack copy.
         *pq = ct.into();
         ec.copy_from_slice(self.ecdh.pubkey());
