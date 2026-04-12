@@ -850,11 +850,7 @@ macro_rules! sftpmessages {
             /// Decode a response.
             ///
             /// Used by a SFTP client. Does not include the length field.
-            pub fn decode_response<'de>(s: &mut SftpSource<'de>) -> WireResult<Self>
-                where
-                // S: SftpSource<'de>,
-                'a: 'de, // 'a must outlive 'de and 'de must outlive 'a so they have matching lifetimes
-                'de: 'a
+            pub fn decode_response(s: &mut SftpSource<'a>) -> WireResult<Self>
             {
                 let packet_length = u32::dec(s)?;
                 trace!("Packet field len = {:?}, buffer len = {:?}", packet_length, s.remaining());
@@ -880,11 +876,7 @@ macro_rules! sftpmessages {
             /// Used by a SFTP server. Does not include the length field.
             ///
             /// It will fail if the received packet is a response, no valid or incomplete packet
-            pub fn decode_request<'de>(s: &mut SftpSource<'de>) -> WireResult<Self>
-                where
-                // S: SftpSource<'de>,
-                'a: 'de, // 'a must outlive 'de and 'de must outlive 'a so they have matching lifetimes
-                'de: 'a
+            pub fn decode_request(s: &mut SftpSource<'a>) -> WireResult<Self>
             {
                 let packet_length = u32::dec(s)?;
                 trace!("Packet field len = {:?}, buffer len = {:?}", packet_length, s.remaining());
@@ -915,11 +907,7 @@ macro_rules! sftpmessages {
             /// Used by a SFTP server. Does not include the length field.
             ///
             /// It will fail if the received packet is a response, no valid or incomplete packet
-            pub fn decode<'de>(s: &mut SftpSource<'de>) -> WireResult<Self>
-                where
-                // S: SftpSource<'de>,
-                'a: 'de, // 'a must outlive 'de and 'de must outlive 'a so they have matching lifetimes
-                'de: 'a
+            pub fn decode(s: &mut SftpSource<'a>) -> WireResult<Self>
             {
                 let packet_length = u32::dec(s)?;
                 trace!("Packet field len = {:?}, buffer remaining = {:?}", packet_length, s.remaining());
