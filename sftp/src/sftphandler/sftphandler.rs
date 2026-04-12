@@ -70,7 +70,7 @@ enum HandlerState {
 pub struct SftpHandler<'a, T, S, const BUFFER_OUT_SIZE: usize>
 where
     T: OpaqueFileHandle,
-    S: SftpServer<'a, T>,
+    S: SftpServer<T>,
 {
     /// Holds the internal state if the SFTP handle
     state: HandlerState,
@@ -92,7 +92,7 @@ where
 impl<'a, T, S, const BUFFER_OUT_SIZE: usize> SftpHandler<'a, T, S, BUFFER_OUT_SIZE>
 where
     T: OpaqueFileHandle,
-    S: SftpServer<'a, T>,
+    S: SftpServer<T>,
 {
     /// Creates a new instance of the structure.
     ///
@@ -118,7 +118,7 @@ where
     /// an EOF is received
     pub async fn process_loop(
         &mut self,
-        stdio: ChanInOut<'a>,
+        stdio: ChanInOut<'_>,
         buffer_in: &mut [u8],
     ) -> SftpResult<()> {
         let (mut chan_in, chan_out) = stdio.split();

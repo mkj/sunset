@@ -45,13 +45,13 @@ pub enum ReadStatus {
 /// Some less core operations have a Provided implementation returning
 /// returns `SSH_FX_OP_UNSUPPORTED`. Common operations must be implemented,
 /// but may return `Err(StatusCode::SSH_FX_OP_UNSUPPORTED)`.
-pub trait SftpServer<'a, T>
+pub trait SftpServer<T>
 where
     T: OpaqueFileHandle,
 {
     /// Opens a file for reading/writing
     fn open(
-        &'_ mut self,
+        &mut self,
         path: &str,
         mode: &PFlags,
     ) -> impl core::future::Future<Output = SftpOpResult<T>> {
