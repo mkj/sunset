@@ -77,7 +77,7 @@ where
 
     /// The local SFTP File server implementing the basic SFTP requests
     /// defined by [`crate::sftpserver::SftpServer`]
-    file_server: &'a mut S,
+    file_server: S,
 
     // /// Use to process SFTP Write packets that have been received
     // /// partially and the remaining is expected in successive buffers
@@ -103,7 +103,7 @@ where
     /// - `request_buffer`: used to deal with fragmented
     /// packets during [`SftpHandler::process_loop`]
     pub fn new(
-        file_server: &'a mut S,
+        file_server: S,
         request_buffer: &'a mut [u8; MAX_REQUEST_LEN],
     ) -> Self {
         SftpHandler {

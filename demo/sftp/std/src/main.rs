@@ -167,16 +167,15 @@ impl DemoServer for StdDemo {
 
                 match {
                     let stdio = serv.stdio(ch).await?;
-                    let mut file_server =
+                    let file_server =
                         DemoSftpServer::<DemoOpaqueFileHandle>::new(
                             "./demo/sftp/std/testing/out/".to_string(),
                         );
 
                     SftpHandler::<
-                        DemoOpaqueFileHandle,
-                        DemoSftpServer<DemoOpaqueFileHandle>,
+                        _, _,
                         512,
-                    >::new(&mut file_server, &mut request_buffer)
+                    >::new(file_server, &mut request_buffer)
                     .process_loop(stdio, &mut buffer_in)
                     .await?;
 
