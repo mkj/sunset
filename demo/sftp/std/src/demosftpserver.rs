@@ -115,9 +115,7 @@ impl<OFH: OpaqueFileHandle + InitWithSeed> DemoSftpServer<OFH> {
     }
 }
 
-impl<OFH: OpaqueFileHandle + InitWithSeed> SftpServer<OFH>
-    for DemoSftpServer<OFH>
-{
+impl<OFH: OpaqueFileHandle + InitWithSeed> SftpServer<OFH> for DemoSftpServer<OFH> {
     async fn open(&mut self, filename: &str, mode: &PFlags) -> SftpOpResult<OFH> {
         debug!("Open file: filename = {:?}, mode = {:?}", filename, mode);
 
