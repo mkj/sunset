@@ -4,6 +4,7 @@ use crate::proto::{
 };
 
 use sunset::sshwire::{SSHSource, WireError, WireResult};
+use sunset::packets::ParseContext;
 
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
@@ -14,6 +15,7 @@ use log::{debug, error, info, log, trace, warn};
 pub struct SftpSource<'de> {
     buffer: &'de [u8],
     index: usize,
+    ctx: ParseContext,
 }
 
 impl<'de> SSHSource<'de> for SftpSource<'de> {
@@ -35,8 +37,8 @@ impl<'de> SSHSource<'de> for SftpSource<'de> {
         self.buffer.len() - self.index
     }
 
-    fn ctx(&mut self) -> &mut sunset::packets::ParseContext {
-        todo!("Which context for sftp?");
+    fn ctx(&mut self) -> &mut ParseContext {
+        &mut self.ctx
     }
 }
 
@@ -44,7 +46,8 @@ impl<'de> SftpSource<'de> {
     /// Creates a new [`SftpSource`] referencing a buffer
     pub fn new(buffer: &'de [u8]) -> Self {
         debug!("New source with content: : {:?}", buffer);
-        SftpSource { buffer: buffer, index: 0 }
+        let ctx = ParseContext::new();
+        SftpSource { buffer: buffer, index: 0, ctx }
     }
     /// Peeks the buffer for packet type [`SftpNum`]. This does not advance
     /// the reading index
