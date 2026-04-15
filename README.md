@@ -11,9 +11,9 @@ suggest something!
 - [`sunset-async`](async) - async SSH client and server library, also
   `no_std` no-alloc. This is async-executor agnostic (using Embassy for mutexes, but works on std too).
 
-- [`demos`](demos) has demos with Embassy executor for wifi on a Raspberry Pi
-  [Pico W](demos/picow) or a
-  [Linux tap device on `std`](demos/std) running locally.
+- [`demo`](demo) has demos with Embassy executor for wifi on a Raspberry Pi
+  [Pico W](demo/picow) or a
+  [Linux tap device on `std`](demo/std) running locally.
 
   At present the Pico W build is around 150kB binary size
   (plus ~200KB [cyw43](https://github.com/embassy-rs/embassy/tree/main/cyw43) wifi firmware),
