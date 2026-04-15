@@ -18,8 +18,6 @@ use embassy_time::Duration;
 
 use heapless::{String, Vec};
 
-use pretty_hex::PrettyHex;
-
 use crate::demo_common;
 use crate::flashconfig;
 use crate::PicoDemo;
