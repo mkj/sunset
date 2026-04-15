@@ -15,7 +15,6 @@ use core::fmt::{Debug, Display};
 
 #[cfg(feature = "arbitrary")]
 use arbitrary::Arbitrary;
-use pretty_hex::PrettyHex;
 
 use sunset_sshwire_derive::*;
 
@@ -853,7 +852,7 @@ impl Display for Unknown<'_> {
         if let Ok(s) = sshwire::try_as_ascii_str(self.0) {
             f.write_str(s)
         } else {
-            write!(f, "non-ascii {:?}", self.0.hex_dump())
+            write!(f, "non-ascii {:02x?}", self.0)
         }
     }
 }
@@ -1093,7 +1092,6 @@ mod tests {
     use crate::sshwire::tests::test_roundtrip;
     use crate::sshwire::{packet_from_bytes, write_ssh};
     use crate::sunsetlog::init_test_log;
-    use pretty_hex::PrettyHex;
 
     #[test]
     /// check round trip of packet enums is right
@@ -1177,7 +1175,6 @@ mod tests {
         buf1.truncate(l);
         // change a byte
         buf1[8] = 'X' as u8;
-        trace!("broken: {:?}", buf1.hex_dump());
         let ctx = ParseContext::default();
         let p2 = packet_from_bytes(&buf1, &ctx).unwrap();
         trace!("broken: {p2:#?}");
@@ -1212,7 +1209,6 @@ mod tests {
         buf1.truncate(l);
         // change a byte in the "ssh-ed25519" variant string
         buf1[60] = 'F' as u8;
-        trace!("broken: {:?}", buf1.hex_dump());
         let ctx = ParseContext::default();
         let p2 = packet_from_bytes(&buf1, &ctx).unwrap();
         trace!("broken: {p2:#?}");

@@ -87,12 +87,6 @@ pub async fn load(fl: &mut Fl<'_>) -> Result<SSHConfig> {
         Error::msg("flash error")
     })?;
 
-    // use pretty_hex::PrettyHex;
-    // use core::fmt::Write;
-    // let mut b = demo_common::BufOutput::default();
-    // writeln!(b, "load {:?}", buf.hex_dump());
-    // info!("{}", &b.s);
-
     let s: FlashConfig = sshwire::read_ssh(&fl.buf, None)?;
 
     if s.version != SSHConfig::CURRENT_VERSION {
@@ -120,12 +114,6 @@ pub async fn save(fl: &mut Fl<'_>, config: &SSHConfig) -> Result<()> {
     };
     let l = sshwire::write_ssh(&mut fl.buf, &sc)?;
     let buf = &fl.buf[..l];
-
-    // use pretty_hex::PrettyHex;
-    // use core::fmt::Write;
-    // let mut b = demo_common::BufOutput::default();
-    // writeln!(b, "save {:?}", buf.hex_dump());
-    // info!("{}", &b.s);
 
     trace!("flash erase");
     fl.flash

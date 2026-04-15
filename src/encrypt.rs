@@ -710,7 +710,6 @@ mod tests {
     use crate::sshnames::SSH_NAME_CURVE25519;
     use crate::sunsetlog::*;
     #[allow(unused_imports)]
-    use pretty_hex::PrettyHex;
     use sha2::Sha256;
 
     // setting `corrupt` tests that incorrect mac is detected
