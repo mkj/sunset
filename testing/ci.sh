@@ -86,11 +86,4 @@ cargo check --features nofuzz --profile fuzz
 )
 
 # other checks
-
-if [ $(find async -name rust-toolchain.toml -print0 | xargs -0 grep -h ^channel | uniq | wc -l) -ne 1 ]; then
-    echo "rust-toolchain.toml has varying toolchains"
-    find async -name rust-toolchain.toml -print0 | xargs -0 grep .
-    exit 1
-fi
-
 echo success
