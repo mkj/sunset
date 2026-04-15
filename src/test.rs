@@ -22,10 +22,6 @@ mod tests {
 
         let mut buf2 = vec![99; 500];
         let _w2 = sshwire::write_ssh(&mut buf2, &p2)?;
-        // println!("{p:?}");
-        // println!("{p2:?}");
-        // println!("{:?}", buf1.hex_dump());
-        // println!("{:?}", buf2.hex_dump());
 
         assert_eq!(buf1, buf2);
         Ok(())

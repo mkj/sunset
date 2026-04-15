@@ -31,15 +31,11 @@ nix = "0.26"
 
 heapless = "0.8"
 
-# TODO
-pretty-hex = "0.4"
-
 [features]
 rsa = ["sunset/rsa"]
 
 [dev-dependencies]
 anyhow = { version = "1.0" }
-pretty-hex = "0.4"
 whoami = "1.3"
 zeroize = "1.5"
 

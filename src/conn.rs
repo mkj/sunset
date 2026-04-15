@@ -12,8 +12,6 @@ use {
     log::{debug, error, info, log, trace, warn},
 };
 
-use pretty_hex::PrettyHex;
-
 use crate::*;
 use channel::{Channels, CliSessionExit};
 use client::Client;
@@ -350,7 +348,7 @@ impl<CS: CliServ> Conn<CS> {
             }
             Err(e) => {
                 debug!("Error decoding packet: {e}");
-                trace!("Input:\n{:#?}", payload.hex_dump());
+                trace!("Input:\n{:02x?}", payload);
                 Err(e)
             }
         }

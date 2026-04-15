@@ -2099,12 +2099,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "925383efa346730478fb4838dbe9137d2a47675ad789c546d150a6e1dd4ab31c"
 
 [[package]]
-name = "pretty-hex"
-version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bbc83ee4a840062f368f9096d80077a9841ec117e17e7f700df81958f1451254"
-
-[[package]]
 name = "primeorder"
 version = "0.13.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2732,7 +2726,6 @@ dependencies = [
  "log",
  "ml-kem",
  "poly1305",
- "pretty-hex",
  "rand_core",
  "rsa",
  "sha2",
@@ -2774,7 +2767,6 @@ dependencies = [
  "heapless",
  "hmac",
  "log",
- "pretty-hex",
  "sha2",
  "subtle",
  "sunset",
@@ -2811,7 +2803,6 @@ dependencies = [
  "heapless",
  "log",
  "portable-atomic",
- "pretty-hex",
  "rand",
  "rtt-target",
  "sha2",
@@ -2925,7 +2916,6 @@ dependencies = [
  "libc",
  "log",
  "nix",
- "pretty-hex",
  "rpassword",
  "simplelog",
  "ssh-key",

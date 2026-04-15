@@ -14,7 +14,6 @@ use {
 use core::convert::AsRef;
 use core::fmt::{Debug, Display};
 use core::str::FromStr;
-use pretty_hex::PrettyHex;
 
 use ascii::{AsAsciiStr, AsciiChar, AsciiStr};
 
@@ -356,7 +355,7 @@ impl Debug for TextString<'_> {
         if let Ok(s) = s {
             write!(f, "TextString(\"{}\")", s.escape_default())
         } else {
-            write!(f, "TextString(not utf8!, {:#?})", self.0.hex_dump())
+            write!(f, "TextString(not utf8!, {:02x?})", self.0)
         }
     }
 }
@@ -753,7 +752,6 @@ pub(crate) mod tests {
     use crate::*;
     use error::Error;
     use packets::*;
-    use pretty_hex::PrettyHex;
     use sshwire::*;
     use sunsetlog::init_test_log;
 
@@ -802,7 +800,6 @@ pub(crate) mod tests {
         let mut buf = vec![99; 200];
         let l = write_ssh(&mut buf, p).unwrap();
         buf.truncate(l);
-        trace!("wrote packet {:?}", buf.hex_dump());
 
         let p2 = packet_from_bytes(&buf, &ctx).unwrap();
         trace!("returned packet {:#?}", p2);
