@@ -57,7 +57,7 @@ impl<'de> SftpSource<'de> {
     pub(crate) fn peek_packet_type(&self) -> WireResult<SftpNum> {
         if self.buffer.len() <= SFTP_FIELD_ID_INDEX {
             debug!(
-                "Peak packet type failed: buffer len <= SFTP_FIELD_ID_INDEX ( {:?} <= {:?})",
+                "Peek packet type failed: buffer len <= SFTP_FIELD_ID_INDEX ( {:?} <= {:?})",
                 self.buffer.len(),
                 SFTP_FIELD_ID_INDEX
             );
@@ -67,17 +67,17 @@ impl<'de> SftpSource<'de> {
         }
     }
 
-    /// Peaks the buffer for packet length field. This does not advance the reading index
+    /// Peeks the buffer for packet length field. This does not advance the reading index
     ///
     /// Useful to observe the packet fields in special conditions where a `dec(s)`
     /// would fail
     ///
-    /// Use `peak_total_packet_len` instead if you want to also consider the the
+    /// Use `peek_total_packet_len` instead if you want to also consider the the
     /// length field
     ///
     /// **Warning**: will only work in well formed packets, in other case the result
     /// will contains garbage
-    pub(crate) fn peak_packet_len(&self) -> WireResult<u32> {
+    pub(crate) fn peek_packet_len(&self) -> WireResult<u32> {
         if self.buffer.len() < SFTP_FIELD_LEN_INDEX + SFTP_FIELD_LEN_LENGTH {
             Err(WireError::RanOut)
         } else {
@@ -90,32 +90,32 @@ impl<'de> SftpSource<'de> {
         }
     }
 
-    /// Peaks the packet in the source to obtain a total packet length, which
+    /// Peeks the packet in the source to obtain a total packet length, which
     /// considers the length of the length field itself. For the packet length field
-    /// use [`peak_packet_len()`]
+    /// use [`peek_packet_len()`]
     ///
     ///  This does not advance the reading index
     ///
     ///
     /// **Warning**: will only work in well formed packets, in other case the result
     /// will contains garbage
-    pub(crate) fn peak_total_packet_len(&self) -> WireResult<u32> {
-        Ok(self.peak_packet_len()? + SFTP_FIELD_LEN_LENGTH as u32)
+    pub(crate) fn peek_total_packet_len(&self) -> WireResult<u32> {
+        Ok(self.peek_packet_len()? + SFTP_FIELD_LEN_LENGTH as u32)
     }
 
-    /// Compares the total source capacity and the peaked packet length
+    /// Compares the total source capacity and the peeked packet length
     /// plus the length field length itself to find out if the packet fit
     /// in the source  
     /// **Warning**: will only work in well formed packets, in other case
     /// the result will contains garbage
     pub fn packet_fits(&self) -> bool {
-        match self.peak_total_packet_len() {
+        match self.peek_total_packet_len() {
             Ok(len) => self.buffer.len() >= len as usize,
             Err(_) => false,
         }
     }
 
-    /// Peaks the buffer for packet request id [`u32`]. This does not advance
+    /// Peeks the buffer for packet request id [`u32`]. This does not advance
     /// the reading index
     ///
     /// Useful to observe the packet fields in special conditions where a
@@ -123,7 +123,7 @@ impl<'de> SftpSource<'de> {
     ///
     /// **Warning**: will only work in well formed packets, in other case
     /// the result will contains garbage
-    pub fn peak_packet_req_id(&self) -> WireResult<u32> {
+    pub fn peek_packet_req_id(&self) -> WireResult<u32> {
         if self.buffer.len() < SFTP_FIELD_REQ_ID_INDEX + SFTP_FIELD_REQ_ID_LEN {
             Err(WireError::RanOut)
         } else {
@@ -169,26 +169,26 @@ mod local_tests {
     }
 
     #[test]
-    fn peaking_len() {
+    fn peeking_len() {
         let buffer_status = status_buffer();
         let source = SftpSource::new(&buffer_status);
 
-        let read_packet_len = source.peak_packet_len().unwrap();
+        let read_packet_len = source.peek_packet_len().unwrap();
         let original_packet_len = 23u32;
         assert_eq!(original_packet_len, read_packet_len);
     }
     #[test]
-    fn peaking_total_len() {
+    fn peeking_total_len() {
         let buffer_status = status_buffer();
         let source = SftpSource::new(&buffer_status);
 
-        let read_total_packet_len = source.peak_total_packet_len().unwrap();
+        let read_total_packet_len = source.peek_total_packet_len().unwrap();
         let original_total_packet_len = 23u32 + 4u32;
         assert_eq!(original_total_packet_len, read_total_packet_len);
     }
 
     #[test]
-    fn peaking_type() {
+    fn peeking_type() {
         let buffer_status = status_buffer();
         let source = SftpSource::new(&buffer_status);
         let read_packet_type = source.peek_packet_type().unwrap();
@@ -196,10 +196,10 @@ mod local_tests {
         assert_eq!(original_packet_type, read_packet_type);
     }
     #[test]
-    fn peaking_req_id() {
+    fn peeking_req_id() {
         let buffer_status = status_buffer();
         let source = SftpSource::new(&buffer_status);
-        let read_req_id = source.peak_packet_req_id().unwrap();
+        let read_req_id = source.peek_packet_req_id().unwrap();
         let original_req_id = 16u32;
         assert_eq!(original_req_id, read_req_id);
     }
