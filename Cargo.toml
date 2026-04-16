@@ -83,7 +83,6 @@ ssh-key = { version = "0.6", default-features = false, optional = true, features
 embedded-io = { version = "0.6", optional = true }
 
 [features]
-default = []
 std = ["snafu/std", "ssh-key/alloc", "larger", "mlkem"]
 backtrace = ["snafu/backtrace"]
 rsa = ["dep:rsa", "ssh-key/rsa"]
