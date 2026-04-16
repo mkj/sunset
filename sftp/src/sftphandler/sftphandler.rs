@@ -342,7 +342,7 @@ where
                                 .send_status(
                                     ReqId(
                                         source
-                                            .peak_packet_req_id()
+                                            .peek_packet_req_id()
                                             .unwrap_or(u32::MAX),
                                     ),
                                     StatusCode::SSH_FX_OP_UNSUPPORTED,
@@ -360,7 +360,7 @@ where
                                 .send_status(
                                     ReqId(
                                         source
-                                            .peak_packet_req_id()
+                                            .peek_packet_req_id()
                                             .unwrap_or(u32::MAX),
                                     ),
                                     StatusCode::SSH_FX_BAD_MESSAGE,
