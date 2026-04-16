@@ -831,7 +831,7 @@ macro_rules! sftpmessages {
             /// Used by a SFTP client. Does not include the length field.
             pub fn encode_request(&self, id: ReqId, s: &mut dyn SSHSink) -> WireResult<()> {
                 if !self.sftp_num().is_request() {
-                    return Err(WireError::PacketWrong)
+                    return Err(WireError::Bug)
                     // return Err(Error::bug())
                     // I understand that it would be a bad call of encode_response and
                     // therefore a bug, bug Error::bug() is not compatible with WireResult

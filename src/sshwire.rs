@@ -96,6 +96,8 @@ pub enum WireError {
 
     BadNumber,
 
+    Bug,
+
     UnknownPacket { number: u8 },
 }
 
@@ -111,6 +113,7 @@ impl From<WireError> for Error {
             WireError::BadKey => Error::BadKey,
             WireError::BadNumber => Error::BadNumber,
             WireError::UnknownVariant => Error::bug_err_msg("Can't encode Unknown"),
+            WireError::Bug => error::Bug.build(),
             WireError::UnknownPacket { number } => Error::UnknownPacket { number },
         }
     }
