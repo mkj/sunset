@@ -13,7 +13,7 @@ use core::sync::atomic::AtomicUsize;
 #[cfg(debug_assertions)]
 use core::sync::atomic::Ordering;
 
-use log::{debug, error, trace};
+use log::{debug, trace};
 
 #[cfg(debug_assertions)]
 type Counter = AtomicUsize;
@@ -64,7 +64,7 @@ impl<const N: usize> SftpOutputPipe<N> {
         let (reader, writer) = self.pipe.split();
         Ok((
             SftpOutputConsumer {
-                reader,
+                pipe_reader: reader,
                 ssh_chan_out,
                 #[cfg(debug_assertions)]
                 counter: 0,
@@ -85,7 +85,7 @@ impl<const N: usize> SftpOutputPipe<N> {
 /// [PipeReader](https://docs.embassy.dev/embassy-sync/git/default/pipe/struct.Reader.html)
 /// buffer used to receive the data.
 pub(crate) struct SftpOutputConsumer<'a, const N: usize> {
-    reader: PipeReader<'a, SunsetRawMutex, N>,
+    pipe_reader: PipeReader<'a, SunsetRawMutex, N>,
     /// The [sunset_async::ChanOut] where the channel data is written to
     ssh_chan_out: ChanOut<'a>,
     /// Only used for debug purposes
@@ -99,7 +99,11 @@ impl<'a, const N: usize> SftpOutputConsumer<'a, N> {
         debug!("Running SftpOutout Consumer Reader task");
         let mut buf = [0u8; N];
         loop {
-            let rl = self.reader.read(&mut buf).await;
+            let rl = self.pipe_reader.read(&mut buf).await;
+            if rl == 0 {
+                debug!("Output Consumer: Pipe closed, stopping receiving task");
+                return Ok(());
+            }
             #[cfg(debug_assertions)]
             {
                 self.counter = self.counter.wrapping_add(buf.len());
@@ -110,30 +114,27 @@ impl<'a, const N: usize> SftpOutputConsumer<'a, N> {
                 );
             }
             let mut scanning_buffer = &buf[..rl];
-            if rl > 0 {
-                // Replaced write_all with loop to handle partial writes to discard issues in write_all
-                while scanning_buffer.len() > 0 {
-                    trace!(
-                        "Output Consumer: Tries to write {:?} bytes to ChanOut",
-                        scanning_buffer.len()
+
+            // Replaced write_all with loop to handle partial writes to discard issues in write_all
+            while scanning_buffer.len() > 0 {
+                trace!(
+                    "Output Consumer: Tries to write {:?} bytes to ChanOut",
+                    scanning_buffer.len()
+                );
+                let wl = self.ssh_chan_out.write(scanning_buffer).await?;
+                debug!("Output Consumer: Written {:?} bytes ", wl);
+                if wl < scanning_buffer.len() {
+                    debug!(
+                        "Output Consumer: ChanOut accepted only part of the buffer"
                     );
-                    let wl = self.ssh_chan_out.write(scanning_buffer).await?;
-                    debug!("Output Consumer: Written {:?} bytes ", wl);
-                    if wl < scanning_buffer.len() {
-                        debug!(
-                            "Output Consumer: ChanOut accepted only part of the buffer"
-                        );
-                    }
-                    trace!(
-                        "Output Consumer: Bytes written {:?}",
-                        &scanning_buffer[..wl]
-                    );
-                    scanning_buffer = &scanning_buffer[wl..];
                 }
-                debug!("Output Consumer: Finished writing all bytes in read buffer");
-            } else {
-                error!("Output Consumer: Empty array received");
+                trace!(
+                    "Output Consumer: Bytes written {:?}",
+                    &scanning_buffer[..wl]
+                );
+                scanning_buffer = &scanning_buffer[wl..];
             }
+            debug!("Output Consumer: Finished writing all bytes in read buffer");
         }
     }
 }
