@@ -226,6 +226,8 @@ where
 /// [`sunset_async::async_channel::ChanOut`] used in the context of an
 /// SFTP Session.
 ///
+/// Parameter N is the length for the SftpOutputProducer buffer
+///
 pub struct ReadReply<'g, const N: usize> {
     /// The request Id that will be use`d in the response
     req_id: ReqId,
@@ -359,6 +361,8 @@ mod read_reply_tests {
 /// It handles immutable sending data via the underlying sftp-channel
 /// [`sunset_async::async_channel::ChanOut`] used in the context of an
 /// SFTP Session.
+///
+/// Parameter N is the length for the SftpOutputProducer buffer
 ///
 pub struct DirReply<'g, const N: usize> {
     /// The request Id that will be use`d in the response

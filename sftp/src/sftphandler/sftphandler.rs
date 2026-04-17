@@ -59,9 +59,10 @@ enum HandlerState {
 /// Process the raw buffers in and out from a subsystem channel decoding
 /// request and encoding responses
 ///
-/// It will delegate request to an [`crate::sftpserver::SftpServer`]
-/// implemented by the library
-/// user taking into account the local system details.
+/// Parameter (S): It will delegate request to an [`crate::sftpserver::SftpServer`]
+/// implemented by the library user taking into account the local system details.
+///
+/// Parameter (T): Is a type that implements [`crate::handles::OpaqueFileHandle`] that **must** match the type used in the [`crate::sftpserver::SftpServer`] provided in (S)
 ///
 /// The compiler time constant `BUFFER_OUT_SIZE` is used to define the
 /// size of the output buffer for the subsystem [`Embassy-sync::pipe`] used
