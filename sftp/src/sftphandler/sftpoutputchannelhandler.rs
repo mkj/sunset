@@ -2,22 +2,27 @@ use crate::error::{SftpError, SftpResult};
 use crate::proto::{ReqId, SftpPacket, Status, StatusCode};
 use crate::server::SftpSink;
 
-use embassy_sync::mutex::Mutex;
 use sunset_async::ChanOut;
 
 use embassy_sync::pipe::{Pipe, Reader as PipeReader, Writer as PipeWriter};
 use embedded_io_async::Write;
 use sunset_async::SunsetRawMutex;
 
+#[cfg(debug_assertions)]
+use core::sync::atomic::AtomicUsize;
+#[cfg(debug_assertions)]
+use core::sync::atomic::Ordering;
+
 use log::{debug, error, trace};
 
-type CounterMutex = Mutex<SunsetRawMutex, usize>;
+#[cfg(debug_assertions)]
+type Counter = AtomicUsize;
 
 pub struct SftpOutputPipe<const N: usize> {
     pipe: Pipe<SunsetRawMutex, N>,
-    counter_send: CounterMutex,
-    counter_recv: CounterMutex,
-    splitted: bool,
+    split: bool,
+    #[cfg(debug_assertions)]
+    counter_send: Counter,
 }
 
 /// M: SunsetSunsetRawMutex
@@ -32,9 +37,9 @@ impl<const N: usize> SftpOutputPipe<N> {
     pub fn new() -> Self {
         SftpOutputPipe {
             pipe: Pipe::new(),
-            counter_send: Mutex::<SunsetRawMutex, usize>::new(0),
-            counter_recv: Mutex::<SunsetRawMutex, usize>::new(0),
-            splitted: false,
+            #[cfg(debug_assertions)]
+            counter_send: Counter::new(0),
+            split: false,
         }
     }
 
@@ -52,14 +57,23 @@ impl<const N: usize> SftpOutputPipe<N> {
         &'a mut self,
         ssh_chan_out: ChanOut<'a>,
     ) -> SftpResult<(SftpOutputConsumer<'a, N>, SftpOutputProducer<'a, N>)> {
-        if self.splitted {
+        if self.split {
             return Err(SftpError::AlreadyInitialized);
         }
-        self.splitted = true;
+        self.split = true;
         let (reader, writer) = self.pipe.split();
         Ok((
-            SftpOutputConsumer { reader, ssh_chan_out, counter: &self.counter_recv },
-            SftpOutputProducer { writer, counter: &self.counter_send },
+            SftpOutputConsumer {
+                reader,
+                ssh_chan_out,
+                #[cfg(debug_assertions)]
+                counter: 0,
+            },
+            SftpOutputProducer {
+                writer,
+                #[cfg(debug_assertions)]
+                counter: &self.counter_send,
+            },
         ))
     }
 }
@@ -72,8 +86,11 @@ impl<const N: usize> SftpOutputPipe<N> {
 /// buffer used to receive the data.
 pub(crate) struct SftpOutputConsumer<'a, const N: usize> {
     reader: PipeReader<'a, SunsetRawMutex, N>,
+    /// The [sunset_async::ChanOut] where the channel data is written to
     ssh_chan_out: ChanOut<'a>,
-    counter: &'a CounterMutex,
+    /// Only used for debug purposes
+    #[cfg(debug_assertions)]
+    counter: usize,
 }
 
 impl<'a, const N: usize> SftpOutputConsumer<'a, N> {
@@ -83,14 +100,15 @@ impl<'a, const N: usize> SftpOutputConsumer<'a, N> {
         let mut buf = [0u8; N];
         loop {
             let rl = self.reader.read(&mut buf).await;
-            let mut _total = 0;
+            #[cfg(debug_assertions)]
             {
-                let mut lock = self.counter.lock().await;
-                *lock += rl;
-                _total = *lock;
-            }
+                self.counter = self.counter.wrapping_add(buf.len());
 
-            debug!("Output Consumer: ---> Reads {rl} bytes. Total {_total}");
+                debug!(
+                    "Output Consumer: ---> Reads {rl} bytes. Total {}",
+                    self.counter
+                );
+            }
             let mut scanning_buffer = &buf[..rl];
             if rl > 0 {
                 // Replaced write_all with loop to handle partial writes to discard issues in write_all
@@ -129,7 +147,8 @@ impl<'a, const N: usize> SftpOutputConsumer<'a, N> {
 #[derive(Clone)]
 pub struct SftpOutputProducer<'a, const N: usize> {
     writer: PipeWriter<'a, SunsetRawMutex, N>,
-    counter: &'a CounterMutex,
+    #[cfg(debug_assertions)]
+    counter: &'a Counter,
 }
 impl<'a, const N: usize> SftpOutputProducer<'a, N> {
     /// Sends the data encoded in the provided [`SftpSink`] without including
@@ -137,7 +156,13 @@ impl<'a, const N: usize> SftpOutputProducer<'a, N> {
     ///
     /// Use this when you are sending chunks of data after a valid header
     pub async fn send_data(&self, buf: &[u8]) -> SftpResult<()> {
-        Self::send_buffer(&self.writer, &buf, &self.counter).await;
+        Self::send_buffer(
+            &self.writer,
+            &buf,
+            #[cfg(debug_assertions)]
+            &self.counter,
+        )
+        .await;
         Ok(())
     }
 
@@ -163,7 +188,13 @@ impl<'a, const N: usize> SftpOutputProducer<'a, N> {
         let mut sink = SftpSink::new(&mut buf);
         packet.encode_response(&mut sink)?;
         debug!("Output Producer: Sending packet {:?}", packet);
-        Self::send_buffer(&self.writer, &sink.used_slice(), &self.counter).await;
+        Self::send_buffer(
+            &self.writer,
+            &sink.used_slice(),
+            #[cfg(debug_assertions)]
+            &self.counter,
+        )
+        .await;
         Ok(())
     }
 
@@ -171,19 +202,19 @@ impl<'a, const N: usize> SftpOutputProducer<'a, N> {
     async fn send_buffer(
         writer: &PipeWriter<'a, SunsetRawMutex, N>,
         buf: &[u8],
-        counter: &CounterMutex,
+        #[cfg(debug_assertions)] counter: &Counter,
     ) {
-        let mut _total = 0;
+        #[cfg(debug_assertions)]
         {
-            let mut lock = counter.lock().await;
-            *lock += buf.len();
-            _total = *lock;
+            let total = counter.load(Ordering::Relaxed).wrapping_add(buf.len());
+            counter.store(total, Ordering::Relaxed);
+
+            debug!(
+                "Output Producer: <--- Sends {:?} bytes. Total {total}",
+                buf.len()
+            );
+            trace!("Output Producer: Sending buffer {:?}", buf);
         }
-
-        debug!("Output Producer: <--- Sends {:?} bytes. Total {_total}", buf.len());
-        trace!("Output Producer: Sending buffer {:?}", buf);
-
-        // writer.write_all(buf); // ??? error[E0596]: cannot borrow `*writer` as mutable, as it is behind a `&` reference
 
         let mut buf = buf;
         loop {
