@@ -3,8 +3,8 @@ use crate::proto::{
     SFTP_FIELD_REQ_ID_INDEX, SFTP_FIELD_REQ_ID_LEN, SftpNum,
 };
 
-use sunset::sshwire::{SSHSource, WireError, WireResult};
 use sunset::packets::ParseContext;
+use sunset::sshwire::{SSHSource, WireError, WireResult};
 
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
