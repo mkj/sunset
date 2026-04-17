@@ -75,6 +75,12 @@ cargo build --release --no-default-features --features w5500,romfw
 size target/thumbv6m-none-eabi/release/sunset-demo-picow | tee "$OUT/picow-size.txt"
 
 (
+cd demo/sftp/std
+cargo build
+cargo test
+)
+
+(
 cd fuzz
 cargo check --features nofuzz --profile fuzz
 )
