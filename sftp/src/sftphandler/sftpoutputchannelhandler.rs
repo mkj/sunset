@@ -65,7 +65,11 @@ impl<const N: usize> SftpOutputPipe<N> {
 }
 
 /// Consumer that takes ownership of [`ChanOut`]. It pipes the data received
-/// from a [`PipeReader`] into the channel
+/// from a [`PipeReader`] into the channel.
+///
+/// N is the length of the
+/// [PipeReader](https://docs.embassy.dev/embassy-sync/git/default/pipe/struct.Reader.html)
+/// buffer used to receive the data.
 pub(crate) struct SftpOutputConsumer<'a, const N: usize> {
     reader: PipeReader<'a, SunsetRawMutex, N>,
     ssh_chan_out: ChanOut<'a>,
@@ -118,6 +122,10 @@ impl<'a, const N: usize> SftpOutputConsumer<'a, N> {
 
 /// Producer used to send data to a [`ChanOut`] without the restrictions
 /// of mutable borrows
+///
+/// Under the hood it uses an
+/// [embassy_sync Pipe](https://docs.embassy.dev/embassy-sync/git/default/pipe/struct.Pipe.html)
+/// where N is the pipe buffer length in bytes
 #[derive(Clone)]
 pub struct SftpOutputProducer<'a, const N: usize> {
     writer: PipeWriter<'a, SunsetRawMutex, N>,
