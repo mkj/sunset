@@ -591,7 +591,7 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
 
     /// Returns the maximum data that may be sent to a channel
     ///
-    /// Returns `Ok(None)` on channel closed.
+    /// Returns `Ok(None)` on channel closed or EOF already sent.
     ///
     /// May fail with `BadChannelData` if dt is invalid for this session.
     pub fn write_channel_ready(
@@ -638,12 +638,64 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
     ///
     /// Channel numbers will not be re-used without calling this, so
     /// failing to call this may result in running out of channels.
+    ///
+    /// ## Channel Shutdown Sequence
+    ///
+    /// Per RFC 4254, SSH channels have independent send and receive directions.
+    /// The recommended shutdown sequence is:
+    ///
+    /// 1. When done writing, call `channel_send_eof()` to send CHANNEL_EOF
+    /// 2. Continue reading until `is_channel_eof()` returns true (peer sent EOF)
+    /// 3. Call `channel_done()` to mark the channel as finished
+    ///
+    /// Alternatively, `channel_close()` can be called to send both EOF and CLOSE,
+    /// but this is less graceful than the above sequence.
     pub fn channel_done(&mut self, chan: ChanHandle) -> Result<()> {
         self.conn.channels.done(chan.0)?;
         // Prevent giving any already-received data for this channel.
         self.traf_in.discard_read_channel(chan.0);
         self.wake();
         Ok(())
+    }
+
+    /// Send a CHANNEL_EOF to indicate no more data will be sent on this channel.
+    ///
+    /// Per RFC 4254, this should be called when the application has finished
+    /// writing data to the channel but may still read incoming data.
+    /// This is the proper way to shut down one direction of a bidirectional
+    /// channel.
+    ///
+    /// After sending EOF:
+    /// - No more data can be written to the channel (`write_channel_ready` returns `None`)
+    /// - Data can still be read until the peer sends EOF
+    /// - Eventually call `channel_done()` when reading is complete
+    pub fn channel_send_eof(&mut self, chan: &ChanHandle) -> Result<()> {
+        let mut s = self.traf_out.sender(&mut self.keys);
+        self.conn.channels.send_eof(chan.0, &mut s)?;
+        self.wake();
+        Ok(())
+    }
+
+    /// Send a CHANNEL_CLOSE to close the channel.
+    ///
+    /// This sends both EOF and CLOSE if not already sent, properly shutting down
+    /// both directions of the channel.
+    ///
+    /// Note: This is a more abrupt shutdown than the recommended sequence of
+    /// calling `channel_send_eof()` first. Use this when you need to close both
+    /// directions immediately.
+    pub fn channel_close(&mut self, chan: &ChanHandle) -> Result<()> {
+        let mut s = self.traf_out.sender(&mut self.keys);
+        self.conn.channels.close(chan.0, &mut s)?;
+        self.wake();
+        Ok(())
+    }
+
+    /// Check whether an EOF can be sent on this channel.
+    ///
+    /// Returns false if EOF has already been sent or the channel is closed.
+    pub fn can_channel_send_eof(&self, chan: &ChanHandle) -> bool {
+        self.conn.channels.can_send_eof(chan.0)
     }
 
     pub fn set_channel_read_waker(
