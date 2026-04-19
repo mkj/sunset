@@ -1039,6 +1039,7 @@ impl Channel {
             self.sent_close = true;
         }
 
+        // Wake readers and writers on close
         self.wake_read(ChanData::Normal, is_client);
         if is_client {
             self.wake_read(ChanData::Stderr, is_client);
