@@ -13,6 +13,14 @@ use sunset_sftp::server::{
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
 
+use strict_path::StrictPath;
+/// This is a marker for the SftpDir transactions.
+/// See [the mix up problem](https://dk26.github.io/strict-path-rs/tutorial/chapter2_mixup_problem.html)
+/// and [markers to the rescue](https://dk26.github.io/strict-path-rs/tutorial/chapter3_markers.html)
+/// if you are not familiar with marker types
+
+struct SftpDir;
+
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::{fs::File, os::unix::fs::FileExt, path::Path};
@@ -96,7 +104,8 @@ impl PathFinder for PrivateDirHandle {
 
 /// A basic demo server. Used as a demo and to test SFTP functionality
 pub struct DemoSftpServer<OFH: OpaqueFileHandle + InitWithSeed> {
-    base_path: String,
+    base_path: StrictPath<SftpDir>,
+    last_real_path: String,
     handles_manager: DemoFileHandleManager<OFH, PrivatePathHandle>,
 }
 
@@ -104,20 +113,44 @@ impl<OFH: OpaqueFileHandle + InitWithSeed> DemoSftpServer<OFH> {
     pub fn new(base_path: String) -> Self {
         if !Path::new(&base_path).exists() {
             debug!("Base path {:?} does not exist. Creating it", base_path);
-            if let Err(err) = fs::create_dir_all(&base_path) {
-                error!("Could not create the base path {:?}: {:?}", base_path, err);
-                panic!();
-            }
+            fs::create_dir_all(&base_path).unwrap_or_else(|e| {
+                panic!("Could not create the base path {:?}: {:?}", base_path, e);
+            });
         } else {
             debug!("Base path {:?} already exists", base_path);
         }
-        DemoSftpServer { base_path, handles_manager: DemoFileHandleManager::new() }
+
+        let base_path = StrictPath::<SftpDir>::with_boundary(base_path)
+            .unwrap_or_else(|e| {
+                panic!("Could not create the base path {:?}", e);
+            });
+
+        let real_path = base_path.strictpath_display().to_string();
+
+        DemoSftpServer {
+            base_path,
+            last_real_path: real_path,
+            handles_manager: DemoFileHandleManager::new(),
+        }
     }
 }
 
 impl<OFH: OpaqueFileHandle + InitWithSeed> SftpServer<OFH> for DemoSftpServer<OFH> {
     async fn open(&mut self, filename: &str, mode: &PFlags) -> SftpOpResult<OFH> {
-        debug!("Open file: filename = {:?}, mode = {:?}", filename, mode);
+        // Untrusted input: user upload, API param, config value, AI agent output, archive entry...
+        let Ok(validated_filename_path) = self.base_path.strict_join(filename)
+        else {
+            error!(
+                "Could not validate the filename {:?} with the protected path boundary {:?}",
+                filename, self.base_path
+            );
+            return Err(StatusCode::SSH_FX_PERMISSION_DENIED);
+        };
+
+        debug!(
+            "Open file: filename = {:?}, mode = {:?}",
+            validated_filename_path, mode
+        );
 
         let can_write = u32::from(mode) & u32::from(&PFlags::SSH_FXF_WRITE) > 0;
         let can_read = u32::from(mode) & u32::from(&PFlags::SSH_FXF_READ) > 0;
@@ -127,12 +160,19 @@ impl<OFH: OpaqueFileHandle + InitWithSeed> SftpServer<OFH> for DemoSftpServer<OF
             can_read, can_write
         );
 
-        let file = File::options()
+        let file = validated_filename_path
+            .open_with()
             .read(can_read)
             .write(can_write)
             .create(can_write)
-            .open(filename)
-            .map_err(|_| StatusCode::SSH_FX_FAILURE)?;
+            .open()
+            .map_err(|e| {
+                error!(
+                    "Could not open the file {:?} with the mode {:?}: {:?}",
+                    validated_filename_path, mode, e
+                );
+                StatusCode::SSH_FX_FAILURE
+            })?;
 
         let permissions = file
             .metadata()
@@ -143,7 +183,7 @@ impl<OFH: OpaqueFileHandle + InitWithSeed> SftpServer<OFH> for DemoSftpServer<OF
 
         let fh = self.handles_manager.insert(
             PrivatePathHandle::File(PrivateFileHandle {
-                path: filename.into(),
+                path: validated_filename_path.strictpath_display().to_string(),
                 permissions: Some(permissions),
                 file,
             }),
@@ -160,10 +200,18 @@ impl<OFH: OpaqueFileHandle + InitWithSeed> SftpServer<OFH> for DemoSftpServer<OF
 
     async fn opendir(&mut self, dir: &str) -> SftpOpResult<OFH> {
         info!("Open Directory = {:?}", dir);
+        // Untrusted input: user upload, API param, config value, AI agent output, archive entry...
+        let Ok(validated_dir_path) = self.base_path.strict_join(dir) else {
+            error!(
+                "Could not validate the directory {:?} with the protected path boundary {:?}",
+                dir, self.base_path
+            );
+            return Err(StatusCode::SSH_FX_PERMISSION_DENIED);
+        };
 
         let dir_handle = self.handles_manager.insert(
             PrivatePathHandle::Directory(PrivateDirHandle {
-                path: dir.into(),
+                path: validated_dir_path.strictpath_display().to_string(),
                 read_status: ReadStatus::default(),
             }),
             OPAQUE_SALT,
@@ -179,8 +227,16 @@ impl<OFH: OpaqueFileHandle + InitWithSeed> SftpServer<OFH> for DemoSftpServer<OF
 
     async fn realpath(&mut self, dir: &str) -> SftpOpResult<NameEntry<'_>> {
         info!("finding path for: {:?}", dir);
+        self.last_real_path = self.base_path.strict_join(dir)
+            .map_err(|err| {
+                error!("Could not validate the directory {:?} with the protected path boundary {:?}: {:?}", dir, self.base_path, err);
+                StatusCode::SSH_FX_PERMISSION_DENIED
+            })?
+            .strictpath_display()
+            .to_string();
+
         let name_entry = NameEntry {
-            filename: Filename::from(self.base_path.as_str()),
+            filename: Filename::from(self.last_real_path.as_str()),
             _longname: Filename::from(""),
             attrs: Attrs {
                 size: None,
