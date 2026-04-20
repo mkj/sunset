@@ -2108,6 +2108,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "proc-canonicalize"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6127461ef34c8119591fc98e4046230f4f953bec84aaebfe326e3d82e8f383da"
+
+[[package]]
 name = "proc-macro-error-attr2"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2598,6 +2604,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "soft-canonicalize"
+version = "0.5.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eaf99d1bbb279dfc59a8642f42fa4b6137935e506c97d1e2e57d282f417f163d"
+dependencies = [
+ "proc-canonicalize",
+]
+
+[[package]]
 name = "spin"
 version = "0.9.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2678,6 +2693,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0530892bb4fa575ee0da4b86f86c667132a94b74bb72160f58ee5a4afec74c23"
 dependencies = [
  "portable-atomic",
+]
+
+[[package]]
+name = "strict-path"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9faaab0c30fb8dd6368d4b3a6f9126b85a599be66160ebf666b79e9b6e25c557"
+dependencies = [
+ "soft-canonicalize",
 ]
 
 [[package]]
@@ -2834,6 +2858,7 @@ dependencies = [
  "log",
  "rand",
  "sha2",
+ "strict-path",
  "sunset",
  "sunset-async",
  "sunset-demo-common",
