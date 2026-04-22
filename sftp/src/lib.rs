@@ -100,7 +100,7 @@ pub mod server {
 
 /// Handles and helpers used by the [`sftpserver::SftpServer`] trait implementer
 pub mod handles {
-    pub use crate::opaquefilehandle::InitWithSeed;
+    pub use crate::opaquefilehandle::InitFileHandler;
     pub use crate::opaquefilehandle::OpaqueFileHandle;
     pub use crate::opaquefilehandle::OpaqueFileHandleManager;
     pub use crate::opaquefilehandle::PathFinder;

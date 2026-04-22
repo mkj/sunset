@@ -2,7 +2,7 @@ use crate::demofilehandlemanager::DemoFileHandleManager;
 
 use sunset_sftp::error::SftpResult;
 use sunset_sftp::handles::{
-    InitWithSeed, OpaqueFileHandle, OpaqueFileHandleManager, PathFinder,
+    InitFileHandler, OpaqueFileHandle, OpaqueFileHandleManager, PathFinder,
 };
 use sunset_sftp::protocol::{Attrs, Filename, NameEntry, PFlags, StatusCode};
 use sunset_sftp::server::helpers::DirEntriesCollection;
@@ -46,9 +46,6 @@ pub(crate) struct PrivateDirHandle {
     path: String,
     read_status: ReadStatus,
 }
-
-/// It is a better practice generating it on creation. Used to generate the opaque handles instead of using a constant
-static OPAQUE_SALT: &'static str = "12d%32";
 
 impl PathFinder for PrivatePathHandle {
     fn matches(&self, path: &Self) -> bool {
@@ -103,13 +100,13 @@ impl PathFinder for PrivateDirHandle {
 }
 
 /// A basic demo server. Used as a demo and to test SFTP functionality
-pub struct DemoSftpServer<OFH: OpaqueFileHandle + InitWithSeed> {
+pub struct DemoSftpServer<OFH: OpaqueFileHandle + InitFileHandler> {
     base_path: StrictPath<SftpDir>,
     last_real_path: String,
     handles_manager: DemoFileHandleManager<OFH, PrivatePathHandle>,
 }
 
-impl<OFH: OpaqueFileHandle + InitWithSeed> DemoSftpServer<OFH> {
+impl<OFH: OpaqueFileHandle + InitFileHandler> DemoSftpServer<OFH> {
     pub fn new(base_path: String) -> Self {
         if !Path::new(&base_path).exists() {
             debug!("Base path {:?} does not exist. Creating it", base_path);
@@ -135,7 +132,9 @@ impl<OFH: OpaqueFileHandle + InitWithSeed> DemoSftpServer<OFH> {
     }
 }
 
-impl<OFH: OpaqueFileHandle + InitWithSeed> SftpServer<OFH> for DemoSftpServer<OFH> {
+impl<OFH: OpaqueFileHandle + InitFileHandler> SftpServer<OFH>
+    for DemoSftpServer<OFH>
+{
     async fn open(&mut self, filename: &str, mode: &PFlags) -> SftpOpResult<OFH> {
         // Untrusted input: user upload, API param, config value, AI agent output, archive entry...
         let Ok(validated_filename_path) = self.base_path.strict_join(filename)
@@ -181,14 +180,13 @@ impl<OFH: OpaqueFileHandle + InitWithSeed> SftpServer<OFH> for DemoSftpServer<OF
             .mode()
             & 0o777;
 
-        let fh = self.handles_manager.insert(
-            PrivatePathHandle::File(PrivateFileHandle {
+        let fh = self.handles_manager.insert(PrivatePathHandle::File(
+            PrivateFileHandle {
                 path: validated_filename_path.strictpath_display().to_string(),
                 permissions: Some(permissions),
                 file,
-            }),
-            OPAQUE_SALT,
-        );
+            },
+        ));
 
         debug!(
             "Filename \"{:?}\" will have the obscured file handle: {:?}",
@@ -209,13 +207,12 @@ impl<OFH: OpaqueFileHandle + InitWithSeed> SftpServer<OFH> for DemoSftpServer<OF
             return Err(StatusCode::SSH_FX_PERMISSION_DENIED);
         };
 
-        let dir_handle = self.handles_manager.insert(
-            PrivatePathHandle::Directory(PrivateDirHandle {
+        let dir_handle = self.handles_manager.insert(PrivatePathHandle::Directory(
+            PrivateDirHandle {
                 path: validated_dir_path.strictpath_display().to_string(),
                 read_status: ReadStatus::default(),
-            }),
-            OPAQUE_SALT,
-        );
+            },
+        ));
 
         debug!(
             "Directory \"{:?}\" will have the obscured file handle: {:?}",

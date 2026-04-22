@@ -1,16 +1,14 @@
-use sunset_sftp::handles::{InitWithSeed, OpaqueFileHandle};
+use sunset_sftp::handles::{InitFileHandler, OpaqueFileHandle};
 use sunset_sftp::protocol::FileHandle;
 
 use sunset::sshwire::{BinString, WireError};
 
-use core::hash::Hasher;
+use rand::prelude::*;
 
-use fnv::FnvHasher;
-
-const HASH_LEN: usize = 4;
+const ID_LEN: usize = 32;
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
 pub(crate) struct DemoOpaqueFileHandle {
-    tiny_hash: [u8; HASH_LEN],
+    handle_id: [u8; ID_LEN],
 }
 
 impl OpaqueFileHandle for DemoOpaqueFileHandle {
@@ -20,26 +18,20 @@ impl OpaqueFileHandle for DemoOpaqueFileHandle {
             return Err(WireError::BadString);
         }
 
-        let mut tiny_hash = [0u8; HASH_LEN];
+        let mut tiny_hash = [0u8; ID_LEN];
         tiny_hash.copy_from_slice(file_handle.0 .0);
-        Ok(DemoOpaqueFileHandle { tiny_hash })
+        Ok(DemoOpaqueFileHandle { handle_id: tiny_hash })
     }
 
     fn into_file_handle(&self) -> FileHandle<'_> {
-        FileHandle(BinString(&self.tiny_hash))
+        FileHandle(BinString(&self.handle_id))
     }
 }
 
 /// Implemented to allow the use of `DemoOpaqueFileHandle` as a key in the `OpaqueHandleManager`
-impl InitWithSeed for DemoOpaqueFileHandle {
-    type Err = WireError;
-
-    fn init_with_seed(seed: &str) -> Result<Self, Self::Err> {
-        let mut hasher = FnvHasher::default();
-        hasher.write(seed.as_bytes());
-
-        Ok(DemoOpaqueFileHandle {
-            tiny_hash: (hasher.finish() as u32).to_be_bytes(),
-        })
+impl InitFileHandler for DemoOpaqueFileHandle {
+    fn init() -> Self {
+        let handle_id: [u8; ID_LEN] = rand::thread_rng().gen();
+        DemoOpaqueFileHandle { handle_id }
     }
 }
