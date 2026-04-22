@@ -2,9 +2,8 @@ use sunset::*;
 use sunset_async::{ProgressHolder, SSHServer, SunsetMutex, SunsetRawMutex};
 use sunset_sftp::{server::MAX_REQUEST_LEN, SftpHandler};
 
-pub(crate) use sunset_demo_common as demo_common;
-
-use demo_common::{DemoCommon, DemoServer, SSHConfig};
+// pub(crate) use sunset_demo_common as demo_common;
+use sunset_demo_common::{self, DemoCommon, DemoServer, SSHConfig};
 
 use crate::{
     demoopaquefilehandle::DemoOpaqueFileHandle, demosftpserver::DemoSftpServer,
@@ -172,11 +171,10 @@ impl DemoServer for StdDemo {
                             "./demo/sftp/std/testing/out/".to_string(),
                         );
 
-                    SftpHandler::<
-                        DemoOpaqueFileHandle,
-                        DemoSftpServer<DemoOpaqueFileHandle>,
-                        512,
-                    >::new(&mut file_server, &mut request_buffer)
+                    SftpHandler::<_, _, 512>::new(
+                        &mut file_server,
+                        &mut request_buffer,
+                    )
                     .process_loop(stdio, &mut buffer_in)
                     .await?;
 
@@ -216,7 +214,7 @@ async fn listen(
     config: &'static SunsetMutex<SSHConfig>,
 ) -> ! {
     let demo = StdDemo::default();
-    demo_common::listen(stack, config, &demo).await
+    sunset_demo_common::listen(stack, config, &demo).await
 }
 
 #[embassy_executor::main]

@@ -25,14 +25,11 @@ pub trait PathFinder {
     fn get_path_ref(&self) -> &str;
 }
 
-/// Used in the `OpaqueFileHandleManager` to generate a Key (OpaqueFileHandle) from a seed
-pub trait InitWithSeed: Sized {
-    /// The error type used for the implementation of `init_with_seed` useful to harmonize the error handling of the `OpaqueFileHandleManager` implementation
-    type Err;
-
+/// Used in the `OpaqueFileHandleManager` to generate a Key (OpaqueFileHandle)
+pub trait InitFileHandler: Sized {
     /// Creates a new instance using a given string slice as `seed` which
     /// content should not clearly related to the seed
-    fn init_with_seed(s: &str) -> Result<Self, Self::Err>;
+    fn init() -> Self;
 }
 
 /// This trait is used to manage the OpaqueFileHandles (K) together with the private handle (V) that contains the details of the file internally stored in the system
@@ -45,7 +42,7 @@ pub trait InitWithSeed: Sized {
 /// to look for the file path.
 pub trait OpaqueFileHandleManager<K, V>
 where
-    K: OpaqueFileHandle + InitWithSeed,
+    K: OpaqueFileHandle + InitFileHandler,
     V: PathFinder,
 {
     /// The error used for all the trait members returning an error
@@ -54,9 +51,8 @@ where
     /// Given the private_handle, stores it and return an opaque file handle
     ///
     /// Returns an error if the private_handle has a matching path as obtained from `PathFinder`
-    ///
-    /// Salt has been added to allow the user to add a factor that will mask how the opaque handle is generated
-    fn insert(&mut self, private_handle: V, salt: &str) -> Result<K, Self::Err>;
+
+    fn insert(&mut self, private_handle: V) -> Result<K, Self::Err>;
 
     ///
     fn remove(&mut self, opaque_handle: &K) -> Option<V>;

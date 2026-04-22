@@ -2362,6 +2362,7 @@ version = "0.8.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "34af8d1a0e25924bc5b7c43c079c942339d8f0a8b57c39049bef581b46327404"
 dependencies = [
+ "libc",
  "rand_chacha",
  "rand_core 0.6.4",
 ]
@@ -3138,12 +3139,10 @@ dependencies = [
  "embassy-time",
  "embedded-io-async",
  "env_logger",
- "fnv",
  "heapless",
  "libc",
  "log",
  "rand",
- "sha2 0.10.9",
  "strict-path",
  "sunset",
  "sunset-async",
