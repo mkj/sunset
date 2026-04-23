@@ -20,7 +20,8 @@ pub struct SftpSource<'de> {
 
 impl<'de> SSHSource<'de> for SftpSource<'de> {
     fn take(&mut self, len: usize) -> sunset::sshwire::WireResult<&'de [u8]> {
-        if len + self.index > self.buffer.len() {
+        if len.checked_add(self.index).ok_or(WireError::RanOut)? > self.buffer.len()
+        {
             return Err(WireError::RanOut);
         }
         let original_index = self.index;
