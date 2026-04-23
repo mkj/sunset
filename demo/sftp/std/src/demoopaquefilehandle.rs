@@ -18,9 +18,9 @@ impl OpaqueFileHandle for DemoOpaqueFileHandle {
             return Err(WireError::BadString);
         }
 
-        let mut tiny_hash = [0u8; ID_LEN];
-        tiny_hash.copy_from_slice(file_handle.0 .0);
-        Ok(DemoOpaqueFileHandle { handle_id: tiny_hash })
+        let mut handle_id = [0u8; ID_LEN];
+        handle_id.copy_from_slice(file_handle.0 .0);
+        Ok(DemoOpaqueFileHandle { handle_id })
     }
 
     fn into_file_handle(&self) -> FileHandle<'_> {
