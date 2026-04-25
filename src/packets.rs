@@ -446,6 +446,17 @@ impl Debug for RSAPubKey {
     }
 }
 
+#[cfg(all(feature = "arbitrary", feature = "rsa"))]
+impl Arbitrary<'_> for RSAPubKey {
+    fn arbitrary(u: &mut arbitrary::Unstructured) -> arbitrary::Result<Self> {
+        let e = rsa::BigUint::from_bytes_be(arbitrary::Arbitrary::arbitrary(u)?);
+        let n = rsa::BigUint::from_bytes_be(arbitrary::Arbitrary::arbitrary(u)?);
+        let key = rsa::RsaPublicKey::new(n, e)
+            .map_err(|_| arbitrary::Error::IncorrectFormat)?;
+        Ok(Self { key })
+    }
+}
+
 #[derive(Debug, SSHEncode, SSHDecode, Clone)]
 #[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 #[sshwire(variant_prefix)]
@@ -863,13 +874,10 @@ impl Debug for Unknown<'_> {
     }
 }
 
-/// Always fails.
-///
-/// `Unknown` can't be SSHEncoded.
 #[cfg(feature = "arbitrary")]
-impl arbitrary::Arbitrary<'_> for Unknown<'_> {
-    fn arbitrary(_u: &mut arbitrary::Unstructured) -> arbitrary::Result<Self> {
-        Err(arbitrary::Error::IncorrectFormat)
+impl<'arb: 'a, 'a> Arbitrary<'arb> for Unknown<'a> {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'arb>) -> arbitrary::Result<Self> {
+        Ok(Self(arbitrary::Arbitrary::arbitrary(u)?))
     }
 }
 
