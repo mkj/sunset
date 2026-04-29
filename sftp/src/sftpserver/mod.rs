@@ -1,5 +1,6 @@
 mod sftpserver;
 
+mod readdirreplies;
 mod readreplies;
 
 pub use sftpserver::SftpServer;
