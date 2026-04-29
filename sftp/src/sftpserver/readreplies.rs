@@ -262,13 +262,12 @@ mod enforcing_process_tests {
                     .expect("send_eof should succeed returning ReadReplyData");
 
                 let _read_reply_finished = data_reply
-                    .send_data(|limited_sender| {
-                        // Simulate sending data in two chunks, first 5 bytes then the remaining 5 bytes
-                        async move {
-                            while !limited_sender.is_complete() {
-                                limited_sender.send_data(&[0u8; 3]).await?;
-                            }
-                            Ok(CompletedDataSent)
+                    .send_data(|limited_sender| async move {
+                        loop {
+                            match limited_sender.completed() {
+                                Some(token) => return Ok(token),
+                                None => limited_sender.send_data(&[0u8; 3]).await?,
+                            };
                         }
                     })
                     .await
