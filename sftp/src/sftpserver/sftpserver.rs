@@ -212,24 +212,6 @@ where
     }
 }
 
-/// A reference structure passed to the [`SftpServer::read()`] method to
-/// allow replying with the read data.
-/// Uses for [`ReadReply`] to:
-///
-/// - In case of no more data avaliable to be sent, call `reply.send_eof()`
-/// - There is data to be sent from an open file:
-///     1. Call `reply.send_header()` with the length of data to be sent
-///     2. Call `reply.send_data()` as many times as needed to complete a
-/// sent of data of the announced length
-///     3. Do not call `reply.send_eof()` during this [`read`] method call
-///
-/// It handles immutable sending data via the underlying sftp-channel
-/// [`sunset_async::async_channel::ChanOut`] used in the context of an
-/// SFTP Session.
-///
-/// Parameter N is the length for the SftpOutputProducer buffer
-///
-
 /// Uses for [`DirReply`] to:
 ///
 /// - In case of no more items in the directory to be sent, call `reply.send_eof()`
