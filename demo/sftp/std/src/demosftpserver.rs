@@ -7,7 +7,8 @@ use sunset_sftp::handles::{
 use sunset_sftp::protocol::{Attrs, Filename, NameEntry, PFlags, StatusCode};
 use sunset_sftp::server::helpers::DirEntriesCollection;
 use sunset_sftp::server::{
-    DirReply, ReadReply, ReadStatus, SftpOpResult, SftpServer,
+    DirReply, ReadHeaderReply, ReadReplyFinished, ReadStatus, SftpOpResult,
+    SftpServer,
 };
 
 #[allow(unused_imports)]
@@ -25,7 +26,7 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::{fs::File, os::unix::fs::FileExt, path::Path};
 
-// Used during read operations
+/// Used during read operations
 const ARBITRARY_READ_BUFFER_LENGTH: usize = 1024;
 
 #[derive(Debug)]
@@ -283,96 +284,106 @@ impl<OFH: OpaqueFileHandle + InitFileHandler> SftpServer<OFH>
         opaque_file_handle: &OFH,
         offset: u64,
         len: u32,
-        reply: &mut ReadReply<'_, N>,
-    ) -> SftpResult<()> {
-        if let PrivatePathHandle::File(private_file_handle) = self
+        reply: ReadHeaderReply<'_, N>,
+    ) -> SftpResult<ReadReplyFinished> {
+        let PrivatePathHandle::File(private_file_handle) = self
             .handles_manager
             .get_private_as_mut_ref(opaque_file_handle)
             .ok_or(StatusCode::SSH_FX_FAILURE)?
-        {
-            log::debug!(
+        else {
+            return Err(StatusCode::SSH_FX_PERMISSION_DENIED.into());
+        };
+
+        log::debug!(
                 "SftpServer Read operation: handle = {:?}, filepath = {:?}, offset = {:?}, len = {:?}",
                 opaque_file_handle,
                 private_file_handle.path,
                 offset,
                 len
             );
-            let permissions_poxit = private_file_handle.permissions.unwrap_or(0o000);
-            if (permissions_poxit & 0o444) == 0 {
-                error!(
-                    "No read permissions for file {:?}",
-                    private_file_handle.path
-                );
-                return Err(StatusCode::SSH_FX_PERMISSION_DENIED.into());
-            };
 
-            let file_len = private_file_handle
-                .file
-                .metadata()
-                .map_err(|err| {
-                    error!("Could not read the file length: {:?}", err);
-                    StatusCode::SSH_FX_FAILURE
-                })?
-                .len();
+        let permissions_poxit = private_file_handle.permissions.unwrap_or(0o000);
+        if (permissions_poxit & 0o444) == 0 {
+            error!("No read permissions for file {:?}", private_file_handle.path);
+            return Err(StatusCode::SSH_FX_PERMISSION_DENIED.into());
+        };
 
-            if offset >= file_len {
-                info!(
-                    "offset is larger than file length, sending EOF for {:?}",
-                    private_file_handle.path
-                );
-                reply.send_eof().await.map_err(|err| {
-                    error!("Could not sent EOF: {:?}", err);
-                    StatusCode::SSH_FX_FAILURE
-                })?;
-                return Ok(());
-            }
+        let file_len = private_file_handle
+            .file
+            .metadata()
+            .map_err(|err| {
+                error!("Could not read the file length: {:?}", err);
+                StatusCode::SSH_FX_FAILURE
+            })?
+            .len();
 
-            let read_len = if file_len >= len as u64 + offset {
-                len
-            } else {
-                debug!("Read operation: length + offset > file length. Clipping ( {:?} + {:?} > {:?})",
-                len, offset, file_len);
-                (file_len - offset).try_into().unwrap_or(u32::MAX)
-            };
-
-            reply.send_header(read_len).await?;
-
-            let mut read_buff = [0u8; ARBITRARY_READ_BUFFER_LENGTH];
-
-            let mut running_offset = offset;
-            let mut remaining = read_len as usize;
-
-            debug!("Starting reading loop: remaining = {}", remaining);
-            while remaining > 0 {
-                let next_read_len: usize = remaining.min(read_buff.len());
-                trace!("next_read_len = {}", next_read_len);
-                let br = private_file_handle
-                    .file
-                    .read_at(&mut read_buff[..next_read_len], running_offset)
-                    .map_err(|err| {
-                        error!("read error: {:?}", err);
-                        StatusCode::SSH_FX_FAILURE
-                    })?;
-                trace!("{} bytes readed", br);
-                reply.send_data(&read_buff[..br.min(remaining)]).await?;
-                trace!("Read sent {} bytes", br.min(remaining));
-                trace!("remaining {} bytes. {} byte read", remaining, br);
-
-                remaining =
-                    remaining.checked_sub(br).ok_or(StatusCode::SSH_FX_FAILURE)?;
-                trace!(
-                    "after subtracting {} bytes, there are {} bytes remaining",
-                    br,
-                    remaining
-                );
-                running_offset = running_offset
-                    .checked_add(br as u64)
-                    .ok_or(StatusCode::SSH_FX_FAILURE)?;
-            }
-            debug!("Finished sending data");
-            return Ok(());
+        if offset >= file_len {
+            info!(
+                "offset is larger than file length, sending EOF for {:?}",
+                private_file_handle.path
+            );
+            let finished = reply.send_eof().await.map_err(|err| {
+                error!("Could not sent EOF: {:?}", err);
+                StatusCode::SSH_FX_FAILURE
+            })?;
+            return Ok(finished);
         }
-        Err(StatusCode::SSH_FX_PERMISSION_DENIED.into())
+
+        let read_len = match file_len {
+            // Greater or equal than len + offset
+            file_len if file_len >= len as u64 + offset => {
+                debug!(
+                    "File length ({:?}) is greater than offset + len ({:?} + {:?}). Will read the announced length",
+                    file_len, offset, len
+                );
+                len
+            }
+            _ => {
+                debug!(
+                    "File length ({:?}) is smaller than offset + len ({:?} + {:?}). Will read until the end of the file",
+                    file_len, offset, len
+                );
+                (file_len - offset).try_into().unwrap_or(u32::MAX)
+            }
+        };
+
+        let data_reply = reply.send_header(read_len).await?;
+
+        let mut read_buff = [0u8; ARBITRARY_READ_BUFFER_LENGTH];
+
+        let mut accumulated_offset = offset;
+
+        let finished = data_reply
+            .send_data(|limited_sender| async move {
+                loop {
+                    match limited_sender.completed() {
+                        Some(completed_token) => return Ok(completed_token),
+                        None => {
+                            let br = private_file_handle
+                                .file
+                                .read_at(&mut read_buff, accumulated_offset)
+                                .map_err(|err| {
+                                    error!("read error: {:?}", err);
+                                    StatusCode::SSH_FX_FAILURE
+                                })?;
+                            if br == 0 {
+                                error!(
+                                    "Unexpected EOF while reading the file {:?}",
+                                    private_file_handle.path
+                                );
+                                return Err(StatusCode::SSH_FX_FAILURE)?;
+                            }
+                            let _sw =
+                                limited_sender.send_data(&read_buff[..br]).await?;
+                            accumulated_offset = accumulated_offset
+                                .checked_add(br as u64)
+                                .ok_or(StatusCode::SSH_FX_FAILURE)?;
+                        }
+                    }
+                }
+            })
+            .await?;
+        return Ok(finished);
     }
 
     async fn write(

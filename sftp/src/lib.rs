@@ -78,7 +78,8 @@ pub use sftpsource::SftpSource;
 pub mod server {
 
     pub use crate::sftpserver::DirReply;
-    pub use crate::sftpserver::ReadReply;
+    pub use crate::sftpserver::{ReadHeaderReply, ReadReplyFinished};
+
     pub use crate::sftpserver::ReadStatus;
     pub use crate::sftpserver::SftpOpResult;
     pub use crate::sftpserver::SftpServer;
