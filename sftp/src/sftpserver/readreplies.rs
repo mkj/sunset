@@ -117,13 +117,13 @@ impl<'g, const N: usize> LimitedSender<'g, N> {
         Ok(remaining)
     }
 
-    fn is_complete(&self) -> bool {
-        self.remaining.get() == 0
-    }
-
     /// Obtains a [`CompletedDataSent`] if the announced data length has been completely sent, otherwise returns None.
     pub fn completed(&self) -> Option<CompletedDataSent> {
         if self.is_complete() { Some(CompletedDataSent) } else { None }
+    }
+
+    fn is_complete(&self) -> bool {
+        self.remaining.get() == 0
     }
 }
 
@@ -163,9 +163,6 @@ impl<'g, const N: usize> ReadDataReply<'g, N> {
         let sender = LimitedSender::new(self.chan_out, self.data_len);
         f(sender).await?;
 
-        // sender is consumed by f, but we need to check remaining
-        // Instead pass by ref:
-        // see below
         Ok(ReadReplyFinished::new(self.req_id))
     }
 }
