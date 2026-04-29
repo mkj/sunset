@@ -4,13 +4,13 @@ use crate::proto::{
     self, InitVersionClient, InitVersionLowest, LStat, MAX_REQUEST_LEN, ReqId,
     SFTP_VERSION, SftpNum, SftpPacket, Stat, StatusCode,
 };
-use crate::server::{DirReply, ReadReply};
+use crate::server::DirReply;
 use crate::sftperror::SftpResult;
 use crate::sftphandler::requestholder::{RequestHolder, RequestHolderError};
 use crate::sftphandler::sftpoutputchannelhandler::{
     SftpOutputPipe, SftpOutputProducer,
 };
-use crate::sftpserver::SftpServer;
+use crate::sftpserver::{ReadHeaderReply, SftpServer};
 use crate::sftpsource::SftpSource;
 
 use embassy_futures::select::select;
@@ -428,15 +428,15 @@ where
                             SftpPacket::Read(req_id, ref read) => {
                                 debug!("Read request: {:?}", request);
 
-                                let mut reply =
-                                    ReadReply::new(req_id, output_producer);
+                                let reply =
+                                    ReadHeaderReply::new(req_id, output_producer);
                                 if let Err(error) = self
                                     .file_server
                                     .read(
                                         &T::try_from(&read.handle)?,
                                         read.offset,
                                         read.len,
-                                        &mut reply,
+                                        reply,
                                     )
                                     .await
                                 {
@@ -460,24 +460,6 @@ where
                                             .await?;
                                     }
                                 };
-
-                                match reply.read_diff() {
-                                    diff if diff > 0 => {
-                                        debug!(
-                                            "ReadReply not completed after read operation. Still need to send {} bytes",
-                                            diff
-                                        );
-                                        return Err(SunsetError::Bug.into());
-                                    }
-                                    diff if diff < 0 => {
-                                        error!(
-                                            "ReadReply has sent more data than announced: {} bytes extra",
-                                            -diff
-                                        );
-                                        return Err(SunsetError::Bug.into());
-                                    }
-                                    _ => {}
-                                }
 
                                 self.state = HandlerState::Idle;
                             }

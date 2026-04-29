@@ -51,7 +51,10 @@ impl<const N: usize> SftpOutputPipe<N> {
     /// ## Lifetimes
     /// The lifetime `'a` ties the pipe reader (from `self`) to the consumer.
     /// The writer `W` carries its own lifetime if needed (e.g. `ChanOut<'a>`).
-    pub fn split<'a, W>(&'a mut self, ssh_chan_out: W) -> SftpResult<(SftpOutputConsumer<'a, W, N>, SftpOutputProducer<'a, N>)>
+    pub fn split<'a, W>(
+        &'a mut self,
+        ssh_chan_out: W,
+    ) -> SftpResult<(SftpOutputConsumer<'a, W, N>, SftpOutputProducer<'a, N>)>
     where
         W: Write + ErrorType<Error = SunsetError>,
     {
@@ -138,6 +141,33 @@ where
             debug!("Output Consumer: Finished writing all bytes in read buffer");
         }
     }
+
+    /// Consumes the consumer and returns the underlying writer.
+    /// Useful in tests to inspect what was written.
+    #[cfg(test)]
+    pub fn into_inner(self) -> W {
+        self.ssh_chan_out
+    }
+
+    /// Reads one batch of bytes from the pipe and writes them to the inner
+    /// writer. Unlike [`receive_task`], this does not loop — it returns after
+    /// a single read, so it won't block waiting for more data.
+    ///
+    /// Intended for tests only.
+    #[cfg(test)]
+    pub async fn receive_once(&mut self) -> SftpResult<()> {
+        let mut buf = [0u8; N];
+        let rl = self.pipe_reader.read(&mut buf).await;
+        if rl == 0 {
+            return Ok(());
+        }
+        let mut scanning_buffer = &buf[..rl];
+        while scanning_buffer.len() > 0 {
+            let wl = self.ssh_chan_out.write(scanning_buffer).await?;
+            scanning_buffer = &scanning_buffer[wl..];
+        }
+        Ok(())
+    }
 }
 
 /// Producer used to send data to a [`ChanOut`] without the restrictions
@@ -146,7 +176,6 @@ where
 /// Under the hood it uses an
 /// [embassy_sync Pipe](https://docs.embassy.dev/embassy-sync/git/default/pipe/struct.Pipe.html)
 /// where N is the pipe buffer length in bytes
-#[derive(Clone)]
 pub struct SftpOutputProducer<'a, const N: usize> {
     writer: PipeWriter<'a, SunsetRawMutex, N>,
     #[cfg(debug_assertions)]
@@ -255,11 +284,6 @@ pub mod mock {
     impl MockWriter {
         pub fn new() -> Self {
             Self { buffer: Vec::new(), error: None }
-        }
-
-        /// Pre-load an error that will be returned on the next `write` call.
-        pub fn inject_error(&mut self, e: SunsetError) {
-            self.error = Some(e);
         }
     }
 

@@ -1,10 +1,11 @@
 use crate::error::{SftpError, SftpResult};
 use crate::proto::{
-    ENCODED_BASE_NAME_SFTP_PACKET_LENGTH, ENCODED_SSH_FXP_DATA_MIN_LENGTH,
-    MAX_NAME_ENTRY_SIZE, NameEntry, PFlags, SftpNum,
+    ENCODED_BASE_NAME_SFTP_PACKET_LENGTH, MAX_NAME_ENTRY_SIZE, NameEntry, PFlags,
+    SftpNum,
 };
 use crate::server::SftpSink;
 use crate::sftphandler::SftpOutputProducer;
+use crate::sftpserver::{ReadHeaderReply, ReadReplyFinished};
 use crate::{
     handles::OpaqueFileHandle,
     proto::{Attrs, ReqId, StatusCode},
@@ -101,8 +102,8 @@ where
         opaque_file_handle: &T,
         offset: u64,
         len: u32,
-        reply: &mut ReadReply<'_, N>,
-    ) -> impl core::future::Future<Output = SftpResult<()>> {
+        reply: ReadHeaderReply<'_, N>,
+    ) -> impl core::future::Future<Output = SftpResult<ReadReplyFinished>> {
         async move {
             log::error!(
                 "SftpServer Read operation not defined: handle = {:?}, offset = {:?}, len = {:?}",
@@ -228,124 +229,6 @@ where
 ///
 /// Parameter N is the length for the SftpOutputProducer buffer
 ///
-pub struct ReadReply<'g, const N: usize> {
-    /// The request Id that will be use`d in the response
-    req_id: ReqId,
-
-    /// Immutable writer
-    chan_out: &'g SftpOutputProducer<'g, N>,
-    /// Length of data to be sent as announced in [`ReadReply::send_header`]
-    data_len: u32,
-    /// Length of data sent so far using [`ReadReply::send_data`]
-    data_sent_len: u32,
-}
-
-impl<'g, const N: usize> ReadReply<'g, N> {
-    /// New instances can only be created within the crate. Users can only
-    /// use other public methods to use it.
-    pub(crate) fn new(
-        req_id: ReqId,
-        chan_out: &'g SftpOutputProducer<'g, N>,
-    ) -> Self {
-        ReadReply { req_id, chan_out, data_len: 0, data_sent_len: 0 }
-    }
-
-    // TODO Make this enforceable
-    // TODO Automate encoding the SftpPacket
-    /// Sends a header for `SSH_FXP_DATA` response. This includes the total
-    /// response length, the packet type, request id and data length
-    ///
-    /// The packet data content, excluding the length must be sent using
-    /// [`ReadReply::send_data`]
-    pub async fn send_header(&mut self, data_len: u32) -> SftpResult<()> {
-        debug!(
-            "ReadReply: Sending header for request id {:?}: data length = {:?}",
-            self.req_id, data_len
-        );
-        let mut s = [0u8; N];
-        let mut sink = SftpSink::new(&mut s);
-
-        let payload =
-            ReadReply::<N>::encode_data_header(&mut sink, self.req_id, data_len)?;
-
-        debug!(
-            "Sending header:  len = {:?}, content = {:?}",
-            payload.len(),
-            payload
-        );
-        // Sending payload_slice since we are not making use of the sink sftpPacket length calculation
-        self.chan_out.send_data(payload).await?;
-        self.data_len = data_len;
-        Ok(())
-    }
-
-    /// Sends a buffer with data. Call it as many times as needed to send
-    /// the announced data length
-    ///
-    /// **Important**: Call this after you have called `send_header`
-    pub async fn send_data(&mut self, buff: &[u8]) -> SftpResult<()> {
-        self.chan_out.send_data(buff).await?;
-        self.data_sent_len += buff.len() as u32;
-        Ok(())
-    }
-
-    /// Sends EOF meaning that there is no more data to be sent
-    ///
-    pub async fn send_eof(&self) -> SftpResult<()> {
-        self.chan_out.send_status(self.req_id, StatusCode::SSH_FX_EOF, "").await
-    }
-
-    /// Indicates whether all the data announced in the header has been sent
-    ///
-    /// returns 0 when all data has been sent
-    /// returns >0 when there is still data to be sent
-    /// returns <0 when too much data has been sent
-    pub fn read_diff(&self) -> i32 {
-        (self.data_len as i32) - (self.data_sent_len as i32)
-    }
-
-    fn encode_data_header(
-        sink: &'g mut SftpSink<'g>,
-        req_id: ReqId,
-        data_len: u32,
-    ) -> Result<&'g [u8], SftpError> {
-        // length field
-        (data_len + ENCODED_SSH_FXP_DATA_MIN_LENGTH).enc(sink)?;
-        // packet type (1)
-        u8::from(SftpNum::SSH_FXP_DATA).enc(sink)?;
-        // request id (4)
-        req_id.enc(sink)?;
-        // data length (4)
-        data_len.enc(sink)?;
-        Ok(sink.payload_slice())
-    }
-}
-
-#[cfg(test)]
-mod read_reply_tests {
-    use super::*;
-
-    #[cfg(test)]
-    extern crate std;
-
-    #[test]
-    fn compose_header() {
-        const N: usize = 512;
-
-        let req_id = ReqId(42);
-        let data_len = 128;
-        let mut buffer = [0u8; N];
-        let mut sink = SftpSink::new(&mut buffer);
-
-        let payload =
-            ReadReply::<N>::encode_data_header(&mut sink, req_id, data_len).unwrap();
-
-        assert_eq!(
-            data_len + ENCODED_SSH_FXP_DATA_MIN_LENGTH,
-            u32::from_be_bytes(payload[..4].try_into().unwrap())
-        );
-    }
-}
 
 /// Uses for [`DirReply`] to:
 ///
@@ -367,9 +250,9 @@ pub struct DirReply<'g, const N: usize> {
     req_id: ReqId,
     /// Immutable writer
     chan_out: &'g SftpOutputProducer<'g, N>,
-    /// Length of data to be sent as announced in [`ReadReply::send_header`]
+    /// Length of data to be sent as announced in [`DirReply::send_header`]
     data_len: u32,
-    /// Length of data sent so far using [`ReadReply::send_data`]
+    /// Length of data sent so far using [`DirReply::send_data`]
     data_sent_len: u32,
 }
 
