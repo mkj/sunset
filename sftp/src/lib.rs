@@ -26,8 +26,8 @@
 //! - [x] [Open, close](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.3)
 //! and [write](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.4)
 //! - [x] Directory [Browsing](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.7)
-//! - [x] File [read](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.4),
-//! - [] File [write](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.4) with conditions. See [Server Channel Window length is reduced to zero when long data is sent from server to client](https://github.com/mkj/sunset/issues/40),
+//! - [ ] File [read](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.4), with conditions. See [Server Channel Window length is reduced to zero when long data is sent from server to client](https://github.com/mkj/sunset/issues/40),
+//! - [x] File [write](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.4)
 //! - [x] File [stats](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.8)
 //!
 //! ## Minimal features for convenient usability
@@ -63,7 +63,7 @@ mod sftpsource;
 // Main calling point for the library provided that the user implements
 // a [`server::SftpServer`].
 //
-// Please see basic usage at `../demo/sftd/std`
+// Please see basic usage at `../demo/sftp/std`
 pub use sftphandler::SftpHandler;
 
 /// Source of SFTP packets

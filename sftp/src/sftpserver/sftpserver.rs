@@ -327,8 +327,6 @@ mod read_reply_tests {
 
     #[cfg(test)]
     extern crate std;
-    // #[cfg(test)]
-    // use std::println;
 
     #[test]
     fn compose_header() {

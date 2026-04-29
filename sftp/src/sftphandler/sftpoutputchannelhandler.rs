@@ -2,10 +2,9 @@ use crate::error::{SftpError, SftpResult};
 use crate::proto::{ReqId, SftpPacket, Status, StatusCode};
 use crate::server::SftpSink;
 
-use sunset_async::ChanOut;
-
 use embassy_sync::pipe::{Pipe, Reader as PipeReader, Writer as PipeWriter};
-use embedded_io_async::Write;
+use embedded_io_async::{ErrorType, Write};
+use sunset::Error as SunsetError;
 use sunset_async::SunsetRawMutex;
 
 #[cfg(debug_assertions)]
@@ -47,16 +46,15 @@ impl<const N: usize> SftpOutputPipe<N> {
     /// output channel without mutable borrows.
     ///
     /// The [`SftpOutputConsumer`] needs to be running to write data to the
-    /// [`ChanOut`]
+    /// provided writer.
     ///
     /// ## Lifetimes
-    /// The lifetime indicates that the lifetime of self, ChanOut and the
-    /// consumer and producer are the same. I chose this because if the ChanOut
-    /// is closed, there is no point on having a pipe outliving it.
-    pub fn split<'a>(
-        &'a mut self,
-        ssh_chan_out: ChanOut<'a>,
-    ) -> SftpResult<(SftpOutputConsumer<'a, N>, SftpOutputProducer<'a, N>)> {
+    /// The lifetime `'a` ties the pipe reader (from `self`) to the consumer.
+    /// The writer `W` carries its own lifetime if needed (e.g. `ChanOut<'a>`).
+    pub fn split<'a, W>(&'a mut self, ssh_chan_out: W) -> SftpResult<(SftpOutputConsumer<'a, W, N>, SftpOutputProducer<'a, N>)>
+    where
+        W: Write + ErrorType<Error = SunsetError>,
+    {
         if self.split {
             return Err(SftpError::AlreadyInitialized);
         }
@@ -78,22 +76,25 @@ impl<const N: usize> SftpOutputPipe<N> {
     }
 }
 
-/// Consumer that takes ownership of [`ChanOut`]. It pipes the data received
-/// from a [`PipeReader`] into the channel.
+/// Consumer that pipes data received from a [`PipeReader`] into a writer
+/// implementing [`Write`].
 ///
 /// N is the length of the
 /// [PipeReader](https://docs.embassy.dev/embassy-sync/git/default/pipe/struct.Reader.html)
 /// buffer used to receive the data.
-pub(crate) struct SftpOutputConsumer<'a, const N: usize> {
+pub(crate) struct SftpOutputConsumer<'a, W, const N: usize> {
     pipe_reader: PipeReader<'a, SunsetRawMutex, N>,
-    /// The [sunset_async::ChanOut] where the channel data is written to
-    ssh_chan_out: ChanOut<'a>,
+    /// The writer where the channel data is written to
+    ssh_chan_out: W,
     /// Only used for debug purposes
     #[cfg(debug_assertions)]
     counter: usize,
 }
 
-impl<'a, const N: usize> SftpOutputConsumer<'a, N> {
+impl<'a, W, const N: usize> SftpOutputConsumer<'a, W, N>
+where
+    W: Write + ErrorType<Error = SunsetError>,
+{
     /// Run it to start the piping
     pub async fn receive_task(&mut self) -> SftpResult<()> {
         debug!("Running SftpOutout Consumer Reader task");
@@ -230,6 +231,49 @@ impl<'a, const N: usize> SftpOutputProducer<'a, N> {
                 "Output Producer: sent {bytes_sent:?}. {:?} bytes remain ",
                 buf.len()
             );
+        }
+    }
+}
+
+#[cfg(test)]
+pub mod mock {
+    extern crate std;
+    use std::vec::Vec;
+
+    use embedded_io_async::{ErrorType, Write};
+    use sunset::Error as SunsetError;
+
+    /// A mock writer that buffers all written bytes.
+    ///
+    /// Optionally injects a one-shot error on the next `write` call,
+    /// after which writes succeed again.
+    pub struct MockWriter {
+        pub buffer: Vec<u8>,
+        error: Option<SunsetError>,
+    }
+
+    impl MockWriter {
+        pub fn new() -> Self {
+            Self { buffer: Vec::new(), error: None }
+        }
+
+        /// Pre-load an error that will be returned on the next `write` call.
+        pub fn inject_error(&mut self, e: SunsetError) {
+            self.error = Some(e);
+        }
+    }
+
+    impl ErrorType for MockWriter {
+        type Error = SunsetError;
+    }
+
+    impl Write for MockWriter {
+        async fn write(&mut self, buf: &[u8]) -> Result<usize, SunsetError> {
+            if let Some(e) = self.error.take() {
+                return Err(e);
+            }
+            self.buffer.extend_from_slice(buf);
+            Ok(buf.len())
         }
     }
 }
