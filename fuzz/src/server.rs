@@ -72,7 +72,6 @@ fn serv_event(input: &mut FuzzInput, ev: Event, state: &mut State) -> Result<()>
             }
             if input.chance(0.9)? {
                 h.allow()?;
-                state.authed = true;
             } else if input.chance(0.4)? {
                 h.reject()?;
             }
@@ -88,11 +87,7 @@ fn serv_event(input: &mut FuzzInput, ev: Event, state: &mut State) -> Result<()>
                 h.enable_pubkey_auth(false).unwrap();
             }
             if input.chance(0.9)? {
-                let real = h.real();
                 h.allow()?;
-                if real {
-                    state.authed = true;
-                }
             } else if input.chance(0.4)? {
                 h.reject()?;
             }

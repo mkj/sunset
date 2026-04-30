@@ -273,7 +273,9 @@ pub enum ServEvent<'g, 'a> {
     ///
     /// Note that this event may be emitted multiple times,
     /// since the client first queries acceptable public keys,
-    /// and then later sends an actual signature.
+    /// and then later sends an actual signature. The application
+    /// should give consistent `allow()`/`deny()` (default) responses
+    /// for requests of the same key.
     PubkeyAuth(ServPubkeyAuth<'g, 'a>),
     /// Authentication success.
     ///
@@ -476,14 +478,6 @@ impl<'g, 'a> ServPubkeyAuth<'g, 'a> {
     /// Retrieve the public key presented by a client.
     pub fn pubkey(&self) -> Result<PubKey<'_>> {
         self.runner.fetch_servpubkey()
-    }
-
-    /// Whether this is an pubkey auth attempt.
-    ///
-    /// `real()` will be `false` for a pubkey key query (no signature attemp),
-    /// or `true` for the actual login attempt with signature.
-    pub fn real(&self) -> bool {
-        self.real_sig
     }
 
     /// Accept the presented public key.
