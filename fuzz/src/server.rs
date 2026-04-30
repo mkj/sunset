@@ -45,8 +45,13 @@ fn serv_event(input: &mut FuzzInput, ev: Event, state: &mut State) -> Result<()>
             assert!(!state.authed);
             assert!(!state.firstauth);
             state.firstauth = true;
-            h.enable_password_auth(true).unwrap();
-            h.enable_pubkey_auth(true).unwrap();
+            if input.chance(0.5)? {
+                h.enable_password_auth(true).unwrap();
+            }
+            if input.chance(0.5)? {
+                h.enable_pubkey_auth(true).unwrap();
+            }
+            // black_box to exercise the .username() codepath without it being optimised away
             black_box(h.username()?);
             if input.chance(0.9)? {
                 state.authed = true;
@@ -55,10 +60,16 @@ fn serv_event(input: &mut FuzzInput, ev: Event, state: &mut State) -> Result<()>
                 h.reject()?;
             }
         }
-        ServEvent::PasswordAuth(h) => {
+        ServEvent::PasswordAuth(mut h) => {
             assert!(!state.authed);
             black_box(h.username()?);
             black_box(h.password()?);
+            if input.chance(0.1)? {
+                h.enable_password_auth(false).unwrap();
+            }
+            if input.chance(0.1)? {
+                h.enable_pubkey_auth(false).unwrap();
+            }
             if input.chance(0.9)? {
                 h.allow()?;
                 state.authed = true;
@@ -66,10 +77,16 @@ fn serv_event(input: &mut FuzzInput, ev: Event, state: &mut State) -> Result<()>
                 h.reject()?;
             }
         }
-        ServEvent::PubkeyAuth(h) => {
+        ServEvent::PubkeyAuth(mut h) => {
             assert!(!state.authed);
             black_box(h.username()?);
             black_box(h.pubkey()?);
+            if input.chance(0.1)? {
+                h.enable_password_auth(false).unwrap();
+            }
+            if input.chance(0.1)? {
+                h.enable_pubkey_auth(false).unwrap();
+            }
             if input.chance(0.9)? {
                 let real = h.real();
                 h.allow()?;
