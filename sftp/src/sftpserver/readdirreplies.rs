@@ -1,8 +1,8 @@
 use crate::{
     error::{SftpError, SftpResult},
     proto::{
-        ENCODED_BASE_NAME_SFTP_PACKET_LENGTH, ENCODED_SSH_FXP_DATA_MIN_LENGTH,
-        MAX_NAME_ENTRY_SIZE, NameEntry, ReqId, SftpNum,
+        ENCODED_SSH_FXP_DATA_MIN_LENGTH, MAX_NAME_ENTRY_SIZE, NameEntry, ReqId,
+        SftpNum,
     },
     protocol::StatusCode,
     server::SftpSink,
@@ -367,14 +367,19 @@ pub mod no_std_helpers {
 pub mod std_helpers {
     use crate::{
         proto::{Attrs, Filename},
-        server::{ReadStatus, SftpOpResult},
+        protocol::{NameEntry, StatusCode, constants::MAX_NAME_ENTRY_SIZE},
+        server::{ReadStatus, SftpOpResult, SftpSink},
     };
 
+    use sunset::sshwire::SSHEncode;
+
+    use log::{debug, error, info};
     use std::{
         fs::{DirEntry, Metadata, ReadDir},
         os::{linux::fs::MetadataExt, unix::fs::PermissionsExt},
         time::SystemTime,
     };
+
     /// This is a helper structure to make ReadDir into something manageable for
     /// [`DirReply`]
     #[derive(Debug)]
@@ -393,8 +398,6 @@ pub mod std_helpers {
         /// translate `std` directory elements into Sftp structures before sending a response
         /// back to the client
         pub fn new(dir_iterator: ReadDir) -> SftpOpResult<Self> {
-            use log::info;
-
             let mut encoded_length = 0;
 
             let entries: Vec<DirEntry> = dir_iterator
