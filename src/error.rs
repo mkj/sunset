@@ -247,6 +247,7 @@ pub trait TrapBug<T> {
 }
 
 impl<T, E> TrapBug<T> for Result<T, E> {
+    #[track_caller]
     fn trap(self) -> Result<T, Error> {
         // call directly so that Location::caller() works
         if let Ok(i) = self {
@@ -255,6 +256,7 @@ impl<T, E> TrapBug<T> for Result<T, E> {
             Err(Error::bug())
         }
     }
+    #[track_caller]
     fn trap_msg(self, args: Arguments) -> Result<T, Error> {
         // call directly so that Location::caller() works
         if let Ok(i) = self {
@@ -275,6 +277,7 @@ impl<T> TrapBug<T> for Option<T> {
             Err(Error::bug())
         }
     }
+    #[track_caller]
     fn trap_msg(self, args: Arguments) -> Result<T, Error> {
         // call directly so that Location::caller() works
         if let Some(i) = self {
