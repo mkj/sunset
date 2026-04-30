@@ -77,7 +77,9 @@ pub use sftpsource::SftpSource;
 /// and has the task of executing client requests in the underlying system
 pub mod server {
 
-    pub use crate::sftpserver::DirReply;
+    pub use crate::sftpserver::{
+        DirReadDataReply, DirReadHeaderReply, DirReadReplyFinished,
+    };
     pub use crate::sftpserver::{ReadHeaderReply, ReadReplyFinished};
 
     pub use crate::sftpserver::ReadStatus;
@@ -86,7 +88,7 @@ pub mod server {
     /// Helpers to reduce error prone tasks and hide some details that
     /// add complexity when implementing an [`SftpServer`]
     pub mod helpers {
-        pub use crate::sftpserver::helpers::*;
+        pub use crate::sftpserver::no_std_helpers::*;
 
         #[cfg(feature = "std")]
         pub use crate::sftpserver::DirEntriesCollection;

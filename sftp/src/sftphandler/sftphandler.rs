@@ -4,7 +4,7 @@ use crate::proto::{
     self, InitVersionClient, InitVersionLowest, LStat, MAX_REQUEST_LEN, ReqId,
     SFTP_VERSION, SftpNum, SftpPacket, Stat, StatusCode,
 };
-use crate::server::DirReply;
+use crate::server::DirReadHeaderReply;
 use crate::sftperror::SftpResult;
 use crate::sftphandler::requestholder::{RequestHolder, RequestHolderError};
 use crate::sftphandler::sftpoutputchannelhandler::{
@@ -532,13 +532,13 @@ where
                                 self.state = HandlerState::Idle;
                             }
                             SftpPacket::ReadDir(req_id, read_dir) => {
-                                let mut reply =
-                                    DirReply::new(req_id, output_producer);
+                                let dir_read_header_reply =
+                                    DirReadHeaderReply::new(req_id, output_producer);
                                 if let Err(status) = self
                                     .file_server
                                     .readdir(
                                         &T::try_from(&read_dir.handle)?,
-                                        &mut reply,
+                                        dir_read_header_reply,
                                     )
                                     .await
                                 {
@@ -552,23 +552,23 @@ where
                                         )
                                         .await?;
                                 };
-                                match reply.read_diff() {
-                                    diff if diff > 0 => {
-                                        debug!(
-                                            "DirReply not completed after read operation. Still need to send {} bytes",
-                                            diff
-                                        );
-                                        return Err(SunsetError::Bug.into());
-                                    }
-                                    diff if diff < 0 => {
-                                        error!(
-                                            "DirReply has sent more data than announced: {} bytes extra",
-                                            -diff
-                                        );
-                                        return Err(SunsetError::Bug.into());
-                                    }
-                                    _ => {}
-                                }
+                                // match reply.read_diff() {
+                                //     diff if diff > 0 => {
+                                //         debug!(
+                                //             "DirReply not completed after read operation. Still need to send {} bytes",
+                                //             diff
+                                //         );
+                                //         return Err(SunsetError::Bug.into());
+                                //     }
+                                //     diff if diff < 0 => {
+                                //         error!(
+                                //             "DirReply has sent more data than announced: {} bytes extra",
+                                //             -diff
+                                //         );
+                                //         return Err(SunsetError::Bug.into());
+                                //     }
+                                //     _ => {}
+                                // }
                                 self.state = HandlerState::Idle;
                             }
                             SftpPacket::OpenDir(req_id, open_dir) => {
@@ -675,10 +675,13 @@ where
                                     .await
                                 {
                                     Ok(name_entry) => {
-                                        let mut dir_reply =
-                                            DirReply::new(req_id, output_producer);
+                                        let dir_read_header_reply =
+                                            DirReadHeaderReply::new(
+                                                req_id,
+                                                output_producer,
+                                            );
                                         let encoded_len =
-                                                crate::sftpserver::helpers::get_name_entry_len(&name_entry)?;
+                                                crate::sftpserver::no_std_helpers::get_name_entry_len(&name_entry)?;
                                         debug!(
                                             "PathInfo encoded length: {:?}",
                                             encoded_len
@@ -687,16 +690,22 @@ where
                                             "PathInfo Response content: {:?}",
                                             encoded_len
                                         );
-                                        dir_reply
-                                            .send_header(1, encoded_len)
+                                        let dir_read_data_reply =
+                                            dir_read_header_reply
+                                                .send_header(encoded_len)
+                                                .await?;
+                                        dir_read_data_reply
+                                            .send_data(|mut sender| async move {
+                                                sender
+                                                    .send_item(&name_entry)
+                                                    .await?;
+                                                sender.completed().ok_or(
+                                                    SftpError::WireError(
+                                                        WireError::Bug,
+                                                    ),
+                                                )
+                                            })
                                             .await?;
-                                        dir_reply.send_item(&name_entry).await?;
-                                        if dir_reply.read_diff() != 0 {
-                                            error!(
-                                                "PathInfo reply not completed after sending the only item"
-                                            );
-                                            return Err(SunsetError::Bug.into());
-                                        }
                                     }
                                     Err(code) => {
                                         output_producer
