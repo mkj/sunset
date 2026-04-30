@@ -1049,6 +1049,7 @@ impl KexMlkemX25519 {
 #[cfg(test)]
 mod tests {
     use crate::encrypt::{self, KeyState, KeysRecv, KeysSend, SSH_PAYLOAD_START};
+    use crate::event::CliEventId;
     use crate::ident::RemoteVersion;
     use crate::kex;
     use crate::kex::*;

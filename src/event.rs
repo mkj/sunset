@@ -275,6 +275,10 @@ pub enum ServEvent<'g, 'a> {
     /// since the client first queries acceptable public keys,
     /// and then later sends an actual signature.
     PubkeyAuth(ServPubkeyAuth<'g, 'a>),
+    /// Authentication success.
+    ///
+    /// Emitted when a client first successfully authenticates.
+    Authenticated,
     /// Client's request for a session channel.
     ///
     /// After accepting a channel the [`ChanHandle`] will be returned.
@@ -313,6 +317,7 @@ impl Debug for ServEvent<'_, '_> {
             Self::PasswordAuth(_) => "PasswordAuth",
             Self::PubkeyAuth(_) => "PubkeyAuth",
             Self::FirstAuth(_) => "FirstAuth",
+            Self::Authenticated => "Authenticated",
             Self::OpenSession(_) => "OpenSession",
             Self::SessionShell(_) => "SessionShell",
             Self::SessionExec(_) => "SessionExec",
@@ -913,6 +918,7 @@ pub(crate) enum ServEventId {
         real_sig: bool,
     },
     FirstAuth,
+    Authenticated,
     OpenSession {
         num: ChanNum,
     },
@@ -964,6 +970,13 @@ impl ServEventId {
                 debug_assert!(matches!(p, Some(Packet::UserauthRequest(_))));
                 Ok(ServEvent::FirstAuth(ServFirstAuth::new(runner)))
             }
+            Self::Authenticated => {
+                // TODO: Doesn't actually need Packet::UserauthRequest
+                // since it's not using data from it. But it fits the current
+                // flow.
+                debug_assert!(matches!(p, Some(Packet::UserauthRequest(_))));
+                Ok(ServEvent::Authenticated)
+            }
             Self::OpenSession { num } => {
                 debug_assert!(matches!(p, Some(Packet::ChannelOpen(_))));
                 Ok(ServEvent::OpenSession(ServOpenSession::new(runner, num)))
@@ -996,7 +1009,7 @@ impl ServEventId {
     // Used for internal correctness checks.
     pub(crate) fn needs_resume(&self) -> bool {
         match self {
-            Self::Defunct => false,
+            Self::Defunct | Self::Authenticated => false,
             Self::Hostkeys
             | Self::FirstAuth
             | Self::PasswordAuth

@@ -226,21 +226,18 @@ impl<'a> Runner<'a, server::Server> {
         let prev_event = self.resume_event.take();
         // auth packets have passwords
         self.traf_in.zeroize_payload();
-        debug_assert!(
-            matches!(
-                prev_event,
-                DispatchEvent::ServEvent(ServEventId::PasswordAuth)
-            ) || matches!(
-                prev_event,
-                DispatchEvent::ServEvent(ServEventId::PubkeyAuth { .. })
-            ) || matches!(
-                prev_event,
-                DispatchEvent::ServEvent(ServEventId::FirstAuth)
+        debug_assert!(matches!(
+            prev_event,
+            DispatchEvent::ServEvent(
+                ServEventId::PasswordAuth
+                    | ServEventId::PubkeyAuth { .. }
+                    | ServEventId::FirstAuth
             )
-        );
+        ));
 
         let mut s = self.traf_out.sender(&mut self.keys);
-        self.conn.resume_servauth(allow, &mut s)
+        self.resume_event = self.conn.resume_servauth(allow, &mut s)?;
+        Ok(())
     }
 
     pub(crate) fn resume_servauth_pkok(&mut self) -> Result<()> {

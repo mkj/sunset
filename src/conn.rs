@@ -15,6 +15,7 @@ use {
 use crate::*;
 use channel::{Channels, CliSessionExit};
 use client::Client;
+use event::{CliEventId, ServEventId};
 use kex::{AlgoConfig, Kex, SessId};
 use packets::{Packet, ParseContext};
 use server::Server;
@@ -64,8 +65,8 @@ enum ConnState {
 pub(crate) enum DispatchEvent {
     /// Incoming channel data
     Data(channel::DataIn),
-    CliEvent(event::CliEventId),
-    ServEvent(event::ServEventId),
+    CliEvent(CliEventId),
+    ServEvent(ServEventId),
     /// NewKeys was received, wake any output channels in case they were waiting.
     KexDone,
     /// Connection state has changed, should poll again
@@ -683,13 +684,15 @@ impl Conn<Server> {
         &mut self,
         allow: bool,
         s: &mut TrafSend,
-    ) -> Result<()> {
+    ) -> Result<DispatchEvent> {
         let auth = &mut self.mut_server()?.auth;
         auth.resume_request(allow, s)?;
         if auth.authed && matches!(self.state, ConnState::PreAuth) {
             self.state = ConnState::Authed;
+            Ok(DispatchEvent::ServEvent(ServEventId::Authenticated))
+        } else {
+            Ok(DispatchEvent::None)
         }
-        Ok(())
     }
 
     pub(crate) fn resume_servauth_pkok(

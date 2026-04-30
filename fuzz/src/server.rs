@@ -97,6 +97,10 @@ fn serv_event(input: &mut FuzzInput, ev: Event, state: &mut State) -> Result<()>
                 h.reject()?;
             }
         }
+        ServEvent::Authenticated => {
+            assert!(state.authed);
+            state.authed = true;
+        }
         ServEvent::OpenSession(h) => {
             assert!(state.authed);
 

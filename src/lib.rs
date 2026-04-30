@@ -45,7 +45,6 @@ mod termmodes;
 mod traffic;
 
 use conn::DispatchEvent;
-use event::CliEventId;
 
 // Application API
 pub use sshwire::TextString;

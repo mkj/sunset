@@ -116,6 +116,10 @@ impl DemoCommon {
             ServEvent::FirstAuth(a) => self.handle_firstauth(a),
             ServEvent::PasswordAuth(a) => self.handle_password(a),
             ServEvent::PubkeyAuth(a) => self.handle_pubkey(a),
+            ServEvent::Authenticated => {
+                info!("Auth success");
+                Ok(())
+            }
             ServEvent::OpenSession(a) => self.open_session(a),
             ServEvent::SessionPty(a) => a.succeed(),
             ServEvent::SessionEnv(a) => a.succeed(),
