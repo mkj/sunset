@@ -52,9 +52,10 @@ pub const SFTP_WRITE_REQID_INDEX: usize = 5;
 /// for handle maximum length
 pub const _SSH_FXP_HANDLE_MAX_LEN: u32 = 256;
 
-/// The maximum size for full paths is only limited by the u32 where ssh strings lengths are contained. This causes that different platforms use different maximum path lengths.
-/// We need to make a choice in this implementation. Since it is targeting embedded devices I am going to set it short, since influence the length of the [[requestHolder]] that needs to be allocated
-/// to compose fragmented requests.
+/// The maximum size for full paths is only limited by the u32 where ssh strings lengths are contained. This causes that
+/// different platforms use different maximum path lengths. We need to make a choice in this implementation.
+/// Since it is targeting embedded devices I am going to set it short, since influence the length of an internal buffer
+/// used to compose request received in fragments.
 #[cfg(not(any(feature = "long-paths-4096", feature = "long-paths-1024")))]
 pub const MAX_PATH_LEN: usize = 256;
 #[cfg(feature = "long-paths-1024")]
@@ -442,7 +443,7 @@ impl SSHEncode for StatusCode {
 }
 
 // TODO: Implement extensions. Low in priority
-/// Provided to provide a mechanism to implement extensions
+/// Provided to implement extensions
 // #[derive(Debug, SSHEncode, SSHDecode)]
 // pub struct ExtPair<'a> {
 //     pub name: &'a str,
