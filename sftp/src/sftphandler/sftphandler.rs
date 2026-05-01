@@ -65,7 +65,7 @@ enum HandlerState {
 /// Parameter (T): Is a type that implements [`crate::handles::OpaqueFileHandle`] that **must** match the type used in the [`crate::sftpserver::SftpServer`] provided in (S)
 ///
 /// The compiler time constant `BUFFER_OUT_SIZE` is used to define the
-/// size of the output buffer for the subsystem [`Embassy-sync::pipe`] used
+/// size of the output buffer for the subsystem [`embassy_sync::pipe::Pipe`] used
 /// to send responses safely across the instantiated structure.
 ///
 pub struct SftpHandler<'a, T, S, const BUFFER_OUT_SIZE: usize>
@@ -681,7 +681,7 @@ where
                                                 output_producer,
                                             );
                                         let encoded_len =
-                                                crate::sftpserver::no_std_helpers::get_name_entry_len(&name_entry)?;
+                                                crate::sftpserver::helpers::get_name_entry_len(&name_entry)?;
                                         debug!(
                                             "PathInfo encoded length: {:?}",
                                             encoded_len
@@ -692,7 +692,7 @@ where
                                         );
                                         let dir_read_data_reply =
                                             dir_read_header_reply
-                                                .send_header(encoded_len)
+                                                .send_header(encoded_len, 1)
                                                 .await?;
                                         dir_read_data_reply
                                             .send_data(|mut sender| async move {

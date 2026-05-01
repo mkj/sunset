@@ -285,7 +285,7 @@ pub struct Data<'a> {
     pub data: BinString<'a>,
 }
 
-/// This is the encoded length for the [`Data`] Sftp Response.
+/// This is the encoded length for the [`Data`] Sftp Response Header.
 ///
 /// This considers the Packet type (1), the request ID (4),  and the data string
 /// length (4)
@@ -297,7 +297,21 @@ pub struct Data<'a> {
 /// encoded [`SftpPacket::Data`] variant
 ///
 /// See [Responses from the Server to the Client](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.4)
-pub(crate) const ENCODED_SSH_FXP_DATA_MIN_LENGTH: u32 = 1 + 4 + 4;
+pub(crate) const ENCODED_SSH_FXP_DATA_HEADER: u32 = 1 + 4 + 4;
+
+/// This is the encoded length for the [`Name`] Sftp Response Header.
+///
+/// This considers the Packet type (1), the request ID (4), and the count
+/// of NameEntry (4)
+///
+/// - It excludes explicitly length field for the SftpPacket
+/// - It excludes explicitly length of the data string content
+///
+/// It is defined a single source of truth for what is the length for the
+/// encoded [`SftpPacket::Name`] variant
+///
+/// See [Responses from the Server to the Client](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.4)
+pub(crate) const ENCODED_SSH_FXP_NAME_HEADER: u32 = 1 + 4 + 4;
 
 /// Struct to hold `SSH_FXP_NAME` response.
 /// See [SSH_FXP_NAME in Responses from the Server to the Client](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-7)
@@ -314,19 +328,6 @@ pub struct NameEntry<'a> {
     /// for more information.
     pub attrs: Attrs,
 }
-
-/// This is the encoded length for the Name Sftp Response.
-///
-/// This considers the Packet type (1), the Request Id (4) and
-/// count of [`NameEntry`] that will follow
-///
-/// It excludes the length of [`NameEntry`] explicitly
-///
-/// It is defined a single source of truth for what is the length for the
-/// encoded [`SftpPacket::Name`] variant
-///
-/// See [Responses from the Server to the Client](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-7)
-pub(crate) const ENCODED_BASE_NAME_SFTP_PACKET_LENGTH: u32 = 9;
 
 // TODO Will a Vector be an issue for no_std?
 // Maybe we should migrate this to heapless::Vec and let the user decide

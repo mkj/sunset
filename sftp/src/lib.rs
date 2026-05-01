@@ -80,7 +80,7 @@ pub mod server {
     pub use crate::sftpserver::{
         DirReadDataReply, DirReadHeaderReply, DirReadReplyFinished,
     };
-    pub use crate::sftpserver::{ReadHeaderReply, ReadReplyFinished};
+    pub use crate::sftpserver::{ReadDataReply, ReadHeaderReply, ReadReplyFinished};
 
     pub use crate::sftpserver::ReadStatus;
     pub use crate::sftpserver::SftpOpResult;
@@ -88,12 +88,7 @@ pub mod server {
     /// Helpers to reduce error prone tasks and hide some details that
     /// add complexity when implementing an [`SftpServer`]
     pub mod helpers {
-        pub use crate::sftpserver::no_std_helpers::*;
-
-        #[cfg(feature = "std")]
-        pub use crate::sftpserver::DirEntriesCollection;
-        #[cfg(feature = "std")]
-        pub use crate::sftpserver::get_file_attrs;
+        pub use crate::sftpserver::helpers::*;
     }
     pub use crate::sftpsink::SftpSink;
     pub use sunset::sshwire::SSHEncode;
@@ -123,6 +118,8 @@ pub mod protocol {
     /// Constants that might be useful for SFTP developers
     pub mod constants {
         pub use crate::proto::MAX_NAME_ENTRY_SIZE;
+        pub use crate::proto::MAX_PATH_LEN;
+        pub use crate::proto::SFTP_FIELD_LEN_LENGTH;
     }
 }
 
