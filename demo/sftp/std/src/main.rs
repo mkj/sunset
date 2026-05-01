@@ -25,6 +25,7 @@ use log::{debug, error, info, log, trace, warn};
 mod demofilehandlemanager;
 mod demoopaquefilehandle;
 mod demosftpserver;
+mod stdhelpers;
 
 const NUM_LISTENERS: usize = 4;
 // +1 for dhcp

@@ -1,8 +1,7 @@
 use crate::{
     error::{SftpError, SftpResult},
     proto::{
-        ENCODED_SSH_FXP_DATA_MIN_LENGTH, MAX_NAME_ENTRY_SIZE, NameEntry, ReqId,
-        SftpNum,
+        ENCODED_SSH_FXP_NAME_HEADER, MAX_NAME_ENTRY_SIZE, NameEntry, ReqId, SftpNum,
     },
     protocol::StatusCode,
     server::SftpSink,
@@ -13,6 +12,10 @@ use sunset::sshwire::SSHEncode;
 
 use log::{debug, error};
 
+/// Structures and helpers to handle the process of sending read replies for readdir operations in a structured way.
+///
+/// Enforces the correct sequence of sending a DirRead reply,
+/// which consists of first sending a header with the announced data length using [`DirReadHeaderReply::send_header`] and then sending the data itself using [`DirReadDataReply::send_data`].
 pub struct DirReadHeaderReply<'g, const N: usize> {
     /// The request Id that will be use`d in the response
     req_id: ReqId,
@@ -31,12 +34,47 @@ impl<'g, const N: usize> DirReadHeaderReply<'g, N> {
         Self { req_id, chan_out }
     }
 
+    // /// Sends the header for a read reply with the given data length.
+    // ///
+    // /// Once used, the only way to obtain a [`DirReadReplyFinished`] is by using its returned value.
+    // pub async fn send_header(
+    //     self,
+    //     data_len: u32,
+    // ) -> SftpResult<DirReadDataReply<'g, N>> {
+    //     debug!(
+    //         "DirReadReply: Sending header for request id {:?}: data length = {:?}",
+    //         self.req_id, data_len
+    //     );
+    //     let mut s = [0u8; N];
+    //     let mut sink = SftpSink::new(&mut s);
+
+    //     let payload = DirReadHeaderReply::<N>::encode_data_header(
+    //         &mut sink,
+    //         self.req_id,
+    //         data_len,
+    //     )
+    //     .map_err(|err| {
+    //         error!("WireError: {:?}", err);
+    //         StatusCode::SSH_FX_FAILURE
+    //     })?;
+
+    //     debug!(
+    //         "Sending header:  len = {:?}, content = {:?}",
+    //         payload.len(),
+    //         payload
+    //     );
+    //     // Sending payload_slice since we are not making use of the sink sftpPacket length calculation
+    //     self.chan_out.send_data(payload).await?;
+
+    //     Ok(DirReadDataReply::new(self.req_id, data_len, self.chan_out))
+    // }
     /// Sends the header for a read reply with the given data length.
     ///
     /// Once used, the only way to obtain a [`DirReadReplyFinished`] is by using its returned value.
     pub async fn send_header(
         self,
         data_len: u32,
+        count: u32,
     ) -> SftpResult<DirReadDataReply<'g, N>> {
         debug!(
             "DirReadReply: Sending header for request id {:?}: data length = {:?}",
@@ -45,11 +83,16 @@ impl<'g, const N: usize> DirReadHeaderReply<'g, N> {
         let mut s = [0u8; N];
         let mut sink = SftpSink::new(&mut s);
 
-        let payload = DirReadHeaderReply::<N>::encode_data_header(
+        let payload = DirReadHeaderReply::<N>::encode_header(
             &mut sink,
             self.req_id,
             data_len,
-        )?;
+            count,
+        )
+        .map_err(|err| {
+            error!("WireError: {:?}", err);
+            StatusCode::SSH_FX_FAILURE
+        })?;
 
         debug!(
             "Sending header:  len = {:?}, content = {:?}",
@@ -70,23 +113,25 @@ impl<'g, const N: usize> DirReadHeaderReply<'g, N> {
         Ok(DirReadReplyFinished::new(self.req_id))
     }
 
-    fn encode_data_header(
+    fn encode_header(
         sink: &'g mut SftpSink<'g>,
         req_id: ReqId,
         data_len: u32,
+        count: u32,
     ) -> Result<&'g [u8], SftpError> {
         // length field
-        (data_len + ENCODED_SSH_FXP_DATA_MIN_LENGTH).enc(sink)?;
+        (data_len + ENCODED_SSH_FXP_NAME_HEADER).enc(sink)?;
         // packet type (1)
-        u8::from(SftpNum::SSH_FXP_DATA).enc(sink)?;
+        u8::from(SftpNum::SSH_FXP_NAME).enc(sink)?;
         // request id (4)
         req_id.enc(sink)?;
-        // data length (4)
-        data_len.enc(sink)?;
+        count.enc(sink)?;
         Ok(sink.payload_slice())
     }
 }
 
+/// Represents the state of a successful read reply for a readdir operation after the
+/// header has been sent and the data has been completely sent or an EOF status has been sent.
 pub struct DirReadReplyFinished {
     /// The request Id that will be use`d in the response
     _req_id: ReqId,
@@ -98,10 +143,13 @@ impl DirReadReplyFinished {
     }
 }
 
+/// Helper struct to enforce the correct sequence of sending directory items in a readdir
+///  reply, which consists of sending items until the announced data length is reached.
 pub struct LimitedDirSender<'g, const N: usize> {
     /// Immutable writer
     chan_out: &'g SftpOutputProducer<'g, N>,
-    /// remaining data length to be sent as announced in [`DirReply::send_header`]
+    /// remaining data length to be sent as announced in [`DirReadDataReply::send_data`]
+    ///  when calling the closure with this LimitedDirSender as an argument.
     remaining: core::cell::Cell<u32>,
 }
 
@@ -119,10 +167,7 @@ impl<'g, const N: usize> LimitedDirSender<'g, N> {
     ) -> SftpResult<u32> {
         let mut buffer = [0u8; MAX_NAME_ENTRY_SIZE];
         let mut sftp_sink = SftpSink::new(&mut buffer);
-        name_entry.enc(&mut sftp_sink).map_err(|err| {
-            error!("WireError: {:?}", err);
-            StatusCode::SSH_FX_FAILURE
-        })?;
+        name_entry.enc(&mut sftp_sink)?;
 
         self.send_data(sftp_sink.payload_slice()).await
     }
@@ -146,8 +191,20 @@ impl<'g, const N: usize> LimitedDirSender<'g, N> {
     }
 }
 
+/// Token struct to represent the state of having sent all the announced data for a readdir reply.
+///
+/// It can only be obtained by calling [`LimitedDirSender::completed`] after having
+/// sent items with [`LimitedDirSender::send_item`] until the announced data length is reached.
+///
+/// It is used to guarantee that all the announced data has been sent in the closure
+/// provided to [`DirReadDataReply::send_data`] before being able to return a [`DirReadReplyFinished`]
+/// and thus completing the readdir reply process.
 pub struct CompleteDirDataSent;
 
+/// Helper struct to enforce the correct sequence of sending a readdir reply,
+///  which consists of first sending a header with the announced data length
+/// using [`DirReadHeaderReply::send_header`] and then sending the data
+///  itself using [`DirReadDataReply::send_data`].
 pub struct DirReadDataReply<'g, const N: usize> {
     /// The request Id that will be use`d in the response
     req_id: ReqId,
@@ -197,25 +254,6 @@ mod enforcing_process_tests {
     extern crate std;
     use alloc::vec;
     use std::vec::Vec;
-
-    #[test]
-    fn compose_header() {
-        const N: usize = 512;
-
-        let req_id = ReqId(42);
-        let data_len = 128;
-        let mut buffer = [0u8; N];
-        let mut sink = SftpSink::new(&mut buffer);
-
-        let payload =
-            DirReadHeaderReply::<N>::encode_data_header(&mut sink, req_id, data_len)
-                .unwrap();
-
-        assert_eq!(
-            data_len + ENCODED_SSH_FXP_DATA_MIN_LENGTH,
-            u32::from_be_bytes(payload[..4].try_into().unwrap())
-        );
-    }
 
     #[test]
     fn handling_process_eof() {
@@ -281,6 +319,9 @@ mod enforcing_process_tests {
                 .expect("Length overflow when calculating total encoded length")
         });
 
+        let items_count =
+            u32::try_from(name_entries.len()).expect("Count should fit in u32");
+
         embassy_futures::block_on(async {
             {
                 let dir_header_reply =
@@ -288,7 +329,7 @@ mod enforcing_process_tests {
 
                 // 3. Call send_header with the length of the data to be sent
                 let dir_read_data_reply = dir_header_reply
-                    .send_header(items_encoded_len)
+                    .send_header(items_encoded_len, items_count)
                     .await
                     .expect("send_eof should succeed returning ReadReplyData");
 
@@ -314,17 +355,17 @@ mod enforcing_process_tests {
 
         let mock = consumer.into_inner();
         let buf = &mock.buffer;
-        // packet type byte should be 103 (SSH_FXP_DATA)
-        assert_eq!(buf[4], 103, "expected SSH_FXP_DATA packet type");
+        // packet type byte should be 104 (SSH_FXP_NAME)
+        assert_eq!(buf[4], 104, "expected SSH_FXP_NAME packet type");
 
-        // data length should be 10
-        let data_len = u32::from_be_bytes(
+        // data length should be
+        let items = u32::from_be_bytes(
             buf[9..13]
                 .try_into()
                 .expect("data length should be present in the packet"),
         );
         assert_eq!(
-            data_len, items_encoded_len,
+            items, items_count,
             "expected data length to match encoded length"
         );
         assert_eq!(
@@ -336,7 +377,7 @@ mod enforcing_process_tests {
 }
 
 /// no_std compatible helpers to perform common tasks using solely sunset and sunset-sftp resources
-pub mod no_std_helpers {
+pub mod helpers {
     use crate::{
         error::SftpResult,
         proto::{MAX_NAME_ENTRY_SIZE, NameEntry},
@@ -355,158 +396,5 @@ pub mod no_std_helpers {
         let mut temp_sink = SftpSink::new(&mut buf);
         name_entry.enc(&mut temp_sink)?;
         Ok(temp_sink.payload_len() as u32)
-    }
-}
-
-/// Helpers structures intended to for environment with `std` available, specially linux.
-///
-/// The collection helps with directory and directory items enumeration, description
-/// and organizing. Providing means to translate them into [`sunset-sftp`] structures
-///
-#[cfg(feature = "std")]
-pub mod std_helpers {
-    use crate::{
-        proto::{Attrs, Filename},
-        protocol::{NameEntry, StatusCode, constants::MAX_NAME_ENTRY_SIZE},
-        server::{ReadStatus, SftpOpResult, SftpSink},
-    };
-
-    use sunset::sshwire::SSHEncode;
-
-    use log::{debug, error, info};
-    use std::{
-        fs::{DirEntry, Metadata, ReadDir},
-        os::{linux::fs::MetadataExt, unix::fs::PermissionsExt},
-        time::SystemTime,
-    };
-
-    /// This is a helper structure to make ReadDir into something manageable for
-    /// [`DirReply`]
-    #[derive(Debug)]
-    pub struct DirEntriesCollection {
-        /// Number of elements
-        count: u32,
-        /// Computed length of all the encoded elements
-        encoded_length: u32,
-        /// The actual entries. As you can see these are DirEntry. This is a std choice
-        entries: Vec<DirEntry>,
-    }
-
-    #[cfg(feature = "std")]
-    impl DirEntriesCollection {
-        /// Creates this DirEntriesCollection so linux std users do not need to
-        /// translate `std` directory elements into Sftp structures before sending a response
-        /// back to the client
-        pub fn new(dir_iterator: ReadDir) -> SftpOpResult<Self> {
-            let mut encoded_length = 0;
-
-            let entries: Vec<DirEntry> = dir_iterator
-                .filter_map(|entry_result| {
-                    let entry = entry_result.ok()?;
-                    let filename = entry.file_name().to_string_lossy().into_owned();
-                    let name_entry = NameEntry {
-                        filename: Filename::from(filename.as_str()),
-                        _longname: Filename::from(""),
-                        attrs: Self::get_attrs_or_empty(entry.metadata()),
-                    };
-
-                    let mut buffer = [0u8; MAX_NAME_ENTRY_SIZE];
-                    let mut sftp_sink = SftpSink::new(&mut buffer);
-                    name_entry.enc(&mut sftp_sink).ok()?;
-                    encoded_length += u32::try_from(sftp_sink.payload_len())
-                        .map_err(|_| StatusCode::SSH_FX_FAILURE)
-                        .ok()?;
-                    Some(entry)
-                })
-                .collect();
-
-            let count = u32::try_from(entries.len())
-                .map_err(|_| StatusCode::SSH_FX_FAILURE)?;
-
-            info!(
-                "Processed {} entries, estimated serialized length: {}",
-                count, encoded_length
-            );
-
-            Ok(Self { count, encoded_length, entries })
-        }
-
-        /// Using the provided [`DirReply`] sends a response taking care of
-        /// composing a SFTP Entry header and sending everything in the right order
-        ///
-        /// Returns a [`ReadStatus`]
-        pub async fn send_response<const N: usize>(
-            &self,
-            reply: &mut DirReply<'_, N>,
-        ) -> SftpOpResult<ReadStatus> {
-            self.send_entries_header(reply).await?;
-            self.send_entries(reply).await?;
-            Ok(ReadStatus::EndOfFile)
-        }
-        /// Sends a header for all the elements in the ReadDir iterator
-        ///
-        /// It will take care of counting them and finding the serialized length of each
-        /// element
-        async fn send_entries_header<const N: usize>(
-            &self,
-            reply: &mut DirReply<'_, N>,
-        ) -> SftpOpResult<()> {
-            reply.send_header(self.count, self.encoded_length).await.map_err(|e| {
-                debug!("Could not send header {e:?}");
-                StatusCode::SSH_FX_FAILURE
-            })
-        }
-
-        /// Sends the entries in the ReadDir iterator back to the client
-        async fn send_entries<const N: usize>(
-            &self,
-            reply: &mut DirReply<'_, N>,
-        ) -> SftpOpResult<()> {
-            for entry in &self.entries {
-                let filename = entry.file_name().to_string_lossy().into_owned();
-                let attrs = Self::get_attrs_or_empty(entry.metadata());
-                let name_entry = NameEntry {
-                    filename: Filename::from(filename.as_str()),
-                    _longname: Filename::from(""),
-                    attrs,
-                };
-                debug!("Sending new item: {:?}", name_entry);
-                reply.send_item(&name_entry).await.map_err(|err| {
-                    error!("SftpError: {:?}", err);
-                    StatusCode::SSH_FX_FAILURE
-                })?;
-            }
-            Ok(())
-        }
-
-        fn get_attrs_or_empty(
-            maybe_metadata: Result<Metadata, std::io::Error>,
-        ) -> Attrs {
-            maybe_metadata.map(get_file_attrs).unwrap_or_default()
-        }
-    }
-
-    #[cfg(feature = "std")]
-    /// [`std`] helper function to get [`Attrs`] from a [`Metadata`].
-    pub fn get_file_attrs(metadata: Metadata) -> Attrs {
-        let time_to_u32 = |time_result: std::io::Result<SystemTime>| {
-            time_result
-                .ok()?
-                .duration_since(SystemTime::UNIX_EPOCH)
-                .ok()?
-                .as_secs()
-                .try_into()
-                .ok()
-        };
-
-        Attrs {
-            size: Some(metadata.len()),
-            uid: Some(metadata.st_uid()),
-            gid: Some(metadata.st_gid()),
-            permissions: Some(metadata.permissions().mode()),
-            atime: time_to_u32(metadata.accessed()),
-            mtime: time_to_u32(metadata.modified()),
-            ext_count: None,
-        }
     }
 }

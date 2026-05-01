@@ -1,6 +1,6 @@
 use crate::{
     error::{SftpError, SftpResult},
-    proto::{ENCODED_SSH_FXP_DATA_MIN_LENGTH, ReqId, SftpNum},
+    proto::{ENCODED_SSH_FXP_DATA_HEADER, ReqId, SftpNum},
     protocol::StatusCode,
     server::SftpSink,
     sftphandler::SftpOutputProducer,
@@ -13,7 +13,7 @@ use log::debug;
 /// Used to provide the header of a read reply, including
 /// only the fundamental information such as being an EOF reply or a data reply
 ///
-/// On the corresponding method call will return either a [`ReadDataReply`] or a [`ReadReplyFinished`]
+/// On the corresponding method call will return either a [`crate::sftpserver::ReadDataReply`] or a [`crate::sftpserver::ReadReplyFinished`]
 /// which makes easy to implement correct behavior.
 pub struct ReadHeaderReply<'g, const N: usize> {
     /// The request Id that will be used in the response
@@ -25,7 +25,7 @@ pub struct ReadHeaderReply<'g, const N: usize> {
 impl<'g, const N: usize> ReadHeaderReply<'g, N> {
     /// Creates a new ReadHeaderReply with the given request ID and output channel.
     ///
-    /// It is meant to be called in [`SftpHandler`] and used to call a method of the [`SftpServer`] that requires a read reply header, such as [`SftpServer::read`]
+    /// It is meant to be called in [`crate::SftpHandler`] and used to call a method of the [`crate::sftpserver::SftpServer`] that requires a read reply header, such as [`crate::sftpserver::SftpServer::read`]
     pub(crate) fn new(
         req_id: ReqId,
         chan_out: &'g SftpOutputProducer<'g, N>,
@@ -78,7 +78,7 @@ impl<'g, const N: usize> ReadHeaderReply<'g, N> {
         data_len: u32,
     ) -> Result<&'g [u8], SftpError> {
         // length field
-        (data_len + ENCODED_SSH_FXP_DATA_MIN_LENGTH).enc(sink)?;
+        (data_len + ENCODED_SSH_FXP_DATA_HEADER).enc(sink)?;
         // packet type (1)
         u8::from(SftpNum::SSH_FXP_DATA).enc(sink)?;
         // request id (4)
@@ -170,7 +170,7 @@ impl<'g, const N: usize> ReadDataReply<'g, N> {
 /// This struct is used to represent the state of a read reply after
 /// the header and the data have been sent
 ///
-/// It is used as a mandatory return value for a successful [`SftpServer::read`]
+/// It is used as a mandatory return value for a successful [`crate::sftpserver::SftpServer::read`]
 /// operation
 pub struct ReadReplyFinished {
     _req_id: ReqId,
@@ -204,7 +204,7 @@ mod enforcing_process_tests {
                 .unwrap();
 
         assert_eq!(
-            data_len + ENCODED_SSH_FXP_DATA_MIN_LENGTH,
+            data_len + ENCODED_SSH_FXP_DATA_HEADER,
             u32::from_be_bytes(payload[..4].try_into().unwrap())
         );
     }

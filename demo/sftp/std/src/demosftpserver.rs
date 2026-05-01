@@ -1,14 +1,17 @@
 use crate::demofilehandlemanager::DemoFileHandleManager;
+use crate::stdhelpers::{get_file_attrs, DirEntriesCollection};
 
-use sunset_sftp::error::SftpResult;
-use sunset_sftp::handles::{
-    InitFileHandler, OpaqueFileHandle, OpaqueFileHandleManager, PathFinder,
-};
-use sunset_sftp::protocol::{Attrs, Filename, NameEntry, PFlags, StatusCode};
-use sunset_sftp::server::helpers::DirEntriesCollection;
-use sunset_sftp::server::{
-    DirReply, ReadHeaderReply, ReadReplyFinished, ReadStatus, SftpOpResult,
-    SftpServer,
+use sunset_sftp::server::DirReadReplyFinished;
+use sunset_sftp::{
+    error::SftpResult,
+    handles::{
+        InitFileHandler, OpaqueFileHandle, OpaqueFileHandleManager, PathFinder,
+    },
+    protocol::{Attrs, Filename, NameEntry, PFlags, StatusCode},
+    server::{
+        DirReadHeaderReply, ReadHeaderReply, ReadReplyFinished, ReadStatus,
+        SftpOpResult, SftpServer,
+    },
 };
 
 #[allow(unused_imports)]
@@ -19,7 +22,6 @@ use strict_path::StrictPath;
 /// See [the mix up problem](https://dk26.github.io/strict-path-rs/tutorial/chapter2_mixup_problem.html)
 /// and [markers to the rescue](https://dk26.github.io/strict-path-rs/tutorial/chapter3_markers.html)
 /// if you are not familiar with marker types
-
 struct SftpDir;
 
 use std::fs;
@@ -435,8 +437,8 @@ impl<OFH: OpaqueFileHandle + InitFileHandler> SftpServer<OFH>
     async fn readdir<const N: usize>(
         &mut self,
         opaque_dir_handle: &OFH,
-        reply: &mut DirReply<'_, N>,
-    ) -> SftpOpResult<()> {
+        reply: DirReadHeaderReply<'_, N>,
+    ) -> SftpOpResult<DirReadReplyFinished> {
         info!("read dir for {:?}", opaque_dir_handle);
 
         if let PrivatePathHandle::Directory(dir) = self
@@ -445,11 +447,11 @@ impl<OFH: OpaqueFileHandle + InitFileHandler> SftpServer<OFH>
             .ok_or(StatusCode::SSH_FX_NO_SUCH_FILE)?
         {
             if dir.read_status == ReadStatus::EndOfFile {
-                reply.send_eof().await.map_err(|error| {
+                let finish_token = reply.send_eof().await.map_err(|error| {
                     error!("{:?}", error);
                     StatusCode::SSH_FX_FAILURE
                 })?;
-                return Ok(());
+                return Ok(finish_token);
             }
 
             let path_str = dir.path.clone();
@@ -467,11 +469,20 @@ impl<OFH: OpaqueFileHandle + InitFileHandler> SftpServer<OFH>
 
                 let name_entry_collection = DirEntriesCollection::new(dir_iterator)?;
 
-                let response_read_status =
-                    name_entry_collection.send_response(reply).await?;
+                let encoded_length = name_entry_collection.encoded_length();
+                let items_count = name_entry_collection.count();
 
-                dir.read_status = response_read_status;
-                return Ok(());
+                let data_reply = reply
+                    .send_header(encoded_length, items_count)
+                    .await
+                    .map_err(|_| StatusCode::SSH_FX_OP_UNSUPPORTED)?;
+
+                let finish_token =
+                    name_entry_collection.send_entries(data_reply).await?;
+
+                dir.read_status = ReadStatus::EndOfFile;
+
+                return Ok(finish_token);
             } else {
                 error!("the path is not a directory = {:?}", dir_path);
                 return Err(StatusCode::SSH_FX_NO_SUCH_FILE);
@@ -501,9 +512,9 @@ impl<OFH: OpaqueFileHandle + InitFileHandler> SftpServer<OFH>
         })?;
 
         if file_path.is_file() {
-            return Ok(sunset_sftp::server::helpers::get_file_attrs(metadata));
+            return Ok(get_file_attrs(metadata));
         } else if file_path.is_symlink() {
-            return Ok(sunset_sftp::server::helpers::get_file_attrs(metadata));
+            return Ok(get_file_attrs(metadata));
         } else {
             return Err(StatusCode::SSH_FX_NO_SUCH_FILE);
         }
