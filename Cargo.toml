@@ -12,8 +12,11 @@ rust-version = "1.88"
 [workspace]
 members = [
     "demo/picow",
-    "demo/std", "fuzz",
+    "demo/std",
+    "demo/sftp/std",
+    "fuzz",
     "stdasync",
+    "sftp",
     # workspace.dependencies paths are automatic
 ]
 
@@ -39,7 +42,9 @@ ascii = { version = "1.0", default-features = false }
 arbitrary = { workspace = true, optional = true }
 
 getrandom = "0.2"
-rand_core = { version = "0.6", default-features = false, features = ["getrandom"]}
+rand_core = { version = "0.6", default-features = false, features = [
+    "getrandom",
+] }
 
 ctr = { version = "0.9", features = ["zeroize"] }
 aes = { version = "0.8", features = ["zeroize"] }
@@ -53,19 +58,31 @@ zeroize = { version = "1", default-features = false, features = ["derive"] }
 cipher = { version = "0.4", features = ["zeroize"] }
 subtle = { version = "2.4", default-features = false }
 # ed25519/x25519
-ed25519-dalek = { version = "2.1", default-features = false, features = ["zeroize", "rand_core"] }
-x25519-dalek = { version = "2.0", default-features = false, features = ["zeroize"] }
-curve25519-dalek = { version = "4.1", default-features = false, features = ["zeroize"] }
-ml-kem = { version = "0.2.1", default-features = false, features = ["zeroize"], optional = true }
+ed25519-dalek = { version = "2.1", default-features = false, features = [
+    "zeroize",
+    "rand_core",
+] }
+x25519-dalek = { version = "2.0", default-features = false, features = [
+    "zeroize",
+] }
+curve25519-dalek = { version = "4.1", default-features = false, features = [
+    "zeroize",
+] }
+ml-kem = { version = "0.2.1", default-features = false, features = [
+    "zeroize",
+], optional = true }
 # p521 = { version = "0.13.2", default-features = false, features = ["ecdh", "ecdsa"] }
-rsa = { version = "0.9", default-features = false, optional = true, features = ["sha2"] }
+rsa = { version = "0.9", default-features = false, optional = true, features = [
+    "sha2",
+] }
 # TODO: getrandom feature is a workaround for missing ssh-key dependency with rsa. fixed in pending 0.6
-ssh-key = { version = "0.6", default-features = false, optional = true, features = ["getrandom"] }
+ssh-key = { version = "0.6", default-features = false, optional = true, features = [
+    "getrandom",
+] }
 
 embedded-io = { version = "0.6", optional = true }
 
 [features]
-default = []
 std = ["snafu/std", "ssh-key/alloc", "larger", "mlkem"]
 backtrace = ["snafu/backtrace"]
 rsa = ["dep:rsa", "ssh-key/rsa"]
