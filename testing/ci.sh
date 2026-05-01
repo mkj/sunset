@@ -57,6 +57,13 @@ cargo doc
 )
 
 (
+cd sftp
+cargo test
+cargo test --doc
+cargo doc
+)
+
+(
 cd demo/std
 cargo build
 )

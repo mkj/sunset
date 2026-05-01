@@ -44,10 +44,6 @@ heapless = "0.8"
 libc = "0.2.101"
 async-io = "1.6.0"
 
-# using local fork
-# menu = "0.3"
-
-
 critical-section = "1.1"
 
 rand = { version = "0.8", features = ["getrandom"] }
