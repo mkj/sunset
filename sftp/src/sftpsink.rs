@@ -8,8 +8,6 @@ use log::{debug, error, info, log, trace, warn};
 /// A implementation fo [`SSHSink`] that observes some constraints for
 /// SFTP packets
 ///
-/// **Important**: It needs to be [`SftpSink::finalize`] to add the packet
-/// len
 #[derive(Default)]
 pub struct SftpSink<'g> {
     buffer: &'g mut [u8],
@@ -19,8 +17,8 @@ pub struct SftpSink<'g> {
 impl<'g> SftpSink<'g> {
     /// Initializes the Sink, with the particularity that it will leave
     /// [`crate::proto::SFTP_FIELD_LEN_LENGTH`] bytes empty at the
-    /// start of the buffer that will contain the total packet length
-    /// once the [`SftpSink::finalize`] method is called
+    /// start of the buffer. That will contain the total packet length
+    /// when [`SftpSink::push()`] is called
     pub fn new(s: &'g mut [u8]) -> Self {
         SftpSink { buffer: s, index: SFTP_FIELD_LEN_LENGTH }
     }
@@ -60,8 +58,6 @@ impl<'g> SftpSink<'g> {
 
     /// Auxiliary method to allow an immutable reference to the full used
     /// data (includes the prepended length field)
-    ///
-    /// **Important:** Call this after [`SftpSink::finalize()`]
     pub fn used_slice(&self) -> &[u8] {
         debug!(
             "SftpSink used_slice called, total len: {}. Index: {}",
