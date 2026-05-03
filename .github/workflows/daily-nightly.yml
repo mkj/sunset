@@ -1,9 +1,9 @@
-# This is a minimal wrapper around ci.sh
-# ci.sh is intended to be usable locally without github.
+# build rust nightly each day to notice breakage early
 name: ci
 on:
-  pull_request:
-  push:
+on:
+  schedule:
+    - cron: "17 20 * * *"
   workflow_dispatch:
 
 env:
@@ -13,16 +13,15 @@ jobs:
   all:
     strategy:
       matrix:
-        # 1.88 is an arbitrary minimum, tested to notice when it bumps
-        rust_version: [stable, 1.88]
+        rust_version: [nightly]
     runs-on: ubuntu-latest
     env:
       RUSTUP_TOOLCHAIN: ${{ matrix.rust_version }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
       - name: Cache Rust files
-        uses: actions/cache@v5
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/
@@ -39,7 +38,7 @@ jobs:
         run: ./testing/ci.sh
 
       - name: picow bloat
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: picow-bloat-${{ matrix.rust_version }}
           path: ci_out/picow-bloat.txt
