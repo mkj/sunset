@@ -1,7 +1,6 @@
 # build rust nightly each day to notice breakage early
 name: ci
 on:
-on:
   schedule:
     - cron: "17 20 * * *"
   workflow_dispatch:
