@@ -2,7 +2,8 @@
 name: daily-nightly
 on:
   schedule:
-    - cron: "17 20 * * *"
+    - cron: "20 17 * * *"
+      timezone: "Australia/Perth"
   workflow_dispatch:
 
 env:
