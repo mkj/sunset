@@ -236,7 +236,7 @@ impl<'a> Runner<'a, server::Server> {
         ));
 
         let mut s = self.traf_out.sender(&mut self.keys);
-        self.resume_event = self.conn.resume_servauth(allow, &mut s)?;
+        self.extra_resume_event = self.conn.resume_servauth(allow, &mut s)?;
         Ok(())
     }
 
