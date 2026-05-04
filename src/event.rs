@@ -965,10 +965,7 @@ impl ServEventId {
                 Ok(ServEvent::FirstAuth(ServFirstAuth::new(runner)))
             }
             Self::Authenticated => {
-                // TODO: Doesn't actually need Packet::UserauthRequest
-                // since it's not using data from it. But it fits the current
-                // flow.
-                debug_assert!(matches!(p, Some(Packet::UserauthRequest(_))));
+                // Emitted by the Runner, not from a packet.
                 Ok(ServEvent::Authenticated)
             }
             Self::OpenSession { num } => {
