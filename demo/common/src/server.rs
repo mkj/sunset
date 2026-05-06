@@ -138,14 +138,8 @@ impl DemoCommon {
     }
 
     fn handle_password(&mut self, a: ServPasswordAuth) -> Result<()> {
-        let username = match a.username() {
-            Ok(u) => u,
-            Err(_) => return Ok(()),
-        };
-        let password = match a.password() {
-            Ok(u) => u,
-            Err(_) => return Ok(()),
-        };
+        let username = a.username()?;
+        let password = a.password()?;
 
         let p = if self.is_admin(username) {
             &self.config.admin_pw
