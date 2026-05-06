@@ -46,7 +46,6 @@ mod traffic;
 
 use conn::DispatchEvent;
 
-// Application API
 pub use sshwire::TextString;
 
 pub use auth::AuthSigMsg;

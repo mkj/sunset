@@ -265,7 +265,6 @@ pub fn hash_mpint(hash_ctx: &mut impl SSHWireDigestUpdate, m: &[u8]) {
 
 /// A SSH style binary string. Serialized as `u32` length followed by the bytes
 /// of the slice.
-/// Application API
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct BinString<'a>(pub &'a [u8]);
@@ -316,8 +315,6 @@ impl<const N: usize> SSHEncode for heapless::String<N> {
 /// Note that SSH protocol identifiers in [`Packet`]
 /// are `&str` rather than `TextString`, and always defined as ASCII. For
 /// example `"publickey"`, `"ssh-ed25519"`.
-///
-/// Application API
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct TextString<'a>(pub &'a [u8]);
