@@ -19,6 +19,21 @@ use sshwire::{Blob, SSHEncode};
 
 use core::mem::discriminant;
 
+// RSA requires alloc.
+#[cfg(feature = "rsa")]
+use packets::RSAPubKey;
+#[cfg(feature = "rsa")]
+use rsa::signature::{DigestSigner as _, DigestVerifier as _};
+
+#[cfg(feature = "_ecdsa")]
+use crate::packets::ECDSAPubKey;
+#[cfg(feature = "_ecdsa")]
+use ecdsa::signature::hazmat::{PrehashSigner as _, PrehashVerifier as _};
+#[cfg(feature = "_ecdsa")]
+use ecdsa::VerifyingKey;
+#[cfg(feature = "ecdsa256")]
+use p256::NistP256;
+
 // only required for some configurations
 #[allow(unused_imports)]
 use digest::Digest;
@@ -40,18 +55,20 @@ const MAX_ED25519_SIG_MSG: usize = 1
     + 32
     + 32;
 
-// RSA requires alloc.
-#[cfg(feature = "rsa")]
-use packets::RSAPubKey;
-#[cfg(feature = "rsa")]
-use rsa::signature::{DigestSigner, DigestVerifier};
-
 #[derive(Debug, Clone, Copy)]
 pub enum SigType {
     Ed25519,
     #[cfg(feature = "rsa")]
     RSA,
-    // Ecdsa
+    #[cfg(feature = "ecdsa256")]
+    ECDSA256,
+}
+
+#[allow(dead_code)]
+fn copy_right_aligned(src: &[u8], dest: &mut [u8]) -> Result<(), ()> {
+    let Some(offset) = dest.len().checked_sub(src.len()) else { return Err(()) };
+    dest[offset..].copy_from_slice(src);
+    Ok(())
 }
 
 impl SigType {
@@ -61,6 +78,8 @@ impl SigType {
             SSH_NAME_ED25519 => Ok(SigType::Ed25519),
             #[cfg(feature = "rsa")]
             SSH_NAME_RSA_SHA256 => Ok(SigType::RSA),
+            #[cfg(feature = "ecdsa256")]
+            SSH_NAME_ECDSA256 => Ok(SigType::ECDSA256),
             _ => Err(Error::bug()),
         }
     }
@@ -71,6 +90,8 @@ impl SigType {
             SigType::Ed25519 => SSH_NAME_ED25519,
             #[cfg(feature = "rsa")]
             SigType::RSA => SSH_NAME_RSA_SHA256,
+            #[cfg(feature = "ecdsa256")]
+            SigType::ECDSA256 => SSH_NAME_ECDSA256,
         }
     }
 
@@ -121,6 +142,13 @@ impl SigType {
             (SigType::RSA, PubKey::RSA(k), Signature::RSA(s)) => {
                 Self::verify_rsa(k, msg, s)
             }
+
+            #[cfg(feature = "ecdsa256")]
+            (
+                SigType::ECDSA256,
+                PubKey::ECDSA256(ECDSAPubKey { key }),
+                Signature::ECDSA256(s),
+            ) => Self::verify_ecdsa(key, msg, &s.0),
 
             _ => {
                 warn!(
@@ -184,6 +212,54 @@ impl SigType {
             Error::BadSig
         })
     }
+
+    #[cfg(feature = "_ecdsa")]
+    fn verify_ecdsa<C: ecdsa::EcdsaCurve + ecdsa::elliptic_curve::CurveArithmetic>(
+        k: &VerifyingKey<C>,
+        msg: &dyn SSHEncode,
+        sig: &packets::ECDSASig,
+    ) -> Result<()>
+    where
+        ecdsa::SignatureSize<C>: ecdsa::elliptic_curve::array::ArraySize,
+    {
+        // RFC5656 defined r and s as mpint, so SSH will trim leading zeros.
+        // ecdsa crate requires exact sized inputs, so copy them in
+        // zero padded (big endian).
+        let mut pad_r = ecdsa::elliptic_curve::FieldBytes::<C>::default();
+        let mut pad_s = ecdsa::elliptic_curve::FieldBytes::<C>::default();
+        copy_right_aligned(sig.r.as_ref(), &mut pad_r).map_err(|_| {
+            debug!("Bad signature r");
+            error::BadSig.build()
+        })?;
+        copy_right_aligned(sig.s.as_ref(), &mut pad_s).map_err(|_| {
+            debug!("Bad signature s");
+            error::BadSig.build()
+        })?;
+
+        let sig =
+            ecdsa::Signature::<C>::from_scalars(pad_r, pad_s).map_err(|_| {
+                trace!("ECDSA bad signature");
+                error::BadSig.build()
+            })?;
+
+        // TODO: once ecdsa is non-rc and all the crates like digest are aligned,
+        // can use verify_digest() instead of hazmat::verify_prehashed.
+        // k.verify_digest(|&mut d| {
+        //     sshwire::hash_ser(d, msg).map_err(|_| ecdsa::Error::new())
+        // }, &signature).map_err(|_| {
+        //     trace!("ECDSA verify failed");
+        //     Error::BadSig
+        // })
+
+        let mut h = sha2::Sha256::new();
+        sshwire::hash_ser(&mut h, msg)?;
+        let h = h.finalize();
+
+        k.verify_prehash(&h, &sig).map_err(|_| {
+            trace!("ECDSA verify failed");
+            Error::BadSig
+        })
+    }
 }
 
 pub enum OwnedSig {
@@ -191,6 +267,11 @@ pub enum OwnedSig {
     Ed25519([u8; 64]),
     #[cfg(feature = "rsa")]
     RSA(Box<[u8]>),
+    #[cfg(feature = "ecdsa256")]
+    ECDSA256 {
+        r: [u8; 32],
+        s: [u8; 32],
+    },
 }
 
 #[cfg(feature = "rsa")]
@@ -212,6 +293,21 @@ impl TryFrom<Signature<'_>> for OwnedSig {
             Signature::RSA(s) => {
                 let s = s.sig.0.try_into().map_err(|_| Error::BadSig)?;
                 Ok(OwnedSig::RSA(s))
+            }
+            #[cfg(feature = "ecdsa256")]
+            Signature::ECDSA256(sig) => {
+                let sig = sig.0;
+                let mut r = [0; 32];
+                let mut s = [0; 32];
+                copy_right_aligned(sig.r.as_ref(), &mut r).map_err(|_| {
+                    debug!("Bad signature r");
+                    error::BadSig.build()
+                })?;
+                copy_right_aligned(sig.s.as_ref(), &mut s).map_err(|_| {
+                    debug!("Bad signature s");
+                    error::BadSig.build()
+                })?;
+                Ok(OwnedSig::ECDSA256 { r, s })
             }
             Signature::Unknown(u) => {
                 debug!("Unknown {u} signature");
@@ -250,6 +346,14 @@ pub enum SignKey {
     #[cfg(feature = "rsa")]
     #[zeroize(skip)]
     AgentRSA(rsa::RsaPublicKey),
+
+    #[cfg(feature = "ecdsa256")]
+    #[zeroize(skip)]
+    ECDSA256(ecdsa::SigningKey<p256::NistP256>),
+
+    #[cfg(feature = "ecdsa256")]
+    #[zeroize(skip)]
+    AgentECDSA256(ecdsa::VerifyingKey<p256::NistP256>),
 }
 
 impl SignKey {
@@ -300,6 +404,14 @@ impl SignKey {
 
             #[cfg(feature = "rsa")]
             SignKey::AgentRSA(pk) => PubKey::RSA(RSAPubKey { key: pk.clone() }),
+
+            #[cfg(feature = "ecdsa256")]
+            SignKey::ECDSA256(k) => PubKey::ECDSA256(ECDSAPubKey { key: k.into() }),
+
+            #[cfg(feature = "ecdsa256")]
+            SignKey::AgentECDSA256(pk) => {
+                PubKey::ECDSA256(ECDSAPubKey { key: pk.clone() })
+            }
         }
     }
 
@@ -321,6 +433,8 @@ impl SignKey {
 
             #[cfg(feature = "rsa")]
             PubKey::RSA(k) => Ok(Self::AgentRSA(k.key.clone())),
+            #[cfg(feature = "ecdsa256")]
+            PubKey::ECDSA256(k) => Ok(Self::AgentECDSA256(k.key.clone())),
 
             PubKey::Unknown(_) => Err(Error::msg("Unsupported agent key")),
         }
@@ -336,6 +450,10 @@ impl SignKey {
             #[cfg(feature = "rsa")]
             SignKey::RSA(_) | SignKey::AgentRSA(_) => {
                 matches!(sig_type, SigType::RSA)
+            }
+            #[cfg(feature = "ecdsa256")]
+            SignKey::ECDSA256(_) | SignKey::AgentECDSA256(_) => {
+                matches!(sig_type, SigType::ECDSA256)
             }
         }
     }
@@ -375,10 +493,26 @@ impl SignKey {
                 OwnedSig::RSA(sig.into())
             }
 
+            #[cfg(feature = "ecdsa256")]
+            SignKey::ECDSA256(k) => {
+                let mut h = sha2::Sha256::new();
+                sshwire::hash_ser(&mut h, msg)?;
+                let h = h.finalize();
+                let sig: ecdsa::Signature<NistP256> =
+                    k.sign_prehash(&h).map_err(|_| {
+                        trace!("ECDSA signing failed");
+                        Error::bug()
+                    })?;
+                let (r, s) = sig.split_bytes();
+                OwnedSig::ECDSA256 { r: r.into(), s: s.into() }
+            }
+
             // callers should check for agent keys first
-            SignKey::AgentEd25519(_) => return Error::bug_msg("agent sign"),
+            SignKey::AgentEd25519(_) => unreachable!(),
             #[cfg(feature = "rsa")]
-            SignKey::AgentRSA(_) => return Error::bug_msg("agent sign"),
+            SignKey::AgentRSA(_) => unreachable!(),
+            #[cfg(feature = "ecdsa256")]
+            SignKey::AgentECDSA256(_) => unreachable!(),
         };
 
         // {
@@ -398,10 +532,14 @@ impl SignKey {
             SignKey::Ed25519(_) => false,
             #[cfg(feature = "rsa")]
             SignKey::RSA(_) => false,
+            #[cfg(feature = "ecdsa256")]
+            SignKey::ECDSA256(_) => false,
 
             SignKey::AgentEd25519(_) => true,
             #[cfg(feature = "rsa")]
             SignKey::AgentRSA(_) => true,
+            #[cfg(feature = "ecdsa256")]
+            SignKey::AgentECDSA256(_) => true,
         }
     }
 }
@@ -415,6 +553,10 @@ impl core::fmt::Debug for SignKey {
             Self::RSA(_) => "RSA",
             #[cfg(feature = "rsa")]
             Self::AgentRSA(_) => "AgentRSA",
+            #[cfg(feature = "ecdsa256")]
+            Self::ECDSA256(_) => "ECDSA256",
+            #[cfg(feature = "ecdsa256")]
+            Self::AgentECDSA256(_) => "AgentECDSA256",
         };
         write!(f, "SignKey::{s}")
     }

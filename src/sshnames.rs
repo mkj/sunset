@@ -32,6 +32,8 @@ pub const SSH_NAME_ED25519: &str = "ssh-ed25519";
 pub const SSH_NAME_RSA_SHA256: &str = "rsa-sha2-256";
 /// [RFC4253](https://tools.ietf.org/html/rfc4253). Deprecated for signatures but is a valid key type.
 pub const SSH_NAME_RSA: &str = "ssh-rsa";
+/// [RFC5656](https://tools.ietf.org/html/rfc5656).
+pub const SSH_NAME_ECDSA256: &str = "ecdsa-sha2-nistp256";
 
 /// [RFC4344](https://tools.ietf.org/html/rfc4344)
 pub const SSH_NAME_AES256_CTR: &str = "aes256-ctr";

@@ -16,6 +16,9 @@ use core::fmt::{Debug, Display};
 #[cfg(feature = "arbitrary")]
 use arbitrary::Arbitrary;
 
+#[cfg(feature = "ecdsa256")]
+use p256::NistP256;
+
 use sunset_sshwire_derive::*;
 
 use crate::*;
@@ -331,6 +334,10 @@ pub enum PubKey<'a> {
     #[sshwire(variant = SSH_NAME_RSA)]
     RSA(RSAPubKey),
 
+    #[cfg(feature = "ecdsa256")]
+    #[sshwire(variant = SSH_NAME_ECDSA256)]
+    ECDSA256(ECDSAPubKey<p256::NistP256>),
+
     #[sshwire(unknown)]
     Unknown(Unknown<'a>),
 }
@@ -342,6 +349,8 @@ impl PubKey<'_> {
             PubKey::Ed25519(_) => Ok(SSH_NAME_ED25519),
             #[cfg(feature = "rsa")]
             PubKey::RSA(_) => Ok(SSH_NAME_RSA),
+            #[cfg(feature = "ecdsa256")]
+            PubKey::ECDSA256(_) => Ok(SSH_NAME_ECDSA256),
             PubKey::Unknown(u) => Err(u),
         }
     }
@@ -387,6 +396,19 @@ impl TryFrom<&PubKey<'_>> for ssh_key::PublicKey {
                     n: r.key.n().try_into().map_err(|_| Error::BadKey)?,
                     e: r.key.e().try_into().map_err(|_| Error::BadKey)?,
                 };
+                Ok(k.into())
+            }
+
+            #[cfg(feature = "ecdsa256")]
+            PubKey::ECDSA256(k) => {
+                // TODO can simplify once ecdsa crate isn't rc
+                let k = ssh_key::public::EcdsaPublicKey::NistP256(
+                    k.key
+                        .to_sec1_point(false)
+                        .as_bytes()
+                        .try_into()
+                        .map_err(|_| Error::BadKex)?,
+                );
                 Ok(k.into())
             }
 
@@ -457,6 +479,64 @@ impl Arbitrary<'_> for RSAPubKey {
     }
 }
 
+#[cfg(feature = "_ecdsa")]
+#[derive(Clone, PartialEq)]
+pub struct ECDSAPubKey<C: ecdsa::EcdsaCurve + ecdsa::elliptic_curve::CurveArithmetic>
+{
+    pub key: ecdsa::VerifyingKey<C>,
+}
+
+#[cfg(feature = "_ecdsa")]
+const ECDSA_ID_NISTP256: &str = "nistp256";
+
+#[cfg(feature = "ecdsa256")]
+impl SSHEncode for ECDSAPubKey<NistP256> {
+    fn enc(&self, s: &mut dyn SSHSink) -> WireResult<()> {
+        ECDSA_ID_NISTP256.enc(s)?;
+        let pt = self.key.to_sec1_point(false);
+        BinString(pt.as_bytes()).enc(s)
+    }
+}
+
+#[cfg(feature = "ecdsa256")]
+impl<'de> SSHDecode<'de> for ECDSAPubKey<NistP256> {
+    fn dec<S>(s: &mut S) -> WireResult<Self>
+    where
+        S: SSHSource<'de>,
+    {
+        let name: &str = SSHDecode::dec(s)?;
+        if name != ECDSA_ID_NISTP256 {
+            trace!("Wrong ecdsa name {name}");
+            return Err(WireError::BadKey);
+        }
+
+        let key = BinString::dec(s)?;
+        let key = ecdsa::VerifyingKey::from_sec1_bytes(key.0).map_err(|_| {
+            trace!("Bad ecdsa key");
+            WireError::BadKey
+        })?;
+        Ok(Self { key })
+    }
+}
+
+#[cfg(feature = "ecdsa256")]
+impl Debug for ECDSAPubKey<p256::NistP256> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ECDSAPubKey<p256>").finish_non_exhaustive()
+    }
+}
+
+#[cfg(all(feature = "arbitrary", feature = "ecdsa256"))]
+impl Arbitrary<'_> for ECDSAPubKey<NistP256> {
+    fn arbitrary(u: &mut arbitrary::Unstructured) -> arbitrary::Result<Self> {
+        let key = ecdsa::VerifyingKey::from_sec1_bytes(
+            arbitrary::Arbitrary::arbitrary(u)?,
+        )
+        .map_err(|_| arbitrary::Error::IncorrectFormat)?;
+        Ok(Self { key })
+    }
+}
+
 #[derive(Debug, SSHEncode, SSHDecode, Clone)]
 #[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 #[sshwire(variant_prefix)]
@@ -467,6 +547,10 @@ pub enum Signature<'a> {
     #[cfg(feature = "rsa")]
     #[sshwire(variant = SSH_NAME_RSA_SHA256)]
     RSA(RSASig<'a>),
+
+    #[cfg(feature = "ecdsa256")]
+    #[sshwire(variant = SSH_NAME_ECDSA256)]
+    ECDSA256(Blob<ECDSASig<'a>>),
 
     #[sshwire(unknown)]
     Unknown(Unknown<'a>),
@@ -479,6 +563,8 @@ impl<'a> Signature<'a> {
             Signature::Ed25519(_) => Ok(SSH_NAME_ED25519),
             #[cfg(feature = "rsa")]
             Signature::RSA(_) => Ok(SSH_NAME_RSA_SHA256),
+            #[cfg(feature = "ecdsa256")]
+            Signature::ECDSA256(_) => Ok(SSH_NAME_ECDSA256),
             Signature::Unknown(u) => Err(u),
         }
     }
@@ -494,6 +580,8 @@ impl<'a> Signature<'a> {
             PubKey::Ed25519(_) => Ok(SSH_NAME_ED25519),
             #[cfg(feature = "rsa")]
             PubKey::RSA(_) => Ok(SSH_NAME_RSA_SHA256),
+            #[cfg(feature = "ecdsa256")]
+            PubKey::ECDSA256(_) => Ok(SSH_NAME_ECDSA256),
             PubKey::Unknown(u) => {
                 warn!("Unknown key type \"{}\"", u);
                 Err(Error::UnknownMethod { kind: "key" })
@@ -506,6 +594,8 @@ impl<'a> Signature<'a> {
             Signature::Ed25519(_) => Ok(SigType::Ed25519),
             #[cfg(feature = "rsa")]
             Signature::RSA(_) => Ok(SigType::RSA),
+            #[cfg(feature = "ecdsa256")]
+            Signature::ECDSA256(_) => Ok(SigType::ECDSA256),
             Signature::Unknown(u) => {
                 warn!("Unknown signature type \"{}\"", u);
                 Err(Error::UnknownMethod { kind: "signature" })
@@ -524,6 +614,11 @@ impl<'a> From<&'a OwnedSig> for Signature<'a> {
             OwnedSig::RSA(s) => {
                 Signature::RSA(RSASig { sig: BinString(s.as_ref()) })
             }
+            #[cfg(feature = "ecdsa256")]
+            OwnedSig::ECDSA256 { r, s } => Signature::ECDSA256(Blob(ECDSASig {
+                r: sshwire::Mpint::new(r),
+                s: sshwire::Mpint::new(s),
+            })),
         }
     }
 }
@@ -539,6 +634,13 @@ pub struct Ed25519Sig<'a> {
 #[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct RSASig<'a> {
     pub sig: BinString<'a>,
+}
+#[cfg(feature = "_ecdsa")]
+#[derive(Debug, SSHEncode, SSHDecode, Clone)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
+pub struct ECDSASig<'a> {
+    pub r: sshwire::Mpint<'a>,
+    pub s: sshwire::Mpint<'a>,
 }
 
 #[derive(Debug, SSHEncode, SSHDecode)]

@@ -60,6 +60,8 @@ const fixed_options_hostsig: &[&str] = &[
     SSH_NAME_ED25519,
     #[cfg(feature = "rsa")]
     SSH_NAME_RSA_SHA256,
+    #[cfg(feature = "ecdsa256")]
+    SSH_NAME_ECDSA256,
 ];
 
 const fixed_options_cipher: &[&str] = &[SSH_NAME_CHAPOLY, SSH_NAME_AES256_CTR];
