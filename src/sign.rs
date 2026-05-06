@@ -26,7 +26,7 @@ use digest::Digest;
 // TODO remove once we use byupdate.
 // signatures are for hostkey (32 byte sessiid) or pubkey (auth packet || sessid).
 // we assume a max 40 character username here.
-const MAX_SIG_MSG: usize = 1
+const MAX_ED25519_SIG_MSG: usize = 1
     + 4
     + 40
     + 4
@@ -158,7 +158,7 @@ impl SigType {
         //     &s,
         // )
         // .map_err(|_| Error::BadSig)
-        let mut buf = [0; MAX_SIG_MSG];
+        let mut buf = [0; MAX_ED25519_SIG_MSG];
         let l = sshwire::write_ssh(&mut buf, msg)?;
         let buf = &buf[..l];
         k.verify(buf, &s).map_err(|_| Error::BadSig)
@@ -354,7 +354,7 @@ impl SignKey {
                 //     &k.verifying_key(),
                 // )
                 // .trap()?;
-                let mut buf = [0; MAX_SIG_MSG];
+                let mut buf = [0; MAX_ED25519_SIG_MSG];
                 let l = sshwire::write_ssh(&mut buf, msg)?;
                 let buf = &buf[..l];
                 let sig = k.sign(buf);
