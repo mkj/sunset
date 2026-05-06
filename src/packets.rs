@@ -431,7 +431,7 @@ impl<'de> SSHDecode<'de> for RSAPubKey {
         let n = SSHDecode::dec(s)?;
         let key = rsa::RsaPublicKey::new(n, e).map_err(|e| {
             debug!("Invalid RSA public key: {e}");
-            WireError::BadKeyFormat
+            WireError::BadKey
         })?;
         Ok(Self { key })
     }

@@ -92,7 +92,7 @@ pub enum WireError {
 
     SSHProto,
 
-    BadKeyFormat,
+    BadKey,
 
     UnknownPacket { number: u8 },
 }
@@ -106,7 +106,7 @@ impl From<WireError> for Error {
             WireError::BadName => Error::BadName,
             WireError::SSHProto => error::SSHProto.build(),
             WireError::PacketWrong => error::PacketWrong.build(),
-            WireError::BadKeyFormat => Error::BadKeyFormat,
+            WireError::BadKey => Error::BadKey,
             WireError::UnknownVariant => Error::bug_err_msg("Can't encode Unknown"),
             WireError::UnknownPacket { number } => Error::UnknownPacket { number },
         }
