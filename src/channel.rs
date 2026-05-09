@@ -224,6 +224,10 @@ impl Channels {
         self.get(num).is_ok_and(|c| c.is_closed())
     }
 
+    pub(crate) fn can_send_eof(&self, num: ChanNum) -> bool {
+        self.get(num).is_ok_and(|c| !c.sent_eof && !c.is_closed())
+    }
+
     pub(crate) fn send_allowed(&self, num: ChanNum) -> Option<usize> {
         self.get(num).map_or(Some(0), |c| c.send_allowed())
     }
@@ -275,6 +279,32 @@ impl Channels {
             ChanType::Session => Req::Break(br).send(ch, s),
             _ => error::BadChannelData.fail(),
         }
+    }
+
+    pub(crate) fn send_eof(&mut self, num: ChanNum, s: &mut TrafSend) -> Result<()> {
+        let ch = self.get_mut(num)?;
+        if ch.sent_eof || ch.is_closed() {
+            return Ok(());
+        }
+        s.send(packets::ChannelEof { num: ch.send_num()? })?;
+        ch.sent_eof = true;
+        Ok(())
+    }
+
+    pub(crate) fn close(&mut self, num: ChanNum, s: &mut TrafSend) -> Result<()> {
+        let ch = self.get_mut(num)?;
+        if ch.state == ChanState::RecvClose {
+            return Ok(());
+        }
+        if !ch.sent_eof {
+            s.send(packets::ChannelEof { num: ch.send_num()? })?;
+            ch.sent_eof = true;
+        }
+        if !ch.sent_close {
+            s.send(packets::ChannelClose { num: ch.send_num()? })?;
+            ch.sent_close = true;
+        }
+        Ok(())
     }
 
     fn dispatch_open(
@@ -708,7 +738,7 @@ struct ChanDir {
     window: usize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ChanState {
     /// An incoming channel open request that has not yet been responded to.
     ///
@@ -729,8 +759,12 @@ enum ChanState {
 pub(crate) struct Channel {
     ty: ChanType,
     state: ChanState,
+    /// Whether we've sent CHANNEL_EOF
     sent_eof: bool,
+    /// Whether we've sent CHANNEL_CLOSE
     sent_close: bool,
+    /// Whether we've received CHANNEL_EOF
+    recv_eof: bool,
 
     recv: ChanDir,
     /// populated in all states except `Opening`
@@ -761,6 +795,7 @@ impl Channel {
             state: ChanState::Opening,
             sent_close: false,
             sent_eof: false,
+            recv_eof: false,
             recv: ChanDir {
                 num: num.0,
                 // TODO these should depend on SSH rx buffer size minus overhead
@@ -966,39 +1001,51 @@ impl Channel {
         }
     }
 
-    fn handle_eof(&mut self, s: &mut TrafSend, is_client: bool) -> Result<()> {
-        //TODO: check existing state?
-        if !self.sent_eof {
-            s.send(packets::ChannelEof { num: self.send_num()? })?;
-            self.sent_eof = true;
+    fn handle_eof(&mut self, _s: &mut TrafSend, is_client: bool) -> Result<()> {
+        if self.recv_eof || self.state == ChanState::RecvClose {
+            return Ok(());
         }
 
-        // Wake readers on EOF
+        self.recv_eof = true;
+
         self.wake_read(ChanData::Normal, is_client);
         if is_client {
             self.wake_read(ChanData::Stderr, is_client);
         }
 
-        self.state = ChanState::RecvEof;
-        // todo!();
+        match self.state {
+            ChanState::Normal => self.state = ChanState::RecvEof,
+            _ => (),
+        }
         Ok(())
     }
 
     fn handle_close(&mut self, s: &mut TrafSend, is_client: bool) -> Result<()> {
-        //TODO: check existing state?
+        if self.state == ChanState::RecvClose {
+            return Ok(());
+        }
+
+        self.state = ChanState::RecvClose;
+
+        // If we haven't already sent EOF, send it now
+        if !self.sent_eof {
+            s.send(packets::ChannelEof { num: self.send_num()? })?;
+            self.sent_eof = true;
+        }
+
+        // Send close if we haven't already
         if !self.sent_close {
             s.send(packets::ChannelClose { num: self.send_num()? })?;
             self.sent_close = true;
         }
 
-        // Wake readers and writers on EOF
+        // Wake readers and writers on close
         self.wake_read(ChanData::Normal, is_client);
         if is_client {
             self.wake_read(ChanData::Stderr, is_client);
         }
         self.wake_write(None, is_client);
 
-        self.state = ChanState::RecvClose;
         Ok(())
     }
 
@@ -1007,15 +1054,19 @@ impl Channel {
     }
 
     fn have_recv_eof(&self) -> bool {
-        matches!(self.state, ChanState::RecvEof | ChanState::RecvClose)
+        self.recv_eof
+            || matches!(self.state, ChanState::RecvEof | ChanState::RecvClose)
     }
 
     fn is_closed(&self) -> bool {
         matches!(self.state, ChanState::RecvClose)
     }
 
-    // None on close
+    // None on close or EOF sent
     fn send_allowed(&self) -> Option<usize> {
+        if self.sent_eof || self.is_closed() {
+            return None;
+        }
         let r = self.send.as_ref().map(|s| usize::min(s.window, s.max_packet));
         trace!("send_allowed {r:?}");
         r
