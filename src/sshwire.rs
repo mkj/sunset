@@ -258,7 +258,7 @@ impl<'de> SSHSource<'de> for DecodeBytes<'de> {
 /// Has u32 length prefix and an extra 0x00 byte if the MSB is set.
 pub fn hash_mpint(hash_ctx: &mut impl SSHWireDigestUpdate, m: &[u8]) {
     // OK unwrap, hash_ser can't fail since Mpint::enc can't fail
-    hash_ser(hash_ctx, &Mpint(m)).unwrap();
+    hash_ser(hash_ctx, &Mpint::new(m)).unwrap();
 }
 
 ///////////////////////////////////////////////
