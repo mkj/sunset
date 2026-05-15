@@ -20,7 +20,7 @@ use heapless::Vec;
 /// if client implementations will handle varying auth methods correctly.
 #[derive(Debug)]
 pub(crate) struct ServAuth {
-    pub authed: bool,
+    authed: bool,
 
     /// Used so that `AuthFirst` is only presented once to the application.
     tried_first: bool,
@@ -55,6 +55,11 @@ impl ServAuth {
     pub fn set_auth_methods(&mut self, password: bool, pubkey: bool) {
         self.method_password = password;
         self.method_pubkey = pubkey;
+    }
+
+    /// Returns `true` if the client has successfully authenticated.
+    pub fn is_authed(&self) -> bool {
+        self.authed
     }
 
     /// Returns an event for the app, or `DispatchEvent::None` if auth failure

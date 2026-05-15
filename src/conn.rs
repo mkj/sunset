@@ -687,7 +687,7 @@ impl Conn<Server> {
     ) -> Result<DispatchEvent> {
         let auth = &mut self.mut_server()?.auth;
         auth.resume_request(allow, s)?;
-        if auth.authed && matches!(self.state, ConnState::PreAuth) {
+        if auth.is_authed() && matches!(self.state, ConnState::PreAuth) {
             self.state = ConnState::Authed;
             Ok(DispatchEvent::ServEvent(ServEventId::Authenticated))
         } else {
