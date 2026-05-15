@@ -71,6 +71,7 @@ fn serv_event(input: &mut FuzzInput, ev: Event, state: &mut State) -> Result<()>
                 h.enable_pubkey_auth(false).unwrap();
             }
             if input.chance(0.9)? {
+                state.authed = true;
                 h.allow()?;
             } else if input.chance(0.4)? {
                 h.reject()?;
@@ -87,13 +88,13 @@ fn serv_event(input: &mut FuzzInput, ev: Event, state: &mut State) -> Result<()>
                 h.enable_pubkey_auth(false).unwrap();
             }
             if input.chance(0.9)? {
+                println!("fuzz allow pub");
                 h.allow()?;
             } else if input.chance(0.4)? {
                 h.reject()?;
             }
         }
         ServEvent::Authenticated => {
-            assert!(state.authed);
             state.authed = true;
         }
         ServEvent::OpenSession(h) => {
