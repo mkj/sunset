@@ -95,7 +95,7 @@ arguments and runs them all.
 It's useful for debugging crashes or getting coverage.
 
 ```
-cargo build --features nofuzz
+RUSTFLAGS="--cfg fuzzing" cargo build --features nofuzz
 
 RUST_LOG=trace ../target/debug/fuzz-server ~/tmp/crashes
 ```
