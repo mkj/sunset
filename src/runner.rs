@@ -451,17 +451,6 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
         self.wake();
     }
 
-    // TODO: move somewhere client specific?
-    pub fn open_client_session(&mut self) -> Result<ChanHandle> {
-        trace!("open_client_session");
-
-        let (chan, p) =
-            self.conn.channels.open(packets::ChannelOpenType::Session)?;
-        self.traf_out.send_packet(p, &mut self.keys)?;
-        self.wake();
-        Ok(ChanHandle(chan))
-    }
-
     /// Send data from this application out the wire.
     ///
     /// Returns `Ok(len)` consumed, `Err(Error::ChannelEof)` on EOF,
@@ -809,6 +798,18 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
         let (payload, _seq) = self.traf_in.payload().trap()?;
         let p = self.conn.packet(payload)?;
         self.conn.channels.fetch_env_value(&p)
+    }
+}
+
+impl<'a> Runner<'a, client::Client> {
+    pub fn open_client_session(&mut self) -> Result<ChanHandle> {
+        trace!("open_client_session");
+
+        let (chan, p) =
+            self.conn.channels.open(packets::ChannelOpenType::Session)?;
+        self.traf_out.send_packet(p, &mut self.keys)?;
+        self.wake();
+        Ok(ChanHandle(chan))
     }
 }
 
