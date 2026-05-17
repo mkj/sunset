@@ -15,8 +15,8 @@ use core::{fmt, marker::PhantomData};
 use digest::Digest;
 #[cfg(feature = "mlkem")]
 use ml_kem::{
-    kem::{Decapsulate, Encapsulate, EncapsulationKey, Kem},
-    Ciphertext, EncodedSizeUser, KemCore, MlKem768, MlKem768Params,
+    kem::{Decapsulate, EncapsulationKey},
+    Ciphertext, DecapsulationKey, Key, KeyExport, MlKem768, Seed, B32,
 };
 use rand_core::OsRng;
 use sha2::Sha256;
@@ -60,8 +60,6 @@ const fixed_options_hostsig: &[&str] = &[
     SSH_NAME_ED25519,
     #[cfg(feature = "rsa")]
     SSH_NAME_RSA_SHA256,
-    #[cfg(feature = "ecdsa256")]
-    SSH_NAME_ECDSA256,
 ];
 
 const fixed_options_cipher: &[&str] = &[SSH_NAME_CHAPOLY, SSH_NAME_AES256_CTR];
@@ -679,7 +677,7 @@ impl SharedSecret {
             Self::KexCurve25519(k) => k.pubkey(),
             #[cfg(feature = "mlkem")]
             Self::KexMlkemX25519(k) => {
-                mlkem_bytes = k.init_pubkey_arr_client();
+                mlkem_bytes = k.init_pubkey_arr_client()?;
                 &mlkem_bytes
             }
         };
@@ -914,15 +912,15 @@ impl KexCurve25519 {
 #[cfg(feature = "mlkem")]
 pub(crate) struct KexMlkemX25519 {
     ecdh: KexCurve25519,
-    // Initialised in `new()`, cleared after deriving the secret
-    mlkem_ours: Option<<Kem<MlKem768Params> as KemCore>::DecapsulationKey>,
+    // 64-byte seed for deterministic mlkem key regeneration.
+    mlkem_seed: Option<Seed>,
 }
 
 #[cfg(feature = "mlkem")]
 impl core::fmt::Debug for KexMlkemX25519 {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         f.debug_struct("KexMlkemX25519")
-            .field("ours", &if self.mlkem_ours.is_some() { "Some" } else { "None" })
+            .field("seed", &if self.mlkem_seed.is_some() { "Some" } else { "None" })
             .field("ecdh", &self.ecdh)
             .finish()
     }
@@ -940,37 +938,40 @@ impl KexMlkemX25519 {
         Self::MLKEM768_CIPHERTEXT_SIZE + Self::X25519_PUBKEY_SIZE;
 
     const _CHECK0: () = assert!(
-        Self::MLKEM768_PUBKEY_SIZE
-            == size_of::<ml_kem::Encoded::<EncapsulationKey::<MlKem768Params>>>()
+        Self::MLKEM768_PUBKEY_SIZE == size_of::<Key<EncapsulationKey<MlKem768>>>()
     );
-    const _CHECK1: () = assert!(
-        Self::MLKEM768_CIPHERTEXT_SIZE == size_of::<ml_kem::Ciphertext<MlKem768>>()
-    );
+    const _CHECK1: () =
+        assert!(Self::MLKEM768_CIPHERTEXT_SIZE == size_of::<Ciphertext<MlKem768>>());
 
     fn new() -> Result<Self> {
-        Ok(Self { ecdh: KexCurve25519::new()?, mlkem_ours: None })
+        Ok(Self { ecdh: KexCurve25519::new()?, mlkem_seed: None })
     }
 
-    /// Generates the publickey for a sent kexdhinit
-    fn init_pubkey_arr_client(&mut self) -> [u8; Self::PUBLICKEY_SIZE] {
-        debug_assert!(self.mlkem_ours.is_none());
-        // TODO does this construct in-place?
-        let (dk, _ek) = MlKem768::generate(&mut rand_core::OsRng);
+    /// Generates the publickey for a sent kexdhinit.The key is re-derived from the seed during
+    /// decapsulation to avoid storing it in memory.
+    fn init_pubkey_arr_client(&mut self) -> Result<[u8; Self::PUBLICKEY_SIZE]> {
+        debug_assert!(self.mlkem_seed.is_none());
+
+        let mut seed = Seed::default();
+        random::fill_random(&mut seed)?;
+
+        let dk = DecapsulationKey::from_seed(seed);
         let pubkey = self.pubkey_client(dk.encapsulation_key());
-        self.mlkem_ours = Some(dk);
-        pubkey
+
+        self.mlkem_seed = Some(seed);
+        Ok(pubkey)
     }
 
     fn pubkey_client(
         &mut self,
-        ek: &EncapsulationKey<MlKem768Params>,
+        ek: &EncapsulationKey<MlKem768>,
     ) -> [u8; Self::PUBLICKEY_SIZE] {
         let mut out = [0u8; Self::PUBLICKEY_SIZE];
         // Concatenate pq and ecdh.
         // C_INIT = C_PK2 || C_PK1.  C_PK2 pq kem, C_PK1 ecdh
         let (pq, ec) = out.split_at_mut(Self::MLKEM768_PUBKEY_SIZE);
         let pq: &mut [u8; Self::MLKEM768_PUBKEY_SIZE] = pq.try_into().unwrap();
-        *pq = ek.as_bytes().into();
+        *pq = ek.to_bytes().into();
         ec.copy_from_slice(self.ecdh.pubkey());
         out
     }
@@ -990,16 +991,17 @@ impl KexMlkemX25519 {
             .ok_or_else(|| error::BadKex.build())?;
 
         let ek = pq_in.try_into().map_err(|_| error::BadKex.build())?;
-        let ek = EncapsulationKey::<MlKem768Params>::from_bytes(ek);
+        let ek = EncapsulationKey::<MlKem768>::new(ek)
+            .map_err(|_| error::BadKex.build())?;
 
         // S_REPLY = S_CT2 || S_PK1.  S_CT2 pq kem, S_PK1 ecdh
         let (pq, ec) = ct_out.split_at_mut(Self::MLKEM768_CIPHERTEXT_SIZE);
         let pq: &mut [u8; Self::MLKEM768_CIPHERTEXT_SIZE] = pq.try_into().unwrap();
-        let enc = ek
-            .encapsulate(&mut rand_core::OsRng)
-            .map_err(|_| error::BadKex.build())?;
-        let (ct, pq_secret) = enc;
-        // TODO: check if this is another stack copy.
+
+        let mut m = B32::default();
+        random::fill_random(&mut m)?;
+        let (ct, pq_secret) = ek.encapsulate_deterministic(&m);
+
         *pq = ct.into();
         ec.copy_from_slice(self.ecdh.pubkey());
 
@@ -1019,8 +1021,11 @@ impl KexMlkemX25519 {
 
         let ct: &Ciphertext<MlKem768> =
             pq_in.try_into().map_err(|_| error::BadKex.build())?;
-        let dk = self.mlkem_ours.take().trap()?;
-        let pq_secret = dk.decapsulate(ct).map_err(|_| error::BadKex.build())?;
+
+        // Re-derive the DecapsulationKey from the seed
+        let seed = self.mlkem_seed.take().trap()?;
+        let dk = DecapsulationKey::from_seed(seed);
+        let pq_secret = dk.decapsulate(ct);
 
         let ek = dk.encapsulation_key();
         let c_pk = self.pubkey_client(ek);
