@@ -63,11 +63,6 @@ impl<CS: CliServ> core::fmt::Debug for Runner<'_, CS> {
     }
 }
 
-// #[derive(Default, Debug, Clone)]
-// pub struct Progress<'g, 'a> {
-//     pub event: Event<'g, 'a>,
-// }
-
 impl<'a> Runner<'a, client::Client> {
     /// `inbuf` and `outbuf` must be sized to fit the largest SSH packet allowed.
     pub fn new_client(
