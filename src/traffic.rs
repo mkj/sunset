@@ -17,19 +17,6 @@ use crate::*;
 // we could perhaps just work directly in smoltcp's provided buffer?
 // Would need changes to ciphers with block boundaries
 
-pub(crate) struct TrafOut<'a> {
-    // TODO: decompression will need another buffer
-    /// Accumulated output buffer.
-    ///
-    /// Should be sized to fit the largest
-    /// sequence of packets to be sent at once.
-    /// Contains ciphertext or cleartext, encrypted in-place.
-    /// Writing may contain multiple SSH packets to write out, encrypted
-    /// in-place as they are written to `buf`.
-    buf: &'a mut [u8],
-    state: TxState,
-}
-
 // TODO only pub for testing
 // pub(crate) struct TrafIn<'a> {
 pub struct TrafIn<'a> {
@@ -41,26 +28,6 @@ pub struct TrafIn<'a> {
     /// Only contains a single SSH packet at a time.
     buf: &'a mut [u8],
     state: RxState,
-}
-
-/// State machine for writes
-#[derive(Debug)]
-enum TxState {
-    /// Awaiting write, buffer is unused
-    Idle,
-
-    /// Writing to the socket. Buffer is encrypted in-place.
-    /// Should never be left in `idx==len` state,
-    /// instead should transition to Idle
-    Write {
-        /// Cursor position in the buffer
-        idx: usize,
-        /// Buffer available to write
-        len: usize,
-    },
-
-    /// No more output will be produced
-    Closed,
 }
 
 #[derive(Debug)]
@@ -91,12 +58,6 @@ enum RxState {
 impl core::fmt::Debug for TrafIn<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("TrafIn").field("state", &self.state).finish_non_exhaustive()
-    }
-}
-
-impl core::fmt::Debug for TrafOut<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("TrafOut").field("state", &self.state).finish_non_exhaustive()
     }
 }
 
@@ -335,6 +296,45 @@ impl<'a> TrafIn<'a> {
             }
             _ => 0,
         }
+    }
+}
+
+pub(crate) struct TrafOut<'a> {
+    // TODO: decompression will need another buffer
+    /// Accumulated output buffer.
+    ///
+    /// Should be sized to fit the largest
+    /// sequence of packets to be sent at once.
+    /// Contains ciphertext or cleartext, encrypted in-place.
+    /// Writing may contain multiple SSH packets to write out, encrypted
+    /// in-place as they are written to `buf`.
+    buf: &'a mut [u8],
+    state: TxState,
+}
+
+/// State machine for writes
+#[derive(Debug)]
+enum TxState {
+    /// Awaiting write, buffer is unused
+    Idle,
+
+    /// Writing to the socket. Buffer is encrypted in-place.
+    /// Should never be left in `idx==len` state,
+    /// instead should transition to Idle
+    Write {
+        /// Cursor position in the buffer
+        idx: usize,
+        /// Buffer available to write
+        len: usize,
+    },
+
+    /// No more output will be produced
+    Closed,
+}
+
+impl core::fmt::Debug for TrafOut<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TrafOut").field("state", &self.state).finish_non_exhaustive()
     }
 }
 
