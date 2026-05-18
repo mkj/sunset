@@ -1147,7 +1147,7 @@ pub struct CliSessionOpener<'g, 'a> {
 impl<'g, 'a> CliSessionOpener<'g, 'a> {
     /// Returns the channel associated with this session.
     ///
-    /// This will match that previously returned from [`Runner::cli_session_opener`]
+    /// This will match that previously returned from [`Runner::open_client_session`]
     /// or `SSHClient::open_session_pty()` (or `_nopty()`)
     pub fn channel(&self) -> ChanNum {
         self.ch.num()
