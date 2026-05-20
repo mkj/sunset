@@ -475,7 +475,7 @@ pub struct Mpint<'a>(&'a [u8]);
 impl<'a> Mpint<'a> {
     /// Construct a Mpint, removing leading 0x00 bytes.
     pub fn new(mut b: &'a [u8]) -> Self {
-        while b.get(0) == Some(&0x00) {
+        while b.first() == Some(&0x00) {
             b = &b[1..];
         }
         Mpint(b)
