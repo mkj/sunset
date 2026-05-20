@@ -8,8 +8,8 @@ use snafu::prelude::*;
 
 use crate::channel::ChanNum;
 
-#[allow(unused_imports)]
-use snafu::{Backtrace, Location};
+#[cfg(feature = "backtrace")]
+use snafu::Backtrace;
 
 // TODO: can we make Snafu not require Debug?
 

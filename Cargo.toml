@@ -29,7 +29,7 @@ arbitrary = { version = "1.4", features = ["derive_arbitrary"] }
 [dependencies]
 sunset-sshwire-derive = { workspace = true }
 
-snafu = { version = "0.8", default-features = false, features = ["rust_1_65"] }
+snafu = { version = "0.9", default-features = false, features = ["rust_1_81"] }
 log = { version = "0.4" }
 heapless = "0.8"
 
@@ -89,8 +89,6 @@ arbitrary = ["dep:arbitrary", "std"]
 larger = []
 
 [dev-dependencies]
-# examples want std::error
-snafu = { version = "0.8", default-features = true }
 anyhow = { version = "1.0" }
 simplelog = { version = "0.12", features = ["test"] }
 
