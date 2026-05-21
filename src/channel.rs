@@ -617,7 +617,8 @@ impl TryFrom<&packets::PtyReq<'_>> for Pty {
     fn try_from(p: &packets::PtyReq) -> Result<Self, Self::Error> {
         debug!("TODO implement pty modes");
         // SSHProto error is returned when TERM is too long. The caller will catch that.
-        let term = p.term.as_ascii()?.try_into().map_err(|_| error::SSHProto.build())?;
+        let term =
+            p.term.to_ascii()?.try_into().map_err(|_| error::SSHProto.build())?;
         Ok(Pty {
             term,
             cols: p.cols,

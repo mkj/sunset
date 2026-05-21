@@ -167,7 +167,7 @@ pub struct Banner<'a>(pub(crate) packets::UserauthBanner<'a>);
 
 impl Banner<'_> {
     pub fn banner(&self) -> Result<&str> {
-        self.0.message.as_str()
+        self.0.message.to_str()
     }
 
     pub fn raw_banner(&self) -> TextString<'_> {
@@ -360,7 +360,7 @@ impl<'g, 'a> ServPasswordAuth<'g, 'a> {
     }
 
     pub fn username(&self) -> Result<&str> {
-        self.raw_username()?.as_str()
+        self.raw_username()?.to_str()
     }
 
     /// Perform a constant-time comparison of the user-presented username against a passed string.
@@ -380,7 +380,7 @@ impl<'g, 'a> ServPasswordAuth<'g, 'a> {
     /// care to use timing-insensitive comparison, for example
     /// by using [`subtle`](https://docs.rs/subtle/latest/subtle/) crate.
     pub fn password(&self) -> Result<&str> {
-        self.raw_password()?.as_str()
+        self.raw_password()?.to_str()
     }
 
     /// Perform a constant-time comparison of the user-presented password against a passed string.
@@ -415,7 +415,7 @@ impl<'g, 'a> ServPasswordAuth<'g, 'a> {
     /// Enabling or disabling authentication methods based on username can
     /// unintentionally enable user enumeration attacks.
     pub fn enable_password_auth(&mut self, enabled: bool) -> Result<()> {
-        let (_, pubkey) = self.runner.get_auth_methods()?;
+        let (_, pubkey) = self.runner.auth_methods()?;
         self.runner.set_auth_methods(enabled, pubkey)
     }
 
@@ -425,7 +425,7 @@ impl<'g, 'a> ServPasswordAuth<'g, 'a> {
     /// Enabling or disabling authentication methods based on username can
     /// unintentionally enable user enumeration attacks.
     pub fn enable_pubkey_auth(&mut self, enabled: bool) -> Result<()> {
-        let (password, _) = self.runner.get_auth_methods()?;
+        let (password, _) = self.runner.auth_methods()?;
         self.runner.set_auth_methods(password, enabled)
     }
 
@@ -472,7 +472,7 @@ impl<'g, 'a> ServPubkeyAuth<'g, 'a> {
     }
 
     pub fn username(&self) -> Result<&str> {
-        self.raw_username()?.as_str()
+        self.raw_username()?.to_str()
     }
 
     /// Retrieve the public key presented by a client.
@@ -504,7 +504,7 @@ impl<'g, 'a> ServPubkeyAuth<'g, 'a> {
     /// Enabling or disabling authentication methods based on username can
     /// unintentionally enable user enumeration attacks.
     pub fn enable_password_auth(&mut self, enabled: bool) -> Result<()> {
-        let (_, pubkey) = self.runner.get_auth_methods()?;
+        let (_, pubkey) = self.runner.auth_methods()?;
         self.runner.set_auth_methods(enabled, pubkey)
     }
 
@@ -514,7 +514,7 @@ impl<'g, 'a> ServPubkeyAuth<'g, 'a> {
     /// Enabling or disabling authentication methods based on username can
     /// unintentionally enable user enumeration attacks.
     pub fn enable_pubkey_auth(&mut self, enabled: bool) -> Result<()> {
-        let (password, _) = self.runner.get_auth_methods()?;
+        let (password, _) = self.runner.auth_methods()?;
         self.runner.set_auth_methods(password, enabled)
     }
 
@@ -555,7 +555,7 @@ impl<'g, 'a> ServFirstAuth<'g, 'a> {
 
     /// Retrieve the username presented by the client.
     pub fn username(&self) -> Result<&str> {
-        self.raw_username()?.as_str()
+        self.raw_username()?.to_str()
     }
 
     /// Perform a constant-time comparison of the user-presented username against a passed string.
@@ -593,7 +593,7 @@ impl<'g, 'a> ServFirstAuth<'g, 'a> {
     /// Enabling or disabling authentication methods based on username can
     /// unintentionally enable user enumeration attacks.
     pub fn enable_password_auth(&mut self, enabled: bool) -> Result<()> {
-        let (_, pubkey) = self.runner.get_auth_methods()?;
+        let (_, pubkey) = self.runner.auth_methods()?;
         self.runner.set_auth_methods(enabled, pubkey)
     }
 
@@ -603,7 +603,7 @@ impl<'g, 'a> ServFirstAuth<'g, 'a> {
     /// Enabling or disabling authentication methods based on username can
     /// unintentionally enable user enumeration attacks.
     pub fn enable_pubkey_auth(&mut self, enabled: bool) -> Result<()> {
-        let (password, _) = self.runner.get_auth_methods()?;
+        let (password, _) = self.runner.auth_methods()?;
         self.runner.set_auth_methods(password, enabled)
     }
 
@@ -734,7 +734,7 @@ impl<'g, 'a> ServExecRequest<'g, 'a> {
 
     /// Retrieve the command presented by the client.
     pub fn command(&self) -> Result<&str> {
-        self.raw_command()?.as_str()
+        self.raw_command()?.to_str()
     }
 
     pub fn raw_command(&self) -> Result<TextString<'_>> {
@@ -881,7 +881,7 @@ impl<'g, 'a> ServEnvironmentRequest<'g, 'a> {
 
     /// Retrieve the name of the environment variable (from NAME=VALUE pair).
     pub fn name(&self) -> Result<&str> {
-        self.raw_name()?.as_str()
+        self.raw_name()?.to_str()
     }
 
     /// Retrieve the raw name of the environment variable.
@@ -891,7 +891,7 @@ impl<'g, 'a> ServEnvironmentRequest<'g, 'a> {
 
     /// Retrieve the value of the environment variable (from NAME=VALUE pair).
     pub fn value(&self) -> Result<&str> {
-        self.raw_value()?.as_str()
+        self.raw_value()?.to_str()
     }
 
     /// Retrieve the raw value of the environment variable.

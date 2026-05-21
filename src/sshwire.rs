@@ -324,11 +324,11 @@ impl<'a> TextString<'a> {
     ///
     /// Don't call this if you are avoiding including UTF-8 routines in
     /// the binary.
-    pub fn as_str(&self) -> Result<&'a str> {
+    pub fn to_str(&self) -> Result<&'a str> {
         core::str::from_utf8(self.0).map_err(|_| Error::BadString)
     }
 
-    pub fn as_ascii(&self) -> Result<&'a str> {
+    pub fn to_ascii(&self) -> Result<&'a str> {
         self.0.as_ascii_str().map_err(|_| Error::BadString).map(|s| s.as_str())
     }
 }

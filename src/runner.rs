@@ -246,7 +246,7 @@ impl<'a> Runner<'a, server::Server> {
         self.conn.set_auth_methods(password, pubkey)
     }
 
-    pub(crate) fn get_auth_methods(&self) -> Result<(bool, bool)> {
+    pub(crate) fn auth_methods(&self) -> Result<(bool, bool)> {
         let auth = &self.conn.server()?.auth;
         Ok((auth.method_password, auth.method_pubkey))
     }
