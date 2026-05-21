@@ -323,6 +323,10 @@ impl<const N: usize> SSHEncode for heapless::String<N> {
 pub struct TextString<'a>(pub &'a [u8]);
 
 impl<'a> TextString<'a> {
+    pub fn new() -> TextString<'static> {
+        TextString(&[])
+    }
+
     /// Returns the UTF-8 decoded string, using [`core::str::from_utf8`]
     ///
     /// Don't call this if you are avoiding including UTF-8 routines in

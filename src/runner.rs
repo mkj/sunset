@@ -317,6 +317,21 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
             self.traf_in.done_payload();
         }
 
+        // Try moving packets from the deferred queue to the
+        // normal output. Can't happen during kex since non-kex
+        // packets are disallowed.
+        // KEX packets aren't included in the deferred list.
+        if !self.conn.is_kex_sending() {
+            match self.traf_out.send_deferred_packets(&mut self.keys) {
+                Ok(()) => (),
+                Err(Error::NoRoom { .. }) => {
+                    // try again once there's space
+                    return Ok(Event::None);
+                }
+                Err(e) => return Err(e),
+            }
+        }
+
         let mut disp = Dispatched::default();
 
         // Handle incoming packets
@@ -611,6 +626,12 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
         if self.traf_out.is_draining() {
             // Continual channel data could prevent drain from completing,
             // so disallow channel writes when draining.
+            return Ok(Some(0));
+        }
+
+        if self.traf_out.have_deferred_packets() {
+            // Let deferred packets get moved to the output queue
+            // before sending more channel data.
             return Ok(Some(0));
         }
 

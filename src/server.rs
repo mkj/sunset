@@ -22,6 +22,7 @@ impl Server {
         s: &mut TrafSend,
     ) -> Result<()> {
         let success = match p.name {
+            // Any matched names here must also be in static_service_name()
             SSH_SERVICE_USERAUTH => true,
             SSH_SERVICE_CONNECTION => self.auth.is_authed(),
             _ => false,

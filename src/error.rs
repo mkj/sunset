@@ -6,7 +6,7 @@ use core::fmt::Arguments;
 
 use snafu::prelude::*;
 
-use crate::channel::ChanNum;
+use crate::{channel::ChanNum, packets::MessageNumber};
 
 #[cfg(feature = "backtrace")]
 use snafu::Backtrace;
@@ -20,14 +20,21 @@ use snafu::Backtrace;
 // TODO: maybe split this into a list of public vs private errors?
 #[snafu(visibility(pub))]
 pub enum Error {
-    /// Output buffer ran out of room
-    NoRoom {
+    /// Input buffer ran out
+    RanOut {
         #[cfg(feature = "backtrace")]
         backtrace: Backtrace,
     },
 
-    /// Input buffer ran out
-    RanOut {
+    /// Can't currently send a packet
+    ///
+    /// Either output buffer is full, or a key exchange is in progress.
+    // Should only be returned from TrafOut::send_packet(),
+    // NoRoom is for other similar circumstances.
+    BusySend { packet: MessageNumber },
+
+    /// No room to write
+    NoRoom {
         #[cfg(feature = "backtrace")]
         backtrace: Backtrace,
     },
@@ -157,6 +164,8 @@ pub enum Error {
     // #[snafu(display("Program bug {location}"))]
     // Bug { location: snafu::Location },
     /// Program bug
+    ///
+    /// Hitting this may instead panic on builds with debug-assertions.
     Bug,
 }
 

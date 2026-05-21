@@ -11,11 +11,20 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 
 #[cfg(feature = "alloc")]
 use alloc::boxed::Box;
+use heapless::Deque;
 
-use crate::channel::{ChanData, ChanNum};
 use crate::encrypt::{KeyState, KeysRecv, KeysSend, SSH_PAYLOAD_START};
 use crate::ident::RemoteVersion;
 use crate::*;
+use crate::{
+    channel::{ChanData, ChanNum},
+    packets::Packet,
+};
+
+/// Number of `DeferredPacket`s to queue.
+///
+/// Each entry takes around 40 bytes.
+const DEFER_COUNT: usize = 10;
 
 // Either a slice or boxed array.
 // Similar to managed::ManagedSlice.
@@ -358,6 +367,8 @@ pub(crate) struct TrafOut<'a> {
     state: TxState,
 
     drain: bool,
+
+    deferred_packets: Deque<DeferredPacket, DEFER_COUNT>,
 }
 
 /// State machine for writes
@@ -397,18 +408,69 @@ impl TrafIn<'static> {
 
 impl<'a> TrafOut<'a> {
     pub fn new(buf: &'a mut [u8]) -> Self {
-        Self { buf: SliceOrVec::Borrowed(buf), state: TxState::Idle, drain: false }
+        Self {
+            buf: SliceOrVec::Borrowed(buf),
+            state: TxState::Idle,
+            drain: false,
+            deferred_packets: Deque::new(),
+        }
     }
 
     /// Serializes and and encrypts a packet to send
+    ///
+    /// If the output buffer is full or a rekey is in progress, the
+    /// packet will be enqueued to be sent later. If the deferred packet queue
+    /// is full, `NoRoom` will be returned.
+    ///
+    /// `BusySend` error is recoverable, others should be treated as fatal.
     pub(crate) fn send_packet(
         &mut self,
         p: packets::Packet,
         keys: &mut KeyState,
     ) -> Result<()> {
-        // Sanity check
+        if self.deferred_packets.is_empty() {
+            // Send the packet normally if it fits
+            match self.send_packet_inner(&p, keys) {
+                // Defer it if noroom
+                Err(Error::NoRoom { .. }) => (),
+                res => return res,
+            }
+        }
+
+        // NoRoom was returned, output buffer is full.
+        // Attempt to defer the packet.
+
+        let pnum = p.message_num();
+        trace!("Delay packet type {pnum:?}");
+
+        // Convert to a DeferredPacket if possible
+        let Ok(dp) = DeferredPacket::try_from(p) else {
+            // Packet type isn't expected to be deferred.
+            trace!("NoRoom packet type {pnum:?}");
+            return error::BusySend { packet: pnum }.fail();
+        };
+
+        self.deferred_packets.push_front(dp).map_err(|_| {
+            error!("No space to queue packet");
+            trace!("NoRoom packet type {pnum:?}");
+            error::BusySend { packet: pnum }.build()
+        })
+    }
+
+    /// Serializes and and encrypts a packet to send
+    ///
+    /// The packet will not be enqueued to the deferred queue.
+    /// This function should not usually be called directly.
+    ///
+    /// `BusySend` error is recoverable, others should be treated as fatal.
+    pub fn send_packet_inner(
+        &mut self,
+        p: &packets::Packet,
+        keys: &mut KeyState,
+    ) -> Result<()> {
+        // Check that packets are being encrypted
         match p.category() {
-            packets::Category::All | packets::Category::Kex => (), // OK cleartext
+            packets::Category::All | packets::Category::Kex => (),
             _ => {
                 if keys.is_send_cleartext() {
                     return Error::bug_msg("send cleartext");
@@ -441,6 +503,28 @@ impl<'a> TrafOut<'a> {
         Ok(())
     }
 
+    pub fn send_deferred_packets(&mut self, keys: &mut KeyState) -> Result<()> {
+        while let Some(d) = self.deferred_packets.back() {
+            let p = Packet::from(d);
+            match self.send_packet_inner(&p, keys) {
+                Ok(()) => {
+                    self.deferred_packets.pop_back();
+                }
+                Err(Error::NoRoom { .. }) => {
+                    // Can't progress, let the caller retry later
+                    break;
+                }
+                Err(e) => return Err(e),
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn have_deferred_packets(&self) -> bool {
+        !self.deferred_packets.is_empty()
+    }
+
     pub fn is_output_pending(&self) -> bool {
         trace!("is_output_pending st {:?}", self.state);
         matches!(self.state, TxState::Write { .. })
@@ -448,6 +532,12 @@ impl<'a> TrafOut<'a> {
 
     /// Returns payload space available to send a packet. Returns 0 if not ready or full
     pub fn send_allowed(&self, keys: &KeyState) -> usize {
+        if !self.deferred_packets.is_empty() {
+            // Don't allow sending packets when deferred ones are waiting.
+            // Otherwise the deferred queue will run out of room.
+            return 0;
+        }
+
         // TODO: test for full output buffer
         match self.state {
             TxState::Write { len, .. } => keys.max_enc_payload(self.buf.len() - len),
@@ -580,5 +670,83 @@ impl<'s, 'a> TrafSend<'s, 'a> {
     pub fn is_drained(&self) -> bool {
         debug_assert!(self.out.drain);
         matches!(self.out.state, TxState::Idle)
+            && self.out.deferred_packets.is_empty()
+    }
+}
+
+/// Packet types that may be sent once a currently-NoRoom TrafOut clears.
+///
+/// Rather than storing an entire `Packet<'static>`, keep a queue of smaller
+/// `DeferredPacket`s.
+///
+/// These packet types account for most packets that may be sent as responses
+/// or from other asynchronous events (rekey packet count reached, as an example).
+///
+/// These also queue packets to be sent while a KEX is in progress
+/// (other packet types aren't allowed)
+///
+/// Some packet types aren't included here since they're deferred via other
+/// mechanisms:
+///
+/// - ChannelWindowAdjust. Can be retried later.
+/// - KEX packets. The output buffer is drained at the start of a KEX.
+/// - Userauth - we hope it only occurs early when traffic is
+///   well defined (no channels) and no KEXes are happening.
+#[derive(Debug)]
+pub enum DeferredPacket {
+    ChannelSuccess(packets::ChannelSuccess),
+    ChannelFailure(packets::ChannelFailure),
+    ChannelOpenFailure(packets::ChannelOpenFailure<'static>),
+    ChannelOpenConfirmation(packets::ChannelOpenConfirmation),
+    ChannelEof(packets::ChannelEof),
+    ChannelClose(packets::ChannelClose),
+    Unimplemented(packets::Unimplemented),
+    RequestFailure(packets::RequestFailure),
+    RequestSuccess(packets::RequestSuccess),
+}
+
+impl DeferredPacket {}
+
+impl From<&DeferredPacket> for Packet<'static> {
+    fn from(d: &DeferredPacket) -> Self {
+        match d {
+            DeferredPacket::ChannelSuccess(p) => (p.clone()).into(),
+            DeferredPacket::ChannelFailure(p) => (p.clone()).into(),
+            DeferredPacket::ChannelOpenFailure(p) => (p.clone()).into(),
+            DeferredPacket::ChannelOpenConfirmation(p) => (p.clone()).into(),
+            DeferredPacket::ChannelEof(p) => (p.clone()).into(),
+            DeferredPacket::ChannelClose(p) => (p.clone()).into(),
+            DeferredPacket::Unimplemented(p) => (p.clone()).into(),
+            DeferredPacket::RequestFailure(p) => (p.clone()).into(),
+            DeferredPacket::RequestSuccess(p) => (p.clone()).into(),
+        }
+    }
+}
+
+impl<'a> TryFrom<Packet<'a>> for DeferredPacket {
+    type Error = Error;
+    fn try_from(packet: Packet<'a>) -> Result<Self> {
+        Ok(match packet {
+            Packet::ChannelSuccess(p) => Self::ChannelSuccess(p),
+            Packet::ChannelFailure(p) => Self::ChannelFailure(p),
+            Packet::ChannelOpenConfirmation(p) => Self::ChannelOpenConfirmation(p),
+            Packet::ChannelEof(p) => Self::ChannelEof(p),
+            Packet::ChannelClose(p) => Self::ChannelClose(p),
+            Packet::Unimplemented(p) => Self::Unimplemented(p),
+            Packet::RequestFailure(p) => Self::RequestFailure(p),
+            Packet::RequestSuccess(p) => Self::RequestSuccess(p),
+
+            Packet::ChannelOpenFailure(p) => {
+                Self::ChannelOpenFailure(packets::ChannelOpenFailure {
+                    // empty desc for 'static
+                    desc: TextString::new(),
+                    lang: "",
+                    ..p
+                })
+            }
+
+            // Unhandled types
+            _ => return error::SSHProtoUnsupported.fail(),
+        })
     }
 }
