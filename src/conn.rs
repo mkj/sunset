@@ -116,7 +116,7 @@ pub(crate) struct Dispatched {
     pub disconnect: bool,
 }
 
-pub trait CliServ: Sized + Send + Default {
+pub trait CliServ: Sized + Send + Default + core::fmt::Debug {
     fn is_client() -> bool;
 
     #[inline]
