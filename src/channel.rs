@@ -481,7 +481,7 @@ impl Channels {
                 let is_client = self.is_client;
                 match self.get_mut(ChanNum(p.num)) {
                     Ok(ch) => {
-                        ev = ch.dispatch_request(&p, s, is_client);
+                        ev = ch.dispatch_request(&p, s, is_client)?;
                     }
                     Err(_) => debug!("Ignoring request to unknown channel: {p:#?}"),
                 }
@@ -873,7 +873,7 @@ impl Channel {
         p: &packets::ChannelRequest,
         s: &mut TrafSend,
         is_client: bool,
-    ) -> DispatchEvent {
+    ) -> Result<DispatchEvent> {
         let r = match (is_client, self.app_done) {
             // Reject requests if the application has closed
             // the channel. ChannelEOF is arbitrary.
@@ -882,17 +882,20 @@ impl Channel {
             (false, _) => self.dispatch_server_request(p, s),
         };
 
-        r.unwrap_or_else(|_| {
-            // All errors just send an error response, no failure.
-            if p.want_reply {
-                let num = self.send_num();
-                debug_assert!(num.is_ok());
-                if let Ok(num) = num {
-                    let _ = s.send(packets::ChannelFailure { num });
+        match r {
+            Ok(_) | Err(Error::Bug) => r,
+            Err(_) => {
+                // Most errors just send an error response, no failure.
+                if p.want_reply {
+                    let num = self.send_num();
+                    debug_assert!(num.is_ok());
+                    if let Ok(num) = num {
+                        let _ = s.send(packets::ChannelFailure { num });
+                    }
                 }
+                Ok(DispatchEvent::None)
             }
-            DispatchEvent::None
-        })
+        }
     }
 
     fn dispatch_server_request(
