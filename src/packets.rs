@@ -81,15 +81,15 @@ pub struct DebugPacket<'a> {
     pub lang: &'a str,
 }
 
-#[derive(Debug, SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode, Clone)]
 #[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct Disconnect<'a> {
     pub reason: u32,
     pub desc: TextString<'a>,
-    pub lang: TextString<'a>,
+    pub lang: &'a str,
 }
 
-#[derive(Debug, SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode, Clone)]
 #[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct Unimplemented {
     pub seq: u32,
@@ -115,7 +115,7 @@ pub struct ServiceRequest<'a> {
     pub name: &'a str,
 }
 
-#[derive(Debug, SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode, Clone)]
 #[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct ServiceAccept<'a> {
     pub name: &'a str,
@@ -312,7 +312,7 @@ pub struct UserauthFailure<'a> {
     pub partial: bool,
 }
 
-#[derive(Debug, SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode, Clone)]
 #[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct UserauthSuccess {}
 
@@ -672,7 +672,7 @@ pub enum GlobalRequestMethod<'a> {
 //     pub port: u32,
 // }
 
-#[derive(Debug, SSHEncode)]
+#[derive(Debug, SSHEncode, Clone)]
 #[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 #[sshwire(no_variant_names)]
 pub enum RequestSuccess {
@@ -699,7 +699,7 @@ impl<'de> SSHDecode<'de> for RequestSuccess {
 //     pub port: u32,
 // }
 
-#[derive(Debug, SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode, Clone)]
 #[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct RequestFailure {}
 
@@ -731,7 +731,7 @@ pub enum ChannelOpenType<'a> {
     Unknown(Unknown<'a>),
 }
 
-#[derive(Debug, SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode, Clone)]
 #[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct ChannelOpenConfirmation {
     pub num: u32,
@@ -740,7 +740,7 @@ pub struct ChannelOpenConfirmation {
     pub max_packet: u32,
 }
 
-#[derive(Debug, SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode, Clone)]
 #[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct ChannelOpenFailure<'a> {
     pub num: u32,
@@ -749,7 +749,7 @@ pub struct ChannelOpenFailure<'a> {
     pub lang: &'a str,
 }
 
-#[derive(Debug, SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode, Clone)]
 #[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct ChannelWindowAdjust {
     pub num: u32,
@@ -781,25 +781,25 @@ impl ChannelDataExt<'_> {
     pub const DATA_OFFSET: usize = 13;
 }
 
-#[derive(Debug, SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode, Clone)]
 #[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct ChannelEof {
     pub num: u32,
 }
 
-#[derive(Debug, SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode, Clone)]
 #[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct ChannelClose {
     pub num: u32,
 }
 
-#[derive(Debug, SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode, Clone)]
 #[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct ChannelSuccess {
     pub num: u32,
 }
 
-#[derive(Debug, SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode, Clone)]
 #[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct ChannelFailure {
     pub num: u32,
