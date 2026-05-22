@@ -608,6 +608,12 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
             return Ok(Some(0));
         }
 
+        if self.traf_out.is_draining() {
+            // Continual channel data could prevent drain from completing,
+            // so disallow channel writes when draining.
+            return Ok(Some(0));
+        }
+
         // minimum of buffer space and channel window available
         let payload_space = self.traf_out.send_allowed(&self.keys);
         // subtract space for packet headers prior to data

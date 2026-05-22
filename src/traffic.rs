@@ -356,6 +356,8 @@ pub(crate) struct TrafOut<'a> {
     /// in-place as they are written to `buf`.
     buf: SliceOrVec<'a>,
     state: TxState,
+
+    drain: bool,
 }
 
 /// State machine for writes
@@ -395,7 +397,7 @@ impl TrafIn<'static> {
 
 impl<'a> TrafOut<'a> {
     pub fn new(buf: &'a mut [u8]) -> Self {
-        Self { buf: SliceOrVec::Borrowed(buf), state: TxState::Idle }
+        Self { buf: SliceOrVec::Borrowed(buf), state: TxState::Idle, drain: false }
     }
 
     /// Serializes and and encrypts a packet to send
@@ -501,6 +503,16 @@ impl<'a> TrafOut<'a> {
     pub fn sender<'s>(&'s mut self, keys: &'s mut KeyState) -> TrafSend<'s, 'a> {
         TrafSend::new(self, keys)
     }
+
+    /// Return whether output is draining.
+    ///
+    /// Used to determine whether to initiate outbound traffic, such as channel writes.
+    /// Generally immediate responses to incoming messages should still be sent
+    /// even when draining. Otherwise they would need to be put in deferred_packets
+    /// which may run out.
+    pub fn is_draining(&self) -> bool {
+        self.drain
+    }
 }
 
 #[cfg(feature = "alloc")]
@@ -546,5 +558,27 @@ impl<'s, 'a> TrafSend<'s, 'a> {
 
     pub fn enable_strict_kex(&mut self) {
         self.keys.enable_strict_kex();
+    }
+
+    /// Set TrafOut to start draining output.
+    ///
+    /// Only one caller/area should be using set_drain_output() at a time.
+    /// For `TrafOut` itself there isn't a problem with multiple
+    /// callers enabling/disabling drain, but it could result in races
+    /// between callers. Only kex should be using it currently, so
+    /// there is a debug_assert! to that effect.
+    pub fn set_drain_output(&mut self, drain: bool) {
+        debug_assert!(drain != self.out.drain, "set_drain_output() dupe");
+        self.out.drain = drain;
+    }
+
+    /// Test if output buffer is empty.
+    ///
+    /// Fails if `set_drain_output(true)` wasn't set (debug panic)
+    /// This isn't inherent, but helps catch misuse (see comment
+    /// for set_drain_output()).
+    pub fn is_drained(&self) -> bool {
+        debug_assert!(self.out.drain);
+        matches!(self.out.state, TxState::Idle)
     }
 }
