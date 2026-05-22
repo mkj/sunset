@@ -32,6 +32,12 @@ pub(crate) struct Conn<CS: CliServ> {
 
     cliserv: CS,
 
+    /// Algorithm preferences for KEX
+    ///
+    /// This must remain unmodified during a key exchange.
+    /// The same config will be serialised both for sending
+    /// and receiving kexinit, and possibly also for DelayedPacket
+    /// sending.
     algo_conf: AlgoConfig,
 
     parse_ctx: ParseContext,
@@ -263,18 +269,19 @@ impl<CS: CliServ> Conn<CS> {
     }
 
     /// Updates `ConnState` and sends any packets required to progress the connection state.
-    // TODO can this just move to the bottom of handle_payload(), and make module-private?
     pub(crate) fn progress(
         &mut self,
         s: &mut TrafSend,
     ) -> Result<Dispatched, Error> {
+        self.kex.progress(&self.algo_conf, s)?;
+
         let mut disp = Dispatched::default();
         match self.state {
             ConnState::SendIdent => {
                 s.send_version()?;
                 // send early to avoid round trip latency
                 // TODO: first_follows would have a second packet here
-                self.kex.send_kexinit(&self.algo_conf, s)?;
+                self.kex.start_kexinit(s);
                 disp.event = DispatchEvent::Progressed;
                 self.state = ConnState::ReceiveIdent
             }
@@ -362,7 +369,7 @@ impl<CS: CliServ> Conn<CS> {
                     error::SSHProto.fail()
                 }
             }
-        } else if !matches!(self.kex, Kex::Idle | Kex::KexInit { .. }) {
+        } else if self.kex.is_receiving() {
             // Normal KEX only allows certain packets
             match p.category() {
                 packets::Category::All => Ok(()),
@@ -399,8 +406,9 @@ impl<CS: CliServ> Conn<CS> {
         self.sess_id.is_none()
     }
 
-    pub fn kex_is_idle(&self) -> bool {
-        matches!(self.kex, Kex::Idle)
+    /// True if KexInit has not been sent.
+    pub fn is_kex_sending(&self) -> bool {
+        self.kex.is_sending()
     }
 
     pub fn dispatch_packet(

@@ -602,7 +602,7 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
         // Avoid apps polling forever on a packet type that won't come
         dt.validate_send(CS::is_client())?;
 
-        if !self.conn.kex_is_idle() {
+        if self.conn.is_kex_sending() {
             // Only KEX messages are allowed during key exchange,
             // not data.
             return Ok(Some(0));
