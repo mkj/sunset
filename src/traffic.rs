@@ -444,13 +444,6 @@ impl<'a> TrafOut<'a> {
         matches!(self.state, TxState::Write { .. })
     }
 
-    /// A simple test if a packet can be sent. `send_allowed` should be used
-    /// for more general situations
-    pub fn can_output(&self) -> bool {
-        // TODO don't use this
-        true
-    }
-
     /// Returns payload space available to send a packet. Returns 0 if not ready or full
     pub fn send_allowed(&self, keys: &KeyState) -> usize {
         // TODO: test for full output buffer
@@ -544,10 +537,6 @@ impl<'s, 'a> TrafSend<'s, 'a> {
 
     pub fn send_version(&mut self) -> Result<(), Error> {
         self.out.send_version()
-    }
-
-    pub fn can_output(&self) -> bool {
-        self.out.can_output()
     }
 
     /// Returns the current receive sequence number

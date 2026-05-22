@@ -292,12 +292,8 @@ impl<CS: CliServ> Conn<CS> {
                 }
             }
             ConnState::PreAuth => {
-                // TODO. need to figure how we'll do "unbounded" responses
-                // and backpressure. can_output() should have a size check?
-                if s.can_output() {
-                    if let Some(cli) = self.try_mut_client() {
-                        disp.event = cli.auth.progress();
-                    }
+                if let Some(cli) = self.try_mut_client() {
+                    disp.event = cli.auth.progress();
                 }
                 // send userauth request
             }
