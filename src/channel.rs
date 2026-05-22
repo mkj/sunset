@@ -200,8 +200,7 @@ impl Channels {
         Ok(p)
     }
 
-    /// Informs the channel layer that an incoming packet has been read out,
-    /// so a window adjustment can be sent.
+    /// Informs the channel layer that an incoming packet has been read out.
     pub(crate) fn finished_read(
         &mut self,
         num: ChanNum,
@@ -210,9 +209,7 @@ impl Channels {
     ) -> Result<()> {
         let ch = self.get_mut(num)?;
         ch.finished_input(len);
-        if let Some(w) = ch.check_window_adjust()? {
-            s.send(w)?;
-        }
+        ch.check_send_window_adjust(s);
         Ok(())
     }
 
@@ -230,6 +227,13 @@ impl Channels {
 
     pub(crate) fn valid_send(&self, num: ChanNum, dt: ChanData) -> bool {
         self.get(num).is_ok_and(|c| c.valid_send(dt))
+    }
+
+    pub fn progress(&mut self, s: &mut TrafSend) -> DispatchEvent {
+        for ch in self.ch.iter_mut().filter_map(|c| c.as_mut()) {
+            ch.check_send_window_adjust(s);
+        }
+        DispatchEvent::None
     }
 
     /// Wake the channel with a ready input data packet.
@@ -1030,16 +1034,22 @@ impl Channel {
         true
     }
 
-    /// Returns a window adjustment packet if required
-    fn check_window_adjust(&mut self) -> Result<Option<Packet<'_>>> {
-        let num = self.send.as_mut().trap()?.num;
+    /// Send a window adjust packet if required.
+    fn check_send_window_adjust(&mut self, s: &mut TrafSend) {
         if self.pending_adjust > self.full_window / 2 {
             let adjust = self.pending_adjust as u32;
-            self.pending_adjust = 0;
-            let p = packets::ChannelWindowAdjust { num, adjust }.into();
-            Ok(Some(p))
-        } else {
-            Ok(None)
+            let Some(sdir) = self.send.as_mut() else {
+                return;
+            };
+            let num = sdir.num;
+            let p = packets::ChannelWindowAdjust { num, adjust };
+            match s.send(p) {
+                Ok(()) => self.pending_adjust = 0,
+                Err(Error::BusySend { .. }) => {
+                    // Do nothing, the adjustment will be sent later.
+                }
+                Err(e) => debug_assert!(false, "Window adjust send failed {e:?}"),
+            }
         }
     }
 }

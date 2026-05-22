@@ -275,6 +275,14 @@ impl<CS: CliServ> Conn<CS> {
     ) -> Result<Dispatched, Error> {
         self.kex.progress(&self.algo_conf, s)?;
 
+        if !self.is_kex_sending() {
+            let event = self.channels.progress(s);
+            if !event.is_none() {
+                // TODO better Dispatched constructor
+                return Ok(Dispatched { event, disconnect: false });
+            }
+        }
+
         let mut disp = Dispatched::default();
         match self.state {
             ConnState::SendIdent => {
