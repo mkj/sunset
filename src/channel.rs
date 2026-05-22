@@ -232,6 +232,20 @@ impl Channels {
     pub fn progress(&mut self, s: &mut TrafSend) -> DispatchEvent {
         for ch in self.ch.iter_mut().filter_map(|c| c.as_mut()) {
             ch.check_send_window_adjust(s);
+
+            if ch.open_confirmed {
+                ch.open_confirmed = false;
+                match ch.ty {
+                    ChanType::Session => {
+                        return DispatchEvent::CliEvent(CliEventId::SessionOpened(
+                            ch.num(),
+                        ));
+                    }
+                    ChanType::Tcp => {
+                        trace!("TODO tcp channel")
+                    }
+                }
+            }
         }
         DispatchEvent::None
     }
@@ -402,17 +416,8 @@ impl Channels {
                             window: p.initial_window as usize,
                         });
 
-                        match ch.ty {
-                            ChanType::Session => {
-                                ev = DispatchEvent::CliEvent(
-                                    CliEventId::SessionOpened(ch.num()),
-                                );
-                            }
-                            ChanType::Tcp => {
-                                trace!("TODO tcp channel")
-                            }
-                        }
-
+                        // A future progress() will notify the application.
+                        ch.open_confirmed = true;
                         ch.state = ChanState::Normal;
                     }
                     _ => {
@@ -747,6 +752,12 @@ pub(crate) struct Channel {
 
     full_window: usize,
 
+    /// Set when Open Confirmation is received.
+    ///
+    /// A subsequent `progress()` will emit a `SessionOpened` event
+    /// for the application to handle.
+    open_confirmed: bool,
+
     /// Set once application has called `done()`. The channel
     /// will only be removed from the list
     /// (allowing channel number re-use) if `app_done` is set
@@ -776,6 +787,7 @@ impl Channel {
             send: None,
             pending_adjust: 0,
             full_window: config::DEFAULT_WINDOW,
+            open_confirmed: false,
             app_done: false,
             read_waker: None,
             write_waker: None,
