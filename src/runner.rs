@@ -420,8 +420,20 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
 
     // Whether [`input()`](input) is ready
     pub fn is_input_ready(&self) -> bool {
-        (self.conn.initial_sent() && self.traf_in.is_input_ready())
-            || self.closed_input
+        if self.closed_input {
+            return true;
+        }
+
+        // During KEX, let the output queue drain before accepting packets,
+        // so we can be sure not to hit NoRoom.
+        // kexdhinit/kexdhreply packets can be large.
+        // The deferred queue may still have packets since they
+        // can't be send during a KEX.
+        if self.conn.is_kex_sending() && self.traf_out.is_output_pending() {
+            return false;
+        }
+
+        self.conn.initial_sent() && self.traf_in.is_input_ready()
     }
 
     /// Set a waker to be notified when [`input()`](Self::input) is ready to be called.
