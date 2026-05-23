@@ -368,6 +368,9 @@ pub(crate) struct TrafOut<'a> {
 
     drain: bool,
 
+    // Set between sending KexInit and sending NewKeys.
+    sending_kex: bool,
+
     deferred_packets: Deque<DeferredPacket, DEFER_COUNT>,
 }
 
@@ -412,6 +415,7 @@ impl<'a> TrafOut<'a> {
             buf: SliceOrVec::Borrowed(buf),
             state: TxState::Idle,
             drain: false,
+            sending_kex: false,
             deferred_packets: Deque::new(),
         }
     }
@@ -428,16 +432,25 @@ impl<'a> TrafOut<'a> {
         p: packets::Packet,
         keys: &mut KeyState,
     ) -> Result<()> {
-        if self.deferred_packets.is_empty() {
-            // Send the packet normally if it fits
+        let is_kex = matches!(p.category(), packets::Category::Kex);
+
+        if is_kex || (self.deferred_packets.is_empty() && !self.sending_kex) {
+            // Send the packet normally if it fits.
+            // KEX packets can be sent even if other packets are deferred
+            // (KEX packets don't get deferred themselves).
+            // A KexInit is only sent when there are no deferred packets,
+            // so we don't need to worry about incorrect reordering.
             match self.send_packet_inner(&p, keys) {
-                // Defer it if noroom
-                Err(Error::NoRoom { .. }) => (),
+                Err(Error::NoRoom { .. }) => {
+                    debug_assert!(!is_kex, "KEX packets should have room");
+                    // non-kex packets get deferred
+                }
                 res => return res,
             }
         }
 
-        // NoRoom was returned, output buffer is full.
+        // Either it didn't fit (NoRoom), or the deferred queue
+        // is already in use so we need to enqueue after that.
         // Attempt to defer the packet.
 
         let pnum = p.message_num();
@@ -457,18 +470,14 @@ impl<'a> TrafOut<'a> {
         })
     }
 
-    /// Serializes and and encrypts a packet to send
-    ///
-    /// The packet will not be enqueued to the deferred queue.
-    /// This function should not usually be called directly.
-    ///
-    /// `BusySend` error is recoverable, others should be treated as fatal.
-    pub fn send_packet_inner(
+    // Check some invariants, and track whether we're sending KEX.
+    fn track_send_packet(
         &mut self,
         p: &packets::Packet,
         keys: &mut KeyState,
     ) -> Result<()> {
         // Check that packets are being encrypted
+        // This is checked in release and debug.
         match p.category() {
             packets::Category::All | packets::Category::Kex => (),
             _ => {
@@ -477,6 +486,45 @@ impl<'a> TrafOut<'a> {
                 }
             }
         }
+
+        // KEX send packet catetory checked in debug builds for fuzzing.
+        if self.sending_kex {
+            // strict kex is ignored since we don't have access to
+            // conn.kex.
+            debug_assert!(matches!(
+                p.category(),
+                packets::Category::All | packets::Category::Kex
+            ));
+        }
+
+        // Track KEX sending state
+        match p {
+            Packet::KexInit(_) => {
+                debug_assert!(!self.sending_kex);
+                self.sending_kex = true;
+            }
+            Packet::NewKeys(_) => {
+                debug_assert!(self.sending_kex);
+                self.sending_kex = false;
+            }
+            _ => (),
+        }
+
+        Ok(())
+    }
+
+    /// Serializes and and encrypts a packet to send
+    ///
+    /// The packet will not be enqueued to the deferred queue.
+    /// This function should not usually be called directly.
+    ///
+    /// `NoRoom` error is recoverable, others should be treated as fatal.
+    pub fn send_packet_inner(
+        &mut self,
+        p: &packets::Packet,
+        keys: &mut KeyState,
+    ) -> Result<()> {
+        self.track_send_packet(p, keys)?;
 
         // Either a fresh buffer or appending to write
         let (idx, len) = match self.state {
