@@ -49,7 +49,6 @@ pub(crate) struct KeyState {
     pub seq_encrypt: Wrapping<u32>,
     pub seq_decrypt: Wrapping<u32>,
     strict_kex: bool,
-    done_first_kex: bool,
 }
 
 impl KeyState {
@@ -61,7 +60,6 @@ impl KeyState {
             seq_encrypt: Wrapping(0),
             seq_decrypt: Wrapping(0),
             strict_kex: false,
-            done_first_kex: false,
         }
     }
 
@@ -69,13 +67,13 @@ impl KeyState {
         matches!(self.enc.cipher, EncKey::NoCipher)
     }
 
+    pub fn enable_strict_kex(&mut self) {
+        self.strict_kex = true;
+    }
+
     /// Updates with keys for sending.
-    pub fn rekey_send(&mut self, keys: KeysSend, enable_strict: bool) {
+    pub fn rekey_send(&mut self, keys: KeysSend) {
         self.enc = keys;
-        if enable_strict && !self.done_first_kex {
-            self.strict_kex = true;
-        }
-        self.done_first_kex = true;
         if self.strict_kex {
             self.seq_encrypt = Wrapping(0);
         }
@@ -92,7 +90,6 @@ impl KeyState {
         );
 
         self.dec = keys;
-        self.done_first_kex = true;
         if self.strict_kex {
             self.seq_decrypt = Wrapping(0);
         }
@@ -822,7 +819,7 @@ mod tests {
 
                 trace!("algos enc {algos:?}");
                 let enc = KeysSend::new(&ko, &sess_id, &algos);
-                keys_enc.rekey_send(enc, algos.strict_kex);
+                keys_enc.rekey_send(enc);
 
                 // client and server enc/dec keys are derived differently, we need them
                 // to match for this test
@@ -831,7 +828,7 @@ mod tests {
                 // rekey_send here only because it's required
                 // before rekey_recv.
                 let e = KeysSend::new(&ko, &sess_id, &algos);
-                keys_dec.rekey_send(e, algos.strict_kex);
+                keys_dec.rekey_send(e);
                 let dec = KeysRecv::new(&ko_b, &sess_id, &algos);
                 keys_dec.rekey_recv(dec);
             } else {
@@ -862,7 +859,7 @@ mod tests {
                 let enc = KeysSend::new(&ko, &sess_id, &algos);
                 let dec = KeysRecv::new(&ko, &sess_id, &algos);
 
-                keys.rekey_send(enc, algos.strict_kex);
+                keys.rekey_send(enc);
                 keys.rekey_recv(dec);
                 trace!("algos {algos:?}");
                 trace!("integ {}", keys.enc.integ.size_out());

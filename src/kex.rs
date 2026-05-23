@@ -346,6 +346,11 @@ impl<CS: CliServ> Kex<CS> {
         if CS::is_client() {
             algos.kex.send_kexdhinit(s)?;
         }
+        if first_kex && algos.strict_kex {
+            // strict-kex in initial KEXINIT enables it
+            s.enable_strict_kex();
+        }
+
         let kex_hash = KexHash::new::<CS>(
             algo_conf,
             our_cookie,
@@ -566,7 +571,7 @@ impl<CS: CliServ> Kex<CS> {
         // The first KEX's H becomes the persistent sess_id
         let sess_id = sess_id.get_or_insert(output.h.clone());
         let enc = KeysSend::new(&output, sess_id, &algos);
-        s.rekey_send(enc, algos.strict_kex);
+        s.rekey_send(enc);
         *self = Kex::NewKeys { output, algos };
         Ok(())
     }
@@ -1271,13 +1276,13 @@ mod tests {
         let mut skeys = crate::encrypt::KeyState::new_cleartext();
         let enc = KeysSend::new(&sout, &sess_id, &salgos);
         let dec = KeysRecv::new(&sout, &sess_id, &salgos);
-        skeys.rekey_send(enc, true);
+        skeys.rekey_send(enc);
         skeys.rekey_recv(dec);
 
         let mut ckeys = crate::encrypt::KeyState::new_cleartext();
         let enc = KeysSend::new(&cout, &sess_id, &calgos);
         let dec = KeysRecv::new(&cout, &sess_id, &calgos);
-        ckeys.rekey_send(enc, true);
+        ckeys.rekey_send(enc);
         ckeys.rekey_recv(dec);
 
         roundtrip(b"this", &mut skeys, &mut ckeys);

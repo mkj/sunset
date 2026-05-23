@@ -470,8 +470,8 @@ impl<'s, 'a> TrafSend<'s, 'a> {
         self.out.send_packet(p.into(), self.keys)
     }
 
-    pub fn rekey_send(&mut self, keys: KeysSend, strict_kex: bool) {
-        self.keys.rekey_send(keys, strict_kex)
+    pub fn rekey_send(&mut self, keys: KeysSend) {
+        self.keys.rekey_send(keys);
     }
 
     pub fn rekey_recv(&mut self, keys: KeysRecv) {
@@ -489,5 +489,9 @@ impl<'s, 'a> TrafSend<'s, 'a> {
     /// Returns the current receive sequence number
     pub fn recv_seq(&self) -> u32 {
         self.keys.seq_decrypt.0
+    }
+
+    pub fn enable_strict_kex(&mut self) {
+        self.keys.enable_strict_kex();
     }
 }
