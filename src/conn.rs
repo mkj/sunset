@@ -318,8 +318,6 @@ impl<CS: CliServ> Conn<CS> {
         }
         trace!("-> {:?}, {disp:?}", self.state);
 
-        // TODO: if keys.seq > MAX_REKEY then we must rekey for security.
-
         Ok(disp)
     }
 

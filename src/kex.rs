@@ -355,7 +355,9 @@ impl<CS: CliServ> Kex<CS> {
         trace!("{self:?}");
         match self {
             Kex::Idle => {
-                // TODO run a rekey if needed.
+                if s.is_rekey_needed() {
+                    self.start_kexinit(s);
+                }
             }
             Kex::StartKexInit => {
                 if s.is_drained() {

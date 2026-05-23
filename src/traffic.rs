@@ -698,6 +698,10 @@ impl<'s, 'a> TrafSend<'s, 'a> {
         self.keys.enable_strict_kex();
     }
 
+    pub fn is_rekey_needed(&self) -> bool {
+        self.keys.is_rekey_needed()
+    }
+
     /// Set TrafOut to start draining output.
     ///
     /// Only one caller/area should be using set_drain_output() at a time.
