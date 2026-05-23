@@ -575,8 +575,6 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
         if self.traf_out.closed() {
             return Ok(None);
         }
-        // TODO: return 0 if InKex means we can't transmit packets.
-
         // Avoid apps polling forever on a packet type that won't come
         dt.validate_send(CS::is_client())?;
 
