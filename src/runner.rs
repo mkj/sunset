@@ -629,18 +629,25 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
         // Avoid apps polling forever on a packet type that won't come
         dt.validate_send(CS::is_client())?;
 
+        // When write_channel_ready() returns Some(0), a subsequent
+        // channel_wake_write() needs to occur.
+
+        // channel_wake_write() after KexDone.
         if self.conn.is_kex_sending() {
             // Only KEX messages are allowed during key exchange,
             // not data.
             return Ok(Some(0));
         }
 
+        // Drain only happens prior to KEX, so can be woken after KexDone.
         if self.traf_out.is_draining() {
             // Continual channel data could prevent drain from completing,
             // so disallow channel writes when draining.
             return Ok(Some(0));
         }
 
+        // write_channel_ready() will happen after the deferred packets are
+        // moved to main queued then written.
         if self.traf_out.have_deferred_packets() {
             // Let deferred packets get moved to the output queue
             // before sending more channel data.
