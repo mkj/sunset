@@ -244,7 +244,7 @@ impl Channels {
     /// Wake all ready output channels
     pub fn wake_write(&mut self, is_client: bool) {
         for ch in self.ch.iter_mut().filter_map(|c| c.as_mut()) {
-            ch.wake_write(None, is_client)
+            ch.wake_write(is_client)
         }
     }
 
@@ -435,7 +435,7 @@ impl Channels {
                 send.window = send.window.saturating_add(p.adjust as usize);
                 trace!("new window {}", send.window);
                 // Wake any writers that might have been blocked.
-                chan.wake_write(None, is_client);
+                chan.wake_write(is_client);
             }
             Packet::ChannelData(p) => {
                 let ch = self.get(ChanNum(p.num))?;
@@ -839,13 +839,11 @@ impl Channel {
         }
     }
 
-    pub fn wake_write(&mut self, dt: Option<ChanData>, is_client: bool) {
-        if dt == Some(ChanData::Normal) || dt.is_none() {
-            if let Some(w) = self.read_waker.take() {
-                w.wake()
-            }
+    pub fn wake_write(&mut self, is_client: bool) {
+        if let Some(w) = self.read_waker.take() {
+            w.wake()
         }
-        if !is_client && (dt == Some(ChanData::Normal) || dt.is_none()) {
+        if !is_client {
             if let Some(w) = self.ext_waker.take() {
                 w.wake()
             }
@@ -1001,7 +999,7 @@ impl Channel {
         if is_client {
             self.wake_read(ChanData::Stderr, is_client);
         }
-        self.wake_write(None, is_client);
+        self.wake_write(is_client);
 
         self.state = ChanState::RecvClose;
         Ok(())
