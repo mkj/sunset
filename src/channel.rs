@@ -840,7 +840,7 @@ impl Channel {
     }
 
     pub fn wake_write(&mut self, is_client: bool) {
-        if let Some(w) = self.read_waker.take() {
+        if let Some(w) = self.write_waker.take() {
             w.wake()
         }
         if !is_client {
