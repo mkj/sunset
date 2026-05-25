@@ -460,13 +460,13 @@ impl<'a> TrafOut<'a> {
         let Ok(dp) = DeferredPacket::try_from(p) else {
             // Packet type isn't expected to be deferred.
             trace!("NoRoom packet type {pnum:?}");
-            return error::BusySend { packet: pnum }.fail();
+            return error::BusySend { packet: pnum, unsupported: true }.fail();
         };
 
         self.deferred_packets.push_front(dp).map_err(|_| {
             error!("No space to queue packet");
             trace!("NoRoom packet type {pnum:?}");
-            error::BusySend { packet: pnum }.build()
+            error::BusySend { packet: pnum, unsupported: false }.build()
         })
     }
 

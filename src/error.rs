@@ -29,9 +29,12 @@ pub enum Error {
     /// Can't currently send a packet
     ///
     /// Either output buffer is full, or a key exchange is in progress.
+    /// `unsupported` is set if it is not expected for Sunset to be
+    /// able to defer that type of packet (it may indicate a bug in Sunset,
+    //// or traffic that is unanticipated or difficult to handle).
     // Should only be returned from TrafOut::send_packet(),
     // NoRoom is for other similar circumstances.
-    BusySend { packet: MessageNumber },
+    BusySend { packet: MessageNumber, unsupported: bool },
 
     /// No room to write
     NoRoom {

@@ -114,8 +114,15 @@ where
 
 #[allow(unused)]
 fn check_error(r: Result<()>) {
+    use packets::MessageNumber::*;
     if let Err(e) = r {
         match e {
+            Error::BusySend { ref packet, unsupported: true } => match packet {
+                // Don't fail for userauth or service accept. In real operation
+                // they would happen early after KEX when there is space.
+                SSH_MSG_USERAUTH_SUCCESS | SSH_MSG_SERVICE_ACCEPT => (),
+                _ => panic!("Unexpected packet type for {e:#?}"),
+            },
             // Errors that should not occur.
             // May indicate a bug in this fuzz harness.
             Error::BadChannel { .. }
