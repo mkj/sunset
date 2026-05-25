@@ -600,8 +600,6 @@ impl Conn<Client> {
         &self,
         payload: &'f [u8],
     ) -> Result<PubKey<'f>> {
-        self.client()?;
-
         let packet = self.packet(payload)?;
         if let Packet::KexDHReply(p) = packet {
             Ok(p.k_s.0)
@@ -614,7 +612,6 @@ impl Conn<Client> {
         &mut self,
         payload: &'p [u8],
     ) -> Result<CliSessionExit<'p>> {
-        self.client()?;
         let packet = self.packet(payload)?;
         CliSessionExit::new(&packet)
     }
@@ -623,7 +620,6 @@ impl Conn<Client> {
         &mut self,
         payload: &'p [u8],
     ) -> Result<Banner<'p>> {
-        self.client()?;
         if let Packet::UserauthBanner(b) = self.packet(payload)? {
             Ok(Banner(b))
         } else {
@@ -639,8 +635,6 @@ impl Conn<Server> {
         s: &mut TrafSend,
         keys: &[&SignKey],
     ) -> Result<()> {
-        self.server()?;
-
         let packet = self.packet(payload)?;
         if let Packet::KexDHInit(p) = packet {
             self.kex.resume_kexdhinit(
@@ -659,8 +653,6 @@ impl Conn<Server> {
         &self,
         payload: &'f [u8],
     ) -> Result<TextString<'f>> {
-        self.server()?;
-
         let packet = self.packet(payload)?;
         if let Packet::UserauthRequest(UserauthRequest {
             method: AuthMethod::Password(m),
@@ -676,8 +668,6 @@ impl Conn<Server> {
         &self,
         payload: &'f [u8],
     ) -> Result<PubKey<'f>> {
-        self.server()?;
-
         let packet = self.packet(payload)?;
         if let Packet::UserauthRequest(UserauthRequest {
             method: AuthMethod::PubKey(m),
