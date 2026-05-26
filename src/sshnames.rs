@@ -37,7 +37,7 @@ pub const SSH_NAME_ECDSA256: &str = "ecdsa-sha2-nistp256";
 
 /// [RFC4344](https://tools.ietf.org/html/rfc4344)
 pub const SSH_NAME_AES256_CTR: &str = "aes256-ctr";
-/// OpenSSH [PROTOCOL.chacha20poly1305.txt](https://cvsweb.openbsd.org/checkout/src/usr.bin/ssh/PROTOCOL.chacha20poly1305?rev=HEAD)
+/// [draft-ietf-sshm-chacha20-poly1305](https://datatracker.ietf.org/doc/draft-ietf-sshm-chacha20-poly1305/)
 pub const SSH_NAME_CHAPOLY: &str = "chacha20-poly1305@openssh.com";
 /// OpenSSH [PROTOCOL](https://cvsweb.openbsd.org/checkout/src/usr.bin/ssh/PROTOCOL?rev=HEAD)
 /// (No-one directly uses `AEAD_AES_256_GCM` [RFC5647](https://tools.ietf.org/html/rfc5647) from the NSA, it fails to define MAC negotiation
