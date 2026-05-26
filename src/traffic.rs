@@ -19,7 +19,10 @@ use crate::*;
 
 // Either a slice or boxed array.
 // Similar to managed::ManagedSlice.
-#[derive(ZeroizeOnDrop)]
+//
+// Zeroize is slow for fuzzing, so skip it.
+// In normal operation one zeroize per connection is fine.
+#[cfg_attr(not(fuzzing), derive(ZeroizeOnDrop))]
 enum SliceOrVec<'a> {
     Borrowed(&'a mut [u8]),
 

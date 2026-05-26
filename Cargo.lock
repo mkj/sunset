@@ -3143,6 +3143,7 @@ dependencies = [
  "time",
  "tokio",
  "whoami",
+ "zeroize",
 ]
 
 [[package]]

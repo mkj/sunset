@@ -332,7 +332,6 @@ pub enum KeyType {
 pub enum SignKey {
     // TODO: we could just have the 32 byte seed here to save memory, but
     // computing the public part may be slow.
-    #[zeroize(skip)]
     Ed25519(dalek::SigningKey),
 
     #[zeroize(skip)]
@@ -340,7 +339,6 @@ pub enum SignKey {
 
     #[cfg(feature = "rsa")]
     // TODO zeroize doesn't seem supported? though BigUint has Zeroize
-    #[zeroize(skip)]
     RSA(rsa::RsaPrivateKey),
 
     #[cfg(feature = "rsa")]
@@ -348,7 +346,6 @@ pub enum SignKey {
     AgentRSA(rsa::RsaPublicKey),
 
     #[cfg(feature = "ecdsa256")]
-    #[zeroize(skip)]
     ECDSA256(ecdsa::SigningKey<p256::NistP256>),
 
     #[cfg(feature = "ecdsa256")]
