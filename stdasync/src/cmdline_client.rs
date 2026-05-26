@@ -19,6 +19,8 @@ use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::signal::unix::{signal, SignalKind};
 
+use zeroize::Zeroizing;
+
 use crate::pty::win_size;
 use crate::AgentClient;
 use crate::*;
@@ -31,7 +33,7 @@ pub struct CmdlineClient {
     cmd: SessionCommand<String>,
     want_pty: bool,
 
-    // parameters
+    // Parameters
     authkeys: VecDeque<SignKey>,
     username: String,
     host: String,
@@ -267,6 +269,7 @@ impl CmdlineClient {
                             "password for {}: ",
                             self.username
                         ))?;
+                        let pw = Zeroizing::new(pw);
                         p.password(pw)?;
                     }
                     CliEvent::Pubkey(p) => {
@@ -286,6 +289,7 @@ impl CmdlineClient {
                     }
                     CliEvent::Authenticated => {
                         debug!("Authentication succeeded");
+                        self.authkeys.clear();
                         // drop it so we can use cli
                         drop(ph);
                         let (i, e) = self.open_session(cli).await?;

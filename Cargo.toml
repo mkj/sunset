@@ -25,6 +25,7 @@ sunset-demo-common = { path = "demo/common" }
 
 portable-atomic = "1"
 arbitrary = { version = "1.4", features = ["derive_arbitrary"] }
+zeroize = { version = "1", default-features = false, features = ["derive"] }
 
 [dependencies]
 sunset-sshwire-derive = { workspace = true }
@@ -48,7 +49,7 @@ sha2 = { version = "0.10", default-features = false }
 hmac = "0.12"
 poly1305 = "0.8"
 digest = "0.10"
-zeroize = { version = "1", default-features = false, features = ["derive"] }
+zeroize.workspace = true
 cipher = { version = "0.4", features = ["zeroize"] }
 subtle = { version = "2.4", default-features = false }
 # ed25519/x25519
