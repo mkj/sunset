@@ -229,13 +229,19 @@ impl<'a> Runner<'a, server::Server> {
         ));
 
         let mut s = self.traf_out.sender(&mut self.keys);
-        let ev = self.conn.resume_servauth(allow, &mut s)?;
-        self.set_extra_resume(ev);
+        let ev = self.conn.resume_servauth(allow, &mut s);
+        let r = match ev {
+            Ok(ev) => {
+                self.set_extra_resume(ev);
+                Ok(())
+            }
+            Err(e) => Err(e),
+        };
 
         // auth packets have passwords
         self.traf_in.zeroize_payload();
         self.resume_nocheck();
-        Ok(())
+        r
     }
 
     pub(crate) fn resume_servauth_pkok(&mut self) -> Result<()> {
