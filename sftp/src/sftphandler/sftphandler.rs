@@ -255,10 +255,12 @@ where
                                 }
                             };
                         } else {
-                            todo!("Wrong transition? Uncontrolled for now");
+                            // todo!("Wrong transition? Uncontrolled for now");
+                            return Err(SunsetError::bug())?;
                         }
                     } else {
-                        todo!("Wrong transition? Uncontrolled for now");
+                        // todo!("Wrong transition? Uncontrolled for now");
+                        return Err(SunsetError::bug())?;
                     }
                 }
                 HandlerState::Uninitialized => {
