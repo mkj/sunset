@@ -478,6 +478,8 @@ pub(crate) trait ChanCore: MaybeSend {
         buf: &[u8],
     ) -> Poll<Result<usize>>;
 
+    fn poll_send_eof(&self, cx: &mut Context, num: ChanNum) -> Poll<Result<()>>;
+
     // Client only
     fn poll_term_window_change(
         &self,
@@ -603,12 +605,25 @@ impl<'a, CS: CliServ> ChanCore for AsyncSunset<'a, CS> {
             // 0 bytes written, pending
             trace!("write ch {num:?} dt {dt:?} pending");
             runner.set_channel_read_waker(h, dt, cx.waker());
-            Poll::Pending
+            Pending
         } else {
             trace!("write ready ch {num:?} dt {dt:?} {l:?}");
             self.wake_progress();
-            Poll::Ready(l)
+            Ready(l)
         }
+    }
+
+    fn poll_send_eof(&self, cx: &mut Context, num: ChanNum) -> Poll<Result<()>> {
+        let i = self.inner.lock();
+        let i = pin!(i);
+        let Ready(mut inner) = i.poll(cx) else {
+            return Pending;
+        };
+
+        let (runner, h) = inner.fetch(num)?;
+        let result = runner.channel_send_eof(h);
+        self.wake_progress();
+        Ready(result)
     }
 
     fn poll_term_window_change(
@@ -624,7 +639,7 @@ impl<'a, CS: CliServ> ChanCore for AsyncSunset<'a, CS> {
             return Pending;
         };
         let (runner, h) = inner.fetch(num)?;
-        Poll::Ready(runner.term_window_change(h, winch))
+        Ready(runner.term_window_change(h, winch))
     }
 }
 
