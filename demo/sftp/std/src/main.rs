@@ -116,28 +116,26 @@ impl DemoServer for StdDemo {
                     ServEvent::SessionExec(a) => {
                         a.fail()?; // Not allowed in this example, kept here for compatibility
                     }
-                    ServEvent::SessionSubsystem(a) => {
-                        match a.command()?.to_lowercase().as_str() {
-                            "sftp" => {
-                                info!("Starting '{}' subsystem", a.command()?);
+                    ServEvent::SessionSubsystem(a) => match a.command()? {
+                        "sftp" => {
+                            info!("Starting sftp subsystem");
 
-                                if let Some(ch) = common.sess.take() {
-                                    debug_assert!(ch.num() == a.channel());
-                                    a.succeed()?;
-                                    let _ = chan_pipe.try_send(ch);
-                                } else {
-                                    a.fail()?;
-                                }
-                            }
-                            _ => {
-                                warn!(
-                                "request for subsystem '{}' not implemented: fail",
-                                a.command()?
-                                );
+                            if let Some(ch) = common.sess.take() {
+                                debug_assert!(ch.num() == a.channel());
+                                a.succeed()?;
+                                let _ = chan_pipe.try_send(ch);
+                            } else {
                                 a.fail()?;
                             }
                         }
-                    }
+                        _ => {
+                            warn!(
+                                "request for subsystem '{}' not implemented: fail",
+                                a.command()?
+                            );
+                            a.fail()?;
+                        }
+                    },
                     other => common.handle_event(other)?,
                 };
             }

@@ -466,7 +466,7 @@ where
                             SftpPacket::LStat(req_id, LStat { file_path: path }) => {
                                 match self
                                     .file_server
-                                    .attrs(false, path.as_str()?)
+                                    .attrs(false, path.to_str()?)
                                     .await
                                 {
                                     Ok(attrs) => {
@@ -500,7 +500,7 @@ where
                             SftpPacket::Stat(req_id, Stat { file_path: path }) => {
                                 match self
                                     .file_server
-                                    .attrs(true, path.as_str()?)
+                                    .attrs(true, path.to_str()?)
                                     .await
                                 {
                                     Ok(attrs) => {
@@ -671,7 +671,7 @@ where
                             SftpPacket::PathInfo(req_id, path_info) => {
                                 match self
                                     .file_server
-                                    .realpath(path_info.path.as_str()?)
+                                    .realpath(path_info.path.to_str()?)
                                     .await
                                 {
                                     Ok(name_entry) => {
