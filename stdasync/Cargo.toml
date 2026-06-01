@@ -25,7 +25,6 @@ embedded-io-async = "0.6"
 
 # "net" for AsyncFd on unix
 tokio = { version = "1.25", features = ["net", "io-util", "signal"] }
-futures = "0.3"
 
 libc = "0.2"
 nix = "0.26"

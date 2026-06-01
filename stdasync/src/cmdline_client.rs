@@ -216,7 +216,7 @@ impl CmdlineClient {
                     }
                 }
             } else {
-                futures::future::pending().await
+                std::future::pending::<()>().await;
             }
         };
 
