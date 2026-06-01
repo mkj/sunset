@@ -8,7 +8,7 @@ use embassy_rp::peripherals::*;
 use embassy_rp::uart::{self as rp_uart, BufferedInterruptHandler, BufferedUart};
 use embassy_rp::Peri;
 
-use sunset_async::*;
+use demo_common::{io_buf_copy_noreaderror, io_copy_nowriteerror};
 
 use crate::*;
 

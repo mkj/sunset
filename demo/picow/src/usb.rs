@@ -14,9 +14,8 @@ use embassy_usb_driver::Driver;
 
 use embedded_io_async::{BufRead, ErrorType, Read, Write};
 
-use sunset_async::*;
-
 use crate::*;
+use demo_common::{io_buf_copy, io_copy};
 use picowmenu::request_pw;
 
 bind_interrupts!(struct Irqs {

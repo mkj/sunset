@@ -18,7 +18,4 @@ pub use server::SSHServer;
 
 pub use async_channel::{ChanIn, ChanInOut, ChanOut};
 
-pub use async_sunset::{
-    io_buf_copy, io_copy, ProgressHolder, SunsetMutex, SunsetRawMutex,
-};
-pub use async_sunset::{io_buf_copy_noreaderror, io_copy_nowriteerror};
+pub use async_sunset::{ProgressHolder, SunsetMutex, SunsetRawMutex};
