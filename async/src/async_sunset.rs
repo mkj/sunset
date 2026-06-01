@@ -602,7 +602,7 @@ impl<'a, CS: CliServ> ChanCore for AsyncSunset<'a, CS> {
         if let Ok(0) = l {
             // 0 bytes written, pending
             trace!("write ch {num:?} dt {dt:?} pending");
-            runner.set_channel_read_waker(h, dt, cx.waker());
+            runner.set_channel_write_waker(h, dt, cx.waker());
             Poll::Pending
         } else {
             trace!("write ready ch {num:?} dt {dt:?} {l:?}");
