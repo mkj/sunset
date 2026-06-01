@@ -1,8 +1,8 @@
 use crate::error::SftpError;
 use crate::handles::OpaqueFileHandle;
 use crate::proto::{
-    self, InitVersionClient, InitVersionLowest, LStat, MAX_REQUEST_LEN, ReqId,
-    SFTP_VERSION, SftpNum, SftpPacket, Stat, StatusCode,
+    self, InitVersionClient, InitVersionLowest, LStat, ReqId, SftpNum, SftpPacket,
+    Stat, StatusCode, MAX_REQUEST_LEN, SFTP_VERSION,
 };
 use crate::server::DirReadHeaderReply;
 use crate::sftperror::SftpResult;
@@ -14,12 +14,11 @@ use crate::sftpserver::{ReadHeaderReply, SftpServer};
 use crate::sftpsource::SftpSource;
 
 use embassy_futures::select::select;
-use sunset::Error as SunsetError;
 use sunset::sshwire::{SSHSource, WireError};
-use sunset_async::ChanInOut;
+use sunset::Error as SunsetError;
 
 use core::u32;
-use embedded_io_async::Read;
+use embedded_io_async::ErrorType;
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
 
@@ -115,15 +114,18 @@ where
         }
     }
 
-    /// Take the [`ChanInOut`] and locks, Processing all the request from stdio until
-    /// an EOF is received
-    pub async fn process_loop(
+    /// Takes an [`embedded_io_async::Read`] and [`embedded_io_async::Write`] and a receiving buffer and loops,
+    /// Processing all the request from chan_in until an EOF is received
+    pub async fn process_loop<R, W>(
         &mut self,
-        stdio: ChanInOut<'_>,
+        mut chan_in: R,
+        chan_out: W,
         buffer_in: &mut [u8],
-    ) -> SftpResult<()> {
-        let (mut chan_in, chan_out) = stdio.split();
-
+    ) -> SftpResult<()>
+    where
+        R: embedded_io_async::Read + ErrorType<Error = SunsetError>,
+        W: embedded_io_async::Write + ErrorType<Error = SunsetError>,
+    {
         let mut sftp_output_pipe = SftpOutputPipe::<BUFFER_OUT_SIZE>::new();
 
         let (mut output_consumer, output_producer) =
@@ -169,6 +171,209 @@ where
         }
     }
 
+    async fn process_validated_request(
+        &mut self,
+        output_producer: &SftpOutputProducer<'_, BUFFER_OUT_SIZE>,
+    ) -> SftpResult<()> {
+        let Some(sftp_packet) = self.request_holder.valid_request() else {
+            return Err(SunsetError::bug().into());
+        };
+        match sftp_packet {
+            SftpPacket::Read(req_id, ref read) => {
+                debug!("Read request: {:?}", sftp_packet);
+
+                let reply = ReadHeaderReply::new(req_id, output_producer);
+                if let Err(error) = self
+                    .file_server
+                    .read(&T::try_from(&read.handle)?, read.offset, read.len, reply)
+                    .await
+                {
+                    error!("Error reading data: {:?}", error);
+                    if let SftpError::FileServerError(status) = error {
+                        output_producer
+                            .send_status(req_id, status, "Could not list attributes")
+                            .await?;
+                    } else {
+                        output_producer
+                            .send_status(
+                                req_id,
+                                StatusCode::SSH_FX_FAILURE,
+                                "Could not list attributes",
+                            )
+                            .await?;
+                    }
+                };
+
+                self.state = HandlerState::Idle;
+            }
+            SftpPacket::LStat(req_id, LStat { file_path: path }) => {
+                match self.file_server.attrs(false, path.to_str()?).await {
+                    Ok(attrs) => {
+                        debug!("List stats for {} is {:?}", path, attrs);
+
+                        output_producer
+                            .send_packet(&SftpPacket::Attrs(req_id, attrs))
+                            .await?;
+                    }
+                    Err(status) => {
+                        error!("Error listing stats for {}: {:?}", path, status);
+                        output_producer
+                            .send_status(req_id, status, "Could not list attributes")
+                            .await?;
+                    }
+                };
+                self.state = HandlerState::Idle;
+            }
+            SftpPacket::Stat(req_id, Stat { file_path: path }) => {
+                match self.file_server.attrs(true, path.to_str()?).await {
+                    Ok(attrs) => {
+                        debug!("List stats for {} is {:?}", path, attrs);
+
+                        output_producer
+                            .send_packet(&SftpPacket::Attrs(req_id, attrs))
+                            .await?;
+                    }
+                    Err(status) => {
+                        error!("Error listing stats for {}: {:?}", path, status);
+                        output_producer
+                            .send_status(req_id, status, "Could not list attributes")
+                            .await?;
+                    }
+                };
+                self.state = HandlerState::Idle;
+            }
+            SftpPacket::ReadDir(req_id, read_dir) => {
+                let dir_read_header_reply =
+                    DirReadHeaderReply::new(req_id, output_producer);
+                if let Err(status) = self
+                    .file_server
+                    .readdir(&T::try_from(&read_dir.handle)?, dir_read_header_reply)
+                    .await
+                {
+                    error!("Open failed: {:?}", status);
+
+                    output_producer
+                        .send_status(req_id, status, "Error Reading Directory")
+                        .await?;
+                };
+                self.state = HandlerState::Idle;
+            }
+            SftpPacket::OpenDir(req_id, open_dir) => {
+                match self.file_server.opendir(open_dir.dirname.as_str()?).await {
+                    Ok(opaque_file_handle) => {
+                        let response = SftpPacket::Handle(
+                            req_id,
+                            proto::Handle {
+                                handle: opaque_file_handle.into_file_handle(),
+                            },
+                        );
+                        output_producer.send_packet(&response).await?;
+                    }
+                    Err(status_code) => {
+                        error!("Open failed: {:?}", status_code);
+                        output_producer
+                            .send_status(req_id, StatusCode::SSH_FX_FAILURE, "")
+                            .await?;
+                    }
+                };
+                self.state = HandlerState::Idle;
+            }
+            SftpPacket::Close(req_id, close) => {
+                match self.file_server.close(&T::try_from(&close.handle)?).await {
+                    Ok(_) => {
+                        output_producer
+                            .send_status(req_id, StatusCode::SSH_FX_OK, "")
+                            .await?;
+                    }
+                    Err(e) => {
+                        error!("SFTP Close thrown: {:?}", e);
+                        output_producer
+                            .send_status(
+                                req_id,
+                                StatusCode::SSH_FX_FAILURE,
+                                "Could not Close the handle",
+                            )
+                            .await?;
+                    }
+                }
+                self.state = HandlerState::Idle;
+            }
+            SftpPacket::Write(_, write) => {
+                debug!("Got write: {:?}", write);
+                self.state = HandlerState::ProcessWriteRequest {
+                    offset: write.offset,
+                    remaining_data: write.data_len,
+                };
+            }
+            SftpPacket::Open(req_id, open) => {
+                match self
+                    .file_server
+                    .open(open.filename.as_str()?, &open.pflags)
+                    .await
+                {
+                    Ok(opaque_file_handle) => {
+                        let response = SftpPacket::Handle(
+                            req_id,
+                            proto::Handle {
+                                handle: opaque_file_handle.into_file_handle(),
+                            },
+                        );
+                        output_producer.send_packet(&response).await?;
+                    }
+                    Err(status_code) => {
+                        error!("Open failed: {:?}", status_code);
+                        output_producer
+                            .send_status(req_id, StatusCode::SSH_FX_FAILURE, "")
+                            .await?;
+                    }
+                };
+                self.state = HandlerState::Idle;
+            }
+            SftpPacket::PathInfo(req_id, path_info) => {
+                match self.file_server.realpath(path_info.path.to_str()?).await {
+                    Ok(name_entry) => {
+                        let dir_read_header_reply =
+                            DirReadHeaderReply::new(req_id, output_producer);
+                        let encoded_len =
+                            crate::sftpserver::helpers::get_name_entry_len(
+                                &name_entry,
+                            )?;
+                        debug!("PathInfo encoded length: {:?}", encoded_len);
+                        trace!("PathInfo Response content: {:?}", encoded_len);
+                        let dir_read_data_reply = dir_read_header_reply
+                            .send_header(encoded_len, 1)
+                            .await?;
+                        dir_read_data_reply
+                            .send_data(|mut sender| async move {
+                                sender.send_item(&name_entry).await?;
+                                sender
+                                    .completed()
+                                    .ok_or(SftpError::WireError(WireError::Bug))
+                            })
+                            .await?;
+                    }
+                    Err(code) => {
+                        output_producer.send_status(req_id, code, "").await?;
+                    }
+                }
+                self.state = HandlerState::Idle;
+            }
+            SftpPacket::Init(..)
+            | SftpPacket::Version(..)
+            | SftpPacket::Status(..)
+            | SftpPacket::Handle(..)
+            | SftpPacket::Data(..)
+            | SftpPacket::Name(..)
+            | SftpPacket::Attrs(..) => {
+                error!(
+                    "Unexpected SftpPacket in ProcessRequest state: {:?}",
+                    sftp_packet.sftp_num()
+                );
+                return Err(SunsetError::BadUsage {}.into());
+            }
+        }
+        Ok(())
+    }
     /// - Decodes the buffer_in request
     /// - Process the request delegating
     /// operations to a [`SftpServer`] implementation
@@ -416,324 +621,7 @@ where
                     // At this point the assumption is that the request holder will contain
                     // a full valid request (Lets call this an invariant)
 
-                    if let Some(request) = self.request_holder.valid_request() {
-                        if !request.sftp_num().is_request() {
-                            error!(
-                                "Unexpected SftpPacket: {:?}",
-                                request.sftp_num()
-                            );
-                            return Err(SunsetError::BadUsage {}.into());
-                        }
-                        match request {
-                            // SftpPacket::Init(init_version_client) => todo!(),
-                            // SftpPacket::Version(init_version_lowest) => todo!(),
-                            SftpPacket::Read(req_id, ref read) => {
-                                debug!("Read request: {:?}", request);
-
-                                let reply =
-                                    ReadHeaderReply::new(req_id, output_producer);
-                                if let Err(error) = self
-                                    .file_server
-                                    .read(
-                                        &T::try_from(&read.handle)?,
-                                        read.offset,
-                                        read.len,
-                                        reply,
-                                    )
-                                    .await
-                                {
-                                    error!("Error reading data: {:?}", error);
-                                    if let SftpError::FileServerError(status) = error
-                                    {
-                                        output_producer
-                                            .send_status(
-                                                req_id,
-                                                status,
-                                                "Could not list attributes",
-                                            )
-                                            .await?;
-                                    } else {
-                                        output_producer
-                                            .send_status(
-                                                req_id,
-                                                StatusCode::SSH_FX_FAILURE,
-                                                "Could not list attributes",
-                                            )
-                                            .await?;
-                                    }
-                                };
-
-                                self.state = HandlerState::Idle;
-                            }
-                            SftpPacket::LStat(req_id, LStat { file_path: path }) => {
-                                match self
-                                    .file_server
-                                    .attrs(false, path.to_str()?)
-                                    .await
-                                {
-                                    Ok(attrs) => {
-                                        debug!(
-                                            "List stats for {} is {:?}",
-                                            path, attrs
-                                        );
-
-                                        output_producer
-                                            .send_packet(&SftpPacket::Attrs(
-                                                req_id, attrs,
-                                            ))
-                                            .await?;
-                                    }
-                                    Err(status) => {
-                                        error!(
-                                            "Error listing stats for {}: {:?}",
-                                            path, status
-                                        );
-                                        output_producer
-                                            .send_status(
-                                                req_id,
-                                                status,
-                                                "Could not list attributes",
-                                            )
-                                            .await?;
-                                    }
-                                };
-                                self.state = HandlerState::Idle;
-                            }
-                            SftpPacket::Stat(req_id, Stat { file_path: path }) => {
-                                match self
-                                    .file_server
-                                    .attrs(true, path.to_str()?)
-                                    .await
-                                {
-                                    Ok(attrs) => {
-                                        debug!(
-                                            "List stats for {} is {:?}",
-                                            path, attrs
-                                        );
-
-                                        output_producer
-                                            .send_packet(&SftpPacket::Attrs(
-                                                req_id, attrs,
-                                            ))
-                                            .await?;
-                                    }
-                                    Err(status) => {
-                                        error!(
-                                            "Error listing stats for {}: {:?}",
-                                            path, status
-                                        );
-                                        output_producer
-                                            .send_status(
-                                                req_id,
-                                                status,
-                                                "Could not list attributes",
-                                            )
-                                            .await?;
-                                    }
-                                };
-                                self.state = HandlerState::Idle;
-                            }
-                            SftpPacket::ReadDir(req_id, read_dir) => {
-                                let dir_read_header_reply =
-                                    DirReadHeaderReply::new(req_id, output_producer);
-                                if let Err(status) = self
-                                    .file_server
-                                    .readdir(
-                                        &T::try_from(&read_dir.handle)?,
-                                        dir_read_header_reply,
-                                    )
-                                    .await
-                                {
-                                    error!("Open failed: {:?}", status);
-
-                                    output_producer
-                                        .send_status(
-                                            req_id,
-                                            status,
-                                            "Error Reading Directory",
-                                        )
-                                        .await?;
-                                };
-                                // match reply.read_diff() {
-                                //     diff if diff > 0 => {
-                                //         debug!(
-                                //             "DirReply not completed after read operation. Still need to send {} bytes",
-                                //             diff
-                                //         );
-                                //         return Err(SunsetError::Bug.into());
-                                //     }
-                                //     diff if diff < 0 => {
-                                //         error!(
-                                //             "DirReply has sent more data than announced: {} bytes extra",
-                                //             -diff
-                                //         );
-                                //         return Err(SunsetError::Bug.into());
-                                //     }
-                                //     _ => {}
-                                // }
-                                self.state = HandlerState::Idle;
-                            }
-                            SftpPacket::OpenDir(req_id, open_dir) => {
-                                match self
-                                    .file_server
-                                    .opendir(open_dir.dirname.as_str()?)
-                                    .await
-                                {
-                                    Ok(opaque_file_handle) => {
-                                        let response = SftpPacket::Handle(
-                                            req_id,
-                                            proto::Handle {
-                                                handle: opaque_file_handle
-                                                    .into_file_handle(),
-                                            },
-                                        );
-                                        output_producer
-                                            .send_packet(&response)
-                                            .await?;
-                                    }
-                                    Err(status_code) => {
-                                        error!("Open failed: {:?}", status_code);
-                                        output_producer
-                                            .send_status(
-                                                req_id,
-                                                StatusCode::SSH_FX_FAILURE,
-                                                "",
-                                            )
-                                            .await?;
-                                    }
-                                };
-                                self.state = HandlerState::Idle;
-                            }
-                            SftpPacket::Close(req_id, close) => {
-                                match self
-                                    .file_server
-                                    .close(&T::try_from(&close.handle)?)
-                                    .await
-                                {
-                                    Ok(_) => {
-                                        output_producer
-                                            .send_status(
-                                                req_id,
-                                                StatusCode::SSH_FX_OK,
-                                                "",
-                                            )
-                                            .await?;
-                                    }
-                                    Err(e) => {
-                                        error!("SFTP Close thrown: {:?}", e);
-                                        output_producer
-                                            .send_status(
-                                                req_id,
-                                                StatusCode::SSH_FX_FAILURE,
-                                                "Could not Close the handle",
-                                            )
-                                            .await?;
-                                    }
-                                }
-                                self.state = HandlerState::Idle;
-                            }
-                            SftpPacket::Write(_, write) => {
-                                debug!("Got write: {:?}", write);
-                                self.state = HandlerState::ProcessWriteRequest {
-                                    offset: write.offset,
-                                    remaining_data: write.data_len,
-                                };
-                            }
-                            SftpPacket::Open(req_id, open) => {
-                                match self
-                                    .file_server
-                                    .open(open.filename.as_str()?, &open.pflags)
-                                    .await
-                                {
-                                    Ok(opaque_file_handle) => {
-                                        let response = SftpPacket::Handle(
-                                            req_id,
-                                            proto::Handle {
-                                                handle: opaque_file_handle
-                                                    .into_file_handle(),
-                                            },
-                                        );
-                                        output_producer
-                                            .send_packet(&response)
-                                            .await?;
-                                    }
-                                    Err(status_code) => {
-                                        error!("Open failed: {:?}", status_code);
-                                        output_producer
-                                            .send_status(
-                                                req_id,
-                                                StatusCode::SSH_FX_FAILURE,
-                                                "",
-                                            )
-                                            .await?;
-                                    }
-                                };
-                                self.state = HandlerState::Idle;
-                            }
-                            SftpPacket::PathInfo(req_id, path_info) => {
-                                match self
-                                    .file_server
-                                    .realpath(path_info.path.to_str()?)
-                                    .await
-                                {
-                                    Ok(name_entry) => {
-                                        let dir_read_header_reply =
-                                            DirReadHeaderReply::new(
-                                                req_id,
-                                                output_producer,
-                                            );
-                                        let encoded_len =
-                                                crate::sftpserver::helpers::get_name_entry_len(&name_entry)?;
-                                        debug!(
-                                            "PathInfo encoded length: {:?}",
-                                            encoded_len
-                                        );
-                                        trace!(
-                                            "PathInfo Response content: {:?}",
-                                            encoded_len
-                                        );
-                                        let dir_read_data_reply =
-                                            dir_read_header_reply
-                                                .send_header(encoded_len, 1)
-                                                .await?;
-                                        dir_read_data_reply
-                                            .send_data(|mut sender| async move {
-                                                sender
-                                                    .send_item(&name_entry)
-                                                    .await?;
-                                                sender.completed().ok_or(
-                                                    SftpError::WireError(
-                                                        WireError::Bug,
-                                                    ),
-                                                )
-                                            })
-                                            .await?;
-                                    }
-                                    Err(code) => {
-                                        output_producer
-                                            .send_status(req_id, code, "")
-                                            .await?;
-                                    }
-                                }
-                                self.state = HandlerState::Idle;
-                            }
-                            SftpPacket::Init(..)
-                            | SftpPacket::Version(..)
-                            | SftpPacket::Status(..)
-                            | SftpPacket::Handle(..)
-                            | SftpPacket::Data(..)
-                            | SftpPacket::Name(..)
-                            | SftpPacket::Attrs(..) => {
-                                error!(
-                                    "Unexpected SftpPacket in ProcessRequest state: {:?}",
-                                    request.sftp_num()
-                                );
-                                return Err(SunsetError::BadUsage {}.into());
-                            }
-                        }
-                    } else {
-                        return Err(SunsetError::bug().into());
-                    }
+                    self.process_validated_request(&output_producer).await?;
                 }
                 HandlerState::ClearBuffer { data } => {
                     if *data == 0 {

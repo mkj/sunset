@@ -2,7 +2,6 @@ use sunset::*;
 use sunset_async::{ProgressHolder, SSHServer, SunsetMutex, SunsetRawMutex};
 use sunset_sftp::{server::MAX_REQUEST_LEN, SftpHandler};
 
-// pub(crate) use sunset_demo_common as demo_common;
 use sunset_demo_common::{self, DemoCommon, DemoServer, SSHConfig};
 
 use crate::{
@@ -164,7 +163,7 @@ impl DemoServer for StdDemo {
                 let mut request_buffer = [0u8; MAX_REQUEST_LEN];
 
                 match {
-                    let stdio = serv.stdio(ch).await?;
+                    let (chan_in, chan_out) = serv.stdio(ch).await?.split();
                     let mut file_server =
                         DemoSftpServer::<DemoOpaqueFileHandle>::new(
                             "./demo/sftp/std/testing/out/".to_string(),
@@ -174,7 +173,7 @@ impl DemoServer for StdDemo {
                         &mut file_server,
                         &mut request_buffer,
                     )
-                    .process_loop(stdio, &mut buffer_in)
+                    .process_loop(chan_in, chan_out, &mut buffer_in)
                     .await?;
 
                     Ok::<_, Error>(())
