@@ -299,5 +299,9 @@ pub mod mock {
             self.buffer.extend_from_slice(buf);
             Ok(buf.len())
         }
+
+        async fn flush(&mut self) -> Result<(), SunsetError> {
+            Ok(())
+        }
     }
 }

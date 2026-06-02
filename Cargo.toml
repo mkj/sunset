@@ -30,8 +30,8 @@ portable-atomic = "1"
 arbitrary = { version = "1.4", features = ["derive_arbitrary"] }
 zeroize = { version = "1", default-features = false, features = ["derive"] }
 
-embedded-io = { version = "0.6" }
-embedded-io-async = { version = "0.6" }
+embedded-io = { version = "0.7" }
+embedded-io-async = { version = "0.7" }
 
 embassy-sync = "0.7"
 embassy-futures = "0.1"

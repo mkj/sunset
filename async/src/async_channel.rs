@@ -91,9 +91,10 @@ impl Write for ChanIO<'_> {
             .await
     }
 
-    // TODO: not sure how easy end-to-end flush is
-    // async fn flush(&mut self) -> Result<(), Self::Error> {
-    // }
+    async fn flush(&mut self) -> Result<()> {
+        // TODO: could this wait for the packet to get sent out?
+        Ok(())
+    }
 }
 
 // Public wrappers for In only
@@ -274,6 +275,11 @@ impl Write for ChanInOut<'_> {
     async fn write(&mut self, buf: &[u8]) -> Result<usize, sunset::Error> {
         self.0.write(buf).await
     }
+
+    async fn flush(&mut self) -> Result<()> {
+        // TODO: could this wait for the packet to get sent out?
+        Ok(())
+    }
 }
 
 impl Read for ChanIn<'_> {
@@ -285,5 +291,10 @@ impl Read for ChanIn<'_> {
 impl Write for ChanOut<'_> {
     async fn write(&mut self, buf: &[u8]) -> Result<usize, sunset::Error> {
         self.0.write(buf).await
+    }
+
+    async fn flush(&mut self) -> Result<()> {
+        // TODO: could this wait for the packet to get sent out?
+        Ok(())
     }
 }
