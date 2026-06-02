@@ -31,15 +31,13 @@ pub fn win_size() -> Result<WinChange, IoError> {
 
 /// Returns a `Pty` describing the current terminal.
 pub fn current_pty() -> Result<Pty, IoError> {
-    let mut term = heapless::String::<MAX_TERM>::new();
     let t = std::env::var("TERM").unwrap_or(DEFAULT_TERM.into());
     // XXX error
-    term.push_str(&t).expect("$TERM is too long");
+    let term = t.as_str().try_into().expect("$TERM is too long");
 
     let wc = win_size()?;
 
     // TODO modes
-    let modes = heapless::Vec::new();
 
     Ok(Pty {
         term,
@@ -47,7 +45,7 @@ pub fn current_pty() -> Result<Pty, IoError> {
         cols: wc.cols,
         width: wc.width,
         height: wc.height,
-        modes,
+        modes: Default::default(),
     })
 }
 

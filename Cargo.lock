@@ -3205,7 +3205,6 @@ dependencies = [
  "embassy-sync 0.7.2",
  "embedded-io-adapters",
  "embedded-io-async",
- "heapless",
  "libc",
  "log",
  "nix",
