@@ -78,7 +78,8 @@ cd demo/picow
 cargo build --release
 cargo bloat --release -n 100 | tee "$OUT/picow-bloat.txt"
 cargo bloat --release --crates | tee "$OUT/picow-bloat-crates.txt"
-cargo build --release --no-default-features --features w5500,romfw
+cargo build --release --no-default-features --features w5500
+cargo build --release --features romfw
 )
 size target/thumbv6m-none-eabi/release/sunset-demo-picow | tee "$OUT/picow-size.txt"
 
