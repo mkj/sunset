@@ -127,9 +127,7 @@ impl KeyState {
         buf: &mut [u8],
     ) -> Result<usize, Error> {
         let e = self.enc.encrypt(payload_len, buf, self.seq_encrypt.0);
-        if !matches!(e, Err(Error::NoRoom { .. })) {
-            self.seq_encrypt += 1;
-        }
+        self.seq_encrypt += 1;
         e
     }
 
