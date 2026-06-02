@@ -116,6 +116,10 @@ impl DemoCommon {
             ServEvent::FirstAuth(a) => self.handle_firstauth(a),
             ServEvent::PasswordAuth(a) => self.handle_password(a),
             ServEvent::PubkeyAuth(a) => self.handle_pubkey(a),
+            ServEvent::Authenticated => {
+                info!("Auth success");
+                Ok(())
+            }
             ServEvent::OpenSession(a) => self.open_session(a),
             ServEvent::SessionPty(a) => a.succeed(),
             ServEvent::SessionEnv(a) => a.succeed(),
@@ -134,14 +138,8 @@ impl DemoCommon {
     }
 
     fn handle_password(&mut self, a: ServPasswordAuth) -> Result<()> {
-        let username = match a.username() {
-            Ok(u) => u,
-            Err(_) => return Ok(()),
-        };
-        let password = match a.password() {
-            Ok(u) => u,
-            Err(_) => return Ok(()),
-        };
+        let username = a.username()?;
+        let password = a.password()?;
 
         let p = if self.is_admin(username) {
             &self.config.admin_pw

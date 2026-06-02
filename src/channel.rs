@@ -253,7 +253,7 @@ impl Channels {
     /// Wake all ready output channels
     pub fn wake_write(&mut self, is_client: bool) {
         for ch in self.ch.iter_mut().filter_map(|c| c.as_mut()) {
-            ch.wake_write(None, is_client)
+            ch.wake_write(is_client)
         }
     }
 
@@ -444,7 +444,7 @@ impl Channels {
                 send.window = send.window.saturating_add(p.adjust as usize);
                 trace!("new window {}", send.window);
                 // Wake any writers that might have been blocked.
-                chan.wake_write(None, is_client);
+                chan.wake_write(is_client);
             }
             Packet::ChannelData(p) => {
                 let ch = self.get(ChanNum(p.num))?;
@@ -490,7 +490,7 @@ impl Channels {
                 let is_client = self.is_client;
                 match self.get_mut(ChanNum(p.num)) {
                     Ok(ch) => {
-                        ev = ch.dispatch_request(&p, s, is_client);
+                        ev = ch.dispatch_request(&p, s, is_client)?;
                     }
                     Err(_) => debug!("Ignoring request to unknown channel: {p:#?}"),
                 }
@@ -625,7 +625,9 @@ impl TryFrom<&packets::PtyReq<'_>> for Pty {
     type Error = Error;
     fn try_from(p: &packets::PtyReq) -> Result<Self, Self::Error> {
         debug!("TODO implement pty modes");
-        let term = p.term.as_ascii()?.try_into().map_err(|_| Error::BadString)?;
+        // SSHProto error is returned when TERM is too long. The caller will catch that.
+        let term =
+            p.term.to_ascii()?.try_into().map_err(|_| error::SSHProto.build())?;
         Ok(Pty {
             term,
             cols: p.cols,
@@ -846,13 +848,11 @@ impl Channel {
         }
     }
 
-    pub fn wake_write(&mut self, dt: Option<ChanData>, is_client: bool) {
-        if dt == Some(ChanData::Normal) || dt.is_none() {
-            if let Some(w) = self.read_waker.take() {
-                w.wake()
-            }
+    pub fn wake_write(&mut self, is_client: bool) {
+        if let Some(w) = self.write_waker.take() {
+            w.wake()
         }
-        if !is_client && (dt == Some(ChanData::Normal) || dt.is_none()) {
+        if !is_client {
             if let Some(w) = self.ext_waker.take() {
                 w.wake()
             }
@@ -880,7 +880,7 @@ impl Channel {
         p: &packets::ChannelRequest,
         s: &mut TrafSend,
         is_client: bool,
-    ) -> DispatchEvent {
+    ) -> Result<DispatchEvent> {
         let r = match (is_client, self.app_done) {
             // Reject requests if the application has closed
             // the channel. ChannelEOF is arbitrary.
@@ -889,17 +889,20 @@ impl Channel {
             (false, _) => self.dispatch_server_request(p, s),
         };
 
-        r.unwrap_or_else(|_| {
-            // All errors just send an error response, no failure.
-            if p.want_reply {
-                let num = self.send_num();
-                debug_assert!(num.is_ok());
-                if let Ok(num) = num {
-                    let _ = s.send(packets::ChannelFailure { num });
+        match r {
+            Ok(_) | Err(Error::Bug) => r,
+            Err(_) => {
+                // Most errors just send an error response, no failure.
+                if p.want_reply {
+                    let num = self.send_num();
+                    debug_assert!(num.is_ok());
+                    if let Ok(num) = num {
+                        let _ = s.send(packets::ChannelFailure { num });
+                    }
                 }
+                Ok(DispatchEvent::None)
             }
-            DispatchEvent::None
-        })
+        }
     }
 
     fn dispatch_server_request(
@@ -1005,7 +1008,7 @@ impl Channel {
         if is_client {
             self.wake_read(ChanData::Stderr, is_client);
         }
-        self.wake_write(None, is_client);
+        self.wake_write(is_client);
 
         self.state = ChanState::RecvClose;
         Ok(())
@@ -1150,10 +1153,7 @@ pub struct CliSessionOpener<'g, 'a> {
 }
 
 impl<'g, 'a> CliSessionOpener<'g, 'a> {
-    /// Returns the channel associated with this session.
-    ///
-    /// This will match that previously returned from [`Runner::cli_session_opener`]
-    /// or `SSHClient::open_session_pty()` (or `_nopty()`)
+    /// Returns the channel number associated with this session.
     pub fn channel(&self) -> ChanNum {
         self.ch.num()
     }

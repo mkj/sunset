@@ -1,4 +1,5 @@
 use core::fmt;
+use core::ops::{Deref, DerefMut};
 
 #[allow(unused_imports)]
 use {
@@ -6,29 +7,61 @@ use {
     log::{debug, error, info, log, trace, warn},
 };
 
-use zeroize::Zeroize;
+use zeroize::{Zeroize, ZeroizeOnDrop};
+
+#[cfg(feature = "alloc")]
+use alloc::boxed::Box;
 
 use crate::channel::{ChanData, ChanNum};
 use crate::encrypt::{KeyState, KeysRecv, KeysSend, SSH_PAYLOAD_START};
 use crate::ident::RemoteVersion;
 use crate::*;
 
+// Either a slice or boxed array.
+// Similar to managed::ManagedSlice.
+//
+// Zeroize is slow for fuzzing, so skip it.
+// In normal operation one zeroize per connection is fine.
+#[cfg_attr(not(fuzzing), derive(ZeroizeOnDrop))]
+enum SliceOrVec<'a> {
+    Borrowed(&'a mut [u8]),
+
+    /// `'static` variant
+    #[cfg(feature = "alloc")]
+    Owned(Box<[u8; config::SSH_MAX_PACKET]>),
+}
+
+impl Deref for SliceOrVec<'_> {
+    type Target = [u8];
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Self::Borrowed(r) => r,
+            #[cfg(feature = "alloc")]
+            Self::Owned(r) => r.as_ref(),
+        }
+    }
+}
+
+impl DerefMut for SliceOrVec<'_> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        match self {
+            Self::Borrowed(r) => r,
+            #[cfg(feature = "alloc")]
+            Self::Owned(r) => r.as_mut(),
+        }
+    }
+}
+
+impl Zeroize for SliceOrVec<'_> {
+    fn zeroize(&mut self) {
+        self.deref_mut().zeroize();
+    }
+}
+
 // TODO: if smoltcp exposed both ends of a CircularBuffer to recv()
 // we could perhaps just work directly in smoltcp's provided buffer?
 // Would need changes to ciphers with block boundaries
-
-pub(crate) struct TrafOut<'a> {
-    // TODO: decompression will need another buffer
-    /// Accumulated output buffer.
-    ///
-    /// Should be sized to fit the largest
-    /// sequence of packets to be sent at once.
-    /// Contains ciphertext or cleartext, encrypted in-place.
-    /// Writing may contain multiple SSH packets to write out, encrypted
-    /// in-place as they are written to `buf`.
-    buf: &'a mut [u8],
-    state: TxState,
-}
 
 // TODO only pub for testing
 // pub(crate) struct TrafIn<'a> {
@@ -39,28 +72,8 @@ pub struct TrafIn<'a> {
     /// Should be sized to fit the largest packet allowed for input.
     /// Contains ciphertext or cleartext, decrypted in-place.
     /// Only contains a single SSH packet at a time.
-    buf: &'a mut [u8],
+    buf: SliceOrVec<'a>,
     state: RxState,
-}
-
-/// State machine for writes
-#[derive(Debug)]
-enum TxState {
-    /// Awaiting write, buffer is unused
-    Idle,
-
-    /// Writing to the socket. Buffer is encrypted in-place.
-    /// Should never be left in `idx==len` state,
-    /// instead should transition to Idle
-    Write {
-        /// Cursor position in the buffer
-        idx: usize,
-        /// Buffer available to write
-        len: usize,
-    },
-
-    /// No more output will be produced
-    Closed,
 }
 
 #[derive(Debug)]
@@ -94,15 +107,9 @@ impl core::fmt::Debug for TrafIn<'_> {
     }
 }
 
-impl core::fmt::Debug for TrafOut<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("TrafOut").field("state", &self.state).finish_non_exhaustive()
-    }
-}
-
 impl<'a> TrafIn<'a> {
     pub fn new(buf: &'a mut [u8]) -> Self {
-        Self { buf, state: RxState::Idle }
+        Self { buf: SliceOrVec::Borrowed(buf), state: RxState::Idle }
     }
 
     pub fn is_input_ready(&self) -> bool {
@@ -338,9 +345,57 @@ impl<'a> TrafIn<'a> {
     }
 }
 
+pub(crate) struct TrafOut<'a> {
+    // TODO: decompression will need another buffer
+    /// Accumulated output buffer.
+    ///
+    /// Should be sized to fit the largest
+    /// sequence of packets to be sent at once.
+    /// Contains ciphertext or cleartext, encrypted in-place.
+    /// Writing may contain multiple SSH packets to write out, encrypted
+    /// in-place as they are written to `buf`.
+    buf: SliceOrVec<'a>,
+    state: TxState,
+}
+
+/// State machine for writes
+#[derive(Debug)]
+enum TxState {
+    /// Awaiting write, buffer is unused
+    Idle,
+
+    /// Writing to the socket. Buffer is encrypted in-place.
+    /// Should never be left in `idx==len` state,
+    /// instead should transition to Idle
+    Write {
+        /// Cursor position in the buffer
+        idx: usize,
+        /// Buffer available to write
+        len: usize,
+    },
+
+    /// No more output will be produced
+    Closed,
+}
+
+impl core::fmt::Debug for TrafOut<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TrafOut").field("state", &self.state).finish_non_exhaustive()
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl TrafIn<'static> {
+    pub fn new_owned() -> Self {
+        let mut s = Self::new(&mut []);
+        s.buf = SliceOrVec::Owned(Box::new([0; _]));
+        s
+    }
+}
+
 impl<'a> TrafOut<'a> {
     pub fn new(buf: &'a mut [u8]) -> Self {
-        Self { buf, state: TxState::Idle }
+        Self { buf: SliceOrVec::Borrowed(buf), state: TxState::Idle }
     }
 
     /// Serializes and and encrypts a packet to send
@@ -423,7 +478,7 @@ impl<'a> TrafOut<'a> {
             return Err(Error::bug());
         }
 
-        let len = ident::write_version(self.buf)?;
+        let len = ident::write_version(&mut self.buf)?;
         self.state = TxState::Write { idx: 0, len };
         Ok(())
     }
@@ -455,6 +510,15 @@ impl<'a> TrafOut<'a> {
     }
 }
 
+#[cfg(feature = "alloc")]
+impl TrafOut<'static> {
+    pub fn new_owned() -> Self {
+        let mut s = Self::new(&mut []);
+        s.buf = SliceOrVec::Owned(Box::new([0; _]));
+        s
+    }
+}
+
 /// Convenience to pass TrafOut with keys
 pub(crate) struct TrafSend<'s, 'a> {
     out: &'s mut TrafOut<'a>,
@@ -470,8 +534,8 @@ impl<'s, 'a> TrafSend<'s, 'a> {
         self.out.send_packet(p.into(), self.keys)
     }
 
-    pub fn rekey_send(&mut self, keys: KeysSend, strict_kex: bool) {
-        self.keys.rekey_send(keys, strict_kex)
+    pub fn rekey_send(&mut self, keys: KeysSend) {
+        self.keys.rekey_send(keys);
     }
 
     pub fn rekey_recv(&mut self, keys: KeysRecv) {
@@ -489,5 +553,9 @@ impl<'s, 'a> TrafSend<'s, 'a> {
     /// Returns the current receive sequence number
     pub fn recv_seq(&self) -> u32 {
         self.keys.seq_decrypt.0
+    }
+
+    pub fn enable_strict_kex(&mut self) {
+        self.keys.enable_strict_kex();
     }
 }

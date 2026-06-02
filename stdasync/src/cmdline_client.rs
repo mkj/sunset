@@ -19,6 +19,8 @@ use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::signal::unix::{signal, SignalKind};
 
+use zeroize::Zeroizing;
+
 use crate::pty::win_size;
 use crate::AgentClient;
 use crate::*;
@@ -31,7 +33,7 @@ pub struct CmdlineClient {
     cmd: SessionCommand<String>,
     want_pty: bool,
 
-    // parameters
+    // Parameters
     authkeys: VecDeque<SignKey>,
     username: String,
     host: String,
@@ -214,7 +216,7 @@ impl CmdlineClient {
                     }
                 }
             } else {
-                futures::future::pending().await
+                std::future::pending::<()>().await;
             }
         };
 
@@ -232,10 +234,7 @@ impl CmdlineClient {
     ///
     /// Performs authentication, requests a shell or command, performs channel IO.
     /// Will return `Ok` after the session ends normally, or an error.
-    pub async fn run<'g: 'a, 'a>(
-        &mut self,
-        cli: &'g SSHClient<'a>,
-    ) -> Result<ExitCode> {
+    pub async fn run<'g, 'a>(&mut self, cli: &'g SSHClient<'a>) -> Result<ExitCode> {
         let mut io = None;
         let mut extin = None;
 
@@ -270,6 +269,7 @@ impl CmdlineClient {
                             "password for {}: ",
                             self.username
                         ))?;
+                        let pw = Zeroizing::new(pw);
                         p.password(pw)?;
                     }
                     CliEvent::Pubkey(p) => {
@@ -289,6 +289,7 @@ impl CmdlineClient {
                     }
                     CliEvent::Authenticated => {
                         debug!("Authentication succeeded");
+                        self.authkeys.clear();
                         // drop it so we can use cli
                         drop(ph);
                         let (i, e) = self.open_session(cli).await?;
@@ -349,7 +350,7 @@ impl CmdlineClient {
     /// Requests a PTY or non-PTY session
     ///
     /// Sets up the PTY if required.
-    async fn open_session<'g: 'a, 'a>(
+    async fn open_session<'g, 'a>(
         &mut self,
         cli: &'g SSHClient<'a>,
     ) -> Result<(ChanInOut<'g>, Option<ChanIn<'g>>)> {

@@ -3,7 +3,7 @@
 set -v
 set -e
 
-export CARGO_TARGET_DIR=target/ci
+export CARGO_TARGET_DIR="$PWD/target/ci"
 
 # Set OFFLINE=1 to avoid rustup. cargo might still run offline.
 
@@ -33,6 +33,7 @@ cargo fmt --check
 # stable
 # only test lib since some examples are broken
 cargo test --lib
+cargo test --lib --all-features
 # build non-testing, will be no_std
 cargo build
 cargo doc

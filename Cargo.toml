@@ -7,7 +7,7 @@ repository = "https://github.com/mkj/sunset"
 categories = ["network-programming", "embedded", "no-std"]
 license = "0BSD"
 keywords = ["ssh"]
-rust-version = "1.88"
+rust-version = "1.89"
 
 [workspace]
 members = [
@@ -28,11 +28,12 @@ sunset-demo-common = { path = "demo/common" }
 
 portable-atomic = "1"
 arbitrary = { version = "1.4", features = ["derive_arbitrary"] }
+zeroize = { version = "1", default-features = false, features = ["derive"] }
 
 [dependencies]
 sunset-sshwire-derive = { workspace = true }
 
-snafu = { version = "0.8", default-features = false, features = ["rust_1_65"] }
+snafu = { version = "0.9", default-features = false, features = ["rust_1_81"] }
 log = { version = "0.4" }
 heapless = "0.8"
 
@@ -53,28 +54,15 @@ sha2 = { version = "0.10", default-features = false }
 hmac = "0.12"
 poly1305 = "0.8"
 digest = "0.10"
-signature = { version = "2.0", default-features = false }
-zeroize = { version = "1", default-features = false, features = ["derive"] }
+zeroize.workspace = true
 cipher = { version = "0.4", features = ["zeroize"] }
 subtle = { version = "2.4", default-features = false }
 # ed25519/x25519
-ed25519-dalek = { version = "2.1", default-features = false, features = [
-    "zeroize",
-    "rand_core",
-] }
-x25519-dalek = { version = "2.0", default-features = false, features = [
-    "zeroize",
-] }
-curve25519-dalek = { version = "4.1", default-features = false, features = [
-    "zeroize",
-] }
-ml-kem = { version = "0.2.1", default-features = false, features = [
-    "zeroize",
-], optional = true }
-# p521 = { version = "0.13.2", default-features = false, features = ["ecdh", "ecdsa"] }
-rsa = { version = "0.9", default-features = false, optional = true, features = [
-    "sha2",
-] }
+ed25519-dalek = { version = "2.1", default-features = false, features = ["zeroize", "rand_core"] }
+x25519-dalek = { version = "2.0", default-features = false, features = ["zeroize"] }
+curve25519-dalek = { version = "4.1", default-features = false, features = ["zeroize"] }
+ml-kem = { version = "0.3.2", default-features = false, features = ["zeroize"], optional = true }
+rsa = { version = "0.9", default-features = false, optional = true, features = ["sha2"] }
 # TODO: getrandom feature is a workaround for missing ssh-key dependency with rsa. fixed in pending 0.6
 ssh-key = { version = "0.6", default-features = false, optional = true, features = [
     "getrandom",
@@ -82,11 +70,22 @@ ssh-key = { version = "0.6", default-features = false, optional = true, features
 
 embedded-io = { version = "0.6", optional = true }
 
+# TODO rc versions
+p256 = { version = "0.14.0-rc.9", optional = true, default-features = false, features = ["ecdsa"] }
+ecdsa = { version = "0.17.0-rc.17", default-features = false, optional = true , features = ["hazmat", "algorithm"]}
+
 [features]
-std = ["snafu/std", "ssh-key/alloc", "larger", "mlkem"]
+default = ["mlkem"]
+std = ["snafu/std", "ssh-key/alloc", "larger", "mlkem", "alloc"]
+alloc = ["ssh-key/alloc"]
 backtrace = ["snafu/backtrace"]
 rsa = ["dep:rsa", "ssh-key/rsa"]
 mlkem = ["dep:ml-kem"]
+
+_ecdsa = ["dep:ecdsa", "ssh-key/ecdsa"]
+# ecdsa-sha2-nistp256
+ecdsa256 = ["_ecdsa", "dep:p256", "ssh-key/p256"]
+
 # allows conversion to/from OpenSSH key formats
 openssh-key = ["ssh-key"]
 # implements embedded_io::Error for sunset::Error
@@ -99,8 +98,6 @@ arbitrary = ["dep:arbitrary", "std"]
 larger = []
 
 [dev-dependencies]
-# examples want std::error
-snafu = { version = "0.8", default-features = true }
 anyhow = { version = "1.0" }
 simplelog = { version = "0.12", features = ["test"] }
 

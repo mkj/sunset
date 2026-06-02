@@ -92,7 +92,9 @@ pub enum WireError {
 
     SSHProto,
 
-    BadKeyFormat,
+    BadKey,
+
+    BadNumber,
 
     Bug,
 
@@ -108,7 +110,8 @@ impl From<WireError> for Error {
             WireError::BadName => Error::BadName,
             WireError::SSHProto => error::SSHProto.build(),
             WireError::PacketWrong => error::PacketWrong.build(),
-            WireError::BadKeyFormat => Error::BadKeyFormat,
+            WireError::BadKey => Error::BadKey,
+            WireError::BadNumber => Error::BadNumber,
             WireError::UnknownVariant => Error::bug_err_msg("Can't encode Unknown"),
             WireError::Bug => error::Bug.build(),
             WireError::UnknownPacket { number } => Error::UnknownPacket { number },
@@ -253,23 +256,18 @@ impl<'de> SSHSource<'de> for DecodeBytes<'de> {
     }
 }
 
-// Hashes a slice to be treated as a mpint. Has u32 length prefix
-// and an extra 0x00 byte if the MSB is set.
-pub fn hash_mpint(hash_ctx: &mut dyn SSHWireDigestUpdate, m: &[u8]) {
-    let pad = !m.is_empty() && (m[0] & 0x80) != 0;
-    let l = m.len() as u32 + pad as u32;
-    hash_ctx.digest_update(&l.to_be_bytes());
-    if pad {
-        hash_ctx.digest_update(&[0x00]);
-    }
-    hash_ctx.digest_update(m);
+/// Hashes a slice to be treated as a rfc4253 mpint.
+///
+/// Has u32 length prefix and an extra 0x00 byte if the MSB is set.
+pub fn hash_mpint(hash_ctx: &mut impl SSHWireDigestUpdate, m: &[u8]) {
+    // OK unwrap, hash_ser can't fail since Mpint::enc can't fail
+    hash_ser(hash_ctx, &Mpint::new(m)).unwrap();
 }
 
 ///////////////////////////////////////////////
 
 /// A SSH style binary string. Serialized as `u32` length followed by the bytes
 /// of the slice.
-/// Application API
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct BinString<'a>(pub &'a [u8]);
@@ -320,8 +318,6 @@ impl<const N: usize> SSHEncode for heapless::String<N> {
 /// Note that SSH protocol identifiers in [`Packet`]
 /// are `&str` rather than `TextString`, and always defined as ASCII. For
 /// example `"publickey"`, `"ssh-ed25519"`.
-///
-/// Application API
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct TextString<'a>(pub &'a [u8]);
@@ -331,11 +327,11 @@ impl<'a> TextString<'a> {
     ///
     /// Don't call this if you are avoiding including UTF-8 routines in
     /// the binary.
-    pub fn as_str(&self) -> Result<&'a str> {
+    pub fn to_str(&self) -> Result<&'a str> {
         core::str::from_utf8(self.0).map_err(|_| Error::BadString)
     }
 
-    pub fn as_ascii(&self) -> Result<&'a str> {
+    pub fn to_ascii(&self) -> Result<&'a str> {
         self.0.as_ascii_str().map_err(|_| Error::BadString).map(|s| s.as_str())
     }
 }
@@ -463,6 +459,78 @@ impl<'de, B: SSHDecode<'de>> SSHDecode<'de> for Blob<B> {
             }
         }
         Ok(Blob(inner))
+    }
+}
+
+fn top_bit_set(b: &[u8]) -> bool {
+    b.first().unwrap_or(&0) & 0x80 != 0
+}
+
+/// SSH `mpint` value
+///
+/// Represents a zero or positive rfc4251 mpint.
+/// The inner slice must not have leading padding 0x00s, use new() to strip them.
+/// Its wire encoding has a padding byte if the slice's top bit is set.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
+pub struct Mpint<'a>(&'a [u8]);
+
+impl<'a> Mpint<'a> {
+    /// Construct a Mpint, removing leading 0x00 bytes.
+    pub fn new(mut b: &'a [u8]) -> Self {
+        while b.first() == Some(&0x00) {
+            b = &b[1..];
+        }
+        Mpint(b)
+    }
+}
+
+impl<'a> AsRef<[u8]> for Mpint<'a> {
+    fn as_ref(&self) -> &[u8] {
+        self.0
+    }
+}
+
+impl Debug for Mpint<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "mpint(")?;
+        for b in self.0 {
+            write!(f, "{b:02x}")?;
+        }
+        write!(f, ")")
+    }
+}
+
+impl SSHEncode for Mpint<'_> {
+    fn enc(&self, s: &mut dyn SSHSink) -> WireResult<()> {
+        // rfc4251
+        // "Unnecessary leading bytes with the value 0 or 255 MUST NOT be included"
+        debug_assert!(
+            self.0.is_empty() || self.0[0] != 0x00,
+            "Shouldn't have leading padding"
+        );
+
+        let pad = top_bit_set(self.0);
+        (self.0.len() as u32 + pad as u32).enc(s)?;
+        if pad {
+            0u8.enc(s)?;
+        }
+        self.0.enc(s)
+    }
+}
+
+impl<'de> SSHDecode<'de> for Mpint<'de> {
+    fn dec<S>(s: &mut S) -> WireResult<Self>
+    where
+        S: sshwire::SSHSource<'de>,
+    {
+        let b = BinString::dec(s)?.0;
+        if top_bit_set(b) {
+            trace!("received negative mpint");
+            return Err(WireError::BadNumber);
+        }
+        // Strip padding bytes
+        Ok(Mpint::new(b))
     }
 }
 
@@ -679,26 +747,11 @@ impl<T: SSHWireDigestUpdate> From<T> for SSHWireDigestTrace<T> {
 }
 
 #[cfg(feature = "rsa")]
-fn top_bit_set(b: &[u8]) -> bool {
-    b.first().unwrap_or(&0) & 0x80 != 0
-}
-
-#[cfg(feature = "rsa")]
 impl SSHEncode for rsa::BigUint {
     fn enc(&self, s: &mut dyn SSHSink) -> WireResult<()> {
         let b = self.to_bytes_be();
         let b = b.as_slice();
-
-        // rfc4251 mpint, need a leading zero byte if top bit is set
-        let pad = top_bit_set(b);
-        let len = b.len() as u32 + pad as u32;
-        len.enc(s)?;
-
-        if pad {
-            0u8.enc(s)?;
-        }
-
-        b.enc(s)
+        Mpint(b).enc(s)
     }
 }
 
@@ -708,11 +761,7 @@ impl<'de> SSHDecode<'de> for rsa::BigUint {
     where
         S: SSHSource<'de>,
     {
-        let b = BinString::dec(s)?;
-        if top_bit_set(b.0) {
-            trace!("received negative mpint");
-            return Err(WireError::BadKeyFormat);
-        }
+        let b = Mpint::dec(s)?;
         Ok(rsa::BigUint::from_bytes_be(b.0))
     }
 }

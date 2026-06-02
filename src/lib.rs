@@ -11,6 +11,9 @@
 // Static allocations hit this inherently.
 #![allow(clippy::large_enum_variant)]
 
+#[cfg(feature = "alloc")]
+extern crate alloc;
+
 pub mod config;
 pub mod packets;
 pub mod sshnames;
@@ -45,13 +48,11 @@ mod termmodes;
 mod traffic;
 
 use conn::DispatchEvent;
-use event::CliEventId;
 
-// Application API
 pub use sshwire::TextString;
 
 pub use auth::AuthSigMsg;
-pub use channel::{ChanData, ChanNum, CliSessionExit};
+pub use channel::{ChanData, ChanNum, CliSessionExit, CliSessionOpener};
 pub use channel::{ChanOpened, Pty, SessionCommand};
 pub use error::{Error, Result};
 pub use packets::{PubKey, Signature};

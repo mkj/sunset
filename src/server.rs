@@ -23,7 +23,7 @@ impl Server {
     ) -> Result<()> {
         let success = match p.name {
             SSH_SERVICE_USERAUTH => true,
-            SSH_SERVICE_CONNECTION => self.auth.authed,
+            SSH_SERVICE_CONNECTION => self.auth.is_authed(),
             _ => false,
         };
         if success {

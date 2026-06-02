@@ -1,8 +1,8 @@
 use crate::error::SftpError;
 use crate::handles::OpaqueFileHandle;
 use crate::proto::{
-    self, InitVersionClient, InitVersionLowest, LStat, ReqId, SftpNum, SftpPacket,
-    Stat, StatusCode, MAX_REQUEST_LEN, SFTP_VERSION,
+    self, InitVersionClient, InitVersionLowest, LStat, MAX_REQUEST_LEN, ReqId,
+    SFTP_VERSION, SftpNum, SftpPacket, Stat, StatusCode,
 };
 use crate::server::DirReadHeaderReply;
 use crate::sftperror::SftpResult;
@@ -14,8 +14,8 @@ use crate::sftpserver::{ReadHeaderReply, SftpServer};
 use crate::sftpsource::SftpSource;
 
 use embassy_futures::select::select;
-use sunset::sshwire::{SSHSource, WireError};
 use sunset::Error as SunsetError;
+use sunset::sshwire::{SSHSource, WireError};
 
 use core::u32;
 use embedded_io_async::ErrorType;

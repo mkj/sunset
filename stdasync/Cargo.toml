@@ -14,6 +14,7 @@ sunset-async.workspace = true
 log = { version = "0.4", features = ["release_max_level_trace"] }
 rpassword = "7.2"
 argh = "0.1"
+zeroize.workspace = true
 
 ssh-key = { version = "0.6", default-features = false, features = [ "std"] }
 
@@ -24,7 +25,6 @@ embedded-io-async = "0.6"
 
 # "net" for AsyncFd on unix
 tokio = { version = "1.25", features = ["net", "io-util", "signal"] }
-futures = "0.3"
 
 libc = "0.2"
 nix = "0.26"
@@ -37,7 +37,6 @@ rsa = ["sunset/rsa"]
 [dev-dependencies]
 anyhow = { version = "1.0" }
 whoami = "1.3"
-zeroize = "1.5"
 
 tokio = { version = "1.25", features = ["full"] }
 
@@ -48,5 +47,5 @@ simplelog = "0.12"
 # for simplelog
 time = { version = "0.3", features = ["local-offset"] }
 
-sunset-async = { workspace = true, features = ["multi-thread"] }
+sunset-async = { workspace = true, features = ["multi-thread", "std"] }
 critical-section = { version = "1.1", features = ["std"] }

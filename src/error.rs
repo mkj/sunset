@@ -8,8 +8,8 @@ use snafu::prelude::*;
 
 use crate::channel::ChanNum;
 
-#[allow(unused_imports)]
-use snafu::{Backtrace, Location};
+#[cfg(feature = "backtrace")]
+use snafu::Backtrace;
 
 // TODO: can we make Snafu not require Debug?
 
@@ -47,7 +47,7 @@ pub enum Error {
     /// Signature is incorrect
     BadSig,
 
-    /// Integer overflow in packet
+    /// Received a badly formatted number
     BadNumber,
 
     /// Error in received SSH protocol. Will disconnect.
@@ -63,9 +63,6 @@ pub enum Error {
     /// support it.
     // TODO: 'static disconnect message to return?
     SSHProtoUnsupported,
-
-    /// Received a key with invalid structure, or too large.
-    BadKeyFormat,
 
     /// Remote peer isn't SSH 2.0
     NotSSH,
@@ -136,7 +133,9 @@ pub enum Error {
     #[snafu(display("Packet size {size} too large (or bad decrypt)"))]
     BigPacket { size: usize },
 
-    /// Ran out of authentication methods to try (as a client)
+    /// Ran out of authentication methods
+    ///
+    /// This is only for the client.
     NoAuthMethods,
 
     /// An unknown SSH name is provided, for a key type, signature type,
@@ -247,6 +246,7 @@ pub trait TrapBug<T> {
 }
 
 impl<T, E> TrapBug<T> for Result<T, E> {
+    #[track_caller]
     fn trap(self) -> Result<T, Error> {
         // call directly so that Location::caller() works
         if let Ok(i) = self {
@@ -255,6 +255,7 @@ impl<T, E> TrapBug<T> for Result<T, E> {
             Err(Error::bug())
         }
     }
+    #[track_caller]
     fn trap_msg(self, args: Arguments) -> Result<T, Error> {
         // call directly so that Location::caller() works
         if let Ok(i) = self {
@@ -275,6 +276,7 @@ impl<T> TrapBug<T> for Option<T> {
             Err(Error::bug())
         }
     }
+    #[track_caller]
     fn trap_msg(self, args: Arguments) -> Result<T, Error> {
         // call directly so that Location::caller() works
         if let Some(i) = self {
