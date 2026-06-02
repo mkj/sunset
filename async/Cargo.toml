@@ -8,14 +8,14 @@ license = "0BSD"
 description = "Async for Sunset SSH"
 
 [dependencies]
-embassy-sync = { version = "0.7" }
-embassy-futures = { version = "0.1" }
-embedded-io-async = "0.6"
+embassy-sync.workspace = true
+embassy-futures.workspace = true
+embedded-io-async.workspace = true
 portable-atomic.workspace = true
 
 sunset = { workspace = true, features = ["embedded-io"] }
 
-log = { version = "0.4" }
+log.workspace = true
 
 [features]
 # Use a critical-section mutex to lock state. This feature must be enabled

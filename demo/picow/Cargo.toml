@@ -14,22 +14,22 @@ cyw43-pio = { version = "0.4.0", optional = true }
 
 embassy-net-wiznet = { version = "0.2.0", optional = true }
 
-embassy-executor = { version = "0.7", features = [
+embassy-executor = { workspace = true, features = [
     "executor-thread", "arch-cortex-m", "log", 
     # This is sufficient for NUM_LISTENERS=4. It seems like it should fit in 96kB,
     # but has failures.
     "task-arena-size-131072"] }
-embassy-time = { version = "0.4",  features = [] }
+embassy-time = { workspace = true,  features = [] }
 embassy-rp = { version = "0.4",  features = ["time-driver", "rp2040"] }
-embassy-net = { version = "0.7", features = ["tcp", "dhcpv4", "medium-ethernet", "log"] }
+embassy-net = { workspace = true, features = ["tcp", "dhcpv4", "medium-ethernet", "log"] }
 embassy-usb-driver = { version = "0.1" }
-embassy-sync = { version = "0.7" }
-embassy-futures = { version = "0.1" }
+embassy-sync.workspace = true
+embassy-futures.workspace = true
 embassy-usb = { version = "0.4", features = ["log"] }
 static_cell = { version = "2" }
 portable-atomic = { workspace = true, features = ["critical-section"] }
 
-log = { version = "0.4" }
+log.workspace = true
 rtt-target = { version = "0.6", features = ["log"] }
 
 snafu = { version = "0.9", default-features = false, features = ["rust_1_81"] }
@@ -41,9 +41,9 @@ embedded-hal = "1.0"
 embedded-hal-async = "1.0"
 # embedded-hal-bus need to match embassy-net-wiznet's version
 embedded-hal-bus = { version = "0.1", features = ["async"], optional = true }
-embedded-io-async = "0.6"
+embedded-io-async.workspace = true
 embedded-storage-async = "0.4"
-heapless = "0.8"
+heapless.workspace = true
 
 caprand = "0.2"
 getrandom = { version = "0.2", features = ["custom"] }

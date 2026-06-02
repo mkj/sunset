@@ -30,12 +30,27 @@ portable-atomic = "1"
 arbitrary = { version = "1.4", features = ["derive_arbitrary"] }
 zeroize = { version = "1", default-features = false, features = ["derive"] }
 
+embedded-io = { version = "0.6" }
+embedded-io-async = { version = "0.6" }
+
+embassy-sync = "0.7"
+embassy-futures = "0.1"
+# for demos
+embassy-net = "0.7"
+embassy-net-driver = "0.2"
+embassy-time = "0.4"
+embassy-executor = "0.7"
+
+log = "0.4"
+
+heapless = "0.8"
+
 [dependencies]
 sunset-sshwire-derive = { workspace = true }
 
 snafu = { version = "0.9", default-features = false, features = ["rust_1_81"] }
-log = { version = "0.4" }
-heapless = "0.8"
+log.workspace = true
+heapless.workspace = true
 
 # allows avoiding utf8 for SSH identifier names
 ascii = { version = "1.0", default-features = false }
@@ -68,7 +83,7 @@ ssh-key = { version = "0.6", default-features = false, optional = true, features
     "getrandom",
 ] }
 
-embedded-io = { version = "0.6", optional = true }
+embedded-io = { workspace = true, optional = true }
 
 # TODO rc versions
 p256 = { version = "0.14.0-rc.9", optional = true, default-features = false, features = ["ecdsa"] }

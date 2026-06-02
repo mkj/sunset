@@ -11,17 +11,17 @@ sunset = { workspace = true, features = ["std", "openssh-key"] }
 sunset-sshwire-derive.workspace = true
 sunset-async.workspace = true
 
-log = { version = "0.4", features = ["release_max_level_trace"] }
+log = { workspace = true, features = ["release_max_level_trace"] }
 rpassword = "7.2"
 argh = "0.1"
 zeroize.workspace = true
 
 ssh-key = { version = "0.6", default-features = false, features = [ "std"] }
 
-embassy-sync = { version = "0.7" }
-embassy-futures = { version = "0.1" }
+embassy-sync.workspace = true
+embassy-futures.workspace = true
 
-embedded-io-async = "0.6"
+embedded-io-async.workspace = true
 
 # "net" for AsyncFd on unix
 tokio = { version = "1.25", features = ["net", "io-util", "signal"] }
