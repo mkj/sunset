@@ -43,7 +43,7 @@ embassy-executor = "0.7"
 
 log = "0.4"
 
-heapless = "0.8"
+heapless = "0.9"
 
 [dependencies]
 sunset-sshwire-derive = { workspace = true }

@@ -102,7 +102,7 @@ impl<'a> TryFrom<&'a str> for NameList<'a> {
 impl TryFrom<&[&'static str]> for LocalNames {
     type Error = ();
     fn try_from(s: &[&'static str]) -> Result<Self, ()> {
-        Ok(Self(Vec::from_slice(s)?))
+        Ok(Self(Vec::from_slice(s).map_err(|_| ())?))
     }
 }
 impl<'a> From<&'a LocalNames> for NameList<'a> {
