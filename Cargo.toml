@@ -27,7 +27,7 @@ sunset-async = { path = "async", version = "0.4" }
 sunset-demo-common = { path = "demo/common" }
 
 portable-atomic = "1"
-arbitrary = { version = "1.4", features = ["derive_arbitrary"] }
+arbitrary = { version = "1.4", features = ["derive"] }
 zeroize = { version = "1", default-features = false, features = ["derive"] }
 
 embedded-io = { version = "0.7" }
