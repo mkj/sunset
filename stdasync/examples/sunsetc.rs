@@ -243,7 +243,7 @@ fn parse_args(tz: UtcOffset) -> Result<Args> {
         }
     }
     if args.username.is_none() {
-        args.username = Some(whoami::username());
+        args.username = Some(whoami::username()?);
     }
 
     for o in args.option.iter() {

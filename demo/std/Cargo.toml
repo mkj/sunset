@@ -27,7 +27,7 @@ heapless.workspace = true
 
 # for tuntap
 libc = "0.2.101"
-async-io = "1.6.0"
+async-io = "2.6"
 
 # using local fork
 # menu = "0.3"
