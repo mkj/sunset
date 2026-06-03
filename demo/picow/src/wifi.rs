@@ -8,11 +8,13 @@ pub use log::{debug, error, info, log, trace, warn};
 
 use embassy_executor::Spawner;
 use embassy_net::StackResources;
-use embassy_rp::bind_interrupts;
 use embassy_rp::gpio::{Level, Output};
 use embassy_rp::peripherals::*;
 use embassy_rp::pio::Pio;
+use embassy_rp::Peri;
+use embassy_rp::{bind_interrupts, dma};
 
+use cyw43::{Aligned, A4};
 use cyw43_pio::PioSpi;
 
 use rand::rngs::OsRng;
@@ -29,8 +31,7 @@ bind_interrupts!(struct Irqs {
 async fn wifi_task(
     runner: cyw43::Runner<
         'static,
-        Output<'static>,
-        PioSpi<'static, PIO0, 0, DMA_CH0>,
+        cyw43::SpiBus<Output<'static>, PioSpi<'static, PIO0, 0>>,
     >,
 ) -> ! {
     runner.run().await
@@ -39,15 +40,15 @@ async fn wifi_task(
 // It would be nice to make Pio0, Sm0, DMA_CH0 generic, but wifi_task can't have generics.
 pub(crate) async fn wifi_stack(
     spawner: &Spawner,
-    p23: PIN_23,
-    p24: PIN_24,
-    p25: PIN_25,
-    p29: PIN_29,
-    dma: DMA_CH0,
-    pio0: PIO0,
+    p23: Peri<'static, PIN_23>,
+    p24: Peri<'static, PIN_24>,
+    p25: Peri<'static, PIN_25>,
+    p29: Peri<'static, PIN_29>,
+    dma: Peri<'static, DMA_CH0>,
+    pio0: Peri<'static, PIO0>,
     config: &'static SunsetMutex<SSHConfig>,
 ) -> embassy_net::Stack<'static> {
-    let (fw, _clm) = get_fw();
+    let (fw, _clm, nvram) = get_fw();
 
     let pwr = Output::new(p23, Level::Low);
     let cs = Output::new(p25, Level::High);
@@ -60,13 +61,13 @@ pub(crate) async fn wifi_stack(
         cs,
         p24,
         p29,
-        dma,
+        dma::Channel::new(dma, crate::DmaIrqs),
     );
 
     static STATE: StaticCell<cyw43::State> = StaticCell::new();
     let state = STATE.init_with(cyw43::State::new);
-    let (net_device, control, runner) = cyw43::new(state, pwr, spi, fw).await;
-    spawner.spawn(wifi_task(runner)).unwrap();
+    let (net_device, control, runner) = cyw43::new(state, pwr, spi, fw, nvram).await;
+    spawner.spawn(wifi_task(runner).unwrap());
 
     let seed = OsRng.next_u64();
     let net_cf = if let Some(ref s) = config.lock().await.ip4_static {
@@ -81,7 +82,7 @@ pub(crate) async fn wifi_stack(
     let (stack, runner) =
         embassy_net::new(net_device, net_cf, SR.init(StackResources::new()), seed);
 
-    spawner.spawn(net_task(runner, control, config)).unwrap();
+    spawner.spawn(net_task(runner, control, config).unwrap());
 
     stack
 }
@@ -92,7 +93,7 @@ async fn net_task(
     mut control: cyw43::Control<'static>,
     config: &'static SunsetMutex<SSHConfig>,
 ) -> ! {
-    let (_fw, clm) = get_fw();
+    let (_fw, clm, _nvram) = get_fw();
     // control init() must occur before the net stack tries to access cyw43, otherwise
     // it seems to get stuck. await it here before spawning the net task.
     control.init(clm).await;
@@ -116,7 +117,7 @@ async fn net_task(
         let status = control.join(&wifi_net, opts).await;
 
         if let Err(ref e) = status {
-            info!("wifi join failed, code {}", e.status);
+            info!("wifi join failed {:?}", e);
         } else {
             info!("wifi joined");
             break;
@@ -127,23 +128,39 @@ async fn net_task(
 }
 
 // Get the WiFi firmware and Country Locale Matrix (CLM) blobs.
-fn get_fw() -> (&'static [u8], &'static [u8]) {
+fn get_fw() -> (
+    &'static Aligned<A4, [u8]>,
+    &'static Aligned<A4, [u8]>,
+    &'static Aligned<A4, [u8]>,
+) {
     let (fw, clm) = (
-        include_bytes!("../firmware/43439A0.bin"),
-        include_bytes!("../firmware/43439A0_clm.bin"),
+        cyw43::aligned_bytes!("../firmware/43439A0.bin"),
+        cyw43::aligned_bytes!("../firmware/43439A0_clm.bin"),
     );
+    let nvram = cyw43::aligned_bytes!("../firmware/nvram_rp2040.bin");
 
-    // To make flashing faster for development, you may want to flash the firmwares independently
-    // at hardcoded addresses, instead of baking them into the program with `include_bytes!`:
     /*
+       To make flashing faster for development, you may want to flash the firmwares independently
+       at hardcoded addresses, instead of baking them into the program with `include_bytes!`:
+
        probe-rs download firmware/43439A0.bin --binary-format bin  --chip RP2040 --base-address 0x10100000
        probe-rs download firmware/43439A0_clm.bin --binary-format bin  --chip RP2040 --base-address 0x10140000
+
+       That only needs to be done once. Then the binary to flash every time will be smaller
+       building with --feature romfw
     */
     #[cfg(feature = "romfw")]
-    let (fw, clm) = (
-        unsafe { core::slice::from_raw_parts(0x10100000 as *const u8, fw.len()) },
-        unsafe { core::slice::from_raw_parts(0x10140000 as *const u8, clm.len()) },
-    );
+    let (fw, clm) = {
+        let fw = unsafe {
+            core::slice::from_raw_parts(0x10100000 as *const u8, fw.len())
+        };
+        let clm = unsafe {
+            core::slice::from_raw_parts(0x10140000 as *const u8, clm.len())
+        };
+        let fw = unsafe { &*(fw as *const [u8] as *const Aligned<A4, [u8]>) };
+        let clm = unsafe { &*(clm as *const [u8] as *const Aligned<A4, [u8]>) };
+        (fw, clm)
+    };
 
-    (fw, clm)
+    (fw, clm, nvram)
 }

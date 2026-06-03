@@ -36,10 +36,10 @@ embedded-io-async = { version = "0.7" }
 embassy-sync = "0.8"
 embassy-futures = "0.1"
 # for demos
-embassy-net = "0.7"
+embassy-net = "0.9"
 embassy-net-driver = "0.2"
-embassy-time = "0.4"
-embassy-executor = "0.7"
+embassy-time = "0.5"
+embassy-executor = "0.10"
 
 log = "0.4"
 

@@ -10,7 +10,7 @@ sunset-demo-common.workspace = true
 
 # 131072 was determined empirically
 embassy-executor = { workspace = true, features = [
-    "executor-thread", "arch-std", "log", "task-arena-size-131072"] }
+    "executor-thread", "platform-std", "log" ] }
 embassy-net = { workspace = true, features = ["tcp", "dhcpv4", "medium-ethernet"] }
 embassy-net-tuntap = { version = "0.1" }
 embassy-sync.workspace = true

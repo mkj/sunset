@@ -12,9 +12,8 @@ sunset-sftp = { version = "0.1.0", path = "../../../sftp", features = ["std"] }
 # 131072 was determined empirically
 embassy-executor = { workspace = true, features = [
     "executor-thread",
-    "arch-std",
+    "platform-std",
     "log",
-    "task-arena-size-131072",
 ] }
 embassy-net = { workspace = true, features = [
     "tcp",

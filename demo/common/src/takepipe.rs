@@ -118,6 +118,11 @@ impl<'a> Write for TakePipeWrite<'a> {
         let r = self.pipe.writer.write(buf).await;
         Ok(r)
     }
+
+    async fn flush(&mut self) -> Result<(), Self::Error> {
+        // pipe::Writer has no flush
+        Ok(())
+    }
 }
 
 impl ErrorType for TakePipeRead<'_> {
@@ -195,6 +200,10 @@ impl Write for TakeWrite<'_> {
                 Err(sunset::Error::ChannelEOF)
             }
         }
+    }
+
+    async fn flush(&mut self) -> sunset::Result<()> {
+        Ok(())
     }
 }
 

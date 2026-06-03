@@ -74,10 +74,10 @@ async fn main_task(spawner: Spawner) {
     let (stack, runner) = embassy_net::new(net_device, net_cf, res, seed);
 
     // Launch network task
-    spawner.spawn(net_task(runner)).unwrap();
+    spawner.spawn(net_task(runner).unwrap());
 
     for _ in 0..NUM_LISTENERS {
-        spawner.spawn(listen(stack, config)).unwrap();
+        spawner.spawn(listen(stack, config).unwrap());
     }
 }
 
@@ -223,5 +223,5 @@ async fn main(spawner: Spawner) {
         .target(env_logger::Target::Stdout)
         .init();
 
-    spawner.spawn(main_task(spawner)).unwrap();
+    spawner.spawn(main_task(spawner).unwrap());
 }
