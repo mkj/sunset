@@ -56,8 +56,8 @@ async fn run(args: Args) -> Result<ExitCode> {
         return Ok(ExitCode::SUCCESS);
     }
 
-    if !args.cmd.is_empty() && args.subsystem.is_some() {
-        bail!("can't have '-s subsystem' with a command")
+    if args.subsystem && args.cmd.len() != 1 {
+        bail!("'-s' needs a command")
     }
 
     let mut want_pty = true;
@@ -68,7 +68,7 @@ async fn run(args: Args) -> Result<ExitCode> {
         Some(args.cmd.join(" "))
     };
 
-    if args.subsystem.is_some() {
+    if args.subsystem {
         want_pty = false;
     }
 
@@ -91,10 +91,11 @@ async fn run(args: Args) -> Result<ExitCode> {
             app.pty();
         }
         if let Some(c) = cmd {
-            app.exec(c);
-        }
-        if let Some(c) = args.subsystem {
-            app.subsystem(c);
+            if args.subsystem {
+                app.subsystem(c);
+            } else {
+                app.exec(c);
+            }
         }
         for i in &args.identityfile {
             app.add_authkey(
@@ -174,9 +175,9 @@ struct Args {
     /// force no pty
     force_no_pty: bool,
 
-    #[argh(option, short = 's')]
-    /// ssh subsystem (eg "sftp")
-    subsystem: Option<String>,
+    #[argh(switch, short = 's')]
+    /// use ssh subsystem. The command argument is the subsystem name.
+    subsystem: bool,
 
     #[argh(positional, greedy)]
     /// command
