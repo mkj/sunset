@@ -25,11 +25,35 @@ use sunset::event::Event;
 use sunset::ChanData::{Normal, Stderr};
 use sunset::{error, ChanData, ChanHandle, ChanNum, CliServ, Error, Result, Runner};
 
+/// A raw mutex
+///
+/// This is the [`RawMutex`](embassy_sync::blocking_mutex::raw::RawMutex)
+/// type used internally by `sunset-async`.
+/// When `multi-thread` feature for is enabled it will use
+/// `embassy-sync`'s [`CriticalSectionRawMutex`], otherwise it will
+/// use [`NoopRawMutex`] (no locking is required for single threaded).
 #[cfg(feature = "multi-thread")]
 pub type SunsetRawMutex = CriticalSectionRawMutex;
+
+/// A raw mutex
+///
+/// This is the [`RawMutex`](embassy_sync::blocking_mutex::raw::RawMutex)
+/// type used internally by `sunset-async`.
+/// When `multi-thread` feature for is enabled it will use
+/// `embassy-sync`'s [`CriticalSectionRawMutex`], otherwise it will
+/// use [`NoopRawMutex`] (no locking is required for single threaded).
+///
+/// Applications may use this for their own `embassy-sync` data structures.
 #[cfg(not(feature = "multi-thread"))]
 pub type SunsetRawMutex = NoopRawMutex;
 
+/// An async mutex
+///
+/// This is the [`Mutex`](embassy_sync::mutex::Mutex) type used internally
+/// by `sunset-async`.
+/// When `multi-thread` feature is enabled it will use
+/// `embassy-sync`'s [`CriticalSectionRawMutex`], otherwise it will
+/// use [`NoopRawMutex`] (no locking is required for single threaded).
 pub type SunsetMutex<T> = Mutex<SunsetRawMutex, T>;
 
 struct Inner<'a, CS: CliServ> {
