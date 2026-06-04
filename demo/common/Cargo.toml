@@ -28,6 +28,8 @@ bcrypt = { version = "0.15", default-features = false }
 ed25519-dalek = { version = "2.0.0-rc.2", default-features = false }
 subtle = { version = "2.4", default-features = false }
 
+getrandom = "0.2"
+
 log.workspace = true
 
 [dev-dependencies]

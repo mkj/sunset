@@ -58,7 +58,7 @@ pub struct SSHConfig {
 
 fn random_mac() -> Result<[u8; 6]> {
     let mut mac = [0u8; 6];
-    sunset::random::fill_random(&mut mac)?;
+    getrandom::getrandom(&mut mac).unwrap();
     // unicast, locally administered
     mac[0] = (mac[0] & 0xfc) | 0x02;
     Ok(mac)
@@ -296,7 +296,7 @@ impl PwHash {
         }
 
         let mut salt = [0u8; 16];
-        sunset::random::fill_random(&mut salt)?;
+        getrandom::getrandom(&mut salt).unwrap();
         let prehash = Self::prehash(pw, &salt);
         let cost = Self::COST;
         let hash = bcrypt::bcrypt(cost as u32, salt, &prehash);

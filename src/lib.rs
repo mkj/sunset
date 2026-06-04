@@ -22,7 +22,7 @@ pub mod sshwire;
 // perhaps the ones of interest should be expored separately.
 pub mod error;
 pub mod namelist;
-pub mod random;
+mod random;
 
 pub mod event;
 
