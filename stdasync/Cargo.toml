@@ -31,8 +31,12 @@ nix = "0.26"
 
 [features]
 rsa = ["sunset/rsa"]
+ecdsa= ["sunset/ecdsa256"]
 
 [dev-dependencies]
+# build examples with rsa, ecdsa
+sunset = { workspace = true, features = ["rsa", "ecdsa256"] }
+
 anyhow = { version = "1.0" }
 whoami = { version = "2.1.2", default-features = false, features = ["std"] }
 
