@@ -157,9 +157,13 @@ pub enum Error {
     // TODO: these could eventually get categorised
     Custom { msg: &'static str },
 
-    /// IO Error
+    /// std IO error
     #[cfg(feature = "std")]
     IoError { source: std::io::Error },
+
+    /// `embedded-io` error
+    #[cfg(feature = "embedded-io")]
+    EmbeddedIoError { kind: embedded_io::ErrorKind },
 
     // This state should not be reached, previous logic should have prevented it.
     // Create this using [`Error::bug()`] or [`.trap()`](TrapBug::trap).
@@ -240,6 +244,13 @@ impl Error {
 impl embedded_io::Error for Error {
     fn kind(&self) -> embedded_io::ErrorKind {
         embedded_io::ErrorKind::Other
+    }
+}
+
+#[cfg(feature = "embedded-io")]
+impl From<embedded_io::ErrorKind> for Error {
+    fn from(kind: embedded_io::ErrorKind) -> Self {
+        Self::EmbeddedIoError { kind }
     }
 }
 
