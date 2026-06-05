@@ -18,7 +18,7 @@ use sunset::Error as SunsetError;
 use sunset::sshwire::{SSHSource, WireError};
 
 use core::u32;
-use embedded_io_async::ErrorType;
+use embedded_io_async::Error;
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
 
@@ -123,8 +123,8 @@ where
         buffer_in: &mut [u8],
     ) -> SftpResult<()>
     where
-        R: embedded_io_async::Read + ErrorType<Error = SunsetError>,
-        W: embedded_io_async::Write + ErrorType<Error = SunsetError>,
+        R: embedded_io_async::Read,
+        W: embedded_io_async::Write,
     {
         let mut sftp_output_pipe = SftpOutputPipe::<BUFFER_OUT_SIZE>::new();
 
@@ -136,16 +136,10 @@ where
         let processing_loop = async {
             loop {
                 trace!("SFTP: About to read bytes from SSH Channel");
-                let lr: usize = match chan_in.read(buffer_in).await {
-                    Ok(lr) => lr,
-                    Err(e) => match e {
-                        SunsetError::NoRoom {} => {
-                            error!("SSH channel is full");
-                            continue;
-                        }
-                        _ => return Err(e.into()),
-                    },
-                };
+                let lr = chan_in
+                    .read(buffer_in)
+                    .await
+                    .map_err(|e| SunsetError::from(e.kind()))?;
 
                 debug!("SFTP <---- received: {:?} bytes", lr);
                 trace!("SFTP <---- received: {:?}", &buffer_in[0..lr]);

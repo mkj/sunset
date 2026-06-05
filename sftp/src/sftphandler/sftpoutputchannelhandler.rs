@@ -3,7 +3,7 @@ use crate::proto::{ReqId, SftpPacket, Status, StatusCode};
 use crate::server::SftpSink;
 
 use embassy_sync::pipe::{Pipe, Reader as PipeReader, Writer as PipeWriter};
-use embedded_io_async::{ErrorType, Write};
+use embedded_io_async::{Error, Write};
 use sunset::Error as SunsetError;
 use sunset_async::SunsetRawMutex;
 
@@ -56,7 +56,7 @@ impl<const N: usize> SftpOutputPipe<N> {
         ssh_chan_out: W,
     ) -> SftpResult<(SftpOutputConsumer<'a, W, N>, SftpOutputProducer<'a, N>)>
     where
-        W: Write + ErrorType<Error = SunsetError>,
+        W: Write,
     {
         if self.split {
             return Err(SftpError::AlreadyInitialized);
@@ -96,7 +96,7 @@ pub(crate) struct SftpOutputConsumer<'a, W, const N: usize> {
 
 impl<'a, W, const N: usize> SftpOutputConsumer<'a, W, N>
 where
-    W: Write + ErrorType<Error = SunsetError>,
+    W: Write,
 {
     /// Run it to start the piping
     pub async fn receive_task(&mut self) -> SftpResult<()> {
@@ -125,7 +125,11 @@ where
                     "Output Consumer: Tries to write {:?} bytes to ChanOut",
                     scanning_buffer.len()
                 );
-                let wl = self.ssh_chan_out.write(scanning_buffer).await?;
+                let wl = self
+                    .ssh_chan_out
+                    .write(scanning_buffer)
+                    .await
+                    .map_err(|e| SunsetError::from(e.kind()))?;
                 debug!("Output Consumer: Written {:?} bytes ", wl);
                 if wl < scanning_buffer.len() {
                     debug!(
@@ -163,7 +167,11 @@ where
         }
         let mut scanning_buffer = &buf[..rl];
         while scanning_buffer.len() > 0 {
-            let wl = self.ssh_chan_out.write(scanning_buffer).await?;
+            let wl = self
+                .ssh_chan_out
+                .write(scanning_buffer)
+                .await
+                .map_err(|e| SunsetError::from(e.kind()))?;
             scanning_buffer = &scanning_buffer[wl..];
         }
         Ok(())
