@@ -13,7 +13,7 @@ use crate::sftphandler::sftpoutputchannelhandler::{
 use crate::sftpserver::{ReadHeaderReply, SftpServer};
 use crate::sftpsource::SftpSource;
 
-use embassy_futures::select::select;
+use embassy_futures::select::{Either3, select3};
 use sunset::Error as SunsetError;
 use sunset::sshwire::{SSHSource, WireError};
 
@@ -114,18 +114,18 @@ where
         }
     }
 
-    /// Takes an [`embedded_io_async::Read`] and [`embedded_io_async::Write`] and a receiving buffer and loops,
-    /// Processing all the request from chan_in until an EOF is received
-    pub async fn process_loop<R, W>(
+    /// Runs the SFTP server loop.
+    ///
+    /// Takes an [`embedded_io_async::Read`] and [`embedded_io_async::Write`].
+    /// Processes all the request from `chan_in` until an EOF is received.
+    pub async fn process_loop(
         &mut self,
-        mut chan_in: R,
-        chan_out: W,
-        buffer_in: &mut [u8],
-    ) -> SftpResult<()>
-    where
-        R: embedded_io_async::Read,
-        W: embedded_io_async::Write,
-    {
+        mut chan_in: impl embedded_io_async::Read,
+        chan_out: impl embedded_io_async::Write,
+    ) -> SftpResult<()> {
+        // A single request should be adequate for progress.
+        const INPUT_BUF: usize = MAX_REQUEST_LEN;
+
         let mut sftp_output_pipe = SftpOutputPipe::<BUFFER_OUT_SIZE>::new();
 
         let (mut output_consumer, output_producer) =
@@ -133,14 +133,19 @@ where
 
         let output_consumer_loop = output_consumer.receive_task();
 
-        let processing_loop = async {
-            let mut current = 0;
+        let buf = bbqueue::nicknames::Texas::<
+            INPUT_BUF,
+            bbqueue::traits::notifier::maitake::MaiNotSpsc,
+        >::new();
+
+        let read_loop = async {
+            let prod = buf.stream_producer();
             loop {
-                let input = &mut buffer_in[current..];
+                let mut input = prod.wait_grant_max_remaining(usize::MAX).await;
                 trace!("SFTP: About to read bytes from SSH Channel");
 
                 let lr = chan_in
-                    .read(input)
+                    .read(&mut input)
                     .await
                     .map_err(|e| SunsetError::from(e.kind()))?;
 
@@ -151,22 +156,32 @@ where
                     return Err(SftpError::ClientDisconnected);
                 }
 
-                let consumed = self.process(&input[0..lr], &output_producer).await?;
-                if consumed == lr {
-                    current = 0
-                } else {
-                    current += consumed;
-                }
+                input.commit(lr);
             }
             #[allow(unreachable_code)]
             SftpResult::Ok(())
         };
-        match select(processing_loop, output_consumer_loop).await {
-            embassy_futures::select::Either::First(r) => {
+
+        let processing_loop = async {
+            let cons = buf.stream_consumer();
+            loop {
+                let input = cons.wait_read().await;
+                trace!("SFTP: About to read bytes from SSH Channel");
+
+                let consumed = self.process(&input, &output_producer).await?;
+                input.release(consumed);
+            }
+        };
+        match select3(read_loop, processing_loop, output_consumer_loop).await {
+            Either3::First(r) => {
+                error!("Read returned: {:?}", r);
+                r
+            }
+            Either3::Second(r) => {
                 error!("Processing returned: {:?}", r);
                 r
             }
-            embassy_futures::select::Either::Second(r) => {
+            Either3::Third(r) => {
                 error!("Output consumer returned: {:?}", r);
                 r
             }

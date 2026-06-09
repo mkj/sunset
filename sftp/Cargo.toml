@@ -23,3 +23,4 @@ paste = "=1.0.15" # Last released version
 log.workspace = true
 embassy-sync.workspace = true
 embassy-futures.workspace = true
+bbqueue = "0.7.0"

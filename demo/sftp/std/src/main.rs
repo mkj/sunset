@@ -158,8 +158,6 @@ impl DemoServer for StdDemo {
 
                 info!("SFTP loop has received a channel handle {:?}", ch.num());
 
-                // TODO Do some research to find reasonable default buffer lengths
-                let mut buffer_in = [0u8; 512];
                 let mut request_buffer = [0u8; MAX_REQUEST_LEN];
 
                 match {
@@ -173,7 +171,7 @@ impl DemoServer for StdDemo {
                         &mut file_server,
                         &mut request_buffer,
                     )
-                    .process_loop(chan_in, chan_out, &mut buffer_in)
+                    .process_loop(chan_in, chan_out)
                     .await?;
 
                     Ok::<_, Error>(())
