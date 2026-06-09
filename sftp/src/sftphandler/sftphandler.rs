@@ -391,18 +391,16 @@ where
 
         trace!("Received {:} bytes to process", buf.len());
 
-        // We used `run_another_loop` to bypass the buf len check in
-        // cases where we need to process data held
-        // TODO: Fix this pattern
-        let mut skip_checking_buffer = false;
         trace!("Entering loop to process the full received buffer");
-        while skip_checking_buffer || buf.len() > 0 {
+        // In ProcessRequest state, we need to handle the request before returning.
+        while buf.len() > 0
+            || matches!(self.state, HandlerState::ProcessRequest { .. })
+        {
             debug!(
                 "<=======================[ SFTP Process State: {:?} ]=======================> Buffer remaining: {}",
                 self.state,
                 buf.len()
             );
-            skip_checking_buffer = false;
             match &self.state {
                 HandlerState::ProcessWriteRequest {
                     offset,
@@ -519,7 +517,6 @@ where
 
                             // We got the request. Moving on to process it before deserializing more
                             // data
-                            skip_checking_buffer = true;
                             self.state = HandlerState::ProcessRequest {
                                 sftp_num: request.sftp_num(),
                             };
