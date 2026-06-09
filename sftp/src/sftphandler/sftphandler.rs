@@ -134,21 +134,29 @@ where
         let output_consumer_loop = output_consumer.receive_task();
 
         let processing_loop = async {
+            let mut current = 0;
             loop {
+                let input = &mut buffer_in[current..];
                 trace!("SFTP: About to read bytes from SSH Channel");
+
                 let lr = chan_in
-                    .read(buffer_in)
+                    .read(input)
                     .await
                     .map_err(|e| SunsetError::from(e.kind()))?;
 
                 debug!("SFTP <---- received: {:?} bytes", lr);
-                trace!("SFTP <---- received: {:?}", &buffer_in[0..lr]);
+                trace!("SFTP <---- received: {:?}", &input[0..lr]);
                 if lr == 0 {
                     debug!("client disconnected");
                     return Err(SftpError::ClientDisconnected);
                 }
 
-                self.process(&buffer_in[0..lr], &output_producer).await?;
+                let consumed = self.process(&input[0..lr], &output_producer).await?;
+                if consumed == lr {
+                    current = 0
+                } else {
+                    current += consumed;
+                }
             }
             #[allow(unreachable_code)]
             SftpResult::Ok(())
@@ -373,11 +381,12 @@ where
     /// operations to a [`SftpServer`] implementation
     /// - Serializes an answer in `output_producer`
     ///
+    /// Returns the amount of data consumed.
     async fn process(
         &mut self,
         buffer_in: &[u8],
         output_producer: &SftpOutputProducer<'_, BUFFER_OUT_SIZE>,
-    ) -> SftpResult<()> {
+    ) -> SftpResult<usize> {
         /*
         Possible scenarios:
             - Init: The init handshake has to be performed. Only Init packet is accepted. NAV(Idle)
@@ -613,6 +622,8 @@ where
                     // a full valid request (Lets call this an invariant)
 
                     self.process_validated_request(&output_producer).await?;
+                    // Return so that more input can be read if possible.
+                    return Ok(buffer_in.len() - buf.len());
                 }
                 HandlerState::ClearBuffer { data } => {
                     if *data == 0 {
@@ -625,6 +636,7 @@ where
             trace!("Process will check buf len {:?}", buf.len());
         }
         debug!("Whole buffer processed. Getting more data");
-        Ok(())
+        debug_assert_eq!(buf.len(), 0);
+        Ok(buffer_in.len())
     }
 }
