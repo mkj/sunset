@@ -18,7 +18,6 @@ sunset = { path = "../" }
 sunset-async = { path = "../async" }
 sunset-sshwire-derive = { path = "../sshwire-derive" }
 
-
 embedded-io-async.workspace = true
 num_enum = { version = "0.7.4", default-features = false }
 paste = "=1.0.15" # Last released version

@@ -24,6 +24,10 @@ suggest something!
 
   The [examples](stdasync/examples) include a Linux commandline SSH client `sunsetc`. It works as a day-to-day SSH client.
 
+- [`sunset-sftp`](sftp/) implements an SFTP server. An example of the application
+  side is in [demo/sftp/std](demo/sftp/std). `sunset-sftp` is currently under development,
+  treat as alpha status.
+
 ## SSH Features
 
 Working:
@@ -36,17 +40,18 @@ Working:
 - chacha20-poly1305, aes256-ctr ciphers
 - hmac-sha256 integrity
 - rsa (`std`-only unless someone writes a `no_std` crate)
+- ecdsa256
 - `~.` client escape sequences
 - Post quantum hybrid key exchange (mlkem)
+- SFTP server
 
 Desirable:
 
-- SFTP
+- SFTP client?
 - sntrup761
 - TCP forwarding
 - A std server example
 - Perhaps aes256-gcm
-- Perhaps ECDSA, hardware often supports it ahead of ed25519
 
 ## Rust versions
 
