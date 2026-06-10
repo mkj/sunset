@@ -22,6 +22,20 @@ use embedded_io_async::Error;
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
 
+// Platforms like thumbv6m-none-eabi can't atomics, so instead
+// use critical-section.
+type SFTPCoord = cfg_select! {
+    target_has_atomic = "ptr" => bbqueue::traits::coordination::cas::AtomicCoord,
+    _ => bbqueue::traits::coordination::cs::CsCoord,
+};
+
+/// An async bbqueue with inline storage
+type SFTPBBQueue<const N: usize> = bbqueue::BBQueue<
+    bbqueue::traits::storage::Inline<N>,
+    SFTPCoord,
+    bbqueue::traits::notifier::maitake::MaiNotSpsc,
+>;
+
 /// FSM for handling sftp requests during [`SftpHandler::process`]
 #[derive(Default, Debug, PartialEq, Eq)]
 enum HandlerState {
@@ -133,10 +147,7 @@ where
 
         let output_consumer_loop = output_consumer.receive_task();
 
-        let buf = bbqueue::nicknames::Texas::<
-            INPUT_BUF,
-            bbqueue::traits::notifier::maitake::MaiNotSpsc,
-        >::new();
+        let buf = SFTPBBQueue::<INPUT_BUF>::new();
 
         let read_loop = async {
             let prod = buf.stream_producer();
