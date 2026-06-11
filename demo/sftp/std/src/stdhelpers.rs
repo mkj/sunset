@@ -1,3 +1,5 @@
+use embedded_io_async::Write;
+use sunset_sftp::embedded_io_async;
 /// Helpers structures intended to for environment with `std` available, specially linux.
 ///
 /// The collection helps with directory and directory items enumeration, description
@@ -77,10 +79,13 @@ impl DirEntriesCollection {
         self.count
     }
 
-    pub(crate) async fn send_entries<const N: usize>(
+    pub(crate) async fn send_entries<W>(
         &self,
-        data_reply: DirReadDataReply<'_, N>,
-    ) -> SftpOpResult<DirReadReplyFinished> {
+        data_reply: DirReadDataReply<'_, '_, W>,
+    ) -> SftpOpResult<DirReadReplyFinished>
+    where
+        W: Write,
+    {
         if self.entries.is_empty() {
             return Err(StatusCode::SSH_FX_EOF);
         }

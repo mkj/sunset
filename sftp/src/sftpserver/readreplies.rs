@@ -2,10 +2,11 @@ use crate::{
     error::{SftpError, SftpResult},
     proto::{ENCODED_SSH_FXP_DATA_HEADER, ReqId, SftpNum},
     protocol::StatusCode,
-    server::SftpSink,
     sftphandler::SftpOutputProducer,
+    sftpsink::SftpSink,
 };
 
+use embedded_io_async::Write;
 use sunset::sshwire::SSHEncode;
 
 use log::debug;
@@ -15,20 +16,19 @@ use log::debug;
 ///
 /// On the corresponding method call will return either a [`crate::sftpserver::ReadDataReply`] or a [`crate::sftpserver::ReadReplyFinished`]
 /// which makes easy to implement correct behavior.
-pub struct ReadHeaderReply<'g, const N: usize> {
+pub struct ReadHeaderReply<'a, 'p, W: Write> {
     /// The request Id that will be used in the response
     req_id: ReqId,
-    /// Immutable writer
-    chan_out: &'g SftpOutputProducer<'g, N>,
+    chan_out: &'a mut SftpOutputProducer<'p, W>,
 }
 
-impl<'g, const N: usize> ReadHeaderReply<'g, N> {
+impl<'a, 'p, W: Write> ReadHeaderReply<'a, 'p, W> {
     /// Creates a new ReadHeaderReply with the given request ID and output channel.
     ///
     /// It is meant to be called in [`crate::SftpHandler`] and used to call a method of the [`crate::sftpserver::SftpServer`] that requires a read reply header, such as [`crate::sftpserver::SftpServer::read`]
     pub(crate) fn new(
         req_id: ReqId,
-        chan_out: &'g SftpOutputProducer<'g, N>,
+        chan_out: &'a mut SftpOutputProducer<'p, W>,
     ) -> Self {
         Self { req_id, chan_out }
     }
@@ -39,27 +39,22 @@ impl<'g, const N: usize> ReadHeaderReply<'g, N> {
     pub async fn send_header(
         self,
         data_len: u32,
-    ) -> SftpResult<ReadDataReply<'g, N>> {
+    ) -> SftpResult<ReadDataReply<'a, 'p, W>> {
         debug!(
             "ReadReply: Sending header for request id {:?}: data length = {:?}",
             self.req_id, data_len
         );
-        let mut s = [0u8; N];
-        let mut sink = SftpSink::new(&mut s);
 
-        let payload = ReadHeaderReply::<N>::encode_data_header(
-            &mut sink,
-            self.req_id,
-            data_len,
-        )?;
+        let (mut sink, w) = self.chan_out.sink();
+        Self::encode_data_header(&mut sink, self.req_id, data_len)?;
 
-        debug!(
-            "Sending header:  len = {:?}, content = {:?}",
-            payload.len(),
-            payload
-        );
+        // debug!(
+        //     "Sending header:  len = {:?}, content = {:?}",
+        //     payload.len(),
+        //     payload
+        // );
         // Sending payload_slice since we are not making use of the sink sftpPacket length calculation
-        self.chan_out.send_data(payload).await?;
+        sink.send(w).await?;
 
         Ok(ReadDataReply::new(self.req_id, data_len, self.chan_out))
     }
@@ -67,16 +62,16 @@ impl<'g, const N: usize> ReadHeaderReply<'g, N> {
     /// Sends an EOF status response for the read request.
     ///
     /// It will return a [`ReadReplyFinished`] that can be used to represent the state of the successful read reply.
-    pub async fn send_eof(&self) -> SftpResult<ReadReplyFinished> {
+    pub async fn send_eof(&mut self) -> SftpResult<ReadReplyFinished> {
         self.chan_out.send_status(self.req_id, StatusCode::SSH_FX_EOF, "").await?;
         Ok(ReadReplyFinished::new(self.req_id))
     }
 
     fn encode_data_header(
-        sink: &'g mut SftpSink<'g>,
+        sink: &mut SftpSink,
         req_id: ReqId,
         data_len: u32,
-    ) -> Result<&'g [u8], SftpError> {
+    ) -> Result<(), SftpError> {
         // length field
         (data_len + ENCODED_SSH_FXP_DATA_HEADER).enc(sink)?;
         // packet type (1)
@@ -85,7 +80,7 @@ impl<'g, const N: usize> ReadHeaderReply<'g, N> {
         req_id.enc(sink)?;
         // data length (4)
         data_len.enc(sink)?;
-        Ok(sink.payload_slice())
+        Ok(())
     }
 }
 
@@ -95,19 +90,19 @@ impl<'g, const N: usize> ReadHeaderReply<'g, N> {
 /// It is used as an argument in the closure passed to [`ReadDataReply::send_data`]
 /// and it is meant to be used by the user to send the data of a read reply in chunks,
 /// without having to worry about sending more data than the announced length.
-pub struct LimitedSender<'g, const N: usize> {
-    chan_out: &'g SftpOutputProducer<'g, N>,
+pub struct LimitedSender<'a, 'g, W: Write> {
+    chan_out: &'a mut SftpOutputProducer<'g, W>,
     remaining: core::cell::Cell<u32>,
 }
 
-impl<'g, const N: usize> LimitedSender<'g, N> {
-    fn new(chan_out: &'g SftpOutputProducer<'g, N>, limit: u32) -> Self {
+impl<'a, 'g, W: Write> LimitedSender<'a, 'g, W> {
+    fn new(chan_out: &'a mut SftpOutputProducer<'g, W>, limit: u32) -> Self {
         Self { chan_out, remaining: core::cell::Cell::new(limit) }
     }
     /// Sends a chunk of data, ensuring that no more than the announced data length is sent.
     ///
     /// It returns the remaining data length that can be sent after this call.
-    pub async fn send_data(&self, buff: &[u8]) -> SftpResult<u32> {
+    pub async fn send_data(&mut self, buff: &[u8]) -> SftpResult<u32> {
         let mut remaining = self.remaining.get();
 
         let length_to_send = remaining.min(buff.len() as u32);
@@ -132,20 +127,19 @@ pub struct CompletedDataSent;
 
 /// This struct is used to represent the state of a read reply after the header has been sent
 /// but before the data has been completely sent or an EOF has been sent
-pub struct ReadDataReply<'g, const N: usize> {
+pub struct ReadDataReply<'a, 'g, W: Write> {
     /// The request Id that will be used in the response
     req_id: ReqId,
-    /// Immutable writer
-    chan_out: &'g SftpOutputProducer<'g, N>,
+    chan_out: &'a mut SftpOutputProducer<'g, W>,
     /// Length of data to be sent as announced in [`ReadHeaderReply::send_header`]
     data_len: u32,
 }
 
-impl<'g, const N: usize> ReadDataReply<'g, N> {
+impl<'a, 'g, W: Write> ReadDataReply<'a, 'g, W> {
     pub(crate) fn new(
         req_id: ReqId,
         data_len: u32,
-        chan_out: &'g SftpOutputProducer<'g, N>,
+        chan_out: &'a mut SftpOutputProducer<'g, W>,
     ) -> Self {
         Self { req_id, chan_out, data_len }
     }
@@ -157,7 +151,7 @@ impl<'g, const N: usize> ReadDataReply<'g, N> {
     /// that can be used to represent the state of the successful read reply.
     pub async fn send_data<F, Fut>(self, f: F) -> SftpResult<ReadReplyFinished>
     where
-        F: FnOnce(LimitedSender<'g, N>) -> Fut,
+        F: FnOnce(LimitedSender<'a, 'g, W>) -> Fut,
         Fut: core::future::Future<Output = SftpResult<CompletedDataSent>>,
     {
         let sender = LimitedSender::new(self.chan_out, self.data_len);
@@ -184,7 +178,7 @@ impl ReadReplyFinished {
 
 #[cfg(test)]
 mod enforcing_process_tests {
-    use crate::sftphandler::{MockWriter, SftpOutputPipe};
+    use crate::sftphandler::MockWriter;
 
     use super::*;
 
@@ -199,10 +193,12 @@ mod enforcing_process_tests {
         let mut buffer = [0u8; N];
         let mut sink = SftpSink::new(&mut buffer);
 
-        let payload =
-            ReadHeaderReply::<N>::encode_data_header(&mut sink, req_id, data_len)
-                .unwrap();
+        ReadHeaderReply::<MockWriter>::encode_data_header(
+            &mut sink, req_id, data_len,
+        )
+        .unwrap();
 
+        let payload = sink.payload_slice();
         assert_eq!(
             data_len + ENCODED_SSH_FXP_DATA_HEADER,
             u32::from_be_bytes(payload[..4].try_into().unwrap())
@@ -214,27 +210,22 @@ mod enforcing_process_tests {
         const N: usize = 512;
 
         let req_id = ReqId(42);
-        let mut output_pipe = SftpOutputPipe::<N>::new();
-        let mock = MockWriter::new();
-        let (mut consumer, producer) =
-            output_pipe.split(mock).expect("split should succeed");
+        let mut buf = [0u8; N];
+        let mut mock = MockWriter::new();
+        let mut producer = SftpOutputProducer::new(&mut mock, &mut buf);
 
         embassy_futures::block_on(async {
             {
-                let header_reply = ReadHeaderReply::<N>::new(req_id, &producer);
+                let mut header_reply = ReadHeaderReply::new(req_id, &mut producer);
                 let _finished = header_reply
                     .send_eof()
                     .await
                     .expect("send_eof should succeed returning ReadReplyFinished");
             }
-            drop(producer);
-            // Read exactly the one packet written by send_eof; does not loop.
-            consumer.receive_once().await.unwrap();
         });
 
         // SSH_FXP_STATUS (101) packet for SSH_FX_EOF (1) with req_id 42:
         // [len:4][type:1=101][req_id:4][code:4][msg_len:4][msg][lang_len:4][lang]
-        let mock = consumer.into_inner();
         let buf = &mock.buffer;
         // packet type byte should be 101 (SSH_FXP_STATUS)
         assert_eq!(buf[4], 101, "expected SSH_FXP_STATUS packet type");
@@ -247,14 +238,13 @@ mod enforcing_process_tests {
         const N: usize = 512;
 
         let req_id = ReqId(42);
-        let mut output_pipe = SftpOutputPipe::<N>::new();
-        let mock = MockWriter::new();
-        let (mut consumer, producer) =
-            output_pipe.split(mock).expect("split should succeed");
+        let mut buf = [0u8; N];
+        let mut mock = MockWriter::new();
+        let mut producer = SftpOutputProducer::new(&mut mock, &mut buf);
 
         embassy_futures::block_on(async {
             {
-                let header_reply = ReadHeaderReply::<N>::new(req_id, &producer);
+                let header_reply = ReadHeaderReply::new(req_id, &mut producer);
 
                 let data_reply = header_reply
                     .send_header(10)
@@ -262,7 +252,7 @@ mod enforcing_process_tests {
                     .expect("send_eof should succeed returning ReadReplyData");
 
                 let _read_reply_finished = data_reply
-                    .send_data(|limited_sender| async move {
+                    .send_data(|mut limited_sender| async move {
                         loop {
                             match limited_sender.completed() {
                                 Some(token) => return Ok(token),
@@ -273,12 +263,8 @@ mod enforcing_process_tests {
                     .await
                     .expect("send_data should succeed returning ReadReplyFinished");
             }
-            drop(producer);
-            // Read exactly the one packet written by send_eof; does not loop.
-            consumer.receive_once().await.expect("receive_once should succeed");
         });
 
-        let mock = consumer.into_inner();
         let buf = &mock.buffer;
         // packet type byte should be 103 (SSH_FXP_DATA)
         assert_eq!(buf[4], 103, "expected SSH_FXP_DATA packet type");

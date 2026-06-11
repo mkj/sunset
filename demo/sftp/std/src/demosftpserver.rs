@@ -1,6 +1,8 @@
 use crate::demofilehandlemanager::DemoFileHandleManager;
 use crate::stdhelpers::{DirEntriesCollection, get_file_attrs};
 
+use embedded_io_async::Write;
+use sunset_sftp::embedded_io_async;
 use sunset_sftp::server::DirReadReplyFinished;
 use sunset_sftp::{
     error::SftpResult,
@@ -281,12 +283,12 @@ impl<OFH: OpaqueFileHandle + InitFileHandler> SftpServer<OFH>
         }
     }
 
-    async fn read<const N: usize>(
+    async fn read<W: Write>(
         &mut self,
         opaque_file_handle: &OFH,
         offset: u64,
         len: u32,
-        reply: ReadHeaderReply<'_, N>,
+        mut reply: ReadHeaderReply<'_, '_, W>,
     ) -> SftpResult<ReadReplyFinished> {
         let PrivatePathHandle::File(private_file_handle) = self
             .handles_manager
@@ -356,7 +358,7 @@ impl<OFH: OpaqueFileHandle + InitFileHandler> SftpServer<OFH>
         let mut accumulated_offset = offset;
 
         let finished = data_reply
-            .send_data(|limited_sender| async move {
+            .send_data(|mut limited_sender| async move {
                 loop {
                     match limited_sender.completed() {
                         Some(completed_token) => return Ok(completed_token),
@@ -434,10 +436,10 @@ impl<OFH: OpaqueFileHandle + InitFileHandler> SftpServer<OFH>
         }
     }
 
-    async fn readdir<const N: usize>(
+    async fn readdir<W: Write>(
         &mut self,
         opaque_dir_handle: &OFH,
-        reply: DirReadHeaderReply<'_, N>,
+        mut reply: DirReadHeaderReply<'_, '_, W>,
     ) -> SftpOpResult<DirReadReplyFinished> {
         info!("read dir for {:?}", opaque_dir_handle);
 

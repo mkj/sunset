@@ -7,6 +7,8 @@ use crate::{
     proto::{Attrs, StatusCode},
 };
 
+use embedded_io_async::Write;
+
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
 
@@ -82,13 +84,16 @@ where
     /// The len is the number of bytes to read.
     /// The reply is a structure that facilitates the task of sending the response back correctly. See [`ReadHeaderReply`] for more details.
     #[allow(unused)]
-    fn read<const N: usize>(
+    fn read<'g, 'p, W>(
         &mut self,
         opaque_file_handle: &T,
         offset: u64,
         len: u32,
-        reply: ReadHeaderReply<'_, N>,
-    ) -> impl core::future::Future<Output = SftpResult<ReadReplyFinished>> {
+        reply: ReadHeaderReply<'g, 'p, W>,
+    ) -> impl core::future::Future<Output = SftpResult<ReadReplyFinished>>
+    where
+        W: Write,
+    {
         async move {
             log::error!(
                 "SftpServer Read operation not defined: handle = {:?}, offset = {:?}, len = {:?}",
@@ -144,10 +149,10 @@ where
     ///
     ///
     #[allow(unused_variables)]
-    fn readdir<const N: usize>(
+    fn readdir<W: Write>(
         &mut self,
         opaque_dir_handle: &T,
-        reply: DirReadHeaderReply<'_, N>,
+        reply: DirReadHeaderReply<'_, '_, W>,
     ) -> impl core::future::Future<Output = SftpOpResult<DirReadReplyFinished>> {
         async move {
             log::error!(

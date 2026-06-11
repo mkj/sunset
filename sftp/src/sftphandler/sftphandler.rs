@@ -7,18 +7,16 @@ use crate::proto::{
 use crate::server::DirReadHeaderReply;
 use crate::sftperror::SftpResult;
 use crate::sftphandler::requestholder::{RequestHolder, RequestHolderError};
-use crate::sftphandler::sftpoutputchannelhandler::{
-    SftpOutputPipe, SftpOutputProducer,
-};
+use crate::sftphandler::sftpoutputchannelhandler::SftpOutputProducer;
 use crate::sftpserver::{ReadHeaderReply, SftpServer};
 use crate::sftpsource::SftpSource;
 
-use embassy_futures::select::{Either3, select3};
+use embassy_futures::select::{Either, select};
 use sunset::Error as SunsetError;
 use sunset::sshwire::{SSHSource, WireError};
 
 use core::u32;
-use embedded_io_async::Error;
+use embedded_io_async::{Error, Write};
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
 
@@ -72,15 +70,16 @@ enum HandlerState {
 /// Process the raw buffers in and out from a subsystem channel decoding
 /// request and encoding responses
 ///
-/// Parameter (S): It will delegate request to an [`crate::sftpserver::SftpServer`]
+/// Parameter `S`: Will delegate request to an [`crate::sftpserver::SftpServer`]
 /// implemented by the library user taking into account the local system details.
 ///
-/// Parameter (T): Is a type that implements [`crate::handles::OpaqueFileHandle`] that **must** match the type used in the [`crate::sftpserver::SftpServer`] provided in (S)
+/// Parameter `T`: A type that implements [`crate::handles::OpaqueFileHandle`]
+/// that **must** match the type used in the [`crate::sftpserver::SftpServer`] provided in `S`.
 ///
-/// The compiler time constant `BUFFER_OUT_SIZE` is used to define the
-/// size of the output buffer for the subsystem [`embassy_sync::pipe::Pipe`] used
-/// to send responses safely across the instantiated structure.
-///
+/// Parameter `BUFFER_OUT_SIZE` sizes an output buffer to send responses.
+/// Must be sufficiently to create responses such as file entries
+/// (size will depend on maximum file length).
+/// 512 would be a typical small buffer.
 pub struct SftpHandler<'a, T, S, const BUFFER_OUT_SIZE: usize>
 where
     T: OpaqueFileHandle,
@@ -132,17 +131,10 @@ where
     pub async fn process_loop(
         &mut self,
         mut chan_in: impl embedded_io_async::Read,
-        chan_out: impl embedded_io_async::Write,
+        mut chan_out: impl embedded_io_async::Write,
     ) -> SftpResult<()> {
         // A single request should be adequate for progress.
         const INPUT_BUF: usize = MAX_REQUEST_LEN;
-
-        let mut sftp_output_pipe = SftpOutputPipe::<BUFFER_OUT_SIZE>::new();
-
-        let (mut output_consumer, output_producer) =
-            sftp_output_pipe.split(chan_out)?;
-
-        let output_consumer_loop = output_consumer.receive_task();
 
         let buf = SFTPBBQueue::<INPUT_BUF>::new();
 
@@ -172,34 +164,37 @@ where
 
         let processing_loop = async {
             let cons = buf.stream_consumer();
+            let mut out_buf = [0u8; BUFFER_OUT_SIZE];
+
             loop {
                 let input = cons.wait_read().await;
                 trace!("SFTP: About to read bytes from SSH Channel");
 
-                let consumed = self.process(&input, &output_producer).await?;
+                let mut output_producer =
+                    SftpOutputProducer::new(&mut chan_out, &mut out_buf);
+                let consumed = self.process(&input, &mut output_producer).await?;
                 input.release(consumed);
             }
         };
-        match select3(read_loop, processing_loop, output_consumer_loop).await {
-            Either3::First(r) => {
+        match select(read_loop, processing_loop).await {
+            Either::First(r) => {
                 error!("Read returned: {:?}", r);
                 r
             }
-            Either3::Second(r) => {
+            Either::Second(r) => {
                 error!("Processing returned: {:?}", r);
-                r
-            }
-            Either3::Third(r) => {
-                error!("Output consumer returned: {:?}", r);
                 r
             }
         }
     }
 
-    async fn process_validated_request(
+    async fn process_validated_request<W>(
         &mut self,
-        output_producer: &SftpOutputProducer<'_, BUFFER_OUT_SIZE>,
-    ) -> SftpResult<()> {
+        output_producer: &mut SftpOutputProducer<'_, W>,
+    ) -> SftpResult<()>
+    where
+        W: Write,
+    {
         let Some(sftp_packet) = self.request_holder.valid_request() else {
             return Err(SunsetError::bug().into());
         };
@@ -208,11 +203,12 @@ where
                 debug!("Read request: {:?}", sftp_packet);
 
                 let reply = ReadHeaderReply::new(req_id, output_producer);
-                if let Err(error) = self
+                let res = self
                     .file_server
                     .read(&T::try_from(&read.handle)?, read.offset, read.len, reply)
-                    .await
-                {
+                    .await;
+
+                if let Err(error) = res {
                     error!("Error reading data: {:?}", error);
                     if let SftpError::FileServerError(status) = error {
                         output_producer
@@ -405,11 +401,14 @@ where
     /// - Serializes an answer in `output_producer`
     ///
     /// Returns the amount of data consumed.
-    async fn process(
+    async fn process<W>(
         &mut self,
         buffer_in: &[u8],
-        output_producer: &SftpOutputProducer<'_, BUFFER_OUT_SIZE>,
-    ) -> SftpResult<usize> {
+        output_producer: &mut SftpOutputProducer<'_, W>,
+    ) -> SftpResult<usize>
+    where
+        W: Write,
+    {
         /*
         Possible scenarios:
             - Init: The init handshake has to be performed. Only Init packet is accepted. NAV(Idle)
@@ -644,7 +643,7 @@ where
                     // At this point the assumption is that the request holder will contain
                     // a full valid request (Lets call this an invariant)
 
-                    self.process_validated_request(&output_producer).await?;
+                    self.process_validated_request(output_producer).await?;
                     // Return so that more input can be read if possible.
                     return Ok(buffer_in.len() - buf.len());
                 }
@@ -658,6 +657,9 @@ where
             }
             trace!("Process will check buf len {:?}", buf.len());
         }
+
+        output_producer.flush().await?;
+
         debug!("Whole buffer processed. Getting more data");
         debug_assert_eq!(buf.len(), 0);
         Ok(buffer_in.len())

@@ -1,12 +1,12 @@
 use crate::{
-    error::{SftpError, SftpResult},
-    proto::{
-        ENCODED_SSH_FXP_NAME_HEADER, MAX_NAME_ENTRY_SIZE, NameEntry, ReqId, SftpNum,
-    },
+    error::SftpResult,
+    proto::{ENCODED_SSH_FXP_NAME_HEADER, NameEntry, ReqId, SftpNum},
     protocol::StatusCode,
-    server::SftpSink,
     sftphandler::SftpOutputProducer,
+    sftpsink::SftpSink,
 };
+
+use embedded_io_async::Write;
 
 use sunset::sshwire::SSHEncode;
 
@@ -16,58 +16,23 @@ use log::{debug, error};
 ///
 /// Enforces the correct sequence of sending a DirRead reply,
 /// which consists of first sending a header with the announced data length using [`DirReadHeaderReply::send_header`] and then sending the data itself using [`DirReadDataReply::send_data`].
-pub struct DirReadHeaderReply<'g, const N: usize> {
+pub struct DirReadHeaderReply<'a, 'p, W: Write> {
     /// The request Id that will be use`d in the response
     req_id: ReqId,
-    /// Immutable writer
-    chan_out: &'g SftpOutputProducer<'g, N>,
+    chan_out: &'a mut SftpOutputProducer<'p, W>,
 }
 
-impl<'g, const N: usize> DirReadHeaderReply<'g, N> {
+impl<'a, 'p, W: Write> DirReadHeaderReply<'a, 'p, W> {
     /// Creates a new DirReadHeaderReply with the given request ID and output channel.
     ///
     /// It is meant to be called in [`SftpHandler`] and used to call a method of the [`SftpServer`] that requires a read reply header, such as [`SftpServer::readdir`]
     pub(crate) fn new(
         req_id: ReqId,
-        chan_out: &'g SftpOutputProducer<'g, N>,
+        chan_out: &'a mut SftpOutputProducer<'p, W>,
     ) -> Self {
         Self { req_id, chan_out }
     }
 
-    // /// Sends the header for a read reply with the given data length.
-    // ///
-    // /// Once used, the only way to obtain a [`DirReadReplyFinished`] is by using its returned value.
-    // pub async fn send_header(
-    //     self,
-    //     data_len: u32,
-    // ) -> SftpResult<DirReadDataReply<'g, N>> {
-    //     debug!(
-    //         "DirReadReply: Sending header for request id {:?}: data length = {:?}",
-    //         self.req_id, data_len
-    //     );
-    //     let mut s = [0u8; N];
-    //     let mut sink = SftpSink::new(&mut s);
-
-    //     let payload = DirReadHeaderReply::<N>::encode_data_header(
-    //         &mut sink,
-    //         self.req_id,
-    //         data_len,
-    //     )
-    //     .map_err(|err| {
-    //         error!("WireError: {:?}", err);
-    //         StatusCode::SSH_FX_FAILURE
-    //     })?;
-
-    //     debug!(
-    //         "Sending header:  len = {:?}, content = {:?}",
-    //         payload.len(),
-    //         payload
-    //     );
-    //     // Sending payload_slice since we are not making use of the sink sftpPacket length calculation
-    //     self.chan_out.send_data(payload).await?;
-
-    //     Ok(DirReadDataReply::new(self.req_id, data_len, self.chan_out))
-    // }
     /// Sends the header for a read reply with the given data length.
     ///
     /// Once used, the only way to obtain a [`DirReadReplyFinished`] is by using its returned value.
@@ -75,32 +40,27 @@ impl<'g, const N: usize> DirReadHeaderReply<'g, N> {
         self,
         data_len: u32,
         count: u32,
-    ) -> SftpResult<DirReadDataReply<'g, N>> {
+    ) -> SftpResult<DirReadDataReply<'a, 'p, W>> {
         debug!(
             "DirReadReply: Sending header for request id {:?}: data length = {:?}",
             self.req_id, data_len
         );
-        let mut s = [0u8; N];
-        let mut sink = SftpSink::new(&mut s);
 
-        let payload = DirReadHeaderReply::<N>::encode_header(
-            &mut sink,
-            self.req_id,
-            data_len,
-            count,
-        )
-        .map_err(|err| {
-            error!("WireError: {:?}", err);
-            StatusCode::SSH_FX_FAILURE
-        })?;
+        let (mut sink, w) = self.chan_out.sink();
+        Self::encode_header(&mut sink, self.req_id, data_len, count).map_err(
+            |err| {
+                error!("WireError: {:?}", err);
+                StatusCode::SSH_FX_FAILURE
+            },
+        )?;
 
-        debug!(
-            "Sending header:  len = {:?}, content = {:?}",
-            payload.len(),
-            payload
-        );
+        // debug!(
+        //     "Sending header:  len = {:?}, content = {:?}",
+        //     payload.len(),
+        //     payload
+        // );
         // Sending payload_slice since we are not making use of the sink sftpPacket length calculation
-        self.chan_out.send_data(payload).await?;
+        sink.send(w).await?;
 
         Ok(DirReadDataReply::new(self.req_id, data_len, self.chan_out))
     }
@@ -108,17 +68,17 @@ impl<'g, const N: usize> DirReadHeaderReply<'g, N> {
     /// Sends an EOF status response for the read request.
     ///
     /// It will return a [`DirReadReplyFinished`] that can be used to represent the state of the successful read reply.
-    pub async fn send_eof(&self) -> SftpResult<DirReadReplyFinished> {
+    pub async fn send_eof(&mut self) -> SftpResult<DirReadReplyFinished> {
         self.chan_out.send_status(self.req_id, StatusCode::SSH_FX_EOF, "").await?;
         Ok(DirReadReplyFinished::new(self.req_id))
     }
 
     fn encode_header(
-        sink: &'g mut SftpSink<'g>,
+        sink: &mut SftpSink,
         req_id: ReqId,
         data_len: u32,
         count: u32,
-    ) -> Result<&'g [u8], SftpError> {
+    ) -> SftpResult<()> {
         // length field
         (data_len + ENCODED_SSH_FXP_NAME_HEADER).enc(sink)?;
         // packet type (1)
@@ -126,7 +86,7 @@ impl<'g, const N: usize> DirReadHeaderReply<'g, N> {
         // request id (4)
         req_id.enc(sink)?;
         count.enc(sink)?;
-        Ok(sink.payload_slice())
+        Ok(())
     }
 }
 
@@ -145,42 +105,33 @@ impl DirReadReplyFinished {
 
 /// Helper struct to enforce the correct sequence of sending directory items in a readdir
 ///  reply, which consists of sending items until the announced data length is reached.
-pub struct LimitedDirSender<'g, const N: usize> {
+pub struct LimitedDirSender<'a, 'g, W: Write> {
     /// Immutable writer
-    chan_out: &'g SftpOutputProducer<'g, N>,
+    chan_out: &'a mut SftpOutputProducer<'g, W>,
     /// remaining data length to be sent as announced in [`DirReadDataReply::send_data`]
     ///  when calling the closure with this LimitedDirSender as an argument.
     remaining: u32,
 }
 
-impl<'g, const N: usize> LimitedDirSender<'g, N> {
-    fn new(chan_out: &'g SftpOutputProducer<'g, N>, limit: u32) -> Self {
+impl<'a, 'g, W: Write> LimitedDirSender<'a, 'g, W> {
+    fn new(chan_out: &'a mut SftpOutputProducer<'g, W>, limit: u32) -> Self {
         Self { chan_out, remaining: limit }
     }
 
     /// Sends a directory item to the client as a [`NameEntry`]
     ///
     /// Call this
-    pub async fn send_item(
-        &mut self,
-        name_entry: &NameEntry<'_>,
-    ) -> SftpResult<u32> {
-        let mut buffer = [0u8; MAX_NAME_ENTRY_SIZE];
-        let mut sftp_sink = SftpSink::new(&mut buffer);
-        name_entry.enc(&mut sftp_sink)?;
-
-        self.send_data(sftp_sink.payload_slice()).await
+    pub async fn send_item(&mut self, name_entry: &NameEntry<'_>) -> SftpResult<()> {
+        let (mut sink, w) = self.chan_out.sink();
+        name_entry.enc(&mut sink)?;
+        let l = sink.send(w).await?;
+        self.remaining -= l;
+        Ok(())
     }
+
     /// Obtains a [`CompleteDirDataSent`] if the announced data length has been completely sent, otherwise returns None.
     pub fn completed(&self) -> Option<CompleteDirDataSent> {
         if self.is_complete() { Some(CompleteDirDataSent) } else { None }
-    }
-
-    async fn send_data(&mut self, buff: &[u8]) -> SftpResult<u32> {
-        let length_to_send = self.remaining.min(buff.len() as u32);
-        self.chan_out.send_data(&buff[..length_to_send as usize]).await?;
-        self.remaining -= length_to_send;
-        Ok(self.remaining)
     }
 
     fn is_complete(&self) -> bool {
@@ -202,32 +153,31 @@ pub struct CompleteDirDataSent;
 ///  which consists of first sending a header with the announced data length
 /// using [`DirReadHeaderReply::send_header`] and then sending the data
 ///  itself using [`DirReadDataReply::send_data`].
-pub struct DirReadDataReply<'g, const N: usize> {
+pub struct DirReadDataReply<'a, 'g, W: Write> {
     /// The request Id that will be use`d in the response
     req_id: ReqId,
     /// Length of data to be sent as announced in [`DirReadHeaderReply::send_header`]
     data_len: u32,
-    /// Immutable writer
-    chan_out: &'g SftpOutputProducer<'g, N>,
+    chan_out: &'a mut SftpOutputProducer<'g, W>,
 }
 
-impl<'g, const N: usize> DirReadDataReply<'g, N> {
+impl<'a, 'g, W: Write> DirReadDataReply<'a, 'g, W> {
     pub(crate) fn new(
         req_id: ReqId,
         data_len: u32,
-        chan_out: &'g SftpOutputProducer<'g, N>,
+        chan_out: &'a mut SftpOutputProducer<'g, W>,
     ) -> Self {
         Self { req_id, chan_out, data_len }
     }
 
-    /// It provides a closure-based API where the user can send multiple [`NameEntry`]s of data until the announced data length is reached.
+    /// A closure-based API where the user can send multiple [`NameEntry`]s of data until the announced data length is reached.
     ///
     /// It can only be called once, since it consumes self, and it returns a [`DirReadReplyFinished`]
     /// that can be used to represent the state of the successful read reply.
     pub async fn send_data<F, Fut>(self, f: F) -> SftpResult<DirReadReplyFinished>
     where
-        F: FnOnce(LimitedDirSender<'g, N>) -> Fut,
-        Fut: core::future::Future<Output = SftpResult<CompleteDirDataSent>>,
+        F: FnOnce(LimitedDirSender<'a, 'g, W>) -> Fut,
+        Fut: Future<Output = SftpResult<CompleteDirDataSent>>,
     {
         let dir_sender = LimitedDirSender::new(self.chan_out, self.data_len);
         f(dir_sender).await?;
@@ -244,7 +194,8 @@ mod enforcing_process_tests {
     use crate::{
         proto::{Attrs, Filename, NameEntry},
         server::helpers,
-        sftphandler::{MockWriter, SftpOutputPipe},
+        sftperror::SftpError,
+        sftphandler::{MockWriter, SftpOutputProducer},
     };
 
     extern crate alloc;
@@ -257,28 +208,23 @@ mod enforcing_process_tests {
         const N: usize = 512;
 
         let req_id = ReqId(42);
-        let mut output_pipe = SftpOutputPipe::<N>::new();
-        let mock = MockWriter::new();
-        let (mut consumer, producer) =
-            output_pipe.split(mock).expect("split should succeed");
+        let mut buf = [0u8; N];
+        let mut mock = MockWriter::new();
+        let mut producer = SftpOutputProducer::new(&mut mock, &mut buf);
 
         embassy_futures::block_on(async {
             {
-                let dir_header_reply =
-                    DirReadHeaderReply::<N>::new(req_id, &producer);
+                let mut dir_header_reply =
+                    DirReadHeaderReply::new(req_id, &mut producer);
                 let _finished = dir_header_reply
                     .send_eof()
                     .await
                     .expect("send_eof should succeed returning ReadReplyFinished");
             }
-            drop(producer);
-            // Read exactly the one packet written by send_eof; does not loop.
-            consumer.receive_once().await.unwrap();
         });
 
         // SSH_FXP_STATUS (101) packet for SSH_FX_EOF (1) with req_id 42:
         // [len:4][type:1=101][req_id:4][code:4][msg_len:4][msg][lang_len:4][lang]
-        let mock = consumer.into_inner();
         let buf = &mock.buffer;
         // packet type byte should be 101 (SSH_FXP_STATUS)
         assert_eq!(buf[4], 101, "expected SSH_FXP_STATUS packet type");
@@ -292,10 +238,9 @@ mod enforcing_process_tests {
         const N: usize = 2048;
 
         let req_id = ReqId(42);
-        let mut output_pipe = SftpOutputPipe::<N>::new();
-        let mock = MockWriter::new();
-        let (mut consumer, producer) =
-            output_pipe.split(mock).expect("split should succeed");
+        let mut buf = [0u8; N];
+        let mut mock = MockWriter::new();
+        let mut producer = SftpOutputProducer::new(&mut mock, &mut buf);
 
         // 1. Put together a collection of synthetic directory entries
         let filenames = vec!["file1", "file2", "file3"];
@@ -322,7 +267,7 @@ mod enforcing_process_tests {
         embassy_futures::block_on(async {
             {
                 let dir_header_reply =
-                    DirReadHeaderReply::<N>::new(req_id, &producer);
+                    DirReadHeaderReply::new(req_id, &mut producer);
 
                 // 3. Call send_header with the length of the data to be sent
                 let dir_read_data_reply = dir_header_reply
@@ -345,12 +290,8 @@ mod enforcing_process_tests {
                     .await
                     .expect("send_data should succeed returning ReadReplyFinished");
             }
-            drop(producer);
-            // Read exactly the one packet written by send_eof; does not loop.
-            consumer.receive_once().await.expect("receive_once should succeed");
         });
 
-        let mock = consumer.into_inner();
         let buf = &mock.buffer;
         // packet type byte should be 104 (SSH_FXP_NAME)
         assert_eq!(buf[4], 104, "expected SSH_FXP_NAME packet type");
@@ -378,7 +319,7 @@ pub mod helpers {
     use crate::{
         error::SftpResult,
         proto::{MAX_NAME_ENTRY_SIZE, NameEntry},
-        server::SftpSink,
+        sftpsink::SftpSink,
     };
 
     use sunset::sshwire::SSHEncode;

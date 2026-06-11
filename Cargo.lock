@@ -3338,7 +3338,6 @@ version = "0.1.3"
 dependencies = [
  "bbqueue",
  "embassy-futures",
- "embassy-sync",
  "embedded-io-async 0.7.0",
  "log",
  "num_enum",

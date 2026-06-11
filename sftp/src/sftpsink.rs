@@ -1,5 +1,6 @@
-use crate::proto::SFTP_FIELD_LEN_LENGTH;
+use crate::{error::SftpResult, proto::SFTP_FIELD_LEN_LENGTH};
 
+use embedded_io_async::{Error as _, Write};
 use sunset::sshwire::{SSHSink, WireError};
 
 #[allow(unused_imports)]
@@ -51,9 +52,20 @@ impl<'g> SftpSink<'g> {
 
     /// Auxiliary method to allow an immutable reference to the encoded payload
     /// excluding the `u32` length field prepended to it
-    pub fn payload_slice(&self) -> &[u8] {
+    pub fn payload_slice(self) -> &'g [u8] {
         &self.buffer
             [SFTP_FIELD_LEN_LENGTH..SFTP_FIELD_LEN_LENGTH + self.payload_len()]
+    }
+
+    /// Send current payload to a `Write` instance
+    ///
+    /// Returns the length sent
+    pub async fn send<W: Write>(self, mut w: W) -> SftpResult<u32> {
+        let s = self.payload_slice();
+        w.write_all(s)
+            .await
+            .map_err(|e| sunset::Error::EmbeddedIoError { kind: e.kind() })?;
+        Ok(s.len() as u32)
     }
 
     /// Auxiliary method to allow an immutable reference to the full used

@@ -1017,11 +1017,10 @@ mod proto_tests {
 
         let mut sink = SftpSink::new(&mut buff);
         data_packet.encode_response(&mut sink).expect("Failed to encode response");
-        println!(
-            "data_packet encoded_len = {:?}, encoded = {:?}",
-            sink.payload_len(),
-            sink.payload_slice()
-        );
+
+        let len = sink.payload_len();
+        let sl = sink.used_slice();
+        println!("data_packet encoded_len = {:?}, encoded = {:?}", len, sl);
         let mut source = SftpSource::new(sink.used_slice());
         println!("source = {:?}", source);
 
@@ -1079,12 +1078,10 @@ mod proto_tests {
 
         let mut sink = SftpSink::new(&mut buff);
         attr_read_only.enc(&mut sink).unwrap();
-        println!(
-            "attr_read_only encoded_len = {:?}, encoded = {:?}",
-            sink.payload_len(),
-            sink.payload_slice()
-        );
-        let mut source = SftpSource::new(sink.payload_slice());
+        let len = sink.payload_len();
+        let sl = sink.payload_slice();
+        println!("attr_read_only encoded_len = {:?}, encoded = {:?}", len, sl);
+        let mut source = SftpSource::new(sl);
         println!("source = {:?}", source);
 
         let a_r = Attrs::dec(&mut source);
