@@ -150,12 +150,12 @@ pub struct LimitedDirSender<'g, const N: usize> {
     chan_out: &'g SftpOutputProducer<'g, N>,
     /// remaining data length to be sent as announced in [`DirReadDataReply::send_data`]
     ///  when calling the closure with this LimitedDirSender as an argument.
-    remaining: core::cell::Cell<u32>,
+    remaining: u32,
 }
 
 impl<'g, const N: usize> LimitedDirSender<'g, N> {
     fn new(chan_out: &'g SftpOutputProducer<'g, N>, limit: u32) -> Self {
-        Self { chan_out, remaining: core::cell::Cell::new(limit) }
+        Self { chan_out, remaining: limit }
     }
 
     /// Sends a directory item to the client as a [`NameEntry`]
@@ -176,18 +176,15 @@ impl<'g, const N: usize> LimitedDirSender<'g, N> {
         if self.is_complete() { Some(CompleteDirDataSent) } else { None }
     }
 
-    async fn send_data(&self, buff: &[u8]) -> SftpResult<u32> {
-        let mut remaining = self.remaining.get();
-
-        let length_to_send = remaining.min(buff.len() as u32);
+    async fn send_data(&mut self, buff: &[u8]) -> SftpResult<u32> {
+        let length_to_send = self.remaining.min(buff.len() as u32);
         self.chan_out.send_data(&buff[..length_to_send as usize]).await?;
-        remaining -= length_to_send;
-        self.remaining.set(remaining);
-        Ok(remaining)
+        self.remaining -= length_to_send;
+        Ok(self.remaining)
     }
 
     fn is_complete(&self) -> bool {
-        self.remaining.get() == 0
+        self.remaining == 0
     }
 }
 
