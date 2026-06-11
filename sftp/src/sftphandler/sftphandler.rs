@@ -116,10 +116,7 @@ where
     /// the request in the local system
     /// - `request_buffer`: used to deal with fragmented
     /// packets during [`SftpHandler::process_loop`]
-    pub fn new(
-        file_server: &'a mut S,
-        request_buffer: &'a mut [u8; MAX_REQUEST_LEN],
-    ) -> Self {
+    pub fn new(file_server: &'a mut S, request_buffer: &'a mut [u8]) -> Self {
         SftpHandler {
             file_server,
             state: HandlerState::default(),

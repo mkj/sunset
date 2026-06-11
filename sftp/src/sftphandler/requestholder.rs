@@ -1,5 +1,5 @@
 use crate::{
-    proto::{MAX_REQUEST_LEN, SftpNum, SftpPacket},
+    proto::{SftpNum, SftpPacket},
     sftpsource::SftpSource,
 };
 
@@ -55,7 +55,7 @@ pub(crate) type RequestHolderResult<T> = Result<T, RequestHolderError>;
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct RequestHolder<'a> {
     /// The buffer used to contain the data for the request
-    buffer: &'a mut [u8; MAX_REQUEST_LEN],
+    buffer: &'a mut [u8],
     /// The index of the last byte in the buffer containing usable data
     buffer_fill_index: usize,
     /// Number of bytes appended in a previous `try_hold` or `try_append_for_valid_request` slice
@@ -67,7 +67,7 @@ pub(crate) struct RequestHolder<'a> {
 impl<'a> RequestHolder<'a> {
     /// The buffer will be used to hold a full request. Choose a
     /// reasonable size for this buffer.
-    pub(crate) fn new(buffer: &'a mut [u8; MAX_REQUEST_LEN]) -> Self {
+    pub(crate) fn new(buffer: &'a mut [u8]) -> Self {
         RequestHolder {
             buffer: buffer,
             buffer_fill_index: 0,
@@ -299,6 +299,7 @@ impl<'a> RequestHolder<'a> {
 #[cfg(test)]
 mod local_test {
     use super::*;
+    use crate::proto::MAX_REQUEST_LEN;
 
     #[cfg(test)]
     extern crate std;
