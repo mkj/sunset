@@ -621,6 +621,10 @@ impl<'a, CS: CliServ> ChanCore for AsyncSunset<'a, CS> {
         dt: ChanData,
         buf: &[u8],
     ) -> Poll<Result<usize>> {
+        if buf.is_empty() {
+            return Poll::Ready(Ok(0));
+        }
+
         // Attempt to lock .inner
         let i = self.inner.lock();
         let i = pin!(i);
