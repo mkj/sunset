@@ -382,7 +382,10 @@ impl<'a, CS: CliServ> AsyncSunset<'a, CS> {
                 };
 
                 let r = match res {
-                    Pending => Pending,
+                    Pending => {
+                        // wsock has set a waker
+                        Pending
+                    }
                     Ready(Ok(0)) => {
                         info!("socket EOF");
                         inner.runner.close_output();
@@ -397,6 +400,7 @@ impl<'a, CS: CliServ> AsyncSunset<'a, CS> {
                             // registers a waker.
                             continue;
                         }
+                        inner.runner.set_output_waker(cx.waker());
                         if !inner.runner.is_output_pending() {
                             // All output was sent. Wake progress
                             // in case window adjustments etc need to be sent
@@ -411,9 +415,6 @@ impl<'a, CS: CliServ> AsyncSunset<'a, CS> {
                         Ready(error::ChannelEOF.fail())
                     }
                 };
-                if r.is_pending() {
-                    inner.runner.set_output_waker(cx.waker());
-                }
                 return r;
             }
         })
