@@ -34,7 +34,7 @@ pub async fn listen(
     let mut tx_tcp = [0; 1550];
 
     let mut socket = TcpSocket::new(stack, &mut rx_tcp, &mut tx_tcp);
-    // socket.set_nagle_enabled(false);
+    socket.set_nagle_enabled(false);
     loop {
         info!("Listening on TCP:22...");
         if let Err(_) = socket.accept(22).await {
