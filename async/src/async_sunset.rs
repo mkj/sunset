@@ -397,6 +397,12 @@ impl<'a, CS: CliServ> AsyncSunset<'a, CS> {
                             // registers a waker.
                             continue;
                         }
+                        if !inner.runner.is_output_pending() {
+                            // All output was sent. Wake progress
+                            // in case window adjustments etc need to be sent
+                            // now that there is available space.
+                            self.wake_progress();
+                        }
                         Pending
                     }
                     Ready(Err(_e)) => {
