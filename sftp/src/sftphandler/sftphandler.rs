@@ -16,7 +16,7 @@ use sunset::Error as SunsetError;
 use sunset::sshwire::{SSHSource, WireError};
 
 use core::u32;
-use embedded_io_async::{Error, Write};
+use embedded_io_async::Write;
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
 
@@ -147,7 +147,7 @@ where
                 let lr = chan_in
                     .read(&mut input)
                     .await
-                    .map_err(|e| SunsetError::from(e.kind()))?;
+                    .map_err(|e| SftpError::from_embedded_io(e))?;
 
                 debug!("SFTP <---- received: {:?} bytes", lr);
                 trace!("SFTP <---- received: {:?}", &input[0..lr]);

@@ -1,9 +1,8 @@
-use crate::error::SftpResult;
+use crate::error::{SftpError, SftpResult};
 use crate::proto::{ReqId, SftpPacket, Status, StatusCode};
 use crate::sftpsink::SftpSink;
 
-use embedded_io_async::{Error, Write};
-use sunset::Error as SunsetError;
+use embedded_io_async::Write;
 
 use log::{debug, trace};
 
@@ -32,10 +31,7 @@ impl<'a, W: Write> SftpOutputProducer<'a, W> {
     ///
     /// Use this when you are sending chunks of data after a valid header
     pub async fn send_data(&mut self, buf: &[u8]) -> SftpResult<()> {
-        self.writer
-            .write_all(buf)
-            .await
-            .map_err(|e| SunsetError::EmbeddedIoError { kind: e.kind() }.into())
+        self.writer.write_all(buf).await.map_err(|e| SftpError::from_embedded_io(e))
     }
 
     /// Simplifies the task of sending a status response to the client.
@@ -63,7 +59,7 @@ impl<'a, W: Write> SftpOutputProducer<'a, W> {
         self.writer
             .write_all(&sink.used_slice())
             .await
-            .map_err(|e| SunsetError::EmbeddedIoError { kind: e.kind() }.into())
+            .map_err(|e| SftpError::from_embedded_io(e))
     }
 
     pub fn sink(&mut self) -> (SftpSink<'_>, &mut W) {

@@ -37,6 +37,13 @@ pub enum SftpError {
     SunsetError(SunsetError),
 }
 
+impl SftpError {
+    /// Create a `SftpError` from an `embedded_io_async::Error`
+    pub fn from_embedded_io<E: embedded_io_async::Error>(e: E) -> Self {
+        SunsetError::EmbeddedIoError { kind: e.kind() }.into()
+    }
+}
+
 impl From<WireError> for SftpError {
     fn from(value: WireError) -> Self {
         SftpError::WireError(value)
