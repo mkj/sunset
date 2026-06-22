@@ -20,10 +20,7 @@ impl<'a, W: Write> SftpOutputProducer<'a, W> {
     // TODO: if/when rust async drop is implemented, flush there.
     /// Flush output
     pub async fn flush(&mut self) -> SftpResult<()> {
-        self.writer
-            .flush()
-            .await
-            .map_err(|e| SunsetError::EmbeddedIoError { kind: e.kind() }.into())
+        self.writer.flush().await.map_err(|e| SftpError::from_embedded_io(e))
     }
 
     /// Sends the data encoded in the provided [`SftpSink`] without including
