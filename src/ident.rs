@@ -1,7 +1,7 @@
 use crate::error::{self, Error, Result};
 
-pub(crate) const OUR_VERSION: &[u8] = b"SSH-2.0-Sunset-1";
-
+// From build.rs, "SSH-2.0-Sunset-{crate_vers}"
+pub(crate) const OUR_VERSION: &[u8] = env!("SUNSET_SSH_IDENT").as_bytes();
 pub(crate) const SSH_PREFIX: &[u8] = b"SSH-2.0-";
 
 // RFC4253 4.2 says max length 255 incl CR LF.
