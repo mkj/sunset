@@ -50,7 +50,7 @@
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
-#![cfg_attr(not(feature = "std"), no_std)]
+#![no_std]
 
 mod opaquefilehandle;
 mod proto;

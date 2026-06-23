@@ -8,9 +8,6 @@ edition = "2024"
 long-paths-4096 = []
 long-paths-1024 = []
 
-# Standard library support - enables std helpers
-std = []
-
 [dependencies]
 sunset = { path = "../" }
 sunset-async = { path = "../async" }
