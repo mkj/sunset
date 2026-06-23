@@ -3,6 +3,7 @@ name = "sunset-sftp"
 version = "0.1.3"
 edition = "2024"
 license = "0BSD"
+repository = "https://github.com/mkj/sunset"
 categories = ["network-programming", "embedded", "no-std", "filesystem"]
 keywords = ["sftp"]
 description = "SFTP for Sunset SSH"
