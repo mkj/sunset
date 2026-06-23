@@ -1,7 +1,7 @@
 #[allow(unused_imports)]
 pub use log::{debug, error, info, log, trace, warn};
 
-use core::future::{poll_fn, Future};
+use core::future::{Future, poll_fn};
 use core::pin::pin;
 use core::sync::atomic::AtomicBool;
 use core::sync::atomic::Ordering::{AcqRel, Acquire, Relaxed};
@@ -19,11 +19,11 @@ use embassy_sync::signal::Signal;
 use embedded_io_async::{Read, Write};
 
 use crate::async_channel::ChanIO;
+use sunset::ChanData::{Normal, Stderr};
 use sunset::config::MAX_CHANNELS;
 use sunset::error::TrapBug;
 use sunset::event::Event;
-use sunset::ChanData::{Normal, Stderr};
-use sunset::{error, ChanData, ChanHandle, ChanNum, CliServ, Error, Result, Runner};
+use sunset::{ChanData, ChanHandle, ChanNum, CliServ, Error, Result, Runner, error};
 
 /// A raw mutex
 ///

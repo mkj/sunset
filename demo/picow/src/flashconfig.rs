@@ -4,7 +4,7 @@ use sunset::error::{Error, Result, TrapBug};
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
 
-use embassy_rp::flash::{Async, Flash, ERASE_SIZE};
+use embassy_rp::flash::{Async, ERASE_SIZE, Flash};
 use embassy_rp::peripherals::FLASH;
 
 use sha2::Digest;

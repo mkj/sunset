@@ -6,8 +6,8 @@ use sunset::event::CliEvent;
 use core::fmt::Debug;
 use std::process::ExitCode;
 
-use sunset::{sshnames, Pty, SignKey};
 use sunset::{Error, Result, SessionCommand};
+use sunset::{Pty, SignKey, sshnames};
 use sunset_async::*;
 
 use embassy_sync::channel::Channel;
@@ -17,14 +17,14 @@ use std::collections::VecDeque;
 
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
-use tokio::signal::unix::{signal, SignalKind};
+use tokio::signal::unix::{SignalKind, signal};
 
 use zeroize::Zeroizing;
 
-use crate::pty::win_size;
 use crate::AgentClient;
+use crate::pty::win_size;
 use crate::*;
-use crate::{raw_pty, RawPtyGuard};
+use crate::{RawPtyGuard, raw_pty};
 
 /// A commandline client implementation
 ///

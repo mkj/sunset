@@ -5,7 +5,7 @@ use core::ops::DerefMut;
 
 use embedded_io_async::{ErrorType, Read, Write};
 
-use embassy_futures::select::{select, Either};
+use embassy_futures::select::{Either, select};
 use embassy_sync::pipe::Pipe;
 use embassy_sync::{mutex::Mutex, pipe, signal::Signal};
 

@@ -104,11 +104,7 @@ impl SSHConfig {
     }
 
     pub fn check_console_pw(&mut self, pw: &str) -> bool {
-        if let Some(ref p) = self.console_pw {
-            p.check(pw)
-        } else {
-            false
-        }
+        if let Some(ref p) = self.console_pw { p.check(pw) } else { false }
     }
 
     pub fn set_admin_pw(&mut self, pw: Option<&str>) -> Result<()> {
@@ -117,11 +113,7 @@ impl SSHConfig {
     }
 
     pub fn check_admin_pw(&mut self, pw: &str) -> bool {
-        if let Some(ref p) = self.admin_pw {
-            p.check(pw)
-        } else {
-            false
-        }
+        if let Some(ref p) = self.admin_pw { p.check(pw) } else { false }
     }
 }
 

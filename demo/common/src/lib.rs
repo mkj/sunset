@@ -12,7 +12,7 @@ pub mod takepipe;
 
 pub use config::SSHConfig;
 pub use menu_buf::AsyncMenuBuf;
-pub use server::{listen, DemoCommon, DemoServer};
+pub use server::{DemoCommon, DemoServer, listen};
 
 pub use copyloop::{
     io_buf_copy, io_buf_copy_noreaderror, io_copy, io_copy_nowriteerror,

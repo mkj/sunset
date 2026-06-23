@@ -1,5 +1,5 @@
 use crate::demofilehandlemanager::DemoFileHandleManager;
-use crate::stdhelpers::{get_file_attrs, DirEntriesCollection};
+use crate::stdhelpers::{DirEntriesCollection, get_file_attrs};
 
 use sunset_sftp::server::DirReadReplyFinished;
 use sunset_sftp::{
@@ -297,12 +297,12 @@ impl<OFH: OpaqueFileHandle + InitFileHandler> SftpServer<OFH>
         };
 
         log::debug!(
-                "SftpServer Read operation: handle = {:?}, filepath = {:?}, offset = {:?}, len = {:?}",
-                opaque_file_handle,
-                private_file_handle.path,
-                offset,
-                len
-            );
+            "SftpServer Read operation: handle = {:?}, filepath = {:?}, offset = {:?}, len = {:?}",
+            opaque_file_handle,
+            private_file_handle.path,
+            offset,
+            len
+        );
 
         let permissions_poxit = private_file_handle.permissions.unwrap_or(0o000);
         if (permissions_poxit & 0o444) == 0 {
@@ -420,7 +420,7 @@ impl<OFH: OpaqueFileHandle + InitFileHandler> SftpServer<OFH>
                 .map_err(|_| StatusCode::SSH_FX_FAILURE)?;
 
             log::debug!(
-            "SftpServer Write operation: handle = {:?}, filepath = {:?}, offset = {:?}, buffer length = {:?}, bytes written = {:?}",
+                "SftpServer Write operation: handle = {:?}, filepath = {:?}, offset = {:?}, buffer length = {:?}, bytes written = {:?}",
                 opaque_file_handle,
                 private_file_handle.path,
                 offset,

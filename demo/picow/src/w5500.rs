@@ -7,17 +7,17 @@ pub use log::{debug, error, info, log, trace, warn};
 
 use embassy_executor::Spawner;
 use embassy_net::StackResources;
+use embassy_rp::Peri;
 use embassy_rp::gpio::{Input, Level, Output, Pull};
 use embassy_rp::peripherals::*;
 use embassy_rp::spi::{Async, Config as SpiConfig, Spi};
-use embassy_rp::Peri;
 use embassy_time::Delay;
 use embedded_hal_bus::spi::ExclusiveDevice;
 
 use embassy_net_wiznet::*;
 
-use rand::rngs::OsRng;
 use rand::RngCore;
+use rand::rngs::OsRng;
 use static_cell::StaticCell;
 
 use crate::{SSHConfig, SunsetMutex};

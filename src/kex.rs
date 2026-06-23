@@ -15,8 +15,8 @@ use core::{fmt, marker::PhantomData};
 use digest::Digest;
 #[cfg(feature = "mlkem")]
 use ml_kem::{
+    B32, Ciphertext, DecapsulationKey, Key, KeyExport, MlKem768, Seed,
     kem::{Decapsulate, EncapsulationKey},
-    Ciphertext, DecapsulationKey, Key, KeyExport, MlKem768, Seed, B32,
 };
 use rand_core::OsRng;
 use sha2::Sha256;
@@ -31,7 +31,7 @@ use packets::{KexCookie, Packet, PubKey, Signature};
 use sign::SigType;
 use sshnames::*;
 use sshwire::{
-    hash_mpint, hash_ser, hash_ser_length, BinString, Blob, SSHWireDigestUpdate,
+    BinString, Blob, SSHWireDigestUpdate, hash_mpint, hash_ser, hash_ser_length,
 };
 use traffic::TrafSend;
 
@@ -279,8 +279,16 @@ impl<CS: CliServ> fmt::Display for Algos<CS> {
             (&self.cipher_dec, &self.cipher_enc, &self.integ_dec, &self.integ_enc)
         };
 
-        write!(f, "Negotiated algorithms {{\nkex {}\nhostkey {}\ncipher c->s {}\ncipher s->c {}\nmac c->s {}\nmac s->c {}\n}}",
-            self.kex, self.hostsig.algorithm_name(), cc, cs, mc, ms)
+        write!(
+            f,
+            "Negotiated algorithms {{\nkex {}\nhostkey {}\ncipher c->s {}\ncipher s->c {}\nmac c->s {}\nmac s->c {}\n}}",
+            self.kex,
+            self.hostsig.algorithm_name(),
+            cc,
+            cs,
+            mc,
+            ms
+        )
     }
 }
 

@@ -8,17 +8,17 @@ pub use log::{debug, error, info, log, trace, warn};
 
 use embassy_executor::Spawner;
 use embassy_net::StackResources;
+use embassy_rp::Peri;
 use embassy_rp::gpio::{Level, Output};
 use embassy_rp::peripherals::*;
 use embassy_rp::pio::Pio;
-use embassy_rp::Peri;
 use embassy_rp::{bind_interrupts, dma};
 
-use cyw43::{Aligned, A4};
+use cyw43::{A4, Aligned};
 use cyw43_pio::PioSpi;
 
-use rand::rngs::OsRng;
 use rand::RngCore;
+use rand::rngs::OsRng;
 use static_cell::StaticCell;
 
 use crate::{SSHConfig, SunsetMutex};

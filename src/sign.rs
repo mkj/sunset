@@ -28,9 +28,9 @@ use rsa::signature::{DigestSigner as _, DigestVerifier as _};
 #[cfg(feature = "_ecdsa")]
 use crate::packets::ECDSAPubKey;
 #[cfg(feature = "_ecdsa")]
-use ecdsa::signature::hazmat::{PrehashSigner as _, PrehashVerifier as _};
-#[cfg(feature = "_ecdsa")]
 use ecdsa::VerifyingKey;
+#[cfg(feature = "_ecdsa")]
+use ecdsa::signature::hazmat::{PrehashSigner as _, PrehashVerifier as _};
 #[cfg(feature = "ecdsa256")]
 use p256::NistP256;
 
@@ -104,11 +104,7 @@ impl SigType {
             Signature::Unknown(_) => panic!(),
         };
 
-        if b.get(..3) == Some(b"bad") {
-            Err(Error::BadSig)
-        } else {
-            Ok(())
-        }
+        if b.get(..3) == Some(b"bad") { Err(Error::BadSig) } else { Ok(()) }
     }
 
     /// Returns `Ok(())` on success

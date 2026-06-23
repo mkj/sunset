@@ -2,7 +2,7 @@
 name = "sunset-demo-common"
 description = "Shared code for Sunset demos"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
 sunset.workspace = true

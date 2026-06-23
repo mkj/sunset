@@ -1,6 +1,6 @@
 use sunset::*;
 use sunset_async::{ProgressHolder, SSHServer, SunsetMutex, SunsetRawMutex};
-use sunset_sftp::{server::MAX_REQUEST_LEN, SftpHandler};
+use sunset_sftp::{SftpHandler, server::MAX_REQUEST_LEN};
 
 use sunset_demo_common::{self, DemoCommon, DemoServer, SSHConfig};
 
@@ -11,8 +11,8 @@ use crate::{
 use embassy_executor::Spawner;
 use embassy_net::{Stack, StackResources, StaticConfigV4};
 
-use rand::rngs::OsRng;
 use rand::RngCore;
+use rand::rngs::OsRng;
 
 use embassy_futures::select::select;
 use embassy_net_tuntap::TunTapDevice;

@@ -7,7 +7,7 @@ pub use log::{debug, error, info, log, trace, warn};
 use core::ops::ControlFlow;
 
 use embassy_executor::Spawner;
-use embassy_futures::select::{select, Either};
+use embassy_futures::select::{Either, select};
 use embassy_net::{EthernetAddress, HardwareAddress, Stack};
 use embassy_rp::bind_interrupts;
 use embassy_rp::dma;
@@ -24,7 +24,7 @@ use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_sync::mutex::Mutex;
 
-use demo_common::{takepipe, DemoCommon, DemoServer, SSHConfig};
+use demo_common::{DemoCommon, DemoServer, SSHConfig, takepipe};
 use sunset::*;
 use sunset_async::{ProgressHolder, SSHServer, SunsetMutex};
 use sunset_demo_common as demo_common;

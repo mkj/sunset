@@ -24,7 +24,7 @@ mod fdio;
 #[cfg(unix)]
 use fdio::{stderr_out, stdin, stdout};
 
-use pty::{raw_pty, RawPtyGuard};
+use pty::{RawPtyGuard, raw_pty};
 
 pub use cmdline_client::CmdlineClient;
 

@@ -6,8 +6,8 @@ use {
     log::{debug, error, info, log, trace, warn},
 };
 
-use chacha20::cipher::{KeyIvInit, StreamCipher, StreamCipherSeek};
 use chacha20::ChaCha20;
+use chacha20::cipher::{KeyIvInit, StreamCipher, StreamCipherSeek};
 use digest::KeyInit;
 use poly1305::Poly1305;
 use subtle::ConstantTimeEq;

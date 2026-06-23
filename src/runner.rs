@@ -390,7 +390,7 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
                 | DispatchEvent::Progressed => (),
                 // Don't expect data from conn.progress()
                 DispatchEvent::Data(_) | DispatchEvent::KexDone => {
-                    return Err(Error::bug())
+                    return Err(Error::bug());
                 }
             }
         }

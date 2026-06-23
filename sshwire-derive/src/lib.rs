@@ -11,7 +11,7 @@ use proc_macro::Delimiter;
 use virtue::generate::FnSelfArg;
 use virtue::parse::{Attribute, AttributeLocation, EnumBody, StructBody};
 use virtue::prelude::*;
-use virtue::utils::{parse_tagged_attribute, ParsedAttribute};
+use virtue::utils::{ParsedAttribute, parse_tagged_attribute};
 
 const ENV_SSHWIRE_DEBUG: &str = "SSHWIRE_DEBUG";
 
@@ -27,38 +27,38 @@ pub fn derive_decode(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 
 fn encode_inner(input: TokenStream) -> Result<TokenStream> {
     let parse = Parse::new(input)?;
-    let (mut gen, att, body) = parse.into_generator();
+    let (mut gn, att, body) = parse.into_generator();
     // println!("att {att:#?}");
     match body {
         Body::Struct(body) => {
-            encode_struct(&mut gen, body)?;
+            encode_struct(&mut gn, body)?;
         }
         Body::Enum(body) => {
-            encode_enum(&mut gen, &att, body)?;
+            encode_enum(&mut gn, &att, body)?;
         }
     }
     if env::var(ENV_SSHWIRE_DEBUG).is_ok() {
-        gen.export_to_file("sshwire", "SSHEncode");
+        gn.export_to_file("sshwire", "SSHEncode");
     }
-    gen.finish()
+    gn.finish()
 }
 
 fn decode_inner(input: TokenStream) -> Result<TokenStream> {
     let parse = Parse::new(input)?;
-    let (mut gen, att, body) = parse.into_generator();
+    let (mut gn, att, body) = parse.into_generator();
     // println!("att {att:#?}");
     match body {
         Body::Struct(body) => {
-            decode_struct(&mut gen, body)?;
+            decode_struct(&mut gn, body)?;
         }
         Body::Enum(body) => {
-            decode_enum(&mut gen, &att, body)?;
+            decode_enum(&mut gn, &att, body)?;
         }
     }
     if env::var(ENV_SSHWIRE_DEBUG).is_ok() {
-        gen.export_to_file("sshwire", "SSHDecode");
+        gn.export_to_file("sshwire", "SSHDecode");
     }
-    gen.finish()
+    gn.finish()
 }
 
 #[derive(Debug)]
@@ -143,7 +143,7 @@ fn take_field_atts(atts: &[Attribute]) -> Result<Vec<FieldAtt>> {
                                         return Some(Err(Error::Custom {
                                             error: "Missing '='".into(),
                                             span: Some(a.tokens.span()),
-                                        }))
+                                        }));
                                     }
                                 }
                                 match g.next() {
@@ -170,7 +170,7 @@ fn take_field_atts(atts: &[Attribute]) -> Result<Vec<FieldAtt>> {
                                         return Some(Err(Error::Custom {
                                             error: "Missing '='".into(),
                                             span: Some(a.tokens.span()),
-                                        }))
+                                        }));
                                     }
                                 }
                                 if let Some(t) = g.next() {
@@ -211,8 +211,8 @@ fn take_field_atts(atts: &[Attribute]) -> Result<Vec<FieldAtt>> {
         .collect()
 }
 
-fn encode_struct(gen: &mut Generator, body: StructBody) -> Result<()> {
-    gen.impl_for("::sunset::sshwire::SSHEncode")
+fn encode_struct(gn: &mut Generator, body: StructBody) -> Result<()> {
+    gn.impl_for("::sunset::sshwire::SSHEncode")
         .generate_fn("enc")
         .with_self_arg(FnSelfArg::RefSelf)
         .with_arg("s", "&mut dyn ::sunset::sshwire::SSHSink")
@@ -255,13 +255,13 @@ fn encode_struct(gen: &mut Generator, body: StructBody) -> Result<()> {
 }
 
 fn encode_enum(
-    gen: &mut Generator,
+    gn: &mut Generator,
     atts: &[Attribute],
     body: EnumBody,
 ) -> Result<()> {
     let cont_atts = take_cont_atts(atts)?;
 
-    gen.impl_for("::sunset::sshwire::SSHEncode")
+    gn.impl_for("::sunset::sshwire::SSHEncode")
         .generate_fn("enc")
         .with_self_arg(FnSelfArg::RefSelf)
         .with_arg("s", "&mut dyn ::sunset::sshwire::SSHSink")
@@ -323,7 +323,7 @@ fn encode_enum(
         })?;
 
     if !cont_atts.iter().any(|c| matches!(c, ContainerAtt::NoNames)) {
-        encode_enum_names(gen, atts, body)?;
+        encode_enum_names(gn, atts, body)?;
     }
     Ok(())
 }
@@ -336,17 +336,23 @@ fn field_att_var_names(name: &Ident, mut atts: Vec<FieldAtt>) -> Result<TokenTre
         }
     }
     if v.len() != 1 {
-        return Err(Error::Custom { error: format!("One #[sshwire(variant = ...)] attribute is required for each enum field, missing for {:?}", name), span: None});
+        return Err(Error::Custom {
+            error: format!(
+                "One #[sshwire(variant = ...)] attribute is required for each enum field, missing for {:?}",
+                name
+            ),
+            span: None,
+        });
     }
     Ok(v.pop().unwrap())
 }
 
 fn encode_enum_names(
-    gen: &mut Generator,
+    gn: &mut Generator,
     _atts: &[Attribute],
     body: EnumBody,
 ) -> Result<()> {
-    gen.impl_for("::sunset::sshwire::SSHEncodeEnum")
+    gn.impl_for("::sunset::sshwire::SSHEncodeEnum")
         .generate_fn("variant_name")
         .with_self_arg(FnSelfArg::RefSelf)
         .with_return_type("::sunset::sshwire::WireResult<&'static str>")
@@ -399,8 +405,8 @@ fn encode_enum_names(
     Ok(())
 }
 
-fn decode_struct(gen: &mut Generator, body: StructBody) -> Result<()> {
-    gen.impl_for_with_lifetimes("::sunset::sshwire::SSHDecode", ["de"])
+fn decode_struct(gn: &mut Generator, body: StructBody) -> Result<()> {
+    gn.impl_for_with_lifetimes("::sunset::sshwire::SSHDecode", ["de"])
         .modify_generic_constraints(|generics, where_constraints| {
             for lt in generics.iter_lifetimes() {
                 where_constraints.push_parsed_constraint(format!("'de: '{}", lt.ident))?;
@@ -468,7 +474,7 @@ fn decode_struct(gen: &mut Generator, body: StructBody) -> Result<()> {
 }
 
 fn decode_enum(
-    gen: &mut Generator,
+    gn: &mut Generator,
     atts: &[Attribute],
     body: EnumBody,
 ) -> Result<()> {
@@ -485,19 +491,19 @@ fn decode_enum(
 
     // SSHDecode trait if it is self describing
     if cont_atts.iter().any(|c| matches!(c, ContainerAtt::VariantPrefix)) {
-        decode_enum_variant_prefix(gen, atts, &body)?;
+        decode_enum_variant_prefix(gn, atts, &body)?;
     }
 
-    decode_enum_names(gen, atts, &body)?;
+    decode_enum_names(gn, atts, &body)?;
     Ok(())
 }
 
 fn decode_enum_variant_prefix(
-    gen: &mut Generator,
+    gn: &mut Generator,
     _atts: &[Attribute],
     _body: &EnumBody,
 ) -> Result<()> {
-    gen.impl_for_with_lifetimes("::sunset::sshwire::SSHDecode", ["de"])
+    gn.impl_for_with_lifetimes("::sunset::sshwire::SSHDecode", ["de"])
         .modify_generic_constraints(|generics, where_constraints| {
             for lt in generics.iter_lifetimes() {
                 where_constraints.push_parsed_constraint(format!("'de: '{}", lt.ident))?;
@@ -519,11 +525,11 @@ fn decode_enum_variant_prefix(
 }
 
 fn decode_enum_names(
-    gen: &mut Generator,
+    gn: &mut Generator,
     _atts: &[Attribute],
     body: &EnumBody,
 ) -> Result<()> {
-    gen.impl_for_with_lifetimes("::sunset::sshwire::SSHDecodeEnum", ["de"])
+    gn.impl_for_with_lifetimes("::sunset::sshwire::SSHDecodeEnum", ["de"])
         .modify_generic_constraints(|generics, where_constraints| {
             for lt in generics.iter_lifetimes() {
                 where_constraints.push_parsed_constraint(format!("'de: '{}", lt.ident))?;

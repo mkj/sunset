@@ -134,11 +134,7 @@ impl Channels {
             .iter()
             .enumerate()
             .find_map(|(i, ch)| {
-                if ch.as_ref().is_none() {
-                    Some(ChanNum(i as u32))
-                } else {
-                    None
-                }
+                if ch.as_ref().is_none() { Some(ChanNum(i as u32)) } else { None }
             })
             .ok_or(Error::NoChannels)
     }

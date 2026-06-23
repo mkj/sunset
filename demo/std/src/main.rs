@@ -4,8 +4,8 @@ use log::{debug, error, info, log, trace, warn};
 use embassy_executor::Spawner;
 use embassy_net::{Stack, StackResources, StaticConfigV4};
 
-use rand::rngs::OsRng;
 use rand::RngCore;
+use rand::rngs::OsRng;
 
 use demo_common::menu::Runner as MenuRunner;
 use embassy_futures::select::select;

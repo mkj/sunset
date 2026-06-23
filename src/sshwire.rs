@@ -454,10 +454,7 @@ impl<'de, B: SSHDecode<'de>> SSHDecode<'de> for Blob<B> {
                 trace!(
                     "SSH blob length differs. \
                     Expected {} bytes, got {} remaining {}, {}",
-                    len,
-                    used_len,
-                    rem1,
-                    rem2
+                    len, used_len, rem1, rem2
                 );
                 return Err(WireError::SSHProto);
             }

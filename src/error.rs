@@ -272,20 +272,12 @@ impl<T, E> TrapBug<T> for Result<T, E> {
     #[track_caller]
     fn trap(self) -> Result<T, Error> {
         // call directly so that Location::caller() works
-        if let Ok(i) = self {
-            Ok(i)
-        } else {
-            Err(Error::bug())
-        }
+        if let Ok(i) = self { Ok(i) } else { Err(Error::bug()) }
     }
     #[track_caller]
     fn trap_msg(self, args: Arguments) -> Result<T, Error> {
         // call directly so that Location::caller() works
-        if let Ok(i) = self {
-            Ok(i)
-        } else {
-            Err(Error::bug_fmt(args))
-        }
+        if let Ok(i) = self { Ok(i) } else { Err(Error::bug_fmt(args)) }
     }
 }
 
@@ -293,20 +285,12 @@ impl<T> TrapBug<T> for Option<T> {
     #[track_caller]
     fn trap(self) -> Result<T, Error> {
         // call directly so that Location::caller() works
-        if let Some(i) = self {
-            Ok(i)
-        } else {
-            Err(Error::bug())
-        }
+        if let Some(i) = self { Ok(i) } else { Err(Error::bug()) }
     }
     #[track_caller]
     fn trap_msg(self, args: Arguments) -> Result<T, Error> {
         // call directly so that Location::caller() works
-        if let Some(i) = self {
-            Ok(i)
-        } else {
-            Err(Error::bug_fmt(args))
-        }
+        if let Some(i) = self { Ok(i) } else { Err(Error::bug_fmt(args)) }
     }
 }
 

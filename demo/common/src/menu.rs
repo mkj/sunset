@@ -293,11 +293,7 @@ where
     }
 
     fn previous(&mut self) -> Option<u8> {
-        if self.used == 0 {
-            None
-        } else {
-            Some(self.buffer[self.used - 1])
-        }
+        if self.used == 0 { None } else { Some(self.buffer[self.used - 1]) }
     }
 
     /// Add a byte to the menu runner's buffer. If this byte is a

@@ -13,13 +13,12 @@ pub(crate) struct DemoOpaqueFileHandle {
 
 impl OpaqueFileHandle for DemoOpaqueFileHandle {
     fn try_from(file_handle: &FileHandle<'_>) -> sunset::sshwire::WireResult<Self> {
-        if !file_handle.0 .0.len().eq(&core::mem::size_of::<DemoOpaqueFileHandle>())
-        {
+        if !file_handle.0.0.len().eq(&core::mem::size_of::<DemoOpaqueFileHandle>()) {
             return Err(WireError::BadString);
         }
 
         let mut handle_id = [0u8; ID_LEN];
-        handle_id.copy_from_slice(file_handle.0 .0);
+        handle_id.copy_from_slice(file_handle.0.0);
         Ok(DemoOpaqueFileHandle { handle_id })
     }
 
@@ -31,7 +30,7 @@ impl OpaqueFileHandle for DemoOpaqueFileHandle {
 /// Implemented to allow the use of `DemoOpaqueFileHandle` as a key in the `OpaqueHandleManager`
 impl InitFileHandler for DemoOpaqueFileHandle {
     fn init() -> Self {
-        let handle_id: [u8; ID_LEN] = rand::thread_rng().gen();
+        let handle_id: [u8; ID_LEN] = rand::thread_rng().r#gen();
         DemoOpaqueFileHandle { handle_id }
     }
 }

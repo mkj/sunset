@@ -6,7 +6,7 @@
 use sunset_sftp::{
     error::SftpError,
     protocol::{
-        constants::MAX_NAME_ENTRY_SIZE, Attrs, Filename, NameEntry, StatusCode,
+        Attrs, Filename, NameEntry, StatusCode, constants::MAX_NAME_ENTRY_SIZE,
     },
     server::{DirReadDataReply, DirReadReplyFinished, SftpOpResult, SftpSink},
 };

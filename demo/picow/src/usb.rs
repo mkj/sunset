@@ -2,10 +2,10 @@
 pub use log::{debug, error, info, log, trace, warn};
 
 use embassy_futures::join::{join, join3};
+use embassy_rp::Peri;
 use embassy_rp::bind_interrupts;
 use embassy_rp::peripherals::USB;
 use embassy_rp::usb::InterruptHandler;
-use embassy_rp::Peri;
 use embassy_usb::class::cdc_acm::{self, CdcAcmClass};
 // use embassy_usb::class::hid::{self, HidReaderWriter};
 use embassy_usb::Builder;

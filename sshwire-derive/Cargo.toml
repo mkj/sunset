@@ -1,7 +1,7 @@
 [package]
 name = "sunset-sshwire-derive"
 version = "0.2.1"
-edition = "2021"
+edition = "2024"
 repository = "https://github.com/mkj/sunset"
 license = "0BSD"
 description = "Derive macros for Sunset SSH packet encoder/decoder"

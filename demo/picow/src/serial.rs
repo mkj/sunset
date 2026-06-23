@@ -3,10 +3,10 @@
 #[allow(unused_imports)]
 pub use log::{debug, error, info, log, trace, warn};
 
+use embassy_rp::Peri;
 use embassy_rp::bind_interrupts;
 use embassy_rp::peripherals::*;
 use embassy_rp::uart::{self as rp_uart, BufferedInterruptHandler, BufferedUart};
-use embassy_rp::Peri;
 
 use demo_common::{io_buf_copy_noreaderror, io_copy_nowriteerror};
 

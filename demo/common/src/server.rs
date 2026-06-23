@@ -2,9 +2,9 @@
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
 
-use embassy_futures::select::{select, Either};
-use embassy_net::tcp::TcpSocket;
+use embassy_futures::select::{Either, select};
 use embassy_net::Stack;
+use embassy_net::tcp::TcpSocket;
 
 use sunset::{
     event::{ServFirstAuth, ServOpenSession, ServPasswordAuth, ServPubkeyAuth},
