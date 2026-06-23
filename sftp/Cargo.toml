@@ -14,9 +14,9 @@ long-paths-4096 = []
 long-paths-1024 = []
 
 [dependencies]
-sunset = { path = "../" }
-sunset-async = { path = "../async" }
-sunset-sshwire-derive = { path = "../sshwire-derive" }
+sunset.workspace = true
+sunset-async.workspace = true
+sunset-sshwire-derive.workspace = true
 
 embedded-io-async.workspace = true
 num_enum = { version = "0.7.4", default-features = false }
