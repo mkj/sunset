@@ -1,10 +1,15 @@
 [package]
 name = "sunset-sftp"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2024"
+license = "0BSD"
+categories = ["network-programming", "embedded", "no-std", "filesystem"]
+keywords = ["sftp"]
+description = "SFTP for Sunset SSH"
 
 [features]
-# long paths support, which allows paths up to 4096 bytes, by default paths are limited to 256 bytes
+# Long paths support, which allows paths up to 4096 bytes.
+# By default paths are limited to 256 bytes.
 long-paths-4096 = []
 long-paths-1024 = []
 

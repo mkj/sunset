@@ -3277,18 +3277,14 @@ dependencies = [
 name = "sunset-demo-sftp-std"
 version = "0.1.2"
 dependencies = [
- "async-io",
- "critical-section",
  "embassy-executor",
  "embassy-futures",
  "embassy-net",
  "embassy-net-tuntap",
  "embassy-sync",
  "embassy-time",
- "embedded-io-async 0.7.0",
  "env_logger",
  "heapless 0.9.3",
- "libc",
  "log",
  "rand 0.8.6",
  "strict-path",
@@ -3338,7 +3334,7 @@ dependencies = [
 
 [[package]]
 name = "sunset-sftp"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "bbqueue",
  "embassy-futures",

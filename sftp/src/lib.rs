@@ -4,12 +4,15 @@
 //!
 //! **Work in Progress**: Currently focuses on file upload operations.
 //! Long packets for requests other than writing and additional SFTP operations
-//! are not yet implemented. `no_std` compatibility is intended but not
-//! yet complete. Please see the roadmap and use this crate carefully.
+//! are not yet implemented. Please see the roadmap and use this crate carefully.
 //!
-//! This crate implements a handler that, given a [`sunset::ChanHandle`]
-//! a `sunset_async::SSHServer` and some auxiliary buffers,
-//! can dispatch SFTP packets to a struct implementing [`crate::sftpserver::SftpServer`] trait.
+//! This crate implements a handler that, given `embedded_io_async` `Read`/`Write`,
+//! a `sunset_async::SSHServer`, and some auxiliary buffers,
+//! can dispatch SFTP packets to a struct implementing [`SftpServer`](sftpserver::SftpServer) trait.
+//!
+//! At present only server functionality is implemented, client handling may
+//! be added later. While designed for use with Sunset SSH, it should be
+//! usable with any transport that implements `embedded_io_async` traits.
 //!
 //! See example usage in the `../demo/sftd/std` directory for the intended usage
 //! of this library.
@@ -26,7 +29,7 @@
 //! - [x] [Open, close](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.3)
 //! and [write](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.4)
 //! - [x] Directory [Browsing](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.7)
-//! - [ ] File [read](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.4), with conditions. See [Server Channel Window length is reduced to zero when long data is sent from server to client](https://github.com/mkj/sunset/issues/40),
+//! - [x] File [read](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.4)
 //! - [x] File [write](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.4)
 //! - [x] File [stats](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.8)
 //!
@@ -40,9 +43,7 @@
 //! ## Extended features
 //!
 //! - [ ] [Append, create and truncate files](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.3)
-//! files
-//! - [ ] [Reading](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.8)
-//! files attributes
+//! - [ ] [Reading](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.8) files attributes
 //! - [ ] [Setting](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.9) files attributes
 //! - [ ] [Dealing with Symbolic links](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.10)
 //! - [ ] [Vendor Specific](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-8)
@@ -66,12 +67,8 @@ mod sftpsource;
 // Please see basic usage at `../demo/sftp/std`
 pub use sftphandler::SftpHandler;
 
-/// Source of SFTP packets
-///
-/// Used to decode SFTP packets from a byte slice
-pub use sftpsource::SftpSource;
-
 /// Structures and types used to add the details for the target system
+///
 /// Related to the implementation of the [`server::SftpServer`], which
 /// is meant to be instantiated by the user and passed to [`SftpHandler`]
 /// and has the task of executing client requests in the underlying system
@@ -123,7 +120,7 @@ pub mod protocol {
     }
 }
 
-/// Errors and results used in this crate
+/// Errors and results
 pub mod error {
     pub use crate::sftperror::SftpError;
     pub use crate::sftperror::SftpResult;

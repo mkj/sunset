@@ -7,9 +7,8 @@ edition = "2024"
 sunset = { workspace = true, features = ["rsa", "std"] }
 sunset-async.workspace = true
 sunset-demo-common.workspace = true
-sunset-sftp = { version = "0.1.0", path = "../../../sftp" }
+sunset-sftp = { version = "0.1.3", path = "../../../sftp" }
 
-# 131072 was determined empirically
 embassy-executor = { workspace = true, features = [
     "executor-thread",
     "platform-std",
@@ -36,14 +35,7 @@ env_logger = { version = "0.11", default-features = false, features = [
     "humantime",
 ] }
 
-embedded-io-async.workspace = true
 heapless.workspace = true
-
-# for tuntap
-libc = "0.2.101"
-async-io = "2.6"
-
-critical-section = "1.1"
 
 rand = { version = "0.8", features = ["getrandom"] }
 
