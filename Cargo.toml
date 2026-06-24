@@ -91,15 +91,15 @@ ecdsa = { version = "0.17.0-rc.17", default-features = false, optional = true , 
 
 [features]
 default = ["mlkem"]
-std = ["snafu/std", "ssh-key/alloc", "larger", "mlkem", "alloc"]
-alloc = ["ssh-key/alloc"]
+std = ["snafu/std", "ssh-key?/alloc", "larger", "mlkem", "alloc"]
+alloc = ["ssh-key?/alloc"]
 backtrace = ["snafu/backtrace"]
-rsa = ["dep:rsa", "ssh-key/rsa"]
+rsa = ["dep:rsa", "ssh-key?/rsa"]
 mlkem = ["dep:ml-kem"]
 
-_ecdsa = ["dep:ecdsa", "ssh-key/ecdsa"]
+_ecdsa = ["dep:ecdsa", "ssh-key?/ecdsa"]
 # ecdsa-sha2-nistp256
-ecdsa256 = ["_ecdsa", "dep:p256", "ssh-key/p256"]
+ecdsa256 = ["_ecdsa", "dep:p256", "ssh-key?/p256"]
 
 # allows conversion to/from OpenSSH key formats
 openssh-key = ["ssh-key"]
