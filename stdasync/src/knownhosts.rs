@@ -117,7 +117,7 @@ pub fn check_known_hosts_file(
             debug!("Line {line}, found matching key");
             return Ok(());
         } else {
-            let fp = known_key.fingerprint(Default::default());
+            let fp = known_key.fingerprint(ssh_key::HashAlg::Sha256);
             println!(
                 "\nHost key mismatch for {match_host} in ~/.ssh/known_hosts line {line}\n\
                 Existing key has fingerprint {fp}\n"
@@ -158,7 +158,7 @@ fn ask_to_confirm(
     p: &Path,
 ) -> Result<(), KnownHostsError> {
     let k: OpenSSHKey = key.try_into()?;
-    let fp = k.fingerprint(Default::default());
+    let fp = k.fingerprint(ssh_key::HashAlg::Sha256);
     let h = host_part(host, port);
     let _ = writeln!(
         io::stderr(),

@@ -343,7 +343,7 @@ pub enum PubKey<'a> {
 }
 
 impl PubKey<'_> {
-    /// The algorithm name presented. May be invalid.
+    /// The algorithm name
     pub fn algorithm_name(&self) -> Result<&str, &Unknown<'_>> {
         match self {
             PubKey::Ed25519(_) => Ok(SSH_NAME_ED25519),
@@ -369,14 +369,14 @@ impl PubKey<'_> {
         Ok(m)
     }
 
+    /// Calculate a sha256 fingerprint
+    ///
+    /// This is the style used by OpenSSH, base64 encoded.
     #[cfg(feature = "openssh-key")]
-    pub fn fingerprint(
-        &self,
-        hash_alg: ssh_key::HashAlg,
-    ) -> Result<ssh_key::Fingerprint> {
+    pub fn fingerprint(&self) -> Result<ssh_key::Fingerprint> {
         let ssh_key: ssh_key::PublicKey = self.try_into()?;
 
-        Ok(ssh_key.fingerprint(hash_alg))
+        Ok(ssh_key.fingerprint(ssh_key::HashAlg::Sha256))
     }
 }
 
@@ -557,7 +557,7 @@ pub enum Signature<'a> {
 }
 
 impl<'a> Signature<'a> {
-    /// The algorithm name presented. May be invalid.
+    /// The algorithm name
     pub fn algorithm_name(&self) -> Result<&'a str, &Unknown<'a>> {
         match self {
             Signature::Ed25519(_) => Ok(SSH_NAME_ED25519),
