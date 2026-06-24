@@ -69,3 +69,6 @@ pub use server::Server;
 
 // So that sshwire-derive can refer to ::sunset::sshwire
 extern crate self as sunset;
+
+#[cfg(feature = "embedded-io")]
+pub use embedded_io;

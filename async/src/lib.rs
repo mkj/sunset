@@ -26,3 +26,8 @@ pub use server::SSHServer;
 pub use async_channel::{ChanIn, ChanInOut, ChanOut};
 
 pub use async_sunset::{ProgressHolder, SunsetMutex, SunsetRawMutex};
+
+// Re-exports
+pub use sunset;
+
+pub use embedded_io_async;

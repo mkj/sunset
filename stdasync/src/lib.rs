@@ -29,3 +29,7 @@ use pty::{RawPtyGuard, raw_pty};
 pub use cmdline_client::CmdlineClient;
 
 pub use agent::AgentClient;
+
+// Re-exports
+pub use sunset;
+pub use sunset_async;

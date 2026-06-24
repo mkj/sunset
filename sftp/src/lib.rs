@@ -125,3 +125,7 @@ pub mod error {
     pub use crate::sftperror::SftpError;
     pub use crate::sftperror::SftpResult;
 }
+
+// Re-exports
+pub use embedded_io_async;
+pub use sunset;
