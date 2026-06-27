@@ -4,9 +4,7 @@ use sunset_sftp::{SftpHandler, server::MAX_REQUEST_LEN};
 
 use sunset_demo_common::{self, DemoCommon, DemoServer, SSHConfig};
 
-use crate::{
-    demoopaquefilehandle::DemoOpaqueFileHandle, demosftpserver::DemoSftpServer,
-};
+use crate::demosftpserver::DemoSftpServer;
 
 use embassy_executor::Spawner;
 use embassy_net::{Stack, StackResources, StaticConfigV4};
@@ -21,8 +19,6 @@ use embassy_sync::channel::Channel;
 #[allow(unused_imports)]
 use log::{debug, error, info, log, trace, warn};
 
-mod demofilehandlemanager;
-mod demoopaquefilehandle;
 mod demosftpserver;
 mod stdhelpers;
 
@@ -162,12 +158,11 @@ impl DemoServer for StdDemo {
 
                 match {
                     let (chan_in, chan_out) = serv.stdio(ch).await?.split();
-                    let mut file_server =
-                        DemoSftpServer::<DemoOpaqueFileHandle>::new(
-                            "./demo/sftp/std/testing/out/".to_string(),
-                        );
+                    let mut file_server = DemoSftpServer::new(
+                        "./demo/sftp/std/testing/out/".to_string(),
+                    );
 
-                    SftpHandler::<_, _, 512>::new(
+                    SftpHandler::<_, 512>::new(
                         &mut file_server,
                         &mut request_buffer,
                     )

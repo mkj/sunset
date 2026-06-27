@@ -3,7 +3,8 @@ mod sftpserver;
 mod readdirreplies;
 mod readreplies;
 
-pub use sftpserver::SftpServer;
+pub use sftpserver::{DirHandle, FileHandle, SftpServer};
+pub(crate) use sftpserver::{FileOrDirHandle, decode_opaque_handle};
 
 pub use sftpserver::ReadStatus;
 
