@@ -104,10 +104,10 @@ pub mod handles {
 /// SFTP Protocol types and structures
 pub mod protocol {
     pub use crate::proto::Attrs;
-    pub use crate::proto::FileHandle;
     pub use crate::proto::Filename;
     pub use crate::proto::Name;
     pub use crate::proto::NameEntry;
+    pub use crate::proto::OpaqueHandle;
     pub use crate::proto::PFlags;
     pub use crate::proto::PathInfo;
     pub use crate::proto::SftpPacket;
