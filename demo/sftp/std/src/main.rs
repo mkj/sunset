@@ -215,8 +215,8 @@ async fn listen(
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
-    env_logger::Builder::new()
-        .filter_level(log::LevelFilter::Info)
+    let env = env_logger::Env::default().default_filter_or("info");
+    env_logger::Builder::from_env(env)
         .format_timestamp_nanos()
         .target(env_logger::Target::Stdout)
         .init();
