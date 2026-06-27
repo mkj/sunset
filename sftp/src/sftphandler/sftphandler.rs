@@ -1,5 +1,4 @@
 use crate::error::SftpError;
-use crate::handles::OpaqueFileHandle;
 use crate::proto::{
     self, InitVersionClient, InitVersionLowest, LStat, MAX_REQUEST_LEN, ReqId,
     SFTP_VERSION, SftpNum, SftpPacket, Stat, StatusCode,
@@ -8,7 +7,8 @@ use crate::server::DirReadHeaderReply;
 use crate::sftperror::SftpResult;
 use crate::sftphandler::requestholder::{RequestHolder, RequestHolderError};
 use crate::sftphandler::sftpoutputchannelhandler::SftpOutputProducer;
-use crate::sftpserver::{ReadHeaderReply, SftpServer};
+use crate::sftpserver::{DirHandle, FileHandle, ReadHeaderReply, SftpServer};
+use crate::sftpserver::{FileOrDirHandle, decode_opaque_handle};
 use crate::sftpsource::SftpSource;
 
 use embassy_futures::select::{Either, select};
@@ -73,17 +73,13 @@ enum HandlerState {
 /// Parameter `S`: Will delegate request to an [`crate::sftpserver::SftpServer`]
 /// implemented by the library user taking into account the local system details.
 ///
-/// Parameter `T`: A type that implements [`crate::handles::OpaqueFileHandle`]
-/// that **must** match the type used in the [`crate::sftpserver::SftpServer`] provided in `S`.
-///
 /// Parameter `BUFFER_OUT_SIZE` sizes an output buffer to send responses.
 /// Must be sufficiently to create responses such as file entries
 /// (size will depend on maximum file length).
 /// 512 would be a typical small buffer.
-pub struct SftpHandler<'a, T, S, const BUFFER_OUT_SIZE: usize>
+pub struct SftpHandler<'a, S, const BUFFER_OUT_SIZE: usize>
 where
-    T: OpaqueFileHandle,
-    S: SftpServer<T>,
+    S: SftpServer,
 {
     /// Holds the internal state if the SFTP handle
     state: HandlerState,
@@ -97,15 +93,11 @@ where
     // partial_write_request_tracker: Option<PartialWriteRequestTracker<T>>,
     /// Used to handle received buffers that do not hold a complete request [`SftpPacket`]
     request_holder: RequestHolder<'a>,
-
-    /// Marker to keep track of the OpaqueFileHandle type
-    _marker: core::marker::PhantomData<T>,
 }
 
-impl<'a, T, S, const BUFFER_OUT_SIZE: usize> SftpHandler<'a, T, S, BUFFER_OUT_SIZE>
+impl<'a, S, const BUFFER_OUT_SIZE: usize> SftpHandler<'a, S, BUFFER_OUT_SIZE>
 where
-    T: OpaqueFileHandle,
-    S: SftpServer<T>,
+    S: SftpServer,
 {
     /// Creates a new instance of the structure.
     ///
@@ -120,7 +112,6 @@ where
             file_server,
             state: HandlerState::default(),
             request_holder: RequestHolder::new(request_buffer),
-            _marker: core::marker::PhantomData,
         }
     }
 
@@ -203,23 +194,24 @@ where
                 debug!("Read request: {:?}", sftp_packet);
 
                 let reply = ReadHeaderReply::new(req_id, output_producer);
-                let res = self
-                    .file_server
-                    .read(&T::try_from(&read.handle)?, read.offset, read.len, reply)
-                    .await;
+
+                let res = match FileHandle::try_from(read.handle) {
+                    Ok(h) => {
+                        self.file_server.read(h, read.offset, read.len, reply).await
+                    }
+                    Err(e) => Err(e.into()),
+                };
 
                 if let Err(error) = res {
                     error!("Error reading data: {:?}", error);
                     if let SftpError::FileServerError(status) = error {
-                        output_producer
-                            .send_status(req_id, status, "Could not list attributes")
-                            .await?;
+                        output_producer.send_status(req_id, status, "").await?;
                     } else {
                         output_producer
                             .send_status(
                                 req_id,
                                 StatusCode::SSH_FX_FAILURE,
-                                "Could not list attributes",
+                                "Read failed",
                             )
                             .await?;
                     }
@@ -266,11 +258,15 @@ where
             SftpPacket::ReadDir(req_id, read_dir) => {
                 let dir_read_header_reply =
                     DirReadHeaderReply::new(req_id, output_producer);
-                if let Err(status) = self
-                    .file_server
-                    .readdir(&T::try_from(&read_dir.handle)?, dir_read_header_reply)
-                    .await
-                {
+
+                let res = match DirHandle::try_from(read_dir.handle) {
+                    Ok(h) => {
+                        self.file_server.readdir(h, dir_read_header_reply).await
+                    }
+                    Err(e) => Err(e.into()),
+                };
+
+                if let Err(status) = res {
                     error!("Open failed: {:?}", status);
 
                     output_producer
@@ -281,13 +277,11 @@ where
             }
             SftpPacket::OpenDir(req_id, open_dir) => {
                 match self.file_server.opendir(open_dir.dirname.as_str()?).await {
-                    Ok(opaque_file_handle) => {
-                        let response = SftpPacket::Handle(
-                            req_id,
-                            proto::Handle {
-                                handle: opaque_file_handle.into_file_handle(),
-                            },
-                        );
+                    Ok(dirh) => {
+                        let mut buf = DirHandle::buffer();
+                        let handle = dirh.encode(&mut buf);
+                        let response =
+                            SftpPacket::Handle(req_id, proto::Handle { handle });
                         output_producer.send_packet(&response).await?;
                     }
                     Err(status_code) => {
@@ -300,7 +294,19 @@ where
                 self.state = HandlerState::Idle;
             }
             SftpPacket::Close(req_id, close) => {
-                match self.file_server.close(&T::try_from(&close.handle)?).await {
+                let res = {
+                    match decode_opaque_handle(close.handle) {
+                        Ok(FileOrDirHandle::File(h)) => {
+                            self.file_server.close(h).await
+                        }
+                        Ok(FileOrDirHandle::Dir(h)) => {
+                            self.file_server.closedir(h).await
+                        }
+                        Err(e) => Err(e),
+                    }
+                };
+
+                match res {
                     Ok(_) => {
                         output_producer
                             .send_status(req_id, StatusCode::SSH_FX_OK, "")
@@ -332,13 +338,11 @@ where
                     .open(open.filename.as_str()?, &open.pflags)
                     .await
                 {
-                    Ok(opaque_file_handle) => {
-                        let response = SftpPacket::Handle(
-                            req_id,
-                            proto::Handle {
-                                handle: opaque_file_handle.into_file_handle(),
-                            },
-                        );
+                    Ok(fh) => {
+                        let mut buf = FileHandle::buffer();
+                        let handle = fh.encode(&mut buf);
+                        let response =
+                            SftpPacket::Handle(req_id, proto::Handle { handle });
                         output_producer.send_packet(&response).await?;
                     }
                     Err(status_code) => {
@@ -444,11 +448,15 @@ where
 
                             let data = &buf[..used];
                             buf = &buf[used..];
-                            match self
-                                .file_server
-                                .write(&T::try_from(&write.handle)?, *offset, data)
-                                .await
-                            {
+
+                            let res = match FileHandle::try_from(write.handle) {
+                                Ok(h) => {
+                                    self.file_server.write(h, *offset, data).await
+                                }
+                                Err(e) => Err(e),
+                            };
+
+                            match res {
                                 Ok(_) => {
                                     if remaining_data == 0 {
                                         output_producer

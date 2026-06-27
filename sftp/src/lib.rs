@@ -53,7 +53,6 @@
 #![warn(missing_docs)]
 #![no_std]
 
-mod opaquefilehandle;
 mod proto;
 mod sftperror;
 mod sftphandler;
@@ -81,7 +80,7 @@ pub mod server {
 
     pub use crate::sftpserver::ReadStatus;
     pub use crate::sftpserver::SftpOpResult;
-    pub use crate::sftpserver::SftpServer;
+    pub use crate::sftpserver::{DirHandle, FileHandle, SftpServer};
     /// Helpers to reduce error prone tasks and hide some details that
     /// add complexity when implementing an [`SftpServer`]
     pub mod helpers {
@@ -93,21 +92,13 @@ pub mod server {
     pub use crate::proto::MAX_REQUEST_LEN;
 }
 
-/// Handles and helpers used by the [`sftpserver::SftpServer`] trait implementer
-pub mod handles {
-    pub use crate::opaquefilehandle::InitFileHandler;
-    pub use crate::opaquefilehandle::OpaqueFileHandle;
-    pub use crate::opaquefilehandle::OpaqueFileHandleManager;
-    pub use crate::opaquefilehandle::PathFinder;
-}
-
 /// SFTP Protocol types and structures
 pub mod protocol {
     pub use crate::proto::Attrs;
-    pub use crate::proto::FileHandle;
     pub use crate::proto::Filename;
     pub use crate::proto::Name;
     pub use crate::proto::NameEntry;
+    pub use crate::proto::OpaqueHandle;
     pub use crate::proto::PFlags;
     pub use crate::proto::PathInfo;
     pub use crate::proto::SftpPacket;

@@ -97,7 +97,7 @@ impl<'a> Filename<'a> {
 /// An opaque handle that is used by the server to identify an open
 /// file or folder.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, SSHEncode, SSHDecode)]
-pub struct FileHandle<'a>(pub BinString<'a>);
+pub struct OpaqueHandle<'a>(pub BinString<'a>);
 
 // ========================== Initialization ===========================
 
@@ -198,7 +198,7 @@ pub struct OpenDir<'a> {
 pub struct Close<'a> {
     /// An opaque handle that is used by the server to identify an open
     /// file or folder to be closed.
-    pub handle: FileHandle<'a>,
+    pub handle: OpaqueHandle<'a>,
 }
 
 /// Used for `ssh_fxp_read` [response](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.4).
@@ -206,7 +206,7 @@ pub struct Close<'a> {
 pub struct Read<'a> {
     /// An opaque handle that is used by the server to identify an open
     /// file or folder.
-    pub handle: FileHandle<'a>,
+    pub handle: OpaqueHandle<'a>,
     /// The offset for the read operation
     pub offset: u64,
     /// The number of bytes to be retrieved
@@ -218,7 +218,7 @@ pub struct Read<'a> {
 pub struct ReadDir<'a> {
     /// An opaque handle that is used by the server to identify an open
     /// file or folder.
-    pub handle: FileHandle<'a>,
+    pub handle: OpaqueHandle<'a>,
 }
 
 /// Used for `ssh_fxp_write` [response](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.4).
@@ -226,7 +226,7 @@ pub struct ReadDir<'a> {
 pub struct Write<'a> {
     /// An opaque handle that is used by the server to identify an open
     /// file or folder.
-    pub handle: FileHandle<'a>,
+    pub handle: OpaqueHandle<'a>,
     /// The offset for the read operation
     pub offset: u64,
 
@@ -276,7 +276,7 @@ pub struct Status<'a> {
 pub struct Handle<'a> {
     /// An opaque handle that is used by the server to identify an open
     /// file or folder.
-    pub handle: FileHandle<'a>,
+    pub handle: OpaqueHandle<'a>,
 }
 
 /// Used for `ssh_fxp_data` [responses](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-7).
