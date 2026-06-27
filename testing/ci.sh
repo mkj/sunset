@@ -3,7 +3,7 @@
 set -v
 set -e
 
-export CARGO_TARGET_DIR=target/ci
+export CARGO_TARGET_DIR="$PWD/target/ci"
 
 # Set OFFLINE=1 to avoid rustup. cargo might still run offline.
 
@@ -33,6 +33,7 @@ cargo fmt --check
 # stable
 # only test lib since some examples are broken
 cargo test --lib
+cargo test --lib --all-features
 # build non-testing, will be no_std
 cargo build
 cargo doc
@@ -56,6 +57,13 @@ cargo doc
 )
 
 (
+cd sftp
+cargo test
+cargo test --doc
+cargo doc
+)
+
+(
 cd demo/std
 cargo build
 )
@@ -70,9 +78,16 @@ cd demo/picow
 cargo build --release
 cargo bloat --release -n 100 | tee "$OUT/picow-bloat.txt"
 cargo bloat --release --crates | tee "$OUT/picow-bloat-crates.txt"
-cargo build --release --no-default-features --features w5500,romfw
+cargo build --release --no-default-features --features w5500
+cargo build --release --features romfw
 )
 size target/thumbv6m-none-eabi/release/sunset-demo-picow | tee "$OUT/picow-size.txt"
+
+(
+cd demo/sftp/std
+cargo build
+cargo test
+)
 
 (
 cd fuzz
@@ -80,11 +95,4 @@ cargo check --features nofuzz --profile fuzz
 )
 
 # other checks
-
-if [ $(find async -name rust-toolchain.toml -print0 | xargs -0 grep -h ^channel | uniq | wc -l) -ne 1 ]; then
-    echo "rust-toolchain.toml has varying toolchains"
-    find async -name rust-toolchain.toml -print0 | xargs -0 grep .
-    exit 1
-fi
-
 echo success

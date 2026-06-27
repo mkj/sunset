@@ -1,0 +1,44 @@
+# build rust nightly each day to notice breakage early
+name: daily-nightly
+on:
+  schedule:
+    - cron: "20 17 * * *"
+      timezone: "Australia/Perth"
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  all:
+    strategy:
+      matrix:
+        rust_version: [nightly]
+    runs-on: ubuntu-latest
+    env:
+      RUSTUP_TOOLCHAIN: ${{ matrix.rust_version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Rust files
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/
+            ~/.rustup/
+            testing/target
+          # Save a unique cache each time
+          # (https://github.com/actions/cache/blob/main/tips-and-workarounds.md#update-a-cache)
+          key: rust-cache1-${{ matrix.rust_version }}-${{ github.run_id }}
+          # Load from the most recent match
+          restore-keys: |
+            rust-cache1-${{ matrix.rust_version }}
+
+      - name: build ${{ matrix.rust_version }}
+        run: ./testing/ci.sh
+
+      - name: picow bloat
+        uses: actions/upload-artifact@v4
+        with:
+          name: picow-bloat-${{ matrix.rust_version }}
+          path: ci_out/picow-bloat.txt

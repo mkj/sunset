@@ -1,11 +1,16 @@
 //! Sunset SSH for larger systems
 //!
-//! `sunset-std` is for Sunset SSH on non-embedded systems,
+//! `sunset-stdasync` is for Sunset SSH on non-embedded systems,
 //! using async executors such as smol or tokio.
 //!
 //! [`AgentClient`] can communicate with a separate `ssh-agent` for signing.
 //!
 //! `sunsetc` example is usable as a day-to-day SSH client on Linux.
+//!
+//! Currently no server functionality is included here.
+//! [`sunset-async`](sunset_async) can be used directly to implement a
+//! server, also on `std`.
+
 // avoid mysterious missing awaits
 #![deny(unused_must_use)]
 
@@ -19,10 +24,12 @@ mod fdio;
 #[cfg(unix)]
 use fdio::{stderr_out, stdin, stdout};
 
-use pty::{raw_pty, RawPtyGuard};
+use pty::{RawPtyGuard, raw_pty};
 
 pub use cmdline_client::CmdlineClient;
 
 pub use agent::AgentClient;
 
-// for sshwire derive
+// Re-exports
+pub use sunset;
+pub use sunset_async;

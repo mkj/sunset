@@ -99,9 +99,10 @@ impl Write for ChanIO<'_> {
             .await
     }
 
-    // TODO: not sure how easy end-to-end flush is
-    // async fn flush(&mut self) -> Result<(), Self::Error> {
-    // }
+    async fn flush(&mut self) -> Result<()> {
+        // TODO: could this wait for the packet to get sent out?
+        Ok(())
+    }
 }
 
 // Public wrappers for In only
@@ -128,6 +129,11 @@ impl<'g> ChanIn<'g> {
     pub(crate) fn new(io: ChanIO<'g>) -> Self {
         io.sunset.inc_read_chan(io.num, io.dt);
         Self(io)
+    }
+
+    /// Return the channel number.
+    pub fn num(&self) -> ChanNum {
+        self.0.num
     }
 
     /// Wait until the channel closes.
@@ -165,6 +171,11 @@ pub struct ChanOut<'g>(ChanIO<'g>);
 impl<'g> ChanOut<'g> {
     pub(crate) fn new(io: ChanIO<'g>) -> Self {
         Self(io)
+    }
+
+    /// Return the channel number.
+    pub fn num(&self) -> ChanNum {
+        self.0.num
     }
 
     /// Wait until the channel closes.
@@ -216,6 +227,11 @@ impl<'g> ChanInOut<'g> {
     pub(crate) fn new(io: ChanIO<'g>) -> Self {
         io.sunset.inc_read_chan(io.num, io.dt);
         Self(io)
+    }
+
+    /// Return the channel number.
+    pub fn num(&self) -> ChanNum {
+        self.0.num
     }
 
     /// Convert this into separate input and output.
@@ -283,6 +299,11 @@ impl Write for ChanInOut<'_> {
     async fn write(&mut self, buf: &[u8]) -> Result<usize, sunset::Error> {
         self.0.write(buf).await
     }
+
+    async fn flush(&mut self) -> Result<()> {
+        // TODO: could this wait for the packet to get sent out?
+        Ok(())
+    }
 }
 
 impl Read for ChanIn<'_> {
@@ -294,5 +315,10 @@ impl Read for ChanIn<'_> {
 impl Write for ChanOut<'_> {
     async fn write(&mut self, buf: &[u8]) -> Result<usize, sunset::Error> {
         self.0.write(buf).await
+    }
+
+    async fn flush(&mut self) -> Result<()> {
+        // TODO: could this wait for the packet to get sent out?
+        Ok(())
     }
 }

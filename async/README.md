@@ -1,11 +1,6 @@
-# Toolchain
-
-Embassy requires Rust nightly, often with a specific version.
-[`rust-toolchain.toml`](rust-toolchain.toml) records a known-good version.
-
 # Demos
 
-[`demos/`](demos/) has some examples. These are separate crates since they have fairly distinct dependencies.
+Top level [`demo/`](../demo/) has some examples. These are separate crates since they have fairly distinct dependencies.
 
 ## `picow`
 

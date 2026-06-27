@@ -11,6 +11,9 @@
 // Static allocations hit this inherently.
 #![allow(clippy::large_enum_variant)]
 
+#[cfg(feature = "alloc")]
+extern crate alloc;
+
 pub mod config;
 pub mod packets;
 pub mod sshnames;
@@ -19,7 +22,7 @@ pub mod sshwire;
 // perhaps the ones of interest should be expored separately.
 pub mod error;
 pub mod namelist;
-pub mod random;
+mod random;
 
 pub mod event;
 
@@ -45,13 +48,11 @@ mod termmodes;
 mod traffic;
 
 use conn::DispatchEvent;
-use event::CliEventId;
 
-// Application API
 pub use sshwire::TextString;
 
 pub use auth::AuthSigMsg;
-pub use channel::{ChanData, ChanNum, CliSessionExit};
+pub use channel::{ChanData, ChanNum, CliSessionExit, CliSessionOpener};
 pub use channel::{ChanOpened, Pty, SessionCommand};
 pub use error::{Error, Result};
 pub use packets::{PubKey, Signature};
@@ -68,3 +69,6 @@ pub use server::Server;
 
 // So that sshwire-derive can refer to ::sunset::sshwire
 extern crate self as sunset;
+
+#[cfg(feature = "embedded-io")]
+pub use embedded_io;

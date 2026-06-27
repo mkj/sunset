@@ -1,6 +1,6 @@
 use core::fmt::Write;
-use demo_common::menu::*;
 pub use demo_common::AsyncMenuBuf;
+use demo_common::menu::*;
 pub(crate) use sunset_demo_common as demo_common;
 
 /*

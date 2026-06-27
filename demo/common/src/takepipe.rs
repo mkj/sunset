@@ -5,7 +5,7 @@ use core::ops::DerefMut;
 
 use embedded_io_async::{ErrorType, Read, Write};
 
-use embassy_futures::select::{select, Either};
+use embassy_futures::select::{Either, select};
 use embassy_sync::pipe::Pipe;
 use embassy_sync::{mutex::Mutex, pipe, signal::Signal};
 
@@ -118,6 +118,11 @@ impl<'a> Write for TakePipeWrite<'a> {
         let r = self.pipe.writer.write(buf).await;
         Ok(r)
     }
+
+    async fn flush(&mut self) -> Result<(), Self::Error> {
+        // pipe::Writer has no flush
+        Ok(())
+    }
 }
 
 impl ErrorType for TakePipeRead<'_> {
@@ -195,6 +200,10 @@ impl Write for TakeWrite<'_> {
                 Err(sunset::Error::ChannelEOF)
             }
         }
+    }
+
+    async fn flush(&mut self) -> sunset::Result<()> {
+        Ok(())
     }
 }
 

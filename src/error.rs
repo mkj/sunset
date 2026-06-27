@@ -6,10 +6,10 @@ use core::fmt::Arguments;
 
 use snafu::prelude::*;
 
-use crate::channel::ChanNum;
+use crate::{channel::ChanNum, packets::MessageNumber};
 
-#[allow(unused_imports)]
-use snafu::{Backtrace, Location};
+#[cfg(feature = "backtrace")]
+use snafu::Backtrace;
 
 // TODO: can we make Snafu not require Debug?
 
@@ -20,14 +20,24 @@ use snafu::{Backtrace, Location};
 // TODO: maybe split this into a list of public vs private errors?
 #[snafu(visibility(pub))]
 pub enum Error {
-    /// Output buffer ran out of room
-    NoRoom {
+    /// Input buffer ran out
+    RanOut {
         #[cfg(feature = "backtrace")]
         backtrace: Backtrace,
     },
 
-    /// Input buffer ran out
-    RanOut {
+    /// Can't currently send a packet
+    ///
+    /// Either output buffer is full, or a key exchange is in progress.
+    /// `unsupported` is set if it is not expected for Sunset to be
+    /// able to defer that type of packet (it may indicate a bug in Sunset,
+    //// or traffic that is unanticipated or difficult to handle).
+    // Should only be returned from TrafOut::send_packet(),
+    // NoRoom is for other similar circumstances.
+    BusySend { packet: MessageNumber, unsupported: bool },
+
+    /// No room to write
+    NoRoom {
         #[cfg(feature = "backtrace")]
         backtrace: Backtrace,
     },
@@ -47,7 +57,7 @@ pub enum Error {
     /// Signature is incorrect
     BadSig,
 
-    /// Integer overflow in packet
+    /// Received a badly formatted number
     BadNumber,
 
     /// Error in received SSH protocol. Will disconnect.
@@ -63,9 +73,6 @@ pub enum Error {
     /// support it.
     // TODO: 'static disconnect message to return?
     SSHProtoUnsupported,
-
-    /// Received a key with invalid structure, or too large.
-    BadKeyFormat,
 
     /// Remote peer isn't SSH 2.0
     NotSSH,
@@ -136,7 +143,9 @@ pub enum Error {
     #[snafu(display("Packet size {size} too large (or bad decrypt)"))]
     BigPacket { size: usize },
 
-    /// Ran out of authentication methods to try (as a client)
+    /// Ran out of authentication methods
+    ///
+    /// This is only for the client.
     NoAuthMethods,
 
     /// An unknown SSH name is provided, for a key type, signature type,
@@ -148,9 +157,13 @@ pub enum Error {
     // TODO: these could eventually get categorised
     Custom { msg: &'static str },
 
-    /// IO Error
+    /// std IO error
     #[cfg(feature = "std")]
     IoError { source: std::io::Error },
+
+    /// `embedded-io` error
+    #[cfg(feature = "embedded-io")]
+    EmbeddedIoError { kind: embedded_io::ErrorKind },
 
     // This state should not be reached, previous logic should have prevented it.
     // Create this using [`Error::bug()`] or [`.trap()`](TrapBug::trap).
@@ -158,6 +171,8 @@ pub enum Error {
     // #[snafu(display("Program bug {location}"))]
     // Bug { location: snafu::Location },
     /// Program bug
+    ///
+    /// Hitting this may instead panic on builds with debug-assertions.
     Bug,
 }
 
@@ -232,6 +247,13 @@ impl embedded_io::Error for Error {
     }
 }
 
+#[cfg(feature = "embedded-io")]
+impl From<embedded_io::ErrorKind> for Error {
+    fn from(kind: embedded_io::ErrorKind) -> Self {
+        Self::EmbeddedIoError { kind }
+    }
+}
+
 /// A Sunset-specific Result type.
 pub type Result<T, E = Error> = core::result::Result<T, E>;
 
@@ -247,21 +269,15 @@ pub trait TrapBug<T> {
 }
 
 impl<T, E> TrapBug<T> for Result<T, E> {
+    #[track_caller]
     fn trap(self) -> Result<T, Error> {
         // call directly so that Location::caller() works
-        if let Ok(i) = self {
-            Ok(i)
-        } else {
-            Err(Error::bug())
-        }
+        if let Ok(i) = self { Ok(i) } else { Err(Error::bug()) }
     }
+    #[track_caller]
     fn trap_msg(self, args: Arguments) -> Result<T, Error> {
         // call directly so that Location::caller() works
-        if let Ok(i) = self {
-            Ok(i)
-        } else {
-            Err(Error::bug_fmt(args))
-        }
+        if let Ok(i) = self { Ok(i) } else { Err(Error::bug_fmt(args)) }
     }
 }
 
@@ -269,19 +285,12 @@ impl<T> TrapBug<T> for Option<T> {
     #[track_caller]
     fn trap(self) -> Result<T, Error> {
         // call directly so that Location::caller() works
-        if let Some(i) = self {
-            Ok(i)
-        } else {
-            Err(Error::bug())
-        }
+        if let Some(i) = self { Ok(i) } else { Err(Error::bug()) }
     }
+    #[track_caller]
     fn trap_msg(self, args: Arguments) -> Result<T, Error> {
         // call directly so that Location::caller() works
-        if let Some(i) = self {
-            Ok(i)
-        } else {
-            Err(Error::bug_fmt(args))
-        }
+        if let Some(i) = self { Ok(i) } else { Err(Error::bug_fmt(args)) }
     }
 }
 

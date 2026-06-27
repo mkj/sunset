@@ -15,8 +15,8 @@ use core::{fmt, marker::PhantomData};
 use digest::Digest;
 #[cfg(feature = "mlkem")]
 use ml_kem::{
-    kem::{Decapsulate, Encapsulate, EncapsulationKey, Kem},
-    Ciphertext, EncodedSizeUser, KemCore, MlKem768, MlKem768Params,
+    B32, Ciphertext, DecapsulationKey, Key, KeyExport, MlKem768, Seed,
+    kem::{Decapsulate, EncapsulationKey},
 };
 use rand_core::OsRng;
 use sha2::Sha256;
@@ -31,7 +31,7 @@ use packets::{KexCookie, Packet, PubKey, Signature};
 use sign::SigType;
 use sshnames::*;
 use sshwire::{
-    hash_mpint, hash_ser, hash_ser_length, BinString, Blob, SSHWireDigestUpdate,
+    BinString, Blob, SSHWireDigestUpdate, hash_mpint, hash_ser, hash_ser_length,
 };
 use traffic::TrafSend;
 
@@ -112,15 +112,30 @@ pub(crate) enum Kex<CS: CliServ> {
     /// No key exchange in progress
     Idle,
 
+    /// Waiting for empty output buffer before starting a KEX
+    ///
+    /// Our KexInit will only be sent once the output buffer is empty,
+    /// to ensure subsequent sent kex packets will fit.
+    StartKexInit,
+
     /// Waiting for a KexInit packet, have sent one.
     KexInit {
         // Cookie sent in our KexInit packet. Kept so that we can reproduce the
         // KexInit packet when calculating the exchange hash.
         our_cookie: KexCookie,
     },
+
+    /// Have received a KexInit, waiting for an empty output buffer to start a KEX.
+    ///
+    /// This is similar to SendKexInit state but keeps state
+    /// from the peer's KexInit.
+    StartKexDH { our_cookie: KexCookie, algos: Algos<CS>, kex_hash: KexHash },
+
     /// Waiting for KexDHInit (server) or KexDHReply (client)
     KexDH { algos: Algos<CS>, kex_hash: KexHash },
     /// Waiting for NewKeys. `output` is new keys to take into use
+    ///
+    /// Our own NewKeys message has been sent.
     NewKeys { output: KexOutput, algos: Algos<CS> },
 
     /// A transient state use internally to transition between other states.
@@ -163,7 +178,7 @@ impl KexHash {
         let mut kh = KexHash { hash_ctx: Sha256::new() };
         let remote_version = remote_version.version().trap()?;
         // Recreate our own kexinit packet to hash.
-        let own_kexinit = Kex::<CS>::make_kexinit(our_cookie, algo_conf);
+        let own_kexinit = make_kexinit(our_cookie, algo_conf);
         if CS::is_client() {
             kh.hash_slice(ident::OUR_VERSION);
             kh.hash_slice(remote_version);
@@ -264,8 +279,16 @@ impl<CS: CliServ> fmt::Display for Algos<CS> {
             (&self.cipher_dec, &self.cipher_enc, &self.integ_dec, &self.integ_enc)
         };
 
-        write!(f, "Negotiated algorithms {{\nkex {}\nhostkey {}\ncipher c->s {}\ncipher s->c {}\nmac c->s {}\nmac s->c {}\n}}",
-            self.kex, self.hostsig.algorithm_name(), cc, cs, mc, ms)
+        write!(
+            f,
+            "Negotiated algorithms {{\nkex {}\nhostkey {}\ncipher c->s {}\ncipher s->c {}\nmac c->s {}\nmac s->c {}\n}}",
+            self.kex,
+            self.hostsig.algorithm_name(),
+            cc,
+            cs,
+            mc,
+            ms
+        )
     }
 }
 
@@ -288,9 +311,24 @@ impl Algos<Client> {
     }
 }
 
+impl KexCookie {
+    pub fn generate() -> Result<Self> {
+        let mut c = KexCookie([0; _]);
+        random::fill_random(&mut c.0)?;
+        Ok(c)
+    }
+}
+
 impl<CS: CliServ> Kex<CS> {
     pub fn new() -> Self {
         Kex::Idle
+    }
+
+    /// Start a kexinit. Must be called from Idle state.
+    pub fn start_kexinit(&mut self, s: &mut TrafSend) {
+        debug_assert!(matches!(self, Kex::Idle));
+        s.set_drain_output(true);
+        *self = Kex::StartKexInit
     }
 
     fn take(&mut self) -> Self {
@@ -298,19 +336,65 @@ impl<CS: CliServ> Kex<CS> {
         core::mem::replace(self, Kex::Taken)
     }
 
-    /// Sends a `KexInit` message. Must be called from `Idle` state
-    pub fn send_kexinit(
-        &mut self,
-        conf: &AlgoConfig,
-        s: &mut TrafSend,
-    ) -> Result<()> {
-        if !matches!(self, Kex::Idle) {
-            return Err(Error::bug());
+    /// Test if a KEX is in progress.
+    ///
+    /// This is from a sending perspective. Returns true after KexInit
+    /// has been sent and before NewKeys has been sent.
+    /// During that interval non-KEX packets are disallowed.
+    pub fn is_sending(&self) -> bool {
+        matches!(self, Kex::KexInit { .. } | Kex::KexDH { .. })
+    }
+
+    /// Test if a KEX is in progress from a receiving perspective.
+    ///
+    /// true after KexInit has been received and before NewKeys has been received.
+    pub fn is_receiving(&self) -> bool {
+        matches!(
+            self,
+            Kex::KexDH { .. } | Kex::StartKexDH { .. } | Kex::NewKeys { .. }
+        )
+    }
+
+    pub fn progress(&mut self, conf: &AlgoConfig, s: &mut TrafSend) -> Result<()> {
+        // Send KexInit if TrafOut has drained.
+        // TODO: It isn't necessary for TrafOut to drain entirely, it would be OK
+        // to instead check that it has adequate space for all the packets
+        // that would be sent in a KEX sequence.
+        trace!("{self:?}");
+        match self {
+            Kex::Idle => {
+                if s.is_rekey_needed() {
+                    self.start_kexinit(s);
+                }
+            }
+            Kex::StartKexInit => {
+                if s.is_drained() {
+                    s.set_drain_output(false);
+                    let our_cookie = KexCookie::generate()?;
+                    s.send(make_kexinit(&our_cookie, conf))?;
+                    *self = Kex::KexInit { our_cookie };
+                }
+            }
+            Kex::StartKexDH { .. } => {
+                if s.is_drained() {
+                    s.set_drain_output(false);
+                    let Kex::StartKexDH { our_cookie, mut algos, kex_hash } =
+                        self.take()
+                    else {
+                        unreachable!();
+                    };
+                    s.send(make_kexinit(&our_cookie, conf))?;
+                    if CS::is_client() {
+                        algos.kex.send_kexdhinit(s)?;
+                    }
+                    *self = Kex::KexDH { algos, kex_hash };
+                }
+            }
+            Kex::KexInit { .. } | Kex::KexDH { .. } | Kex::NewKeys { .. } => {
+                // waiting for incoming packets, no progress
+            }
+            Kex::Taken => return Err(Error::bug()),
         }
-        let mut our_cookie = KexCookie([0u8; 16]);
-        random::fill_random(our_cookie.0.as_mut_slice())?;
-        s.send(Self::make_kexinit(&our_cookie, conf))?;
-        *self = Kex::KexInit { our_cookie };
         Ok(())
     }
 
@@ -322,17 +406,17 @@ impl<CS: CliServ> Kex<CS> {
         first_kex: bool,
         s: &mut TrafSend,
     ) -> Result<()> {
-        // Reply if we haven't already received one. This will bump the state to Kex::KexInit
-        if let Kex::Idle = self {
-            self.send_kexinit(algo_conf, s)?;
-        }
-
-        let our_cookie = if let Kex::KexInit { ref our_cookie } = self {
-            our_cookie
-        } else {
-            // already received a KexInit
-            return error::PacketWrong.fail();
+        let our_cookie = match self {
+            Kex::KexInit { our_cookie } => our_cookie.clone(),
+            Kex::Idle | Kex::StartKexInit => KexCookie::generate()?,
+            _ => {
+                // already received a KexInit
+                return error::PacketWrong.fail();
+            }
         };
+
+        // start is set when a KexInit hasn't yet been sent.
+        let start = matches!(self, Kex::Idle | Kex::StartKexInit);
 
         let mut algos = Self::algo_negotiation(&remote_kexinit, algo_conf)?;
         debug!("{algos}");
@@ -341,36 +425,31 @@ impl<CS: CliServ> Kex<CS> {
             debug!("kexinit has strict kex but wasn't first packet");
             return error::PacketWrong.fail();
         }
-        if CS::is_client() {
-            algos.kex.send_kexdhinit(s)?;
+        if first_kex && algos.strict_kex {
+            // strict-kex in initial KEXINIT enables it
+            s.enable_strict_kex();
         }
+
         let kex_hash = KexHash::new::<CS>(
             algo_conf,
-            our_cookie,
+            &our_cookie,
             remote_version,
             &remote_kexinit.into(),
         )?;
-        *self = Kex::KexDH { algos, kex_hash };
-        Ok(())
-    }
 
-    fn make_kexinit<'a>(cookie: &KexCookie, conf: &'a AlgoConfig) -> Packet<'a> {
-        packets::KexInit {
-            cookie: cookie.clone(),
-            kex: (&conf.kexs).into(),
-            hostsig: (&conf.hostsig).into(),
-            cipher_c2s: (&conf.ciphers).into(),
-            cipher_s2c: (&conf.ciphers).into(),
-            mac_c2s: (&conf.macs).into(),
-            mac_s2c: (&conf.macs).into(),
-            comp_c2s: (&conf.comps).into(),
-            comp_s2c: (&conf.comps).into(),
-            lang_c2s: NameList::empty(),
-            lang_s2c: NameList::empty(),
-            first_follows: false,
-            reserved: 0,
-        }
-        .into()
+        *self = if start {
+            if matches!(self, Kex::Idle) {
+                s.set_drain_output(true);
+            }
+            // client kexdhinit will be sent after KexInit is sent.
+            Kex::StartKexDH { our_cookie, algos, kex_hash }
+        } else {
+            if CS::is_client() {
+                algos.kex.send_kexdhinit(s)?;
+            }
+            Kex::KexDH { algos, kex_hash }
+        };
+        Ok(())
     }
 
     pub fn handle_newkeys(
@@ -509,11 +588,12 @@ impl<CS: CliServ> Kex<CS> {
     }
 
     pub fn is_strict(&self) -> bool {
-        matches!(
-            self,
-            Kex::KexDH { algos: Algos { strict_kex: true, .. }, .. }
-                | Kex::NewKeys { algos: Algos { strict_kex: true, .. }, .. }
-        )
+        match self {
+            Kex::StartKexDH { algos, .. }
+            | Kex::KexDH { algos, .. }
+            | Kex::NewKeys { algos, .. } => algos.strict_kex,
+            _ => false,
+        }
     }
 
     pub fn handle_kexdhreply(&self) -> Result<DispatchEvent> {
@@ -521,6 +601,7 @@ impl<CS: CliServ> Kex<CS> {
             trace!("kexdhreply not client");
             return error::SSHProto.fail();
         }
+
         if !matches!(self, Kex::KexDH { .. }) {
             return error::PacketWrong.fail();
         }
@@ -564,7 +645,7 @@ impl<CS: CliServ> Kex<CS> {
         // The first KEX's H becomes the persistent sess_id
         let sess_id = sess_id.get_or_insert(output.h.clone());
         let enc = KeysSend::new(&output, sess_id, &algos);
-        s.rekey_send(enc, algos.strict_kex);
+        s.rekey_send(enc);
         *self = Kex::NewKeys { output, algos };
         Ok(())
     }
@@ -677,7 +758,7 @@ impl SharedSecret {
             Self::KexCurve25519(k) => k.pubkey(),
             #[cfg(feature = "mlkem")]
             Self::KexMlkemX25519(k) => {
-                mlkem_bytes = k.init_pubkey_arr_client();
+                mlkem_bytes = k.init_pubkey_arr_client()?;
                 &mlkem_bytes
             }
         };
@@ -771,6 +852,25 @@ impl SharedSecret {
         let sig = Blob(sig);
         s.send(packets::KexDHReply { k_s, q_s, sig })
     }
+}
+
+pub fn make_kexinit<'a>(cookie: &KexCookie, conf: &'a AlgoConfig) -> Packet<'a> {
+    packets::KexInit {
+        cookie: cookie.clone(),
+        kex: (&conf.kexs).into(),
+        hostsig: (&conf.hostsig).into(),
+        cipher_c2s: (&conf.ciphers).into(),
+        cipher_s2c: (&conf.ciphers).into(),
+        mac_c2s: (&conf.macs).into(),
+        mac_s2c: (&conf.macs).into(),
+        comp_c2s: (&conf.comps).into(),
+        comp_s2c: (&conf.comps).into(),
+        lang_c2s: NameList::empty(),
+        lang_s2c: NameList::empty(),
+        first_follows: false,
+        reserved: 0,
+    }
+    .into()
 }
 
 // TODO ZeroizeOnDrop. Sha256 doesn't support it yet.
@@ -912,15 +1012,15 @@ impl KexCurve25519 {
 #[cfg(feature = "mlkem")]
 pub(crate) struct KexMlkemX25519 {
     ecdh: KexCurve25519,
-    // Initialised in `new()`, cleared after deriving the secret
-    mlkem_ours: Option<<Kem<MlKem768Params> as KemCore>::DecapsulationKey>,
+    // 64-byte seed for deterministic mlkem key regeneration.
+    mlkem_seed: Option<Seed>,
 }
 
 #[cfg(feature = "mlkem")]
 impl core::fmt::Debug for KexMlkemX25519 {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         f.debug_struct("KexMlkemX25519")
-            .field("ours", &if self.mlkem_ours.is_some() { "Some" } else { "None" })
+            .field("seed", &if self.mlkem_seed.is_some() { "Some" } else { "None" })
             .field("ecdh", &self.ecdh)
             .finish()
     }
@@ -938,37 +1038,40 @@ impl KexMlkemX25519 {
         Self::MLKEM768_CIPHERTEXT_SIZE + Self::X25519_PUBKEY_SIZE;
 
     const _CHECK0: () = assert!(
-        Self::MLKEM768_PUBKEY_SIZE
-            == size_of::<ml_kem::Encoded::<EncapsulationKey::<MlKem768Params>>>()
+        Self::MLKEM768_PUBKEY_SIZE == size_of::<Key<EncapsulationKey<MlKem768>>>()
     );
-    const _CHECK1: () = assert!(
-        Self::MLKEM768_CIPHERTEXT_SIZE == size_of::<ml_kem::Ciphertext<MlKem768>>()
-    );
+    const _CHECK1: () =
+        assert!(Self::MLKEM768_CIPHERTEXT_SIZE == size_of::<Ciphertext<MlKem768>>());
 
     fn new() -> Result<Self> {
-        Ok(Self { ecdh: KexCurve25519::new()?, mlkem_ours: None })
+        Ok(Self { ecdh: KexCurve25519::new()?, mlkem_seed: None })
     }
 
-    /// Generates the publickey for a sent kexdhinit
-    fn init_pubkey_arr_client(&mut self) -> [u8; Self::PUBLICKEY_SIZE] {
-        debug_assert!(self.mlkem_ours.is_none());
-        // TODO does this construct in-place?
-        let (dk, _ek) = MlKem768::generate(&mut rand_core::OsRng);
+    /// Generates the publickey for a sent kexdhinit.The key is re-derived from the seed during
+    /// decapsulation to avoid storing it in memory.
+    fn init_pubkey_arr_client(&mut self) -> Result<[u8; Self::PUBLICKEY_SIZE]> {
+        debug_assert!(self.mlkem_seed.is_none());
+
+        let mut seed = Seed::default();
+        random::fill_random(&mut seed)?;
+
+        let dk = DecapsulationKey::from_seed(seed);
         let pubkey = self.pubkey_client(dk.encapsulation_key());
-        self.mlkem_ours = Some(dk);
-        pubkey
+
+        self.mlkem_seed = Some(seed);
+        Ok(pubkey)
     }
 
     fn pubkey_client(
         &mut self,
-        ek: &EncapsulationKey<MlKem768Params>,
+        ek: &EncapsulationKey<MlKem768>,
     ) -> [u8; Self::PUBLICKEY_SIZE] {
         let mut out = [0u8; Self::PUBLICKEY_SIZE];
         // Concatenate pq and ecdh.
         // C_INIT = C_PK2 || C_PK1.  C_PK2 pq kem, C_PK1 ecdh
         let (pq, ec) = out.split_at_mut(Self::MLKEM768_PUBKEY_SIZE);
         let pq: &mut [u8; Self::MLKEM768_PUBKEY_SIZE] = pq.try_into().unwrap();
-        *pq = ek.as_bytes().into();
+        *pq = ek.to_bytes().into();
         ec.copy_from_slice(self.ecdh.pubkey());
         out
     }
@@ -988,16 +1091,17 @@ impl KexMlkemX25519 {
             .ok_or_else(|| error::BadKex.build())?;
 
         let ek = pq_in.try_into().map_err(|_| error::BadKex.build())?;
-        let ek = EncapsulationKey::<MlKem768Params>::from_bytes(ek);
+        let ek = EncapsulationKey::<MlKem768>::new(ek)
+            .map_err(|_| error::BadKex.build())?;
 
         // S_REPLY = S_CT2 || S_PK1.  S_CT2 pq kem, S_PK1 ecdh
         let (pq, ec) = ct_out.split_at_mut(Self::MLKEM768_CIPHERTEXT_SIZE);
         let pq: &mut [u8; Self::MLKEM768_CIPHERTEXT_SIZE] = pq.try_into().unwrap();
-        let enc = ek
-            .encapsulate(&mut rand_core::OsRng)
-            .map_err(|_| error::BadKex.build())?;
-        let (ct, pq_secret) = enc.into();
-        // TODO: check if this is another stack copy.
+
+        let mut m = B32::default();
+        random::fill_random(&mut m)?;
+        let (ct, pq_secret) = ek.encapsulate_deterministic(&m);
+
         *pq = ct.into();
         ec.copy_from_slice(self.ecdh.pubkey());
 
@@ -1017,8 +1121,11 @@ impl KexMlkemX25519 {
 
         let ct: &Ciphertext<MlKem768> =
             pq_in.try_into().map_err(|_| error::BadKex.build())?;
-        let dk = self.mlkem_ours.take().trap()?;
-        let pq_secret = dk.decapsulate(ct).map_err(|_| error::BadKex.build())?;
+
+        // Re-derive the DecapsulationKey from the seed
+        let seed = self.mlkem_seed.take().trap()?;
+        let dk = DecapsulationKey::from_seed(seed);
+        let pq_secret = dk.decapsulate(ct);
 
         let ek = dk.encapsulation_key();
         let c_pk = self.pubkey_client(ek);
@@ -1049,6 +1156,7 @@ impl KexMlkemX25519 {
 #[cfg(test)]
 mod tests {
     use crate::encrypt::{self, KeyState, KeysRecv, KeysSend, SSH_PAYLOAD_START};
+    use crate::event::CliEventId;
     use crate::ident::RemoteVersion;
     use crate::kex;
     use crate::kex::*;
@@ -1200,8 +1308,12 @@ mod tests {
         let mut cli = kex::Kex::new();
         let mut serv = kex::Kex::new();
 
-        serv.send_kexinit(&serv_conf, &mut ts.sender()).unwrap();
-        cli.send_kexinit(&cli_conf, &mut tc.sender()).unwrap();
+        serv.start_kexinit(&mut ts.sender());
+        serv.progress(&serv_conf, &mut ts.sender()).unwrap();
+        cli.start_kexinit(&mut tc.sender());
+        cli.progress(&cli_conf, &mut tc.sender()).unwrap();
+        assert!(matches!(serv, Kex::KexInit { .. }));
+        assert!(matches!(cli, Kex::KexInit { .. }));
 
         let cli_init = tc.next().unwrap();
         let cli_init = if let Packet::KexInit(k) = cli_init { k } else { panic!() };
@@ -1268,13 +1380,13 @@ mod tests {
         let mut skeys = crate::encrypt::KeyState::new_cleartext();
         let enc = KeysSend::new(&sout, &sess_id, &salgos);
         let dec = KeysRecv::new(&sout, &sess_id, &salgos);
-        skeys.rekey_send(enc, true);
+        skeys.rekey_send(enc);
         skeys.rekey_recv(dec);
 
         let mut ckeys = crate::encrypt::KeyState::new_cleartext();
         let enc = KeysSend::new(&cout, &sess_id, &calgos);
         let dec = KeysRecv::new(&cout, &sess_id, &calgos);
-        ckeys.rekey_send(enc, true);
+        ckeys.rekey_send(enc);
         ckeys.rekey_recv(dec);
 
         roundtrip(b"this", &mut skeys, &mut ckeys);

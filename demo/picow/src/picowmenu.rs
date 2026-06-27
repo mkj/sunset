@@ -5,7 +5,7 @@
 pub use log::{debug, error, info, log, trace, warn};
 
 use core::fmt::{Debug, Display, Write as _};
-use core::future::{poll_fn, Future};
+use core::future::{Future, poll_fn};
 use core::ops::{ControlFlow, DerefMut};
 use core::str::FromStr;
 use core::sync::atomic::Ordering::{Relaxed, SeqCst};
@@ -18,11 +18,9 @@ use embassy_time::Duration;
 
 use heapless::{String, Vec};
 
-use pretty_hex::PrettyHex;
-
+use crate::PicoDemo;
 use crate::demo_common;
 use crate::flashconfig;
-use crate::PicoDemo;
 use demo_common::{AsyncMenuBuf, SSHConfig};
 
 use demo_common::menu::*;
@@ -515,11 +513,7 @@ fn enter_auth(context: &mut MenuCtx) {
 }
 
 fn endis(v: bool) -> &'static str {
-    if v {
-        "enabled"
-    } else {
-        "disabled"
-    }
+    if v { "enabled" } else { "disabled" }
 }
 
 fn prkey(context: &mut dyn core::fmt::Write, name: &str, k: &Option<Ed25519PubKey>) {

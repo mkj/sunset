@@ -1,4 +1,5 @@
 use core::fmt;
+use core::ops::{Deref, DerefMut};
 
 #[allow(unused_imports)]
 use {
@@ -6,29 +7,70 @@ use {
     log::{debug, error, info, log, trace, warn},
 };
 
-use zeroize::Zeroize;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
-use crate::channel::{ChanData, ChanNum};
+#[cfg(feature = "alloc")]
+use alloc::boxed::Box;
+use heapless::Deque;
+
 use crate::encrypt::{KeyState, KeysRecv, KeysSend, SSH_PAYLOAD_START};
 use crate::ident::RemoteVersion;
 use crate::*;
+use crate::{
+    channel::{ChanData, ChanNum},
+    packets::Packet,
+};
+
+/// Number of `DeferredPacket`s to queue.
+///
+/// Each entry takes around 40 bytes.
+const DEFER_COUNT: usize = 10;
+
+// Either a slice or boxed array.
+// Similar to managed::ManagedSlice.
+//
+// Zeroize is slow for fuzzing, so skip it.
+// In normal operation one zeroize per connection is fine.
+#[cfg_attr(not(fuzzing), derive(ZeroizeOnDrop))]
+enum SliceOrVec<'a> {
+    Borrowed(&'a mut [u8]),
+
+    /// `'static` variant
+    #[cfg(feature = "alloc")]
+    Owned(Box<[u8; config::SSH_MAX_PACKET]>),
+}
+
+impl Deref for SliceOrVec<'_> {
+    type Target = [u8];
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Self::Borrowed(r) => r,
+            #[cfg(feature = "alloc")]
+            Self::Owned(r) => r.as_ref(),
+        }
+    }
+}
+
+impl DerefMut for SliceOrVec<'_> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        match self {
+            Self::Borrowed(r) => r,
+            #[cfg(feature = "alloc")]
+            Self::Owned(r) => r.as_mut(),
+        }
+    }
+}
+
+impl Zeroize for SliceOrVec<'_> {
+    fn zeroize(&mut self) {
+        self.deref_mut().zeroize();
+    }
+}
 
 // TODO: if smoltcp exposed both ends of a CircularBuffer to recv()
 // we could perhaps just work directly in smoltcp's provided buffer?
 // Would need changes to ciphers with block boundaries
-
-pub(crate) struct TrafOut<'a> {
-    // TODO: decompression will need another buffer
-    /// Accumulated output buffer.
-    ///
-    /// Should be sized to fit the largest
-    /// sequence of packets to be sent at once.
-    /// Contains ciphertext or cleartext, encrypted in-place.
-    /// Writing may contain multiple SSH packets to write out, encrypted
-    /// in-place as they are written to `buf`.
-    buf: &'a mut [u8],
-    state: TxState,
-}
 
 // TODO only pub for testing
 // pub(crate) struct TrafIn<'a> {
@@ -39,28 +81,8 @@ pub struct TrafIn<'a> {
     /// Should be sized to fit the largest packet allowed for input.
     /// Contains ciphertext or cleartext, decrypted in-place.
     /// Only contains a single SSH packet at a time.
-    buf: &'a mut [u8],
+    buf: SliceOrVec<'a>,
     state: RxState,
-}
-
-/// State machine for writes
-#[derive(Debug)]
-enum TxState {
-    /// Awaiting write, buffer is unused
-    Idle,
-
-    /// Writing to the socket. Buffer is encrypted in-place.
-    /// Should never be left in `idx==len` state,
-    /// instead should transition to Idle
-    Write {
-        /// Cursor position in the buffer
-        idx: usize,
-        /// Buffer available to write
-        len: usize,
-    },
-
-    /// No more output will be produced
-    Closed,
 }
 
 #[derive(Debug)]
@@ -94,15 +116,9 @@ impl core::fmt::Debug for TrafIn<'_> {
     }
 }
 
-impl core::fmt::Debug for TrafOut<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("TrafOut").field("state", &self.state).finish_non_exhaustive()
-    }
-}
-
 impl<'a> TrafIn<'a> {
     pub fn new(buf: &'a mut [u8]) -> Self {
-        Self { buf, state: RxState::Idle }
+        Self { buf: SliceOrVec::Borrowed(buf), state: RxState::Idle }
     }
 
     pub fn is_input_ready(&self) -> bool {
@@ -338,26 +354,177 @@ impl<'a> TrafIn<'a> {
     }
 }
 
+pub(crate) struct TrafOut<'a> {
+    // TODO: decompression will need another buffer
+    /// Accumulated output buffer.
+    ///
+    /// Should be sized to fit the largest
+    /// sequence of packets to be sent at once.
+    /// Contains ciphertext or cleartext, encrypted in-place.
+    /// Writing may contain multiple SSH packets to write out, encrypted
+    /// in-place as they are written to `buf`.
+    buf: SliceOrVec<'a>,
+    state: TxState,
+
+    drain: bool,
+
+    // Set between sending KexInit and sending NewKeys.
+    sending_kex: bool,
+
+    deferred_packets: Deque<DeferredPacket, DEFER_COUNT>,
+}
+
+/// State machine for writes
+#[derive(Debug)]
+enum TxState {
+    /// Awaiting write, buffer is unused
+    Idle,
+
+    /// Writing to the socket. Buffer is encrypted in-place.
+    /// Should never be left in `idx==len` state,
+    /// instead should transition to Idle
+    Write {
+        /// Cursor position in the buffer
+        idx: usize,
+        /// Buffer available to write
+        len: usize,
+    },
+
+    /// No more output will be produced
+    Closed,
+}
+
+impl core::fmt::Debug for TrafOut<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TrafOut").field("state", &self.state).finish_non_exhaustive()
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl TrafIn<'static> {
+    pub fn new_owned() -> Self {
+        let mut s = Self::new(&mut []);
+        s.buf = SliceOrVec::Owned(Box::new([0; _]));
+        s
+    }
+}
+
 impl<'a> TrafOut<'a> {
     pub fn new(buf: &'a mut [u8]) -> Self {
-        Self { buf, state: TxState::Idle }
+        Self {
+            buf: SliceOrVec::Borrowed(buf),
+            state: TxState::Idle,
+            drain: false,
+            sending_kex: false,
+            deferred_packets: Deque::new(),
+        }
     }
 
     /// Serializes and and encrypts a packet to send
+    ///
+    /// If the output buffer is full or a rekey is in progress, the
+    /// packet will be enqueued to be sent later. If the deferred packet queue
+    /// is full, `NoRoom` will be returned.
+    ///
+    /// `BusySend` error is recoverable, others should be treated as fatal.
     pub(crate) fn send_packet(
         &mut self,
         p: packets::Packet,
         keys: &mut KeyState,
     ) -> Result<()> {
-        // Sanity check
+        let is_kex = matches!(p.category(), packets::Category::Kex);
+
+        if is_kex || (self.deferred_packets.is_empty() && !self.sending_kex) {
+            // Send the packet normally if it fits.
+            // KEX packets can be sent even if other packets are deferred
+            // (KEX packets don't get deferred themselves).
+            // A KexInit is only sent when there are no deferred packets,
+            // so we don't need to worry about incorrect reordering.
+            match self.send_packet_inner(&p, keys) {
+                Err(Error::NoRoom { .. }) => {
+                    debug_assert!(!is_kex, "KEX packets should have room");
+                    // non-kex packets get deferred
+                }
+                res => return res,
+            }
+        }
+
+        // Either it didn't fit (NoRoom), or the deferred queue
+        // is already in use so we need to enqueue after that.
+        // Attempt to defer the packet.
+
+        let pnum = p.message_num();
+        trace!("Delay packet type {pnum:?}");
+
+        // Convert to a DeferredPacket if possible
+        let Ok(dp) = DeferredPacket::try_from(p) else {
+            // Packet type isn't expected to be deferred.
+            trace!("NoRoom packet type {pnum:?}");
+            return error::BusySend { packet: pnum, unsupported: true }.fail();
+        };
+
+        self.deferred_packets.push_front(dp).map_err(|_| {
+            error!("No space to queue packet");
+            trace!("NoRoom packet type {pnum:?}");
+            error::BusySend { packet: pnum, unsupported: false }.build()
+        })
+    }
+
+    // Check some invariants, and track whether we're sending KEX.
+    fn track_send_packet(
+        &mut self,
+        p: &packets::Packet,
+        keys: &mut KeyState,
+    ) -> Result<()> {
+        // Check that packets are being encrypted
+        // This is checked in release and debug.
         match p.category() {
-            packets::Category::All | packets::Category::Kex => (), // OK cleartext
+            packets::Category::All | packets::Category::Kex => (),
             _ => {
                 if keys.is_send_cleartext() {
                     return Error::bug_msg("send cleartext");
                 }
             }
         }
+
+        // KEX send packet catetory checked in debug builds for fuzzing.
+        if self.sending_kex {
+            // strict kex is ignored since we don't have access to
+            // conn.kex.
+            debug_assert!(matches!(
+                p.category(),
+                packets::Category::All | packets::Category::Kex
+            ));
+        }
+
+        // Track KEX sending state
+        match p {
+            Packet::KexInit(_) => {
+                debug_assert!(!self.sending_kex);
+                self.sending_kex = true;
+            }
+            Packet::NewKeys(_) => {
+                debug_assert!(self.sending_kex);
+                self.sending_kex = false;
+            }
+            _ => (),
+        }
+
+        Ok(())
+    }
+
+    /// Serializes and and encrypts a packet to send
+    ///
+    /// The packet will not be enqueued to the deferred queue.
+    /// This function should not usually be called directly.
+    ///
+    /// `NoRoom` error is recoverable, others should be treated as fatal.
+    pub fn send_packet_inner(
+        &mut self,
+        p: &packets::Packet,
+        keys: &mut KeyState,
+    ) -> Result<()> {
+        self.track_send_packet(p, keys)?;
 
         // Either a fresh buffer or appending to write
         let (idx, len) = match self.state {
@@ -384,20 +551,41 @@ impl<'a> TrafOut<'a> {
         Ok(())
     }
 
+    pub fn send_deferred_packets(&mut self, keys: &mut KeyState) -> Result<()> {
+        while let Some(d) = self.deferred_packets.back() {
+            let p = Packet::from(d);
+            match self.send_packet_inner(&p, keys) {
+                Ok(()) => {
+                    self.deferred_packets.pop_back();
+                }
+                Err(Error::NoRoom { .. }) => {
+                    // Can't progress, let the caller retry later
+                    break;
+                }
+                Err(e) => return Err(e),
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn have_deferred_packets(&self) -> bool {
+        !self.deferred_packets.is_empty()
+    }
+
     pub fn is_output_pending(&self) -> bool {
         trace!("is_output_pending st {:?}", self.state);
         matches!(self.state, TxState::Write { .. })
     }
 
-    /// A simple test if a packet can be sent. `send_allowed` should be used
-    /// for more general situations
-    pub fn can_output(&self) -> bool {
-        // TODO don't use this
-        true
-    }
-
     /// Returns payload space available to send a packet. Returns 0 if not ready or full
     pub fn send_allowed(&self, keys: &KeyState) -> usize {
+        if !self.deferred_packets.is_empty() {
+            // Don't allow sending packets when deferred ones are waiting.
+            // Otherwise the deferred queue will run out of room.
+            return 0;
+        }
+
         // TODO: test for full output buffer
         match self.state {
             TxState::Write { len, .. } => keys.max_enc_payload(self.buf.len() - len),
@@ -423,7 +611,7 @@ impl<'a> TrafOut<'a> {
             return Err(Error::bug());
         }
 
-        let len = ident::write_version(self.buf)?;
+        let len = ident::write_version(&mut self.buf)?;
         self.state = TxState::Write { idx: 0, len };
         Ok(())
     }
@@ -453,6 +641,25 @@ impl<'a> TrafOut<'a> {
     pub fn sender<'s>(&'s mut self, keys: &'s mut KeyState) -> TrafSend<'s, 'a> {
         TrafSend::new(self, keys)
     }
+
+    /// Return whether output is draining.
+    ///
+    /// Used to determine whether to initiate outbound traffic, such as channel writes.
+    /// Generally immediate responses to incoming messages should still be sent
+    /// even when draining. Otherwise they would need to be put in deferred_packets
+    /// which may run out.
+    pub fn is_draining(&self) -> bool {
+        self.drain
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl TrafOut<'static> {
+    pub fn new_owned() -> Self {
+        let mut s = Self::new(&mut []);
+        s.buf = SliceOrVec::Owned(Box::new([0; _]));
+        s
+    }
 }
 
 /// Convenience to pass TrafOut with keys
@@ -470,8 +677,8 @@ impl<'s, 'a> TrafSend<'s, 'a> {
         self.out.send_packet(p.into(), self.keys)
     }
 
-    pub fn rekey_send(&mut self, keys: KeysSend, strict_kex: bool) {
-        self.keys.rekey_send(keys, strict_kex)
+    pub fn rekey_send(&mut self, keys: KeysSend) {
+        self.keys.rekey_send(keys);
     }
 
     pub fn rekey_recv(&mut self, keys: KeysRecv) {
@@ -482,12 +689,116 @@ impl<'s, 'a> TrafSend<'s, 'a> {
         self.out.send_version()
     }
 
-    pub fn can_output(&self) -> bool {
-        self.out.can_output()
-    }
-
     /// Returns the current receive sequence number
     pub fn recv_seq(&self) -> u32 {
         self.keys.seq_decrypt.0
+    }
+
+    pub fn enable_strict_kex(&mut self) {
+        self.keys.enable_strict_kex();
+    }
+
+    pub fn is_rekey_needed(&self) -> bool {
+        self.keys.is_rekey_needed()
+    }
+
+    /// Set TrafOut to start draining output.
+    ///
+    /// Only one caller/area should be using set_drain_output() at a time.
+    /// For `TrafOut` itself there isn't a problem with multiple
+    /// callers enabling/disabling drain, but it could result in races
+    /// between callers. Only kex should be using it currently, so
+    /// there is a debug_assert! to that effect.
+    pub fn set_drain_output(&mut self, drain: bool) {
+        debug_assert!(drain != self.out.drain, "set_drain_output() dupe");
+        self.out.drain = drain;
+    }
+
+    /// Test if output buffer is empty.
+    ///
+    /// Fails if `set_drain_output(true)` wasn't set (debug panic)
+    /// This isn't inherent, but helps catch misuse (see comment
+    /// for set_drain_output()).
+    pub fn is_drained(&self) -> bool {
+        debug_assert!(self.out.drain);
+        matches!(self.out.state, TxState::Idle)
+            && self.out.deferred_packets.is_empty()
+    }
+}
+
+/// Packet types that may be sent once a currently-NoRoom TrafOut clears.
+///
+/// Rather than storing an entire `Packet<'static>`, keep a queue of smaller
+/// `DeferredPacket`s.
+///
+/// These packet types account for most packets that may be sent as responses
+/// or from other asynchronous events (rekey packet count reached, as an example).
+///
+/// These also queue packets to be sent while a KEX is in progress
+/// (other packet types aren't allowed)
+///
+/// Some packet types aren't included here since they're deferred via other
+/// mechanisms:
+///
+/// - ChannelWindowAdjust. Can be retried later.
+/// - KEX packets. The output buffer is drained at the start of a KEX.
+/// - Userauth - we hope it only occurs early when traffic is
+///   well defined (no channels) and no KEXes are happening.
+#[derive(Debug)]
+pub enum DeferredPacket {
+    ChannelSuccess(packets::ChannelSuccess),
+    ChannelFailure(packets::ChannelFailure),
+    ChannelOpenFailure(packets::ChannelOpenFailure<'static>),
+    ChannelOpenConfirmation(packets::ChannelOpenConfirmation),
+    ChannelEof(packets::ChannelEof),
+    ChannelClose(packets::ChannelClose),
+    Unimplemented(packets::Unimplemented),
+    RequestFailure(packets::RequestFailure),
+    RequestSuccess(packets::RequestSuccess),
+}
+
+impl DeferredPacket {}
+
+impl From<&DeferredPacket> for Packet<'static> {
+    fn from(d: &DeferredPacket) -> Self {
+        match d {
+            DeferredPacket::ChannelSuccess(p) => (p.clone()).into(),
+            DeferredPacket::ChannelFailure(p) => (p.clone()).into(),
+            DeferredPacket::ChannelOpenFailure(p) => (p.clone()).into(),
+            DeferredPacket::ChannelOpenConfirmation(p) => (p.clone()).into(),
+            DeferredPacket::ChannelEof(p) => (p.clone()).into(),
+            DeferredPacket::ChannelClose(p) => (p.clone()).into(),
+            DeferredPacket::Unimplemented(p) => (p.clone()).into(),
+            DeferredPacket::RequestFailure(p) => (p.clone()).into(),
+            DeferredPacket::RequestSuccess(p) => (p.clone()).into(),
+        }
+    }
+}
+
+impl<'a> TryFrom<Packet<'a>> for DeferredPacket {
+    type Error = Error;
+    fn try_from(packet: Packet<'a>) -> Result<Self> {
+        Ok(match packet {
+            Packet::ChannelSuccess(p) => Self::ChannelSuccess(p),
+            Packet::ChannelFailure(p) => Self::ChannelFailure(p),
+            Packet::ChannelOpenConfirmation(p) => Self::ChannelOpenConfirmation(p),
+            Packet::ChannelEof(p) => Self::ChannelEof(p),
+            Packet::ChannelClose(p) => Self::ChannelClose(p),
+            Packet::Unimplemented(p) => Self::Unimplemented(p),
+            Packet::RequestFailure(p) => Self::RequestFailure(p),
+            Packet::RequestSuccess(p) => Self::RequestSuccess(p),
+
+            Packet::ChannelOpenFailure(p) => {
+                Self::ChannelOpenFailure(packets::ChannelOpenFailure {
+                    // empty desc for 'static
+                    desc: TextString::new(),
+                    lang: "",
+                    ..p
+                })
+            }
+
+            // Unhandled types
+            _ => return error::SSHProtoUnsupported.fail(),
+        })
     }
 }

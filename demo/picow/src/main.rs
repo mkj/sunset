@@ -7,9 +7,12 @@ pub use log::{debug, error, info, log, trace, warn};
 use core::ops::ControlFlow;
 
 use embassy_executor::Spawner;
-use embassy_futures::select::{select, Either};
+use embassy_futures::select::{Either, select};
 use embassy_net::{EthernetAddress, HardwareAddress, Stack};
+use embassy_rp::bind_interrupts;
+use embassy_rp::dma;
 use embassy_rp::flash::Flash;
+use embassy_rp::peripherals::*;
 use embedded_io_async::{Read, Write};
 
 use heapless::{String, Vec};
@@ -21,7 +24,7 @@ use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_sync::mutex::Mutex;
 
-use demo_common::{takepipe, DemoCommon, DemoServer, SSHConfig};
+use demo_common::{DemoCommon, DemoServer, SSHConfig, takepipe};
 use sunset::*;
 use sunset_async::{ProgressHolder, SSHServer, SunsetMutex};
 use sunset_demo_common as demo_common;
@@ -47,6 +50,13 @@ const NUM_LISTENERS: usize = 4;
 // +1 for dhcp. referenced directly by wifi_stack() function
 pub(crate) const NUM_SOCKETS: usize = NUM_LISTENERS + 1;
 
+bind_interrupts!(struct DmaIrqs {
+    DMA_IRQ_0 =>
+    dma::InterruptHandler<DMA_CH0>,
+    dma::InterruptHandler<DMA_CH1>,
+    dma::InterruptHandler<DMA_CH2>;
+});
+
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     // Some logs are better than fully dropped. Use a larger buffer.
@@ -63,14 +73,14 @@ async fn main(spawner: Spawner) {
     debug!("Debug");
     trace!("Trace");
 
-    let mut p = embassy_rp::init(Default::default());
+    let p = embassy_rp::init(Default::default());
 
     // RNG initialised early, all crypto relies on it
-    caprand::setup(&mut p.PIN_10).unwrap();
-    getrandom::register_custom_getrandom!(caprand::getrandom);
+    caprand::setup(p.PIN_10).unwrap();
+    getrandom::register_custom_getrandom!(demo_getrandom_v02);
 
     // Configuration loaded from flash
-    let mut flash = flashconfig::Fl::new(Flash::new(p.FLASH, p.DMA_CH2));
+    let mut flash = flashconfig::Fl::new(Flash::new(p.FLASH, p.DMA_CH2, DmaIrqs));
 
     let config = if option_env!("RESET_CONFIG").is_some() {
         flashconfig::create(&mut flash).await.unwrap()
@@ -136,21 +146,15 @@ async fn main(spawner: Spawner) {
     // Spawn network tasks to handle incoming connections with demo_common::session()
     for _ in 0..NUM_LISTENERS {
         debug!("spawn listen");
-        spawner.spawn(net_listener(stack, config, state)).unwrap();
+        spawner.spawn(net_listener(stack, config, state).unwrap());
     }
 
-    spawner
-        .spawn(serial::task(
-            p.UART0,
-            p.PIN_0,
-            p.PIN_1,
-            p.PIN_2,
-            p.PIN_3,
-            serial1_pipe,
-        ))
-        .unwrap();
+    spawner.spawn(
+        serial::task(p.UART0, p.PIN_0, p.PIN_1, p.PIN_2, p.PIN_3, serial1_pipe)
+            .unwrap(),
+    );
 
-    spawner.spawn(usb::task(p.USB, state)).unwrap();
+    spawner.spawn(usb::task(p.USB, state).unwrap());
 }
 
 #[embassy_executor::task(pool_size = NUM_LISTENERS)]
@@ -352,6 +356,10 @@ impl DemoServer for &'static PicoDemo {
             Either::Second(r) => r,
         }
     }
+}
+
+fn demo_getrandom_v02(dest: &mut [u8]) -> Result<(), getrandom::Error> {
+    caprand::getrandom(dest).map_err(|_| getrandom::Error::UNEXPECTED)
 }
 
 #[panic_handler]

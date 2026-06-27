@@ -11,7 +11,7 @@ use {
 
 use core::fmt;
 use core::fmt::Debug;
-use core::num::Wrapping;
+use core::num::{Saturating, Wrapping};
 
 use aes::cipher::{BlockSizeUser, KeyIvInit, KeySizeUser, StreamCipher};
 use hmac::Mac;
@@ -38,6 +38,15 @@ const MAX_IV_LEN: usize = 32;
 /// Largest is chacha. Also applies to MAC keys
 const MAX_KEY_LEN: usize = 64;
 
+// RFC4344. Ensure that rekey occurs at least every 2**31 blocks encrypted,
+// and to avoid the 32-bit sequence counter wrapping.
+// This is every 32GB transferred (at a 16 byte block size for AES). .
+const REKEY_BLOCKS_OUT_LIMIT: u32 = 0x8000_0000;
+// Receive limit is slightly higher, to avoid chance of both peers hitting the limit
+// simultaneously, resulting in a needless (but harmless) second rekey.
+const REKEY_BLOCKS_IN_LIMIT: u32 = 0x8100_0000;
+const REKEY_BLOCK_SIZE: usize = 16;
+
 /// Stateful [`Keys`], stores a sequence number as well, a single instance
 /// is kept for the entire session.
 #[derive(Debug)]
@@ -49,7 +58,10 @@ pub(crate) struct KeyState {
     pub seq_encrypt: Wrapping<u32>,
     pub seq_decrypt: Wrapping<u32>,
     strict_kex: bool,
-    done_first_kex: bool,
+
+    // Count of 16-byte blocks, for rekeying.
+    rekey_blocks_out: Saturating<u32>,
+    rekey_blocks_in: Saturating<u32>,
 }
 
 impl KeyState {
@@ -61,7 +73,8 @@ impl KeyState {
             seq_encrypt: Wrapping(0),
             seq_decrypt: Wrapping(0),
             strict_kex: false,
-            done_first_kex: false,
+            rekey_blocks_out: Saturating(0),
+            rekey_blocks_in: Saturating(0),
         }
     }
 
@@ -69,16 +82,22 @@ impl KeyState {
         matches!(self.enc.cipher, EncKey::NoCipher)
     }
 
+    pub fn is_rekey_needed(&self) -> bool {
+        self.rekey_blocks_in.0 > REKEY_BLOCKS_IN_LIMIT
+            || self.rekey_blocks_out.0 > REKEY_BLOCKS_OUT_LIMIT
+    }
+
+    pub fn enable_strict_kex(&mut self) {
+        self.strict_kex = true;
+    }
+
     /// Updates with keys for sending.
-    pub fn rekey_send(&mut self, keys: KeysSend, enable_strict: bool) {
+    pub fn rekey_send(&mut self, keys: KeysSend) {
         self.enc = keys;
-        if enable_strict && !self.done_first_kex {
-            self.strict_kex = true;
-        }
-        self.done_first_kex = true;
         if self.strict_kex {
             self.seq_encrypt = Wrapping(0);
         }
+        self.rekey_blocks_out = Saturating(0);
     }
 
     /// Updates with keys for receiving.
@@ -92,10 +111,10 @@ impl KeyState {
         );
 
         self.dec = keys;
-        self.done_first_kex = true;
         if self.strict_kex {
             self.seq_decrypt = Wrapping(0);
         }
+        self.rekey_blocks_in = Saturating(0);
     }
 
     pub fn recv_seq(&self) -> u32 {
@@ -116,6 +135,9 @@ impl KeyState {
     pub fn decrypt(&mut self, buf: &mut [u8]) -> Result<usize, Error> {
         let e = self.dec.decrypt(buf, self.seq_decrypt.0);
         self.seq_decrypt += 1;
+        if let Ok(payload_len) = e {
+            self.rekey_blocks_in += payload_len.div_ceil(REKEY_BLOCK_SIZE) as u32;
+        }
         e
     }
 
@@ -123,14 +145,21 @@ impl KeyState {
     ///
     /// [`buf`] is the entire output buffer to encrypt in place.
     /// payload_len is the length of the payload portion
-    /// This is stateful, updating the sequence number.
+    ///
+    /// This is stateful, updating the sequence numbers.
+    /// If `NoRoom` is returned buf and state will be left unmodified to allow a retry.
     pub fn encrypt(
         &mut self,
         payload_len: usize,
         buf: &mut [u8],
     ) -> Result<usize, Error> {
         let e = self.enc.encrypt(payload_len, buf, self.seq_encrypt.0);
-        self.seq_encrypt += 1;
+
+        // NoRoom failure allows retries.
+        if !matches!(e, Err(Error::NoRoom { .. })) {
+            self.seq_encrypt += 1;
+            self.rekey_blocks_out += buf.len().div_ceil(REKEY_BLOCK_SIZE) as u32;
+        }
         e
     }
 
@@ -245,6 +274,10 @@ impl KeysSend {
     /// Encrypt a buffer in-place, adding packet size, padding, MAC etc.
     /// Returns the total length.
     /// Ensures that the packet meets minimum and other length requirements.
+    ///
+    /// `buf` and internal state will be left unmodified if
+    // `Err(Error::NoRoom)` is returned, allowing a subsequent retry.
+    /// All other returned errors must be treated as fatal to the session.
     fn encrypt(
         &mut self,
         payload_len: usize,
@@ -263,8 +296,9 @@ impl KeysSend {
             debug_assert_eq!(len % size_block, 0);
         };
 
+        // buf and internal state must not be modified prior to returning NoRoom
         if len + size_integ > buf.len() {
-            error!("Output buffer {} is too small for packet", buf.len());
+            trace!("Output buffer {} is too small for packet", buf.len());
             return error::NoRoom.fail();
         }
 
@@ -710,7 +744,6 @@ mod tests {
     use crate::sshnames::SSH_NAME_CURVE25519;
     use crate::sunsetlog::*;
     #[allow(unused_imports)]
-    use pretty_hex::PrettyHex;
     use sha2::Sha256;
 
     // setting `corrupt` tests that incorrect mac is detected
@@ -823,7 +856,7 @@ mod tests {
 
                 trace!("algos enc {algos:?}");
                 let enc = KeysSend::new(&ko, &sess_id, &algos);
-                keys_enc.rekey_send(enc, algos.strict_kex);
+                keys_enc.rekey_send(enc);
 
                 // client and server enc/dec keys are derived differently, we need them
                 // to match for this test
@@ -832,7 +865,7 @@ mod tests {
                 // rekey_send here only because it's required
                 // before rekey_recv.
                 let e = KeysSend::new(&ko, &sess_id, &algos);
-                keys_dec.rekey_send(e, algos.strict_kex);
+                keys_dec.rekey_send(e);
                 let dec = KeysRecv::new(&ko_b, &sess_id, &algos);
                 keys_dec.rekey_recv(dec);
             } else {
@@ -863,7 +896,7 @@ mod tests {
                 let enc = KeysSend::new(&ko, &sess_id, &algos);
                 let dec = KeysRecv::new(&ko, &sess_id, &algos);
 
-                keys.rekey_send(enc, algos.strict_kex);
+                keys.rekey_send(enc);
                 keys.rekey_recv(dec);
                 trace!("algos {algos:?}");
                 trace!("integ {}", keys.enc.integ.size_out());

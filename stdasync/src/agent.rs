@@ -6,7 +6,6 @@ use {
 
 use std::path::Path;
 
-use pretty_hex::PrettyHex;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UnixStream;
 
@@ -127,7 +126,7 @@ impl AgentClient {
         let mut b = vec![];
         sshwire::ssh_push_vec(&mut b, &Blob(r))?;
 
-        trace!("agent request {:?}", b.hex_dump());
+        trace!("agent request {b:?}");
 
         self.conn.write_all(&b).await?;
         self.response().await

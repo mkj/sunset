@@ -12,11 +12,10 @@ use {
     log::{debug, error, info, log, trace, warn},
 };
 
-use pretty_hex::PrettyHex;
-
 use crate::*;
 use channel::{Channels, CliSessionExit};
 use client::Client;
+use event::{CliEventId, ServEventId};
 use kex::{AlgoConfig, Kex, SessId};
 use packets::{Packet, ParseContext};
 use server::Server;
@@ -33,6 +32,12 @@ pub(crate) struct Conn<CS: CliServ> {
 
     cliserv: CS,
 
+    /// Algorithm preferences for KEX
+    ///
+    /// This must remain unmodified during a key exchange.
+    /// The same config will be serialised both for sending
+    /// and receiving kexinit, and possibly also for DelayedPacket
+    /// sending.
     algo_conf: AlgoConfig,
 
     parse_ctx: ParseContext,
@@ -66,8 +71,8 @@ enum ConnState {
 pub(crate) enum DispatchEvent {
     /// Incoming channel data
     Data(channel::DataIn),
-    CliEvent(event::CliEventId),
-    ServEvent(event::ServEventId),
+    CliEvent(CliEventId),
+    ServEvent(ServEventId),
     /// NewKeys was received, wake any output channels in case they were waiting.
     KexDone,
     /// Connection state has changed, should poll again
@@ -117,7 +122,7 @@ pub(crate) struct Dispatched {
     pub disconnect: bool,
 }
 
-pub trait CliServ: Sized + Send + Default {
+pub trait CliServ: Sized + Send + Default + core::fmt::Debug {
     fn is_client() -> bool;
 
     #[inline]
@@ -264,18 +269,27 @@ impl<CS: CliServ> Conn<CS> {
     }
 
     /// Updates `ConnState` and sends any packets required to progress the connection state.
-    // TODO can this just move to the bottom of handle_payload(), and make module-private?
     pub(crate) fn progress(
         &mut self,
         s: &mut TrafSend,
     ) -> Result<Dispatched, Error> {
+        self.kex.progress(&self.algo_conf, s)?;
+
+        if !self.is_kex_sending() {
+            let event = self.channels.progress(s);
+            if !event.is_none() {
+                // TODO better Dispatched constructor
+                return Ok(Dispatched { event, disconnect: false });
+            }
+        }
+
         let mut disp = Dispatched::default();
         match self.state {
             ConnState::SendIdent => {
                 s.send_version()?;
                 // send early to avoid round trip latency
                 // TODO: first_follows would have a second packet here
-                self.kex.send_kexinit(&self.algo_conf, s)?;
+                self.kex.start_kexinit(s);
                 disp.event = DispatchEvent::Progressed;
                 self.state = ConnState::ReceiveIdent
             }
@@ -293,12 +307,8 @@ impl<CS: CliServ> Conn<CS> {
                 }
             }
             ConnState::PreAuth => {
-                // TODO. need to figure how we'll do "unbounded" responses
-                // and backpressure. can_output() should have a size check?
-                if s.can_output() {
-                    if let Some(cli) = self.try_mut_client() {
-                        disp.event = cli.auth.progress();
-                    }
+                if let Some(cli) = self.try_mut_client() {
+                    disp.event = cli.auth.progress();
                 }
                 // send userauth request
             }
@@ -307,8 +317,6 @@ impl<CS: CliServ> Conn<CS> {
             }
         }
         trace!("-> {:?}, {disp:?}", self.state);
-
-        // TODO: if keys.seq > MAX_REKEY then we must rekey for security.
 
         Ok(disp)
     }
@@ -350,7 +358,7 @@ impl<CS: CliServ> Conn<CS> {
             }
             Err(e) => {
                 debug!("Error decoding packet: {e}");
-                trace!("Input:\n{:#?}", payload.hex_dump());
+                trace!("Input:\n{:02x?}", payload);
                 Err(e)
             }
         }
@@ -367,7 +375,7 @@ impl<CS: CliServ> Conn<CS> {
                     error::SSHProto.fail()
                 }
             }
-        } else if !matches!(self.kex, Kex::Idle | Kex::KexInit { .. }) {
+        } else if self.kex.is_receiving() {
             // Normal KEX only allows certain packets
             match p.category() {
                 packets::Category::All => Ok(()),
@@ -404,8 +412,9 @@ impl<CS: CliServ> Conn<CS> {
         self.sess_id.is_none()
     }
 
-    pub fn kex_is_idle(&self) -> bool {
-        matches!(self.kex, Kex::Idle)
+    /// True if KexInit has not been sent.
+    pub fn is_kex_sending(&self) -> bool {
+        self.kex.is_sending()
     }
 
     pub fn dispatch_packet(
@@ -591,8 +600,6 @@ impl Conn<Client> {
         &self,
         payload: &'f [u8],
     ) -> Result<PubKey<'f>> {
-        self.client()?;
-
         let packet = self.packet(payload)?;
         if let Packet::KexDHReply(p) = packet {
             Ok(p.k_s.0)
@@ -605,7 +612,6 @@ impl Conn<Client> {
         &mut self,
         payload: &'p [u8],
     ) -> Result<CliSessionExit<'p>> {
-        self.client()?;
         let packet = self.packet(payload)?;
         CliSessionExit::new(&packet)
     }
@@ -614,7 +620,6 @@ impl Conn<Client> {
         &mut self,
         payload: &'p [u8],
     ) -> Result<Banner<'p>> {
-        self.client()?;
         if let Packet::UserauthBanner(b) = self.packet(payload)? {
             Ok(Banner(b))
         } else {
@@ -630,8 +635,6 @@ impl Conn<Server> {
         s: &mut TrafSend,
         keys: &[&SignKey],
     ) -> Result<()> {
-        self.server()?;
-
         let packet = self.packet(payload)?;
         if let Packet::KexDHInit(p) = packet {
             self.kex.resume_kexdhinit(
@@ -650,8 +653,6 @@ impl Conn<Server> {
         &self,
         payload: &'f [u8],
     ) -> Result<TextString<'f>> {
-        self.server()?;
-
         let packet = self.packet(payload)?;
         if let Packet::UserauthRequest(UserauthRequest {
             method: AuthMethod::Password(m),
@@ -667,8 +668,6 @@ impl Conn<Server> {
         &self,
         payload: &'f [u8],
     ) -> Result<PubKey<'f>> {
-        self.server()?;
-
         let packet = self.packet(payload)?;
         if let Packet::UserauthRequest(UserauthRequest {
             method: AuthMethod::PubKey(m),
@@ -685,13 +684,15 @@ impl Conn<Server> {
         &mut self,
         allow: bool,
         s: &mut TrafSend,
-    ) -> Result<()> {
+    ) -> Result<DispatchEvent> {
         let auth = &mut self.mut_server()?.auth;
         auth.resume_request(allow, s)?;
-        if auth.authed && matches!(self.state, ConnState::PreAuth) {
+        if auth.is_authed() && matches!(self.state, ConnState::PreAuth) {
             self.state = ConnState::Authed;
+            Ok(DispatchEvent::ServEvent(ServEventId::Authenticated))
+        } else {
+            Ok(DispatchEvent::None)
         }
-        Ok(())
     }
 
     pub(crate) fn resume_servauth_pkok(

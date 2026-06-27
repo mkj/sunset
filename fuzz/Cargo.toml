@@ -1,10 +1,10 @@
 [package]
 name = "sunset-fuzz"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
-honggfuzz = { version = "=0.5.58", optional = true }
+honggfuzz = { version = "=0.5.60", optional = true }
 afl = { version = "*", optional = true }
 sunset = { workspace = true, features = ["arbitrary"] }
 sunset-sshwire-derive.workspace = true

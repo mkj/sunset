@@ -1,7 +1,16 @@
-//! Async for Sunset SSH
+//! Async for [Sunset SSH](sunset)
 //!
-//! This provides async for Sunset SSH.
-#![no_std]
+//! [`SSHClient`] and [`SSHServer`] provide async-executor agnostic SSH
+//! implementations. These can be used on full-sized async platforms
+//! (Tokio, smol, etc) as well as on `no_std` embedded platforms such as
+//! [`embassy-executor`](https://docs.rs/embassy-executor).
+//!
+//! On std platforms some higher level functionality is in
+//! `sunset-stdasync` crate.
+//! [`embedded-io-adapters`](https://docs.rs/embedded-io-adapters)
+//! can be used for `Read` or `Write` traits with different async runtimes.
+
+#![cfg_attr(not(any(feature = "std", test)), no_std)]
 #![forbid(unsafe_code)]
 // avoid mysterious missing awaits
 #![deny(unused_must_use)]
@@ -11,14 +20,14 @@ mod async_sunset;
 mod client;
 mod server;
 
-// TODO: if SSHServer and SSHClient don't specialise much then
-// they could share a common implementation. Wait and see
 pub use client::SSHClient;
 pub use server::SSHServer;
 
 pub use async_channel::{ChanIn, ChanInOut, ChanOut};
 
-pub use async_sunset::{
-    io_buf_copy, io_copy, ProgressHolder, SunsetMutex, SunsetRawMutex,
-};
-pub use async_sunset::{io_buf_copy_noreaderror, io_copy_nowriteerror};
+pub use async_sunset::{ProgressHolder, SunsetMutex, SunsetRawMutex};
+
+// Re-exports
+pub use sunset;
+
+pub use embedded_io_async;

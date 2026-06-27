@@ -2,6 +2,7 @@
 pub use log::{debug, error, info, log, trace, warn};
 
 use embassy_futures::join::{join, join3};
+use embassy_rp::Peri;
 use embassy_rp::bind_interrupts;
 use embassy_rp::peripherals::USB;
 use embassy_rp::usb::InterruptHandler;
@@ -13,9 +14,8 @@ use embassy_usb_driver::Driver;
 
 use embedded_io_async::{BufRead, ErrorType, Read, Write};
 
-use sunset_async::*;
-
 use crate::*;
+use demo_common::{io_buf_copy, io_copy};
 use picowmenu::request_pw;
 
 bind_interrupts!(struct Irqs {
@@ -24,7 +24,7 @@ bind_interrupts!(struct Irqs {
 
 #[embassy_executor::task]
 pub(crate) async fn task(
-    usb: embassy_rp::peripherals::USB,
+    usb: Peri<'static, embassy_rp::peripherals::USB>,
     global: &'static PicoDemo,
 ) -> ! {
     let driver = embassy_rp::usb::Driver::new(usb, Irqs);
@@ -248,6 +248,10 @@ impl<'a, D: Driver<'a>> Write for CDCWrite<'a, '_, D> {
         let b = &buf[..buf.len().min(63)];
         self.0.write_packet(b).await.map_err(|_| sunset::Error::ChannelEOF)?;
         Ok(b.len())
+    }
+
+    async fn flush(&mut self) -> sunset::Result<()> {
+        Ok(())
     }
 }
 

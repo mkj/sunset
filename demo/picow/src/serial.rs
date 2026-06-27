@@ -3,11 +3,12 @@
 #[allow(unused_imports)]
 pub use log::{debug, error, info, log, trace, warn};
 
+use embassy_rp::Peri;
 use embassy_rp::bind_interrupts;
 use embassy_rp::peripherals::*;
 use embassy_rp::uart::{self as rp_uart, BufferedInterruptHandler, BufferedUart};
 
-use sunset_async::*;
+use demo_common::{io_buf_copy_noreaderror, io_copy_nowriteerror};
 
 use crate::*;
 
@@ -17,11 +18,11 @@ bind_interrupts!(struct Irqs {
 
 #[embassy_executor::task]
 pub(crate) async fn task(
-    uart: UART0,
-    pin_tx: PIN_0,
-    pin_rx: PIN_1,
-    pin_cts: PIN_2,
-    pin_rts: PIN_3,
+    uart: Peri<'static, UART0>,
+    pin_tx: Peri<'static, PIN_0>,
+    pin_rx: Peri<'static, PIN_1>,
+    pin_cts: Peri<'static, PIN_2>,
+    pin_rts: Peri<'static, PIN_3>,
     pipe: &'static TakePipe<'static>,
 ) -> ! {
     static TX_BUF: StaticCell<[u8; 16]> = StaticCell::new();
@@ -30,11 +31,11 @@ pub(crate) async fn task(
     let rx_buf = RX_BUF.init_with(|| [0u8; 300]).as_mut_slice();
     let uart = BufferedUart::new_with_rtscts(
         uart,
-        Irqs,
         pin_tx,
         pin_rx,
         pin_rts,
         pin_cts,
+        Irqs,
         tx_buf,
         rx_buf,
         rp_uart::Config::default(),

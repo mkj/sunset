@@ -1,7 +1,7 @@
 #[allow(unused_imports)]
 pub use log::{debug, error, info, log, trace, warn};
 
-use core::future::{poll_fn, Future};
+use core::future::{Future, poll_fn};
 use core::pin::pin;
 use core::sync::atomic::AtomicBool;
 use core::sync::atomic::Ordering::{AcqRel, Acquire, Relaxed};
@@ -16,20 +16,44 @@ use embassy_futures::select::select;
 use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex};
 use embassy_sync::mutex::{Mutex, MutexGuard};
 use embassy_sync::signal::Signal;
-use embedded_io_async::{BufRead, Read, Write};
+use embedded_io_async::{Read, Write};
 
 use crate::async_channel::ChanIO;
+use sunset::ChanData::{Normal, Stderr};
 use sunset::config::MAX_CHANNELS;
 use sunset::error::TrapBug;
 use sunset::event::Event;
-use sunset::ChanData::{Normal, Stderr};
-use sunset::{error, ChanData, ChanHandle, ChanNum, CliServ, Error, Result, Runner};
+use sunset::{ChanData, ChanHandle, ChanNum, CliServ, Error, Result, Runner, error};
 
+/// A raw mutex
+///
+/// This is the [`RawMutex`](embassy_sync::blocking_mutex::raw::RawMutex)
+/// type used internally by `sunset-async`.
+/// When `multi-thread` feature for is enabled it will use
+/// `embassy-sync`'s [`CriticalSectionRawMutex`], otherwise it will
+/// use [`NoopRawMutex`] (no locking is required for single threaded).
 #[cfg(feature = "multi-thread")]
 pub type SunsetRawMutex = CriticalSectionRawMutex;
+
+/// A raw mutex
+///
+/// This is the [`RawMutex`](embassy_sync::blocking_mutex::raw::RawMutex)
+/// type used internally by `sunset-async`.
+/// When `multi-thread` feature for is enabled it will use
+/// `embassy-sync`'s [`CriticalSectionRawMutex`], otherwise it will
+/// use [`NoopRawMutex`] (no locking is required for single threaded).
+///
+/// Applications may use this for their own `embassy-sync` data structures.
 #[cfg(not(feature = "multi-thread"))]
 pub type SunsetRawMutex = NoopRawMutex;
 
+/// An async mutex
+///
+/// This is the [`Mutex`](embassy_sync::mutex::Mutex) type used internally
+/// by `sunset-async`.
+/// When `multi-thread` feature is enabled it will use
+/// `embassy-sync`'s [`CriticalSectionRawMutex`], otherwise it will
+/// use [`NoopRawMutex`] (no locking is required for single threaded).
 pub type SunsetMutex<T> = Mutex<SunsetRawMutex, T>;
 
 struct Inner<'a, CS: CliServ> {
@@ -358,7 +382,10 @@ impl<'a, CS: CliServ> AsyncSunset<'a, CS> {
                 };
 
                 let r = match res {
-                    Pending => Pending,
+                    Pending => {
+                        // wsock has set a waker
+                        Pending
+                    }
                     Ready(Ok(0)) => {
                         info!("socket EOF");
                         inner.runner.close_output();
@@ -373,6 +400,13 @@ impl<'a, CS: CliServ> AsyncSunset<'a, CS> {
                             // registers a waker.
                             continue;
                         }
+                        inner.runner.set_output_waker(cx.waker());
+                        if !inner.runner.is_output_pending() {
+                            // All output was sent. Wake progress
+                            // in case window adjustments etc need to be sent
+                            // now that there is available space.
+                            self.wake_progress();
+                        }
                         Pending
                     }
                     Ready(Err(_e)) => {
@@ -381,9 +415,6 @@ impl<'a, CS: CliServ> AsyncSunset<'a, CS> {
                         Ready(error::ChannelEOF.fail())
                     }
                 };
-                if r.is_pending() {
-                    inner.runner.set_output_waker(cx.waker());
-                }
                 return r;
             }
         })
@@ -592,6 +623,10 @@ impl<'a, CS: CliServ> ChanCore for AsyncSunset<'a, CS> {
         dt: ChanData,
         buf: &[u8],
     ) -> Poll<Result<usize>> {
+        if buf.is_empty() {
+            return Poll::Ready(Ok(0));
+        }
+
         // Attempt to lock .inner
         let i = self.inner.lock();
         let i = pin!(i);
@@ -604,8 +639,8 @@ impl<'a, CS: CliServ> ChanCore for AsyncSunset<'a, CS> {
         if let Ok(0) = l {
             // 0 bytes written, pending
             trace!("write ch {num:?} dt {dt:?} pending");
-            runner.set_channel_read_waker(h, dt, cx.waker());
-            Pending
+            runner.set_channel_write_waker(h, dt, cx.waker());
+            Poll::Pending
         } else {
             trace!("write ready ch {num:?} dt {dt:?} {l:?}");
             self.wake_progress();
@@ -641,88 +676,4 @@ impl<'a, CS: CliServ> ChanCore for AsyncSunset<'a, CS> {
         let (runner, h) = inner.fetch(num)?;
         Ready(runner.term_window_change(h, winch))
     }
-}
-
-pub async fn io_copy<const B: usize, R, W>(r: &mut R, w: &mut W) -> Result<()>
-where
-    R: Read<Error = sunset::Error>,
-    W: Write<Error = sunset::Error>,
-{
-    let mut b = [0u8; B];
-    loop {
-        let n = r.read(&mut b).await?;
-        if n == 0 {
-            return sunset::error::ChannelEOF.fail();
-        }
-        let b = &b[..n];
-        w.write_all(b).await?
-    }
-    #[allow(unreachable_code)]
-    Ok::<_, Error>(())
-}
-
-pub async fn io_copy_nowriteerror<const B: usize, R, W>(
-    r: &mut R,
-    w: &mut W,
-) -> Result<()>
-where
-    R: Read<Error = sunset::Error>,
-    W: Write,
-{
-    let mut b = [0u8; B];
-    loop {
-        let n = r.read(&mut b).await?;
-        if n == 0 {
-            return sunset::error::ChannelEOF.fail();
-        }
-        let b = &b[..n];
-        if let Err(_) = w.write_all(b).await {
-            info!("write error");
-        }
-    }
-    #[allow(unreachable_code)]
-    Ok::<_, Error>(())
-}
-
-pub async fn io_buf_copy<R, W>(r: &mut R, w: &mut W) -> Result<()>
-where
-    R: BufRead<Error = sunset::Error>,
-    W: Write<Error = sunset::Error>,
-{
-    loop {
-        let b = r.fill_buf().await?;
-        if b.is_empty() {
-            return sunset::error::ChannelEOF.fail();
-        }
-        let n = b.len();
-        w.write_all(b).await?;
-        r.consume(n)
-    }
-    #[allow(unreachable_code)]
-    Ok::<_, Error>(())
-}
-
-pub async fn io_buf_copy_noreaderror<R, W>(r: &mut R, w: &mut W) -> Result<()>
-where
-    R: BufRead,
-    W: Write<Error = sunset::Error>,
-{
-    loop {
-        let b = match r.fill_buf().await {
-            Ok(b) => b,
-            Err(_) => {
-                info!("read error");
-                embassy_futures::yield_now().await;
-                continue;
-            }
-        };
-        if b.is_empty() {
-            return sunset::error::ChannelEOF.fail();
-        }
-        let n = b.len();
-        w.write_all(b).await?;
-        r.consume(n)
-    }
-    #[allow(unreachable_code)]
-    Ok::<_, Error>(())
 }

@@ -63,11 +63,6 @@ impl<CS: CliServ> core::fmt::Debug for Runner<'_, CS> {
     }
 }
 
-// #[derive(Default, Debug, Clone)]
-// pub struct Progress<'g, 'a> {
-//     pub event: Event<'g, 'a>,
-// }
-
 impl<'a> Runner<'a, client::Client> {
     /// `inbuf` and `outbuf` must be sized to fit the largest SSH packet allowed.
     pub fn new_client(
@@ -113,7 +108,6 @@ impl<'a> Runner<'a, client::Client> {
         let mut s = self.traf_out.sender(&mut self.keys);
         let (cliauth, _) = self.conn.mut_cliauth()?;
         cliauth.resume_username(&mut s, username)?;
-        self.traf_in.done_payload();
         Ok(())
     }
 
@@ -121,25 +115,22 @@ impl<'a> Runner<'a, client::Client> {
         &mut self,
         password: Option<&str>,
     ) -> Result<()> {
-        self.resume(&DispatchEvent::CliEvent(CliEventId::Password));
-        self.traf_in.done_payload();
         let mut s = self.traf_out.sender(&mut self.keys);
         let (cliauth, ctx) = self.conn.mut_cliauth()?;
         cliauth.resume_password(&mut s, password, ctx)?;
         // assert that resume_password() returns error with none password.
         // otherwise we might need to handle other events like with clipubkey
         debug_assert!(password.is_some(), "no password");
+        self.resume(&DispatchEvent::CliEvent(CliEventId::Password));
         Ok(())
     }
 
     pub(crate) fn resume_clipubkey(&mut self, key: Option<SignKey>) -> Result<()> {
-        self.resume(&DispatchEvent::CliEvent(CliEventId::Pubkey));
         let mut s = self.traf_out.sender(&mut self.keys);
         let (cliauth, ctx) = self.conn.mut_cliauth()?;
-        self.extra_resume_event = cliauth.resume_pubkey(&mut s, key, ctx)?;
-        if self.extra_resume_event.is_none() {
-            self.traf_in.done_payload();
-        }
+        let ev = cliauth.resume_pubkey(&mut s, key, ctx)?;
+        self.set_extra_resume(ev);
+        self.resume(&DispatchEvent::CliEvent(CliEventId::Pubkey));
         Ok(())
     }
 
@@ -155,24 +146,20 @@ impl<'a> Runner<'a, client::Client> {
     }
 
     pub(crate) fn resume_agentsign(&mut self, sig: Option<&OwnedSig>) -> Result<()> {
-        self.resume(&DispatchEvent::CliEvent(CliEventId::AgentSign));
         let (cliauth, ctx) = self.conn.mut_cliauth()?;
         let mut s = self.traf_out.sender(&mut self.keys);
-        self.extra_resume_event = cliauth.resume_agentsign(sig, ctx, &mut s)?;
-        if self.extra_resume_event.is_none() {
-            self.traf_in.done_payload();
-        }
+        let ev = cliauth.resume_agentsign(sig, ctx, &mut s)?;
+        self.set_extra_resume(ev);
+        self.resume(&DispatchEvent::CliEvent(CliEventId::AgentSign));
         Ok(())
     }
 
     pub(crate) fn resume_checkhostkey(&mut self, accept: bool) -> Result<()> {
-        self.resume(&DispatchEvent::CliEvent(CliEventId::Hostkey));
-
         let (payload, _seq) = self.traf_in.payload().trap()?;
         let mut s = self.traf_out.sender(&mut self.keys);
 
         self.conn.resume_checkhostkey(payload, &mut s, accept)?;
-        self.traf_in.done_payload();
+        self.resume(&DispatchEvent::CliEvent(CliEventId::Hostkey));
         Ok(())
     }
 
@@ -182,6 +169,16 @@ impl<'a> Runner<'a, client::Client> {
         let (payload, _seq) = self.traf_in.payload().trap()?;
 
         self.conn.fetch_checkhostkey(payload)
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl Runner<'static, client::Client> {
+    /// Create a client Runner with owned packet buffers.
+    ///
+    /// Only available running with `alloc` or `std` feature.
+    pub fn new_client_owned() -> Self {
+        Self::new_owned()
     }
 }
 
@@ -195,11 +192,10 @@ impl<'a> Runner<'a, server::Server> {
     }
 
     pub(crate) fn resume_servhostkeys(&mut self, keys: &[&SignKey]) -> Result<()> {
-        self.resume(&DispatchEvent::ServEvent(ServEventId::Hostkeys));
         let (payload, _seq) = self.traf_in.payload().trap()?;
         let mut s = self.traf_out.sender(&mut self.keys);
         self.conn.resume_servhostkeys(payload, &mut s, keys)?;
-        self.traf_in.done_payload();
+        self.resume(&DispatchEvent::ServEvent(ServEventId::Hostkeys));
         Ok(())
     }
 
@@ -223,35 +219,38 @@ impl<'a> Runner<'a, server::Server> {
     }
 
     pub(crate) fn resume_servauth(&mut self, allow: bool) -> Result<()> {
-        let prev_event = self.resume_event.take();
-        // auth packets have passwords
-        self.traf_in.zeroize_payload();
-        debug_assert!(
-            matches!(
-                prev_event,
-                DispatchEvent::ServEvent(ServEventId::PasswordAuth)
-            ) || matches!(
-                prev_event,
-                DispatchEvent::ServEvent(ServEventId::PubkeyAuth { .. })
-            ) || matches!(
-                prev_event,
-                DispatchEvent::ServEvent(ServEventId::FirstAuth)
+        debug_assert!(matches!(
+            self.resume_event,
+            DispatchEvent::ServEvent(
+                ServEventId::PasswordAuth
+                    | ServEventId::PubkeyAuth { .. }
+                    | ServEventId::FirstAuth
             )
-        );
+        ));
 
         let mut s = self.traf_out.sender(&mut self.keys);
-        self.conn.resume_servauth(allow, &mut s)
+        let ev = self.conn.resume_servauth(allow, &mut s);
+        let r = match ev {
+            Ok(ev) => {
+                self.set_extra_resume(ev);
+                Ok(())
+            }
+            Err(e) => Err(e),
+        };
+
+        // auth packets have passwords
+        self.traf_in.zeroize_payload();
+        self.resume_nocheck();
+        r
     }
 
     pub(crate) fn resume_servauth_pkok(&mut self) -> Result<()> {
-        self.resume(&DispatchEvent::ServEvent(ServEventId::PubkeyAuth {
-            real_sig: false,
-        }));
-
         let (payload, _seq) = self.traf_in.payload().trap()?;
         let mut s = self.traf_out.sender(&mut self.keys);
         let r = self.conn.resume_servauth_pkok(payload, &mut s);
-        self.traf_in.done_payload();
+        self.resume(&DispatchEvent::ServEvent(ServEventId::PubkeyAuth {
+            real_sig: false,
+        }));
         r
     }
 
@@ -263,18 +262,32 @@ impl<'a> Runner<'a, server::Server> {
         self.conn.set_auth_methods(password, pubkey)
     }
 
-    pub(crate) fn get_auth_methods(&self) -> Result<(bool, bool)> {
+    pub(crate) fn auth_methods(&self) -> Result<(bool, bool)> {
         let auth = &self.conn.server()?.auth;
         Ok((auth.method_password, auth.method_pubkey))
     }
 }
 
+#[cfg(feature = "alloc")]
+impl Runner<'static, server::Server> {
+    /// Create a server Runner with owned packet buffers.
+    ///
+    /// Only available running with `alloc` or `std` feature.
+    pub fn new_server_owned() -> Self {
+        Self::new_owned()
+    }
+}
+
 impl<'a, CS: CliServ> Runner<'a, CS> {
     pub fn new(inbuf: &'a mut [u8], outbuf: &'a mut [u8]) -> Runner<'a, CS> {
+        Self::new_traf(TrafIn::new(inbuf), TrafOut::new(outbuf))
+    }
+
+    fn new_traf(traf_in: TrafIn<'a>, traf_out: TrafOut<'a>) -> Runner<'a, CS> {
         Runner {
             conn: Conn::new(),
-            traf_in: TrafIn::new(inbuf),
-            traf_out: TrafOut::new(outbuf),
+            traf_in,
+            traf_out,
             keys: KeyState::new_cleartext(),
             output_waker: None,
             input_waker: None,
@@ -308,6 +321,21 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
         // Previous event payload is complete
         if prev.is_event() {
             self.traf_in.done_payload();
+        }
+
+        // Try moving packets from the deferred queue to the
+        // normal output. Can't happen during kex since non-kex
+        // packets are disallowed.
+        // KEX packets aren't included in the deferred list.
+        if !self.conn.is_kex_sending() {
+            match self.traf_out.send_deferred_packets(&mut self.keys) {
+                Ok(()) => (),
+                Err(Error::NoRoom { .. }) => {
+                    // try again once there's space
+                    return Ok(Event::None);
+                }
+                Err(e) => return Err(e),
+            }
         }
 
         let mut disp = Dispatched::default();
@@ -362,7 +390,7 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
                 | DispatchEvent::Progressed => (),
                 // Don't expect data from conn.progress()
                 DispatchEvent::Data(_) | DispatchEvent::KexDone => {
-                    return Err(Error::bug())
+                    return Err(Error::bug());
                 }
             }
         }
@@ -370,6 +398,7 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
         self.wake();
 
         // Record the event for later checks
+        debug_assert!(self.resume_event.is_none());
         self.resume_event = disp.event.clone();
 
         // Create an Event that borrows from Runner
@@ -397,8 +426,20 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
 
     // Whether [`input()`](input) is ready
     pub fn is_input_ready(&self) -> bool {
-        (self.conn.initial_sent() && self.traf_in.is_input_ready())
-            || self.closed_input
+        if self.closed_input {
+            return true;
+        }
+
+        // During KEX, let the output queue drain before accepting packets,
+        // so we can be sure not to hit NoRoom.
+        // kexdhinit/kexdhreply packets can be large.
+        // The deferred queue may still have packets since they
+        // can't be send during a KEX.
+        if self.conn.is_kex_sending() && self.traf_out.is_output_pending() {
+            return false;
+        }
+
+        self.conn.initial_sent() && self.traf_in.is_input_ready()
     }
 
     /// Set a waker to be notified when [`input()`](Self::input) is ready to be called.
@@ -460,17 +501,6 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
         trace!("close_input");
         self.traf_out.close();
         self.wake();
-    }
-
-    // TODO: move somewhere client specific?
-    pub fn open_client_session(&mut self) -> Result<ChanHandle> {
-        trace!("open_client_session");
-
-        let (chan, p) =
-            self.conn.channels.open(packets::ChannelOpenType::Session)?;
-        self.traf_out.send_packet(p, &mut self.keys)?;
-        self.wake();
-        Ok(ChanHandle(chan))
     }
 
     /// Send data from this application out the wire.
@@ -602,14 +632,31 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
         if self.traf_out.closed() {
             return Ok(None);
         }
-        // TODO: return 0 if InKex means we can't transmit packets.
-
         // Avoid apps polling forever on a packet type that won't come
         dt.validate_send(CS::is_client())?;
 
-        if !self.conn.kex_is_idle() {
+        // When write_channel_ready() returns Some(0), a subsequent
+        // channel_wake_write() needs to occur.
+
+        // channel_wake_write() after KexDone.
+        if self.conn.is_kex_sending() {
             // Only KEX messages are allowed during key exchange,
             // not data.
+            return Ok(Some(0));
+        }
+
+        // Drain only happens prior to KEX, so can be woken after KexDone.
+        if self.traf_out.is_draining() {
+            // Continual channel data could prevent drain from completing,
+            // so disallow channel writes when draining.
+            return Ok(Some(0));
+        }
+
+        // write_channel_ready() will happen after the deferred packets are
+        // moved to main queued then written.
+        if self.traf_out.have_deferred_packets() {
+            // Let deferred packets get moved to the output queue
+            // before sending more channel data.
             return Ok(Some(0));
         }
 
@@ -795,9 +842,25 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
         }
     }
 
+    fn set_extra_resume(&mut self, event: DispatchEvent) {
+        debug_assert!(self.extra_resume_event.is_none());
+        self.extra_resume_event = event;
+    }
+
+    /// Complete an event and check that it matches.
     fn resume(&mut self, expect: &DispatchEvent) {
         let prev_event = self.resume_event.take();
-        self.check_resume_inner(expect, &prev_event)
+        self.check_resume_inner(expect, &prev_event);
+        self.traf_in.done_payload();
+    }
+
+    /// Complete an event without checking that it matches.
+    ///
+    /// Checks are performed separately.
+    fn resume_nocheck(&mut self) {
+        let prev_event = self.resume_event.take();
+        debug_assert!(prev_event.is_event());
+        self.traf_in.done_payload();
     }
 
     fn check_resume(&self, expect: &DispatchEvent) {
@@ -810,7 +873,6 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
         failure: Option<ChanFail>,
     ) -> Result<()> {
         self.resume(&DispatchEvent::ServEvent(ServEventId::OpenSession { num }));
-        self.traf_in.done_payload();
         let mut s = self.traf_out.sender(&mut self.keys);
         self.conn.channels.resume_open(num, failure, &mut s)
     }
@@ -827,15 +889,14 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
     }
 
     pub(crate) fn resume_chanreq(&mut self, success: bool) -> Result<()> {
-        let prev_event = self.resume_event.take();
-        trace!("resume chanreq {prev_event:?} {success}");
-        Self::check_chanreq(&prev_event);
+        trace!("resume chanreq {:?} {}", self.resume_event, success);
+        Self::check_chanreq(&self.resume_event);
 
         let mut s = self.traf_out.sender(&mut self.keys);
         let (payload, _seq) = self.traf_in.payload().trap()?;
         let p = self.conn.packet(payload)?;
         let r = self.conn.channels.resume_chanreq(&p, success, &mut s);
-        self.traf_in.done_payload();
+        self.resume_nocheck();
         r
     }
 
@@ -858,6 +919,25 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
         let (payload, _seq) = self.traf_in.payload().trap()?;
         let p = self.conn.packet(payload)?;
         self.conn.channels.fetch_env_value(&p)
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl<CS: CliServ> Runner<'static, CS> {
+    pub fn new_owned() -> Runner<'static, CS> {
+        Self::new_traf(TrafIn::new_owned(), TrafOut::new_owned())
+    }
+}
+
+impl<'a> Runner<'a, client::Client> {
+    pub fn open_client_session(&mut self) -> Result<ChanHandle> {
+        trace!("open_client_session");
+
+        let (chan, p) =
+            self.conn.channels.open(packets::ChannelOpenType::Session)?;
+        self.traf_out.send_packet(p, &mut self.keys)?;
+        self.wake();
+        Ok(ChanHandle(chan))
     }
 }
 

@@ -1,6 +1,6 @@
 max_width = 85
 use_small_heuristics = "Max"
-edition = "2021"
+edition = "2024"
 
 ## perhaps use once stabilised
 

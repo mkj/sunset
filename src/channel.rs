@@ -134,11 +134,7 @@ impl Channels {
             .iter()
             .enumerate()
             .find_map(|(i, ch)| {
-                if ch.as_ref().is_none() {
-                    Some(ChanNum(i as u32))
-                } else {
-                    None
-                }
+                if ch.as_ref().is_none() { Some(ChanNum(i as u32)) } else { None }
             })
             .ok_or(Error::NoChannels)
     }
@@ -200,8 +196,7 @@ impl Channels {
         Ok(p)
     }
 
-    /// Informs the channel layer that an incoming packet has been read out,
-    /// so a window adjustment can be sent.
+    /// Informs the channel layer that an incoming packet has been read out.
     pub(crate) fn finished_read(
         &mut self,
         num: ChanNum,
@@ -210,9 +205,7 @@ impl Channels {
     ) -> Result<()> {
         let ch = self.get_mut(num)?;
         ch.finished_input(len);
-        if let Some(w) = ch.check_window_adjust()? {
-            s.send(w)?;
-        }
+        ch.check_send_window_adjust(s);
         Ok(())
     }
 
@@ -236,6 +229,27 @@ impl Channels {
         self.get(num).is_ok_and(|c| c.valid_send(dt))
     }
 
+    pub fn progress(&mut self, s: &mut TrafSend) -> DispatchEvent {
+        for ch in self.ch.iter_mut().filter_map(|c| c.as_mut()) {
+            ch.check_send_window_adjust(s);
+
+            if ch.open_confirmed {
+                ch.open_confirmed = false;
+                match ch.ty {
+                    ChanType::Session => {
+                        return DispatchEvent::CliEvent(CliEventId::SessionOpened(
+                            ch.num(),
+                        ));
+                    }
+                    ChanType::Tcp => {
+                        trace!("TODO tcp channel")
+                    }
+                }
+            }
+        }
+        DispatchEvent::None
+    }
+
     /// Wake the channel with a ready input data packet.
     pub fn wake_read(&mut self, num: ChanNum, dt: ChanData, is_client: bool) {
         if let Ok(ch) = self.get_mut(num) {
@@ -248,7 +262,7 @@ impl Channels {
     /// Wake all ready output channels
     pub fn wake_write(&mut self, is_client: bool) {
         for ch in self.ch.iter_mut().filter_map(|c| c.as_mut()) {
-            ch.wake_write(None, is_client)
+            ch.wake_write(is_client)
         }
     }
 
@@ -428,17 +442,8 @@ impl Channels {
                             window: p.initial_window as usize,
                         });
 
-                        match ch.ty {
-                            ChanType::Session => {
-                                ev = DispatchEvent::CliEvent(
-                                    CliEventId::SessionOpened(ch.num()),
-                                );
-                            }
-                            ChanType::Tcp => {
-                                trace!("TODO tcp channel")
-                            }
-                        }
-
+                        // A future progress() will notify the application.
+                        ch.open_confirmed = true;
                         ch.state = ChanState::Normal;
                     }
                     _ => {
@@ -465,7 +470,7 @@ impl Channels {
                 send.window = send.window.saturating_add(p.adjust as usize);
                 trace!("new window {}", send.window);
                 // Wake any writers that might have been blocked.
-                chan.wake_write(None, is_client);
+                chan.wake_write(is_client);
             }
             Packet::ChannelData(p) => {
                 let ch = self.get(ChanNum(p.num))?;
@@ -511,7 +516,7 @@ impl Channels {
                 let is_client = self.is_client;
                 match self.get_mut(ChanNum(p.num)) {
                     Ok(ch) => {
-                        ev = ch.dispatch_request(&p, s, is_client);
+                        ev = ch.dispatch_request(&p, s, is_client)?;
                     }
                     Err(_) => debug!("Ignoring request to unknown channel: {p:#?}"),
                 }
@@ -646,7 +651,9 @@ impl TryFrom<&packets::PtyReq<'_>> for Pty {
     type Error = Error;
     fn try_from(p: &packets::PtyReq) -> Result<Self, Self::Error> {
         debug!("TODO implement pty modes");
-        let term = p.term.as_ascii()?.try_into().map_err(|_| Error::BadString)?;
+        // SSHProto error is returned when TERM is too long. The caller will catch that.
+        let term =
+            p.term.to_ascii()?.try_into().map_err(|_| error::SSHProto.build())?;
         Ok(Pty {
             term,
             cols: p.cols,
@@ -775,6 +782,12 @@ pub(crate) struct Channel {
 
     full_window: usize,
 
+    /// Set when Open Confirmation is received.
+    ///
+    /// A subsequent `progress()` will emit a `SessionOpened` event
+    /// for the application to handle.
+    open_confirmed: bool,
+
     /// Set once application has called `done()`. The channel
     /// will only be removed from the list
     /// (allowing channel number re-use) if `app_done` is set
@@ -805,6 +818,7 @@ impl Channel {
             send: None,
             pending_adjust: 0,
             full_window: config::DEFAULT_WINDOW,
+            open_confirmed: false,
             app_done: false,
             read_waker: None,
             write_waker: None,
@@ -872,13 +886,11 @@ impl Channel {
         }
     }
 
-    pub fn wake_write(&mut self, dt: Option<ChanData>, is_client: bool) {
-        if dt == Some(ChanData::Normal) || dt.is_none() {
-            if let Some(w) = self.read_waker.take() {
-                w.wake()
-            }
+    pub fn wake_write(&mut self, is_client: bool) {
+        if let Some(w) = self.write_waker.take() {
+            w.wake()
         }
-        if !is_client && (dt == Some(ChanData::Normal) || dt.is_none()) {
+        if !is_client {
             if let Some(w) = self.ext_waker.take() {
                 w.wake()
             }
@@ -906,7 +918,7 @@ impl Channel {
         p: &packets::ChannelRequest,
         s: &mut TrafSend,
         is_client: bool,
-    ) -> DispatchEvent {
+    ) -> Result<DispatchEvent> {
         let r = match (is_client, self.app_done) {
             // Reject requests if the application has closed
             // the channel. ChannelEOF is arbitrary.
@@ -915,17 +927,20 @@ impl Channel {
             (false, _) => self.dispatch_server_request(p, s),
         };
 
-        r.unwrap_or_else(|_| {
-            // All errors just send an error response, no failure.
-            if p.want_reply {
-                let num = self.send_num();
-                debug_assert!(num.is_ok());
-                if let Ok(num) = num {
-                    let _ = s.send(packets::ChannelFailure { num });
+        match r {
+            Ok(_) | Err(Error::Bug) => r,
+            Err(_) => {
+                // Most errors just send an error response, no failure.
+                if p.want_reply {
+                    let num = self.send_num();
+                    debug_assert!(num.is_ok());
+                    if let Ok(num) = num {
+                        let _ = s.send(packets::ChannelFailure { num });
+                    }
                 }
+                Ok(DispatchEvent::None)
             }
-            DispatchEvent::None
-        })
+        }
     }
 
     fn dispatch_server_request(
@@ -1044,7 +1059,7 @@ impl Channel {
         if is_client {
             self.wake_read(ChanData::Stderr, is_client);
         }
-        self.wake_write(None, is_client);
+        self.wake_write(is_client);
 
         Ok(())
     }
@@ -1078,16 +1093,22 @@ impl Channel {
         true
     }
 
-    /// Returns a window adjustment packet if required
-    fn check_window_adjust(&mut self) -> Result<Option<Packet<'_>>> {
-        let num = self.send.as_mut().trap()?.num;
+    /// Send a window adjust packet if required.
+    fn check_send_window_adjust(&mut self, s: &mut TrafSend) {
         if self.pending_adjust > self.full_window / 2 {
             let adjust = self.pending_adjust as u32;
-            self.pending_adjust = 0;
-            let p = packets::ChannelWindowAdjust { num, adjust }.into();
-            Ok(Some(p))
-        } else {
-            Ok(None)
+            let Some(sdir) = self.send.as_mut() else {
+                return;
+            };
+            let num = sdir.num;
+            let p = packets::ChannelWindowAdjust { num, adjust };
+            match s.send(p) {
+                Ok(()) => self.pending_adjust = 0,
+                Err(Error::BusySend { .. }) => {
+                    // Do nothing, the adjustment will be sent later.
+                }
+                Err(e) => debug_assert!(false, "Window adjust send failed {e:?}"),
+            }
         }
     }
 }
@@ -1191,10 +1212,7 @@ pub struct CliSessionOpener<'g, 'a> {
 }
 
 impl<'g, 'a> CliSessionOpener<'g, 'a> {
-    /// Returns the channel associated with this session.
-    ///
-    /// This will match that previously returned from [`Runner::cli_session_opener`]
-    /// or `SSHClient::open_session_pty()` (or `_nopty()`)
+    /// Returns the channel number associated with this session.
     pub fn channel(&self) -> ChanNum {
         self.ch.num()
     }

@@ -13,7 +13,7 @@ use std::os::fd::{AsRawFd, FromRawFd};
 use core::pin::Pin;
 use core::task::{Context, Poll};
 
-use nix::fcntl::{fcntl, FcntlArg, OFlag};
+use nix::fcntl::{FcntlArg, OFlag, fcntl};
 
 // Returns Ok(None) if the FD isn't suitable for async
 fn dup_async(

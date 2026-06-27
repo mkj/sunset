@@ -7,6 +7,7 @@ pub use log::{debug, error, info, log, trace, warn};
 
 use embassy_executor::Spawner;
 use embassy_net::StackResources;
+use embassy_rp::Peri;
 use embassy_rp::gpio::{Input, Level, Output, Pull};
 use embassy_rp::peripherals::*;
 use embassy_rp::spi::{Async, Config as SpiConfig, Spi};
@@ -15,8 +16,8 @@ use embedded_hal_bus::spi::ExclusiveDevice;
 
 use embassy_net_wiznet::*;
 
-use rand::rngs::OsRng;
 use rand::RngCore;
+use rand::rngs::OsRng;
 use static_cell::StaticCell;
 
 use crate::{SSHConfig, SunsetMutex};
@@ -36,21 +37,21 @@ async fn ethernet_task(
 
 pub(crate) async fn w5500_stack(
     spawner: &Spawner,
-    p16: PIN_16,
-    p17: PIN_17,
-    p18: PIN_18,
-    p19: PIN_19,
-    p20: PIN_20,
-    p21: PIN_21,
-    dma0: DMA_CH0,
-    dma1: DMA_CH1,
-    spi0: SPI0,
+    p16: Peri<'static, PIN_16>,
+    p17: Peri<'static, PIN_17>,
+    p18: Peri<'static, PIN_18>,
+    p19: Peri<'static, PIN_19>,
+    p20: Peri<'static, PIN_20>,
+    p21: Peri<'static, PIN_21>,
+    dma0: Peri<'static, DMA_CH0>,
+    dma1: Peri<'static, DMA_CH1>,
+    spi0: Peri<'static, SPI0>,
     config: &'static SunsetMutex<SSHConfig>,
 ) -> embassy_net::Stack<'static> {
     let mut spi_cfg = SpiConfig::default();
     spi_cfg.frequency = 50_000_000;
     let (miso, mosi, clk) = (p16, p19, p18);
-    let spi = Spi::new(spi0, clk, mosi, miso, dma0, dma1, spi_cfg);
+    let spi = Spi::new(spi0, clk, mosi, miso, dma0, dma1, crate::DmaIrqs, spi_cfg);
     let cs = Output::new(p17, Level::High);
     let w5500_int = Input::new(p21, Pull::Up);
     let w5500_reset = Output::new(p20, Level::High);
@@ -68,7 +69,7 @@ pub(crate) async fn w5500_stack(
     )
     .await
     .unwrap();
-    spawner.spawn(ethernet_task(runner)).unwrap();
+    spawner.spawn(ethernet_task(runner).unwrap());
 
     let net_cf = if let Some(ref s) = config.lock().await.ip4_static {
         embassy_net::Config::ipv4_static(s.clone())
@@ -86,7 +87,7 @@ pub(crate) async fn w5500_stack(
         embassy_net::new(net_device, net_cf, SR.init(StackResources::new()), seed);
 
     // Launch network task
-    spawner.spawn(net_task(runner)).unwrap();
+    spawner.spawn(net_task(runner).unwrap());
 
     stack
 }

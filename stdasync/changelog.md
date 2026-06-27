@@ -1,5 +1,17 @@
 # `sunset-stdasync` Changelog
 
+## 0.5.0 - 2026-06-23
+
+### Changed
+
+- Update `embedded-io-async` to 0.7
+
+- Improve working with `'static` lifetime instances
+
+- `sunsetc`: enable RSA and ECDSA by default
+
+- `sunsetc`: fix `-s sftp`
+
 ## 0.4.0 - 2026-01-11
 
 ### Fixed

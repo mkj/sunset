@@ -1,0 +1,27 @@
+[package]
+name = "sunset-sftp"
+version = "0.1.3"
+edition = "2024"
+license = "0BSD"
+repository = "https://github.com/mkj/sunset"
+categories = ["network-programming", "embedded", "no-std", "filesystem"]
+keywords = ["sftp"]
+description = "SFTP for Sunset SSH"
+
+[features]
+# Long paths support, which allows paths up to 4096 bytes.
+# By default paths are limited to 256 bytes.
+long-paths-4096 = []
+long-paths-1024 = []
+
+[dependencies]
+sunset.workspace = true
+sunset-async.workspace = true
+sunset-sshwire-derive.workspace = true
+
+embedded-io-async.workspace = true
+num_enum = { version = "0.7.4", default-features = false }
+paste = "=1.0.15" # Last released version
+log.workspace = true
+embassy-futures.workspace = true
+bbqueue = "0.7.0"

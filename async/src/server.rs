@@ -77,3 +77,11 @@ impl<'a> SSHServer<'a> {
         Ok((i, e))
     }
 }
+#[cfg(feature = "alloc")]
+impl SSHServer<'static> {
+    pub fn new_owned() -> Self {
+        let runner = Runner::new_server_owned();
+        let sunset = AsyncSunset::new(runner);
+        Self { sunset }
+    }
+}

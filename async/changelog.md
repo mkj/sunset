@@ -1,5 +1,28 @@
 # `sunset-async` Changelog
 
+## 0.5.0 - 2026-06-23
+
+### Changed
+
+- Fix waking channels, this could result in stuck connections.
+
+- Update `embedded-io-async` to 0.7
+
+- Fix refcount on `ChanIn` or `ChanInOut` clone. This could
+  result in discarded data.
+
+- Fix a zero length channel write getting stuck
+
+### Added
+
+- `SSHClient::new_owned()` and `SSHServer::new_owned()`
+  allocate a fixed buffer, giving instances with a static
+  lifetime. Requires `std` or `alloc` feature.
+
+### Removed
+
+- `io_copy` functions have been removed (moved to demos).
+
 ## 0.4.0 - 2026-01-11
 
 - Fix discarded channel input data. If async `progress()`

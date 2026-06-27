@@ -1,21 +1,21 @@
 [package]
 name = "sunset-async"
-version = "0.4.0"
-edition = "2021"
+version = "0.5.0"
+edition = "2024"
 repository = "https://github.com/mkj/sunset"
 categories = ["network-programming", "embedded", "no-std"]
 license = "0BSD"
 description = "Async for Sunset SSH"
 
 [dependencies]
-embassy-sync = { version = "0.7" }
-embassy-futures = { version = "0.1" }
-embedded-io-async = "0.6"
+embassy-sync.workspace = true
+embassy-futures.workspace = true
+embedded-io-async.workspace = true
 portable-atomic.workspace = true
 
 sunset = { workspace = true, features = ["embedded-io"] }
 
-log = { version = "0.4" }
+log.workspace = true
 
 [features]
 # Use a critical-section mutex to lock state. This feature must be enabled
@@ -23,3 +23,5 @@ log = { version = "0.4" }
 # The application should depend on critical-section "std" feature.
 # When multi-thread is disabled locking overhead is avoided.
 multi-thread = []
+alloc = ["sunset/alloc"]
+std = ["sunset/std", "alloc"]

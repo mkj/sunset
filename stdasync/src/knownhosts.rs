@@ -16,7 +16,7 @@ pub enum KnownHostsError {
     Mismatch {
         path: PathBuf,
         line: usize,
-        existing: OpenSSHKey,
+        existing: Box<OpenSSHKey>,
     },
 
     /// User didn't accept new key
@@ -89,11 +89,7 @@ pub fn check_known_hosts_file(
     let pubk: OpenSSHKey = key.try_into()?;
 
     for (line, (lh, lk)) in f.lines().enumerate().filter_map(|(num, l)| {
-        if let Ok(l) = l {
-            line_entry(&l).map(|entry| (num, entry))
-        } else {
-            None
-        }
+        if let Ok(l) = l { line_entry(&l).map(|entry| (num, entry)) } else { None }
     }) {
         let line = line + 1;
 
@@ -121,13 +117,15 @@ pub fn check_known_hosts_file(
             debug!("Line {line}, found matching key");
             return Ok(());
         } else {
-            let fp = known_key.fingerprint(Default::default());
-            println!("\nHost key mismatch for {match_host} in ~/.ssh/known_hosts line {line}\n\
-                Existing key has fingerprint {fp}\n");
+            let fp = known_key.fingerprint(ssh_key::HashAlg::Sha256);
+            println!(
+                "\nHost key mismatch for {match_host} in ~/.ssh/known_hosts line {line}\n\
+                Existing key has fingerprint {fp}\n"
+            );
             return Err(KnownHostsError::Mismatch {
                 path: p.to_path_buf(),
                 line,
-                existing: known_key,
+                existing: Box::new(known_key),
             });
         }
     }
@@ -160,9 +158,12 @@ fn ask_to_confirm(
     p: &Path,
 ) -> Result<(), KnownHostsError> {
     let k: OpenSSHKey = key.try_into()?;
-    let fp = k.fingerprint(Default::default());
+    let fp = k.fingerprint(ssh_key::HashAlg::Sha256);
     let h = host_part(host, port);
-    let _ = writeln!(io::stderr(), "\nHost {h} is not in ~/.ssh/known_hosts\nFingerprint {fp}\nDo you want to continue connecting? (y/n)");
+    let _ = writeln!(
+        io::stderr(),
+        "\nHost {h} is not in ~/.ssh/known_hosts\nFingerprint {fp}\nDo you want to continue connecting? (y/n)"
+    );
 
     let mut resp = read_tty_response()?;
     resp.make_ascii_lowercase();
