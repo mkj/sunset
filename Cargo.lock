@@ -1249,6 +1249,7 @@ checksum = "c900a1c087f1f7d17cdc84a1290df91521cd90933efa76d68e568385d889f2f4"
 dependencies = [
  "embedded-io 0.7.1",
  "embedded-io-async 0.7.0",
+ "futures",
  "tokio",
 ]
 
@@ -1478,10 +1479,13 @@ version = "0.3.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "389ca41296e6190b48053de0321d02a77f32f8a5d2461dd38762c0593805c6d6"
 dependencies = [
+ "futures-channel",
  "futures-core",
+ "futures-io",
  "futures-macro",
  "futures-sink",
  "futures-task",
+ "memchr",
  "pin-project-lite",
  "slab",
 ]
@@ -3065,10 +3069,13 @@ version = "0.5.0"
 dependencies = [
  "embassy-futures",
  "embassy-sync",
+ "embedded-io-adapters",
  "embedded-io-async 0.7.0",
+ "futures-io",
  "log",
  "portable-atomic",
  "sunset",
+ "tokio",
 ]
 
 [[package]]
@@ -3224,8 +3231,6 @@ dependencies = [
  "critical-section",
  "embassy-futures",
  "embassy-sync",
- "embedded-io-adapters",
- "embedded-io-async 0.7.0",
  "libc",
  "log",
  "nix",

@@ -32,6 +32,9 @@ zeroize = { version = "1", default-features = false, features = ["derive"] }
 
 embedded-io = { version = "0.7" }
 embedded-io-async = { version = "0.7" }
+embedded-io-adapters = { version = "0.7" }
+futures-io = { version = "0.3" }
+tokio = { version = "1.25" }
 
 embassy-sync = "0.8"
 embassy-futures = "0.1"
@@ -52,6 +55,7 @@ subtle = { version = "2.6", default-features = false }
 
 getrandom = { version = "0.4" }
 rand_core = { version = "0.10", default-features = false }
+
 
 [dependencies]
 sunset-sshwire-derive = { workspace = true }

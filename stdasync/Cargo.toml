@@ -21,17 +21,17 @@ ssh-key = { workspace = true, features = [ "std"] }
 embassy-sync.workspace = true
 embassy-futures.workspace = true
 
-embedded-io-async.workspace = true
-
 # "net" for AsyncFd on unix
-tokio = { version = "1.25", features = ["net", "io-util", "signal"] }
+tokio = { workspace = true, features = ["net", "io-util", "signal"] }
 
 libc = "0.2"
 nix = "0.26"
 
 [features]
 rsa = ["sunset/rsa"]
-ecdsa= ["sunset/ecdsa256"]
+ecdsa = ["sunset/ecdsa256"]
+tokio = ["sunset-async/tokio"]
+futures-io = ["sunset-async/futures-io"]
 
 [dev-dependencies]
 # build examples with rsa, ecdsa
@@ -42,12 +42,9 @@ whoami = { version = "2.1.2", default-features = false, features = ["std"] }
 
 tokio = { version = "1.25", features = ["full"] }
 
-# adapters for tokio and async-std
-embedded-io-adapters = { version = "0.7", features = ["tokio-1"] }
-
 simplelog = "0.12"
 # for simplelog
 time = { version = "0.3", features = ["local-offset"] }
 
-sunset-async = { workspace = true, features = ["multi-thread", "std"] }
+sunset-async = { workspace = true, features = ["multi-thread", "std", "tokio"] }
 critical-section = { version = "1.1", features = ["std"] }

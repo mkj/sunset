@@ -17,8 +17,6 @@ use sunset_async::SSHClient;
 
 use sunset_stdasync::{AgentClient, CmdlineClient};
 
-use embedded_io_adapters::tokio_1::FromTokio;
-
 use simplelog::*;
 use time::UtcOffset;
 
@@ -110,13 +108,11 @@ async fn run(args: Args) -> Result<ExitCode> {
 
         // Connect to a peer
         let mut stream = TcpStream::connect((args.host.as_str(), args.port)).await?;
-        let (rsock, wsock) = stream.split();
-        let mut rsock = FromTokio::new(rsock);
-        let mut wsock = FromTokio::new(wsock);
+        let (mut rsock, mut wsock) = stream.split();
 
         // SSH connection future
         let ssh = SSHClient::new_owned();
-        let ssh_fut = ssh.run(&mut rsock, &mut wsock);
+        let ssh_fut = ssh.run_tokio(&mut rsock, &mut wsock);
 
         // Client session future
         let session = app.run(&ssh);

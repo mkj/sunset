@@ -80,3 +80,29 @@ impl SSHClient<'static> {
         Self { sunset }
     }
 }
+
+#[cfg(feature = "futures-io")]
+impl SSHClient<'_> {
+    pub async fn run_futures_io(
+        &self,
+        rsock: &mut (impl futures_io::AsyncRead + Unpin),
+        wsock: &mut (impl futures_io::AsyncWrite + Unpin),
+    ) -> Result<()> {
+        let mut rsock = embedded_io_adapters::futures_03::FromFutures::new(rsock);
+        let mut wsock = embedded_io_adapters::futures_03::FromFutures::new(wsock);
+        self.sunset.run(&mut rsock, &mut wsock).await
+    }
+}
+
+#[cfg(feature = "tokio")]
+impl SSHClient<'_> {
+    pub async fn run_tokio(
+        &self,
+        rsock: &mut (impl tokio::io::AsyncRead + Unpin),
+        wsock: &mut (impl tokio::io::AsyncWrite + Unpin),
+    ) -> Result<()> {
+        let mut rsock = embedded_io_adapters::tokio_1::FromTokio::new(rsock);
+        let mut wsock = embedded_io_adapters::tokio_1::FromTokio::new(wsock);
+        self.sunset.run(&mut rsock, &mut wsock).await
+    }
+}

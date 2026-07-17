@@ -17,6 +17,10 @@ sunset = { workspace = true, features = ["embedded-io"] }
 
 log.workspace = true
 
+futures-io = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
+embedded-io-adapters = { workspace = true, optional = true }
+
 [features]
 # Use a critical-section mutex to lock state. This feature must be enabled
 # to run on executors that require futures to be Send (such as default Tokio).
@@ -25,3 +29,8 @@ log.workspace = true
 multi-thread = []
 alloc = ["sunset/alloc"]
 std = ["sunset/std", "alloc"]
+
+# For async-net TcpStream etc
+futures-io = ["dep:futures-io", "embedded-io-adapters/futures-03"]
+# For tokio TcpStream etc
+tokio = ["dep:tokio", "embedded-io-adapters/tokio-1"]
