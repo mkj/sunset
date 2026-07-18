@@ -25,7 +25,6 @@ use crate::*;
 use namelist::NameList;
 use sign::{OwnedSig, SigType};
 use sshnames::*;
-use sshwire::SSHEncodeEnum;
 use sshwire::{BinString, Blob, TextString};
 use sshwire::{SSHDecode, SSHEncode, SSHSink, SSHSource, WireError, WireResult};
 

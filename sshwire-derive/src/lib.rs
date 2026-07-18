@@ -229,6 +229,7 @@ fn encode_struct(gn: &mut Generator, body: StructBody) -> Result<()> {
                     }
                 }
                 Some(Fields::Struct(v)) => {
+                    fn_body.push_parsed(format!("use ::sunset::sshwire::SSHEncodeEnum;"))?;
                     for f in v {
                         let fname = &f.0;
                         let atts = take_field_atts(&f.1.attributes)?;
@@ -268,6 +269,7 @@ fn encode_enum(
         .with_return_type("::sunset::sshwire::WireResult<()>")
         .body(|fn_body| {
             if cont_atts.iter().any(|c| matches!(c, ContainerAtt::VariantPrefix)) {
+                fn_body.push_parsed(format!("use ::sunset::sshwire::SSHEncodeEnum;"))?;
                 fn_body.push_parsed("::sunset::sshwire::SSHEncode::enc(&self.variant_name()?, s)?;")?;
             }
 
@@ -288,11 +290,11 @@ fn encode_enum(
                         // Could be implemented if needed.
                         return Err(Error::Custom { error: "sunset_sshwire_derive::SSHEncode currently does not encode enum discriminants.".into(), span: Some(val.span())})
                     }
-                    match var.fields {
+                    match &var.fields {
                         None => {
                             // Unit enum
                         }
-                        Some(Fields::Tuple(ref f)) => {
+                        Some(Fields::Tuple(f)) => {
                             match_arm.group(Delimiter::Parenthesis, |item| {
                                 for i in 0..f.len() {
                                     item.ident_str("ref");
@@ -302,6 +304,9 @@ fn encode_enum(
                                 Ok(())
                             })?;
                             if atts.iter().any(|a| matches!(a, FieldAtt::CaptureUnknown)) {
+                                if f.len() != 1 {
+                                    return Err(Error::Custom { error: "sshwire(unknown) needs to be a single field tuple variant".into(), span: Some(var.name.span())})
+                                }
                                 rhs.push_parsed("return Err(::sunset::sshwire::WireError::UnknownVariant)")?;
                             } else {
                                 for i in 0..f.len() {
@@ -310,8 +315,22 @@ fn encode_enum(
                             }
 
                         }
-                        // Some(Fields::)
-                        _ => return Err(Error::Custom { error: "sunset_sshwire_derive::SSHEncode currently only implements Unit or single value enum variants.".into(), span: None})
+                        Some(Fields::Struct(f)) => {
+                            if atts.iter().any(|a| matches!(a, FieldAtt::CaptureUnknown)) {
+                                return Err(Error::Custom { error: "sshwire(unknown) can't be a struct variant".into(), span: Some(var.name.span())})
+                            }
+                            match_arm.group(Delimiter::Brace, |item| {
+                                for (id, _) in f {
+                                    item.ident_str("ref");
+                                    item.ident(id.clone());
+                                    item.punct(',');
+                                }
+                                Ok(())
+                            })?;
+                            for (id, _) in f {
+                                rhs.push_parsed(format!("::sunset::sshwire::SSHEncode::enc({id}, s)?;"))?;
+                            }
+                        }
                     }
 
                     match_arm.puncts("=>");
@@ -392,7 +411,12 @@ fn encode_enum_names(
                             })?;
 
                         }
-                        _ => return Err(Error::Custom { error: "sunset_sshwire_derive::SSHEncode currently only implements Unit or single value enum variants.".into(), span: None})
+                        Some(Fields::Struct(_)) => {
+                            match_arm.group(Delimiter::Brace, |item| {
+                                item.puncts("..");
+                                Ok(())
+                            })?;
+                        }
                     }
 
                     match_arm.puncts("=>");
@@ -575,11 +599,11 @@ fn decode_enum_names(
                         let var_name = field_att_var_names(&var.name, atts)?;
                         match_arm.push_parsed(format!("Some({}) => ", var_name))?;
                         match_arm.group(Delimiter::Brace, |var_body| {
-                            match var.fields {
+                            match &var.fields {
                                 None => {
                                     var_body.push_parsed(format!("Self::{}", var.name))?;
                                 }
-                                Some(Fields::Tuple(ref f)) => {
+                                Some(Fields::Tuple(f)) => {
                                     var_body.push_parsed(format!("Self::{}", var.name))?;
                                     var_body.group(Delimiter::Parenthesis, |b| {
                                         for _ in f {
@@ -588,7 +612,16 @@ fn decode_enum_names(
                                         Ok(())
                                     })?;
                                 }
-                                _ => return Err(Error::Custom { error: "SSHDecode currently only implements Unit or single value enum variants. ".into(), span: None})
+                                Some(Fields::Struct(f)) => {
+                                    var_body.push_parsed(format!("Self::{}", var.name))?;
+                                    var_body.group(Delimiter::Brace, |b| {
+                                        for (id, _) in f {
+                                            b.push_parsed(format!("{}: ::sunset::sshwire::SSHDecode::dec(s)?,", id))?;
+                                        }
+                                        Ok(())
+                                    })?;
+
+                                }
                             }
                             Ok(())
                         })?;
