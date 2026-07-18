@@ -292,19 +292,25 @@ fn encode_enum(
                         None => {
                             // Unit enum
                         }
-                        Some(Fields::Tuple(ref f)) if f.len() == 1 => {
+                        Some(Fields::Tuple(ref f)) => {
                             match_arm.group(Delimiter::Parenthesis, |item| {
-                                item.ident_str("ref");
-                                item.ident_str("i");
+                                for i in 0..f.len() {
+                                    item.ident_str("ref");
+                                    item.ident_str(format!("f{i}"));
+                                    item.punct(',');
+                                }
                                 Ok(())
                             })?;
                             if atts.iter().any(|a| matches!(a, FieldAtt::CaptureUnknown)) {
                                 rhs.push_parsed("return Err(::sunset::sshwire::WireError::UnknownVariant)")?;
                             } else {
-                                rhs.push_parsed(format!("::sunset::sshwire::SSHEncode::enc(i, s)?;"))?;
+                                for i in 0..f.len() {
+                                    rhs.push_parsed(format!("::sunset::sshwire::SSHEncode::enc(f{i}, s)?;"))?;
+                                }
                             }
 
                         }
+                        // Some(Fields::)
                         _ => return Err(Error::Custom { error: "sunset_sshwire_derive::SSHEncode currently only implements Unit or single value enum variants.".into(), span: None})
                     }
 
@@ -376,9 +382,12 @@ fn encode_enum_names(
                         None => {
                             // nothing to do
                         }
-                        Some(Fields::Tuple(ref f)) if f.len() == 1 => {
+                        Some(Fields::Tuple(ref f)) => {
                             match_arm.group(Delimiter::Parenthesis, |item| {
-                                item.ident_str("_");
+                                for _ in f {
+                                    item.ident_str("_");
+                                    item.punct(',');
+                                }
                                 Ok(())
                             })?;
 
@@ -542,6 +551,7 @@ fn decode_enum_names(
         .with_arg("variant", "&'de [u8]")
         .with_return_type("::sunset::sshwire::WireResult<Self>")
         .body(|fn_body| {
+            let mut have_unknown_variant = false;
             // Some(ascii_string), or None
             fn_body.push_parsed("let var_str = ::sunset::sshwire::try_as_ascii_str(variant).ok();")?;
 
@@ -551,11 +561,15 @@ fn decode_enum_names(
                 for var in &body.variants {
                     let atts = take_field_atts(&var.attributes)?;
                     if atts.iter().any(|a| matches!(a, FieldAtt::CaptureUnknown)) {
+                        have_unknown_variant = true;
                         // create the Unknown fallthrough but it will be at the end of the match list
                         let mut m = StreamBuilder::new();
-                        m.push_parsed(format!("_ => {{ s.ctx().seen_unknown = true; Self::{}(Unknown::new(variant))}}", var.name))?;
+                        m.push_parsed(format!("_ => {{ s.ctx().seen_unknown = true; Self::{}(::sunset::packets::Unknown::new(variant))}}", var.name))?;
                         if unknown_arm.replace(m).is_some() {
                             return Err(Error::Custom { error: "only one variant can have #[sshwire(unknown)]".into(), span: None})
+                        }
+                        if !matches!(var.fields, Some(Fields::Tuple(ref f)) if f.len() == 1) {
+                            return Err(Error::Custom { error: "#[sshwire(unknown)] must be a single field tuple variant".into(), span: None})
                         }
                     } else {
                         let var_name = field_att_var_names(&var.name, atts)?;
@@ -565,10 +579,16 @@ fn decode_enum_names(
                                 None => {
                                     var_body.push_parsed(format!("Self::{}", var.name))?;
                                 }
-                                Some(Fields::Tuple(ref f)) if f.len() == 1 => {
-                                    var_body.push_parsed(format!("Self::{}(::sunset::sshwire::SSHDecode::dec(s)?)", var.name))?;
+                                Some(Fields::Tuple(ref f)) => {
+                                    var_body.push_parsed(format!("Self::{}", var.name))?;
+                                    var_body.group(Delimiter::Parenthesis, |b| {
+                                        for _ in f {
+                                            b.push_parsed("::sunset::sshwire::SSHDecode::dec(s)?,")?;
+                                        }
+                                        Ok(())
+                                    })?;
                                 }
-                            _ => return Err(Error::Custom { error: "SSHDecode currently only implements Unit or single value enum variants. ".into(), span: None})
+                                _ => return Err(Error::Custom { error: "SSHDecode currently only implements Unit or single value enum variants. ".into(), span: None})
                             }
                             Ok(())
                         })?;
@@ -581,6 +601,11 @@ fn decode_enum_names(
                 Ok(())
             })?;
             fn_body.push_parsed("; Ok(r)")?;
+
+            if !have_unknown_variant {
+                return Err(Error::Custom { error: "SSHDecode enum needs #[sshwire(unknown) variant".into(), span: None});
+            }
+
             Ok(())
         })?;
     Ok(())

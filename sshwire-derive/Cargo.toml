@@ -11,3 +11,6 @@ proc-macro = true
 
 [dependencies]
 virtue = "=0.0.17" # Last released version
+
+[dev-dependencies]
+sunset = { workspace = true, features = ["std"]}
