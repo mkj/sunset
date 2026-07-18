@@ -707,6 +707,23 @@ impl<'de, const N: usize> SSHDecode<'de> for heapless::String<N> {
     }
 }
 
+#[cfg(feature = "alloc")]
+impl SSHEncode for alloc::string::String {
+    fn enc(&self, s: &mut dyn SSHSink) -> WireResult<()> {
+        self.as_str().enc(s)
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl<'de> SSHDecode<'de> for alloc::string::String {
+    fn dec<S>(s: &mut S) -> WireResult<Self>
+    where
+        S: SSHSource<'de>,
+    {
+        Ok(<&str>::dec(s)?.into())
+    }
+}
+
 /// Like `digest::DynDigest` but simpler.
 ///
 /// Doesn't have any optional methods that depend on `alloc`.
