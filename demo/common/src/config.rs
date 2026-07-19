@@ -123,7 +123,7 @@ fn enc_signkey(k: &SignKey, s: &mut dyn SSHSink) -> WireResult<()> {
     // need to add a variant field if we support more key types.
     match k {
         SignKey::Ed25519(k) => k.to_bytes().enc(s),
-        _ => Err(WireError::UnknownVariant),
+        _ => Err(WireError::EncodeUnknown),
     }
 }
 

@@ -298,7 +298,7 @@ fn encode_enum(
                         None => {
                             // Unit enum
                             if atts.iter().any(|a| matches!(a, FieldAtt::CaptureUnknown)) {
-                                rhs.push_parsed("return Err(::sunset::sshwire::WireError::UnknownVariant)")?;
+                                rhs.push_parsed("return Err(::sunset::sshwire::WireError::EncodeUnknown)")?;
                             }
                         }
                         Some(Fields::Tuple(f)) => {
@@ -314,7 +314,7 @@ fn encode_enum(
                                 if f.len() != 1 {
                                     return Err(Error::Custom { error: "sshwire(unknown) needs to be a single field tuple variant".into(), span: Some(var.name.span())})
                                 }
-                                rhs.push_parsed("return Err(::sunset::sshwire::WireError::UnknownVariant)")?;
+                                rhs.push_parsed("return Err(::sunset::sshwire::WireError::EncodeUnknown)")?;
                             } else {
                                 for i in 0..f.len() {
                                     rhs.push_parsed(format!("::sunset::sshwire::SSHEncode::enc(f{i}, s)?;"))?;
@@ -404,7 +404,7 @@ fn encode_enum_names(
                     let mut rhs = StreamBuilder::new();
                     let atts = take_field_atts(&var.attributes)?;
                     if atts.iter().any(|a| matches!(a, FieldAtt::CaptureUnknown)) {
-                        rhs.push_parsed("return Err(::sunset::sshwire::WireError::UnknownVariant)")?;
+                        rhs.push_parsed("return Err(::sunset::sshwire::WireError::EncodeUnknown)")?;
                     } else {
                         rhs.push(field_att_var_name(&var.name, atts)?);
                     }

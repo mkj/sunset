@@ -50,7 +50,7 @@ fn unknown_variant() {
 
     // encoding fails
     let e = sshwire::length_enc(&r);
-    assert_eq!(e, Err(WireError::UnknownVariant));
+    assert_eq!(e, Err(WireError::EncodeUnknown));
 }
 
 #[test]
@@ -73,7 +73,7 @@ fn unknown_unit_variant() {
 
     // encoding fails
     let e = sshwire::length_enc(&En::U);
-    assert_eq!(e, Err(WireError::UnknownVariant));
+    assert_eq!(e, Err(WireError::EncodeUnknown));
 }
 
 #[test]
