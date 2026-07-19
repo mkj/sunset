@@ -67,6 +67,10 @@ enum ContainerAtt {
     /// Don't generate SSHEncodeEnum. Can't be used with SSHDecode derive.
     /// `#[sshwire(no_variant_names)]`
     NoNames,
+
+    /// Decoding unknown variants should fail with an error.
+    /// `#[sshwire(decode_unknown_fail)]`
+    DecodeUnknownFail,
 }
 
 /// Field attributes.
@@ -106,6 +110,11 @@ fn take_cont_atts(atts: &[Attribute]) -> Result<Vec<ContainerAtt>> {
                 }
                 ParsedAttribute::Tag(l) if l.to_string() == "variant_prefix" => {
                     Ok(ContainerAtt::VariantPrefix)
+                }
+                ParsedAttribute::Tag(l)
+                    if l.to_string() == "decode_unknown_fail" =>
+                {
+                    Ok(ContainerAtt::DecodeUnknownFail)
                 }
                 _ => Err(Error::Custom {
                     error: "Unknown sshwire atttribute".into(),
@@ -536,12 +545,15 @@ fn decode_enum(
         });
     }
 
+    let decode_unknown_fail =
+        cont_atts.iter().any(|c| matches!(c, ContainerAtt::DecodeUnknownFail));
+
     // SSHDecode trait if it is self describing
     if cont_atts.iter().any(|c| matches!(c, ContainerAtt::VariantPrefix)) {
         decode_enum_variant_prefix(gn, atts, &body)?;
     }
 
-    decode_enum_names(gn, atts, &body)?;
+    decode_enum_names(gn, atts, &body, decode_unknown_fail)?;
     Ok(())
 }
 
@@ -577,10 +589,13 @@ fn decode_enum_variant_prefix(
 /// Generate `SSHDecodeEnum` implementation.
 ///
 /// `dec_enum()` takes a variant name argument, used to choose the variant to decode.
+/// If `decode_unknown_fail` is set, on unknown name instead of using #[sshwire(unknown)] variant,
+/// it will return WireError::UnknownVariant
 fn decode_enum_names(
     gn: &mut Generator,
     _atts: &[Attribute],
     body: &EnumBody,
+    decode_unknown_fail: bool,
 ) -> Result<()> {
     gn.impl_for_with_lifetimes("::sunset::sshwire::SSHDecodeEnum", ["de"])
         .modify_generic_constraints(|generics, where_constraints| {
@@ -601,6 +616,7 @@ fn decode_enum_names(
 
             fn_body.push_parsed("let r = match var_str")?;
             fn_body.group(Delimiter::Brace, |match_arm| {
+
                 let mut unknown_arm = None;
                 for var in &body.variants {
                     let atts = take_field_atts(&var.attributes)?;
@@ -623,7 +639,7 @@ fn decode_enum_names(
                         }
 
                         if unknown_arm.replace(m).is_some() {
-                            return Err(Error::Custom { error: "only one variant can have #[sshwire(unknown)]".into(), span: None})
+                            return Err(Error::Custom { error: "can have one field #[sshwire(unknown)], or enum att #[sshwire(decode_unknown_fail)]".into(), span: None})
                         }
                     } else {
                         let var_name = field_att_var_name(&var.name, atts)?;
@@ -661,12 +677,16 @@ fn decode_enum_names(
                         match_arm.append(unk);
                     }
                 }
+
+                if decode_unknown_fail {
+                    match_arm.push_parsed("_ => { return Err(::sunset::sshwire::WireError::UnknownVariant); }")?;
+                }
                 Ok(())
             })?;
             fn_body.push_parsed("; Ok(r)")?;
 
-            if !have_unknown_variant {
-                return Err(Error::Custom { error: "SSHDecode enum needs a #[sshwire(unknown) variant".into(), span: None});
+            if !(have_unknown_variant || decode_unknown_fail) {
+                return Err(Error::Custom { error: "SSHDecode enum needs a #[sshwire(unknown)] variant".into(), span: None});
             }
 
             Ok(())

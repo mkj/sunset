@@ -54,6 +54,36 @@ fn unknown_variant() {
 }
 
 #[test]
+fn no_unknown_variant() {
+    #[derive(SSHEncode, SSHDecode, PartialEq, Debug)]
+    #[sshwire(variant_prefix)]
+    #[sshwire(decode_unknown_fail)]
+    enum En {
+        #[sshwire(variant = "a")]
+        A,
+        #[sshwire(variant = "b")]
+        B(u32, u8),
+        #[sshwire(variant = "c")]
+        C,
+    }
+
+    let s = [0x00u8, 0x00, 0x00, 0x02, b'X', b'X'];
+    let r = read_ssh::<En>(&s, None);
+    assert!(
+        matches!(r, Err(sunset::Error::UnknownMethod { .. })),
+        "Unexpected {r:?}"
+    );
+
+    let s = [0x00u8, 0x00, 0x00, 0x01, b'a'];
+    let r = read_ssh::<En>(&s, None);
+    assert!(matches!(r, Ok((En::A, 5))), "Unexpected {r:?}");
+
+    let s = [0x00u8, 0x00, 0x00, 0x01, b'c'];
+    let r = read_ssh::<En>(&s, None);
+    assert!(matches!(r, Ok((En::C, 5))), "Unexpected {r:?}");
+}
+
+#[test]
 fn unknown_unit_variant() {
     #[derive(SSHEncode, SSHDecode, PartialEq, Debug)]
     #[sshwire(variant_prefix)]
