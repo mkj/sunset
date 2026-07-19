@@ -12,7 +12,7 @@ use {
 };
 
 use core::convert::AsRef;
-use core::fmt::{Debug, Display};
+use core::fmt::{self, Debug, Display};
 use core::str::FromStr;
 
 use ascii::{AsAsciiStr, AsciiChar, AsciiStr};
@@ -119,6 +119,46 @@ impl From<WireError> for Error {
 }
 
 pub type WireResult<T> = core::result::Result<T, WireError>;
+
+/// Placeholder for unknown variants.
+///
+/// Unknown SSH methods are sometimes non-fatal and
+/// need to be handled by the relevant code, for example newly invented pubkey types.
+/// This is deliberately not `SSHEncode`, we only receive it. sshwire-derive will
+/// automatically create instances.
+#[derive(Clone, PartialEq)]
+pub struct Unknown<'a>(pub &'a [u8]);
+
+impl<'a> Unknown<'a> {
+    pub fn new(u: &'a [u8]) -> Self {
+        let u = Unknown(u);
+        trace!("saw unknown variant \"{u}\"");
+        u
+    }
+}
+
+impl Display for Unknown<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Ok(s) = sshwire::try_as_ascii_str(self.0) {
+            f.write_str(s)
+        } else {
+            write!(f, "non-ascii {:02x?}", self.0)
+        }
+    }
+}
+
+impl Debug for Unknown<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        Display::fmt(self, f)
+    }
+}
+
+#[cfg(feature = "arbitrary")]
+impl<'arb: 'a, 'a> Arbitrary<'arb> for Unknown<'a> {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'arb>) -> arbitrary::Result<Self> {
+        Ok(Self(arbitrary::Arbitrary::arbitrary(u)?))
+    }
+}
 
 ///////////////////////////////////////////////
 

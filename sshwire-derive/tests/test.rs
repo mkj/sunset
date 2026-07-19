@@ -1,4 +1,4 @@
-use sunset::packets::Unknown;
+use sunset::sshwire::Unknown;
 use sunset::sshwire::{self, WireError, read_ssh, ssh_push_vec};
 use sunset_sshwire_derive::*;
 

@@ -10,8 +10,7 @@ use {
     log::{debug, error, info, log, trace, warn},
 };
 
-use core::fmt;
-use core::fmt::{Debug, Display};
+use core::fmt::{self, Debug};
 
 #[cfg(feature = "arbitrary")]
 use arbitrary::Arbitrary;
@@ -25,7 +24,7 @@ use crate::*;
 use namelist::NameList;
 use sign::{OwnedSig, SigType};
 use sshnames::*;
-use sshwire::{BinString, Blob, TextString};
+use sshwire::{BinString, Blob, TextString, Unknown};
 use sshwire::{SSHDecode, SSHEncode, SSHSink, SSHSource, WireError, WireResult};
 
 #[cfg(feature = "rsa")]
@@ -949,46 +948,6 @@ pub struct DirectTcpip<'a> {
     pub port: u32,
     pub origin: TextString<'a>,
     pub origin_port: u32,
-}
-
-/// Placeholder for unknown method names.
-///
-/// These are sometimes non-fatal and
-/// need to be handled by the relevant code, for example newly invented pubkey types.
-/// This is deliberately not `SSHEncode`, we only receive it. sshwire-derive will
-/// automatically create instances.
-#[derive(Clone, PartialEq)]
-pub struct Unknown<'a>(pub &'a [u8]);
-
-impl<'a> Unknown<'a> {
-    pub fn new(u: &'a [u8]) -> Self {
-        let u = Unknown(u);
-        trace!("saw unknown variant \"{u}\"");
-        u
-    }
-}
-
-impl Display for Unknown<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if let Ok(s) = sshwire::try_as_ascii_str(self.0) {
-            f.write_str(s)
-        } else {
-            write!(f, "non-ascii {:02x?}", self.0)
-        }
-    }
-}
-
-impl Debug for Unknown<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        Display::fmt(self, f)
-    }
-}
-
-#[cfg(feature = "arbitrary")]
-impl<'arb: 'a, 'a> Arbitrary<'arb> for Unknown<'a> {
-    fn arbitrary(u: &mut arbitrary::Unstructured<'arb>) -> arbitrary::Result<Self> {
-        Ok(Self(arbitrary::Arbitrary::arbitrary(u)?))
-    }
 }
 
 /// State to be passed to decoding.

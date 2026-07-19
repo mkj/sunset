@@ -611,7 +611,7 @@ fn decode_enum_names(
 
                         match var.fields {
                             Some(Fields::Tuple(ref f)) if f.len() == 1 => {
-                                m.push_parsed(format!("_ => {{ s.ctx().seen_unknown = true; Self::{}(::sunset::packets::Unknown::new(variant)) }}", var.name))?;
+                                m.push_parsed(format!("_ => {{ s.ctx().seen_unknown = true; Self::{}(::sunset::sshwire::Unknown::new(variant)) }}", var.name))?;
                             }
                             None => {
                                 m.push_parsed(format!("_ => {{ s.ctx().seen_unknown = true; Self::{} }}", var.name))?;
