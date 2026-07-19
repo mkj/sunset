@@ -76,8 +76,10 @@ enum FieldAtt {
     /// eg `#[sshwire(variant_name = ch)]` for `ChannelRequest`
     VariantName(Ident),
 
-    /// Any unknown variant name should be recorded here.
-    /// This variant can't be written out.
+    /// Any unknown variant name.
+    ///
+    /// This variant can't be written out. It can be either a tuple enum variant
+    /// `EnumName::Unknown(Unknown<'a>)` or a unit variant `EnumName::Unknown`.
     /// `#[sshwire(unknown))]`
     CaptureUnknown,
 
@@ -295,6 +297,9 @@ fn encode_enum(
                     match &var.fields {
                         None => {
                             // Unit enum
+                            if atts.iter().any(|a| matches!(a, FieldAtt::CaptureUnknown)) {
+                                rhs.push_parsed("return Err(::sunset::sshwire::WireError::UnknownVariant)")?;
+                            }
                         }
                         Some(Fields::Tuple(f)) => {
                             match_arm.group(Delimiter::Parenthesis, |item| {
@@ -603,12 +608,22 @@ fn decode_enum_names(
                         have_unknown_variant = true;
                         // create the Unknown fallthrough but it will be at the end of the match list
                         let mut m = StreamBuilder::new();
-                        m.push_parsed(format!("_ => {{ s.ctx().seen_unknown = true; Self::{}(::sunset::packets::Unknown::new(variant))}}", var.name))?;
+
+                        match var.fields {
+                            Some(Fields::Tuple(ref f)) if f.len() == 1 => {
+                                m.push_parsed(format!("_ => {{ s.ctx().seen_unknown = true; Self::{}(::sunset::packets::Unknown::new(variant)) }}", var.name))?;
+                            }
+                            None => {
+                                m.push_parsed(format!("_ => {{ s.ctx().seen_unknown = true; Self::{} }}", var.name))?;
+                            }
+                            _ => {
+                                return Err(Error::Custom {
+                                    error: "#[sshwire(unknown)] must be a single field tuple variant, or unit variant".into(), span: None})
+                            }
+                        }
+
                         if unknown_arm.replace(m).is_some() {
                             return Err(Error::Custom { error: "only one variant can have #[sshwire(unknown)]".into(), span: None})
-                        }
-                        if !matches!(var.fields, Some(Fields::Tuple(ref f)) if f.len() == 1) {
-                            return Err(Error::Custom { error: "#[sshwire(unknown)] must be a single field tuple variant".into(), span: None})
                         }
                     } else {
                         let var_name = field_att_var_name(&var.name, atts)?;

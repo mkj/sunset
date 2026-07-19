@@ -1,5 +1,5 @@
 use sunset::packets::Unknown;
-use sunset::sshwire::{read_ssh, ssh_push_vec};
+use sunset::sshwire::{self, WireError, read_ssh, ssh_push_vec};
 use sunset_sshwire_derive::*;
 
 #[test]
@@ -31,7 +31,7 @@ fn enum_tuple() {
 }
 
 #[test]
-fn decode_unknown() {
+fn unknown_variant() {
     #[derive(SSHEncode, SSHDecode, PartialEq, Debug)]
     #[sshwire(variant_prefix)]
     enum En<'a> {
@@ -47,6 +47,33 @@ fn decode_unknown() {
     let (r, l) = read_ssh::<En>(&s, None).unwrap();
     assert_eq!(l, s.len());
     assert_eq!(r, En::U(Unknown(b"XX")));
+
+    // encoding fails
+    let e = sshwire::length_enc(&r);
+    assert_eq!(e, Err(WireError::UnknownVariant));
+}
+
+#[test]
+fn unknown_unit_variant() {
+    #[derive(SSHEncode, SSHDecode, PartialEq, Debug)]
+    #[sshwire(variant_prefix)]
+    enum En {
+        #[sshwire(variant = "a")]
+        A,
+        #[sshwire(variant = "b")]
+        B(u32, u8),
+        #[sshwire(unknown)]
+        U,
+    }
+
+    let s = [0x00u8, 0x00, 0x00, 0x02, b'X', b'X'];
+    let (r, l) = read_ssh::<En>(&s, None).unwrap();
+    assert_eq!(l, s.len());
+    assert_eq!(r, En::U);
+
+    // encoding fails
+    let e = sshwire::length_enc(&En::U);
+    assert_eq!(e, Err(WireError::UnknownVariant));
 }
 
 #[test]

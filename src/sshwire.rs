@@ -76,7 +76,7 @@ pub trait SSHDecodeEnum<'de>: Sized {
 ///
 /// Compiled code size is very sensitive to the size of this
 /// enum so we avoid unused elements.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum WireError {
     NoRoom,
 
