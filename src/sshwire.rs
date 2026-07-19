@@ -161,8 +161,12 @@ pub fn write_ssh(target: &mut [u8], value: &dyn SSHEncode) -> Result<usize> {
 pub fn ssh_push_vec(target: &mut Vec<u8>, value: &dyn SSHEncode) -> Result<()> {
     let orig = target.len();
     let l = length_enc(value)? as usize;
-    target.resize(orig + l, 0);
-    write_ssh(&mut target[orig..], value)?;
+    let l = orig.checked_add(l).ok_or(error::NoRoom.build())?;
+    target.resize(l, 0);
+    let wl = write_ssh(&mut target[orig..], value)
+        // revert length on failure
+        .inspect_err(|_| target.truncate(orig))?;
+    debug_assert_eq!(wl, l);
     Ok(())
 }
 
