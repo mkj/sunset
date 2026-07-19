@@ -1,7 +1,6 @@
-use sunset::packets::{ParseContext, Unknown};
-use sunset::sshwire::{self, SSHDecodeEnum, read_ssh, ssh_push_vec};
+use sunset::packets::Unknown;
+use sunset::sshwire::{read_ssh, ssh_push_vec};
 use sunset_sshwire_derive::*;
-use virtue::parse::Parse;
 
 #[test]
 fn enum_tuple() {

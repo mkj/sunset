@@ -1,7 +1,7 @@
 //! Used in conjunction with `sshwire.rs` and `packets.rs`
 //!
 //! `SSHWIRE_DEBUG` environment variable can be set at build time
-//! to write generated files to the `target/` directory.
+//! to write generated files to the `target/generated` directory.
 #![expect(clippy::useless_format)]
 
 use std::collections::HashSet;
@@ -28,39 +28,36 @@ pub fn derive_decode(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 fn encode_inner(input: TokenStream) -> Result<TokenStream> {
     let parse = Parse::new(input)?;
     let (mut gn, att, body) = parse.into_generator();
-    // println!("att {att:#?}");
-    match body {
-        Body::Struct(body) => {
-            encode_struct(&mut gn, body)?;
-        }
-        Body::Enum(body) => {
-            encode_enum(&mut gn, &att, body)?;
-        }
-    }
+    let err = match body {
+        Body::Struct(body) => encode_struct(&mut gn, body),
+        Body::Enum(body) => encode_enum(&mut gn, &att, body),
+    };
     if env::var(ENV_SSHWIRE_DEBUG).is_ok() {
         gn.export_to_file("sshwire", "SSHEncode");
     }
-    gn.finish()
+    // .finish() needs to call even if we return another error
+    let toks = gn.finish();
+    err?;
+    toks
 }
 
 fn decode_inner(input: TokenStream) -> Result<TokenStream> {
     let parse = Parse::new(input)?;
     let (mut gn, att, body) = parse.into_generator();
-    // println!("att {att:#?}");
-    match body {
-        Body::Struct(body) => {
-            decode_struct(&mut gn, body)?;
-        }
-        Body::Enum(body) => {
-            decode_enum(&mut gn, &att, body)?;
-        }
-    }
+    let err = match body {
+        Body::Struct(body) => decode_struct(&mut gn, body),
+        Body::Enum(body) => decode_enum(&mut gn, &att, body),
+    };
     if env::var(ENV_SSHWIRE_DEBUG).is_ok() {
         gn.export_to_file("sshwire", "SSHDecode");
     }
-    gn.finish()
+    // .finish() needs to call even if we return another error
+    let toks = gn.finish();
+    err?;
+    toks
 }
 
+/// Struct/Enum attributes.
 #[derive(Debug)]
 enum ContainerAtt {
     /// The string of the method is prefixed to this enum.
@@ -72,6 +69,7 @@ enum ContainerAtt {
     NoNames,
 }
 
+/// Field attributes.
 #[derive(Debug)]
 enum FieldAtt {
     /// A variant method name will be encoded/decoded before the next field.
@@ -90,6 +88,7 @@ enum FieldAtt {
     Variant(TokenTree),
 }
 
+/// Parses `sshwire` struct/enum attributes.
 fn take_cont_atts(atts: &[Attribute]) -> Result<Vec<ContainerAtt>> {
     let x = atts
         .iter()
@@ -117,6 +116,7 @@ fn take_cont_atts(atts: &[Attribute]) -> Result<Vec<ContainerAtt>> {
     Ok(ret)
 }
 
+/// Parses `sshwire` field attributes.
 // TODO: we could use virtue parse_tagged_attribute() though it doesn't support Literals
 fn take_field_atts(atts: &[Attribute]) -> Result<Vec<FieldAtt>> {
     atts.iter()
@@ -211,6 +211,7 @@ fn take_field_atts(atts: &[Attribute]) -> Result<Vec<FieldAtt>> {
         .collect()
 }
 
+/// Generates `SSHEncode` for a struct.
 fn encode_struct(gn: &mut Generator, body: StructBody) -> Result<()> {
     gn.impl_for("::sunset::sshwire::SSHEncode")
         .generate_fn("enc")
@@ -255,6 +256,7 @@ fn encode_struct(gn: &mut Generator, body: StructBody) -> Result<()> {
     Ok(())
 }
 
+/// Generates `SSHEncode` and `SSHEncodeEnum` for an enum where required.
 fn encode_enum(
     gn: &mut Generator,
     atts: &[Attribute],
@@ -353,7 +355,11 @@ fn encode_enum(
     Ok(())
 }
 
-fn field_att_var_names(name: &Ident, mut atts: Vec<FieldAtt>) -> Result<TokenTree> {
+/// Retrieves the variant name for a field.
+///
+/// This is the `...` from `#[sshwire(variant = ...)]`, may be a
+/// string literal or a `const` `&str`.
+fn field_att_var_name(name: &Ident, mut atts: Vec<FieldAtt>) -> Result<TokenTree> {
     let mut v = vec![];
     while let Some(p) = atts.pop() {
         if let FieldAtt::Variant(t) = p {
@@ -372,6 +378,7 @@ fn field_att_var_names(name: &Ident, mut atts: Vec<FieldAtt>) -> Result<TokenTre
     Ok(v.pop().unwrap())
 }
 
+/// Generates `SSHEncodeEnum` for an enum
 fn encode_enum_names(
     gn: &mut Generator,
     _atts: &[Attribute],
@@ -394,7 +401,7 @@ fn encode_enum_names(
                     if atts.iter().any(|a| matches!(a, FieldAtt::CaptureUnknown)) {
                         rhs.push_parsed("return Err(::sunset::sshwire::WireError::UnknownVariant)")?;
                     } else {
-                        rhs.push(field_att_var_names(&var.name, atts)?);
+                        rhs.push(field_att_var_name(&var.name, atts)?);
                     }
 
                     match var.fields {
@@ -438,6 +445,7 @@ fn encode_enum_names(
     Ok(())
 }
 
+/// Generates SSHDecode for a struct.
 fn decode_struct(gn: &mut Generator, body: StructBody) -> Result<()> {
     gn.impl_for_with_lifetimes("::sunset::sshwire::SSHDecode", ["de"])
         .modify_generic_constraints(|generics, where_constraints| {
@@ -506,6 +514,7 @@ fn decode_struct(gn: &mut Generator, body: StructBody) -> Result<()> {
     Ok(())
 }
 
+/// Generates `SSHDecode` and `SSHDecodeEnum` for an enum where required.
 fn decode_enum(
     gn: &mut Generator,
     atts: &[Attribute],
@@ -531,6 +540,9 @@ fn decode_enum(
     Ok(())
 }
 
+/// Generate `SSHDecode` implementation.
+///
+/// Reads the variant name from the wire, then calls `dec_enum()` with that variant name.
 fn decode_enum_variant_prefix(
     gn: &mut Generator,
     _atts: &[Attribute],
@@ -557,6 +569,9 @@ fn decode_enum_variant_prefix(
         })
 }
 
+/// Generate `SSHDecodeEnum` implementation.
+///
+/// `dec_enum()` takes a variant name argument, used to choose the variant to decode.
 fn decode_enum_names(
     gn: &mut Generator,
     _atts: &[Attribute],
@@ -596,7 +611,7 @@ fn decode_enum_names(
                             return Err(Error::Custom { error: "#[sshwire(unknown)] must be a single field tuple variant".into(), span: None})
                         }
                     } else {
-                        let var_name = field_att_var_names(&var.name, atts)?;
+                        let var_name = field_att_var_name(&var.name, atts)?;
                         match_arm.push_parsed(format!("Some({}) => ", var_name))?;
                         match_arm.group(Delimiter::Brace, |var_body| {
                             match &var.fields {
@@ -636,7 +651,7 @@ fn decode_enum_names(
             fn_body.push_parsed("; Ok(r)")?;
 
             if !have_unknown_variant {
-                return Err(Error::Custom { error: "SSHDecode enum needs #[sshwire(unknown) variant".into(), span: None});
+                return Err(Error::Custom { error: "SSHDecode enum needs a #[sshwire(unknown) variant".into(), span: None});
             }
 
             Ok(())
