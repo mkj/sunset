@@ -359,6 +359,11 @@ impl<'g, 'a> ServPasswordAuth<'g, 'a> {
         Self { runner, done: false }
     }
 
+    /// Retrieve the username.
+    ///
+    /// The username will be the same between all
+    /// `ServFirstAuth`, `ServPasswordAuth`, and `ServPubkeyAuth`
+    /// events in a session.
     pub fn username(&self) -> Result<&str> {
         self.raw_username()?.to_str()
     }
@@ -471,6 +476,11 @@ impl<'g, 'a> ServPubkeyAuth<'g, 'a> {
         Self { runner, done: false, real_sig }
     }
 
+    /// Retrieve the username.
+    ///
+    /// The username will be the same between all
+    /// `ServFirstAuth`, `ServPasswordAuth`, and `ServPubkeyAuth`
+    /// events in a session.
     pub fn username(&self) -> Result<&str> {
         self.raw_username()?.to_str()
     }
@@ -554,6 +564,10 @@ impl<'g, 'a> ServFirstAuth<'g, 'a> {
     }
 
     /// Retrieve the username presented by the client.
+    ///
+    /// The username will be the same between all
+    /// `ServFirstAuth`, `ServPasswordAuth`, and `ServPubkeyAuth`
+    /// events in a session.
     pub fn username(&self) -> Result<&str> {
         self.raw_username()?.to_str()
     }
