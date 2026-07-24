@@ -76,7 +76,7 @@ impl SSHEncode for &LocalNames {
             + names.len().saturating_sub(1);
         (strlen as u32).enc(s)?;
         for i in 0..names.len() {
-            names[i].as_bytes().enc(s)?;
+            s.push(names[i].as_bytes())?;
             if i < names.len() - 1 {
                 b','.enc(s)?;
             }

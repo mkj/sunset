@@ -782,9 +782,10 @@ impl SharedSecret {
             }
         }?;
 
-        // TODO: error message on signature failure.
-        let h: &[u8] = kex_out.h.as_ref();
+        // OK unwrap, hash is always sha256. Pending output_size() being const.
+        let h: &[u8; 32] = kex_out.h.as_slice().try_into().unwrap();
         trace!("verify  h {h:02x?}");
+        // TODO: error message on signature failure.
         algos
             .hostsig
             .verify(&p.k_s.0, &h, &p.sig.0)
@@ -846,7 +847,9 @@ impl SharedSecret {
 
         let k_s = Blob(hostkey.pubkey());
         trace!("sign kexreply h {:02x?}", ko.h.as_slice());
-        let sig = hostkey.sign(&ko.h.as_slice())?;
+        // OK unwrap, hash is always sha256.
+        let h: &[u8; 32] = ko.h.as_slice().try_into().unwrap();
+        let sig = hostkey.sign(h)?;
         let sig: Signature = (&sig).into();
         let sig = Blob(sig);
         s.send(packets::KexDHReply { k_s, q_s, sig })

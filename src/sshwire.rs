@@ -338,7 +338,7 @@ impl Debug for BinString<'_> {
 impl SSHEncode for BinString<'_> {
     fn enc(&self, s: &mut dyn SSHSink) -> WireResult<()> {
         (self.0.len() as u32).enc(s)?;
-        self.0.enc(s)
+        s.push(self.0)
     }
 }
 
@@ -427,8 +427,7 @@ impl Display for TextString<'_> {
 
 impl SSHEncode for TextString<'_> {
     fn enc(&self, s: &mut dyn SSHSink) -> WireResult<()> {
-        (self.0.len() as u32).enc(s)?;
-        self.0.enc(s)
+        BinString(self.0).enc(s)
     }
 }
 
@@ -567,7 +566,7 @@ impl SSHEncode for Mpint<'_> {
         if pad {
             0u8.enc(s)?;
         }
-        self.0.enc(s)
+        s.push(self.0)
     }
 }
 
@@ -609,14 +608,6 @@ impl SSHEncode for u32 {
 impl SSHEncode for u64 {
     fn enc(&self, s: &mut dyn SSHSink) -> WireResult<()> {
         s.push(&self.to_be_bytes())
-    }
-}
-
-// no length prefix
-impl SSHEncode for &[u8] {
-    fn enc(&self, s: &mut dyn SSHSink) -> WireResult<()> {
-        // data
-        s.push(self)
     }
 }
 
