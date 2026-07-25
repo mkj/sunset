@@ -98,6 +98,8 @@ pub enum WireError {
 
     UnknownVariant,
 
+    SSHProtoUnsupported,
+
     UnknownPacket { number: u8 },
 }
 
@@ -114,6 +116,7 @@ impl From<WireError> for Error {
             WireError::BadNumber => Error::BadNumber,
             WireError::EncodeUnknown => Error::build_bug_msg("Can't encode Unknown"),
             WireError::UnknownVariant => Error::UnknownMethod { kind: "" },
+            WireError::SSHProtoUnsupported => Error::SSHProtoUnsupported,
             WireError::UnknownPacket { number } => Error::UnknownPacket { number },
         }
     }
