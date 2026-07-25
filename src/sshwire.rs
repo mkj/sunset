@@ -816,7 +816,7 @@ impl<T: SSHWireDigestUpdate> From<T> for SSHWireDigestTrace<T> {
 impl SSHEncode for rsa::BoxedUint {
     fn enc(&self, s: &mut dyn SSHSink) -> WireResult<()> {
         let b = self.to_be_bytes();
-        Mpint(&b).enc(s)
+        Mpint::new(&b).enc(s)
     }
 }
 
