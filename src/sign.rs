@@ -322,6 +322,8 @@ pub enum KeyType {
     Ed25519,
     #[cfg(feature = "rsa")]
     RSA,
+    #[cfg(feature = "ecdsa256")]
+    ECDSA256,
 }
 
 /// A SSH signing key.
@@ -381,6 +383,13 @@ impl SignKey {
                     },
                 )?;
                 Ok(Self::RSA(k))
+            }
+            #[cfg(feature = "ecdsa256")]
+            KeyType::ECDSA256 => {
+                use ecdsa::elliptic_curve::Generate;
+                let k =
+                    p256::SecretKey::generate_from_rng(&mut crate::random::rng());
+                Ok(Self::ECDSA256(k.into()))
             }
         }
     }
