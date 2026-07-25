@@ -201,7 +201,7 @@ pub fn write_ssh(target: &mut [u8], value: &dyn SSHEncode) -> Result<usize> {
     Ok(target.len() - end_len)
 }
 
-#[cfg(feature = "std")]
+#[cfg(any(feature = "std", test))]
 pub fn ssh_push_vec(target: &mut Vec<u8>, value: &dyn SSHEncode) -> Result<()> {
     let orig = target.len();
     let l = length_enc(value)? as usize;

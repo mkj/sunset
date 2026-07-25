@@ -15,7 +15,7 @@ use zeroize::ZeroizeOnDrop;
 use crate::*;
 use packets::{Ed25519PubKey, Ed25519Sig, PubKey, Signature};
 use sshnames::*;
-use sshwire::{Blob, SSHEncode};
+use sshwire::{BinString, Blob, SSHDecode, SSHEncode, WireError, WireResult};
 
 use core::mem::discriminant;
 
@@ -569,6 +569,88 @@ impl core::fmt::Debug for SignKey {
     }
 }
 
+/// An unspecified encoding of the private key.
+///
+/// This does not correspond to a SSH RFC, only used internally.
+impl sshwire::SSHEncode for SignKey {
+    // An arbitrary encoding, similar to
+    fn enc(&self, s: &mut dyn sshwire::SSHSink) -> sshwire::WireResult<()> {
+        match self {
+            SignKey::Ed25519(k) => {
+                SSH_NAME_ED25519.enc(s)?;
+                BinString(&k.to_bytes()).enc(s)?;
+            }
+            #[cfg(feature = "rsa")]
+            SignKey::RSA(k) => {
+                use rsa::traits::{PrivateKeyParts, PublicKeyParts};
+
+                SSH_NAME_RSA.enc(s)?;
+                let [p, q]: &[_; _] =
+                    k.primes().try_into().map_err(|_| WireError::BadKey)?;
+                k.n().enc(s)?;
+                k.e().enc(s)?;
+                k.d().enc(s)?;
+                p.enc(s)?;
+                q.enc(s)?;
+            }
+            #[cfg(feature = "ecdsa256")]
+            SignKey::ECDSA256(k) => {
+                SSH_NAME_ECDSA256.enc(s)?;
+                // Using a fixed length BinString rather than Mpint since
+                // ecdsa crate decoding requires a fixed length input.
+                sshwire::BinString(&k.to_bytes()).enc(s)?;
+            }
+            _ => {
+                trace!("Can't encode agent signkeys");
+                return Err(WireError::BadKey);
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Matches `SSHEncode`.
+///
+/// This does not correspond to a SSH RFC, only used internally.
+impl<'de> SSHDecode<'de> for SignKey {
+    fn dec<S>(s: &mut S) -> WireResult<Self>
+    where
+        S: sshwire::SSHSource<'de>,
+    {
+        let t = <&str>::dec(s)?;
+        Ok(match t {
+            SSH_NAME_ED25519 => {
+                let k = BinString::dec(s)?;
+                let k = k.0.try_into().map_err(|_| WireError::BadKey)?;
+                let k = dalek::SigningKey::from_bytes(k);
+                Self::Ed25519(k)
+            }
+            #[cfg(feature = "rsa")]
+            SSH_NAME_RSA => {
+                let n = SSHDecode::dec(s)?;
+                let e = SSHDecode::dec(s)?;
+                let d = SSHDecode::dec(s)?;
+                let p = SSHDecode::dec(s)?;
+                let q = SSHDecode::dec(s)?;
+                let k = rsa::RsaPrivateKey::from_components(n, e, d, vec![p, q])
+                    .map_err(|_| WireError::BadKey)?;
+                Self::RSA(k)
+            }
+            #[cfg(feature = "ecdsa256")]
+            SSH_NAME_ECDSA256 => {
+                let d = BinString::dec(s)?;
+                let d = d.0.try_into().map_err(|_| WireError::BadKey)?;
+                Self::ECDSA256(
+                    p256::SecretKey::from_bytes(d)
+                        .map_err(|_| WireError::BadKey)?
+                        .into(),
+                )
+            }
+            _ => return Err(WireError::UnknownVariant),
+        })
+    }
+}
+
 #[cfg(feature = "openssh-key")]
 impl TryFrom<ssh_key::PrivateKey> for SignKey {
     type Error = Error;
@@ -591,6 +673,34 @@ impl TryFrom<ssh_key::PrivateKey> for SignKey {
 }
 
 #[cfg(test)]
-pub(crate) mod tests {
+pub mod tests {
+    use super::*;
+    use crate::sshwire::{read_ssh, ssh_push_vec};
+
     // TODO: tests for sign()/verify() and invalid signatures
+
+    #[test]
+    fn signkey_enc_dec() {
+        let tys = [
+            KeyType::Ed25519,
+            #[cfg(feature = "rsa")]
+            KeyType::RSA,
+            #[cfg(feature = "ecdsa256")]
+            KeyType::ECDSA256,
+        ];
+
+        // Multiple iterations since some seen failures depend
+        // on random key structure.
+        for _ in 0..20 {
+            for ty in tys {
+                let k = SignKey::generate(ty, None).unwrap();
+                let mut v = vec![];
+                ssh_push_vec(&mut v, &k).unwrap();
+                let (dk, l) = read_ssh(&v, None).unwrap();
+
+                assert_eq!(l, v.len());
+                assert_eq!(k, dk);
+            }
+        }
+    }
 }
