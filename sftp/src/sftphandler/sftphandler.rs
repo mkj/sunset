@@ -212,7 +212,7 @@ where
                 let lr = chan_in
                     .read(&mut input)
                     .await
-                    .map_err(|e| SftpError::from_embedded_io(e))?;
+                    .map_err(SftpError::from_embedded_io)?;
 
                 debug!("SFTP <---- received: {:?} bytes", lr);
                 trace!("SFTP <---- received: {:?}", &input[0..lr]);
@@ -672,7 +672,9 @@ impl bbqueue::export::ConstInit for OneFutNotifier {
 
 impl bbqueue::traits::notifier::Notifier for OneFutNotifier {
     fn wake_one_consumer(&self) {
-        self.waker.take().map(|w| w.wake_by_ref());
+        if let Some(w) = self.waker.take() {
+            w.wake_by_ref()
+        }
     }
 
     fn wake_one_producer(&self) {

@@ -369,7 +369,7 @@ impl<'de> SSHDecode<'de> for Name {
     where
         S: SSHSource<'de>,
     {
-        let count = u32::dec(s)? as u32;
+        let count = u32::dec(s)?;
 
         // let mut names = Vec::with_capacity(count);
 
@@ -573,7 +573,7 @@ impl<'de> SSHDecode<'de> for Attrs {
         S: SSHSource<'de>,
     {
         let mut attrs = Attrs::default();
-        let flags = u32::dec(s)? as u32;
+        let flags = u32::dec(s)?;
         if flags & AttrsFlags::SSH_FILEXFER_ATTR_SIZE != 0 {
             attrs.size = Some(u64::dec(s)?);
         }
