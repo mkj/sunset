@@ -52,6 +52,9 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 #![no_std]
+// Nested if statements are often more logical,
+// or allow for future additions.
+#![allow(clippy::collapsible_if)]
 
 mod proto;
 mod sftperror;

@@ -10,6 +10,9 @@
 #![deny(unused_must_use)]
 // Static allocations hit this inherently.
 #![allow(clippy::large_enum_variant)]
+// Nested if statements are often more logical,
+// or allow for future additions.
+#![allow(clippy::collapsible_if)]
 
 #[cfg(feature = "alloc")]
 extern crate alloc;

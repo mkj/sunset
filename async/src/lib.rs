@@ -14,6 +14,9 @@
 #![forbid(unsafe_code)]
 // avoid mysterious missing awaits
 #![deny(unused_must_use)]
+// Nested if statements are often more logical,
+// or allow for future additions.
+#![allow(clippy::collapsible_if)]
 
 mod async_channel;
 mod async_sunset;
