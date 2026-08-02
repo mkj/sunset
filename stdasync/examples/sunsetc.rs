@@ -26,7 +26,7 @@ use time::UtcOffset;
 async fn real_main(tz: UtcOffset) -> Result<ExitCode> {
     let args = parse_args(tz)?;
     let exit_code = run(args).await?;
-    Ok(exit_code.into())
+    Ok(exit_code)
 }
 
 fn main() -> ExitCode {
@@ -99,7 +99,7 @@ async fn run(args: Args) -> Result<ExitCode> {
         }
         for i in &args.identityfile {
             app.add_authkey(
-                read_key(&i).with_context(|| format!("loading key {i}"))?,
+                read_key(i).with_context(|| format!("loading key {i}"))?,
             );
         }
 
