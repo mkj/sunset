@@ -1,5 +1,47 @@
 # Sunset Changelog
 
+## 0.6.0 - 2026-08-02
+
+### Changed
+
+- Updated all crypto crate dependencies. Most are new major versions,
+  RSA is a release candidate. RSA now has a 8192 bit limit.
+
+- Update to getrandom 0.4. This has a new API for custom backends,
+  see getrandom docs or picow demo. No changes needed for `std`.
+
+- Fingerprint no longer has a hash argument, it's always SHA-256.
+
+- `Error::bug()` now returns a `Result` rather than `Result::Err` variant.
+
+- `sshwire::UnknownVariant` now is used to indicate decoding
+  an unknown variant. `sshwire::EncodeUnknown` is the old meaning.
+  `packets::Unknown` type is now moved to `sshwire::Unknown`.
+
+### Fixed
+
+- `ssh-key` feature is properly optional, previously it would always
+  be enabled by various other features.
+
+### Added
+
+- Re-export API crates such as public key types, `embedded_io_async`,
+  `sunset`, `sunset_async`.
+
+- `SSHEncode`/`SSHDecode` are implemented for `std::String`.
+
+- Document `ServEvent` username fields, and guarantee it
+  will be unchanging.
+
+- Allow ECDSA-256 for `SignKey::generate`.
+
+- `SSHEncode`/`SSHDecode` implemented for `SignKey`.
+
+### Removed
+
+- `&[u8]` no longer implements `SSHEncode`/`SSHDecode`.
+  Use `BinString` instead which is more explicit.
+
 ## 0.5.0 - 2026-06-23
 
 ### Changed

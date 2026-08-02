@@ -1,5 +1,15 @@
 # `sunset-stdasync` Changelog
 
+## 0.6.0 - 2026-08-02
+
+### Changed
+
+- Update for new sunset release
+
+### Added
+
+- Re-export `sunset` and `sunset_async`
+
 ## 0.5.0 - 2026-06-23
 
 ### Changed

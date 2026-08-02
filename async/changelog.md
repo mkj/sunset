@@ -1,5 +1,17 @@
 # `sunset-async` Changelog
 
+## 0.6.0 - 2026-08-02
+
+### Added
+
+- `run_tokio()` and `run_futures_io()` methods on `SSHServer`
+  and `SSHClient` take `AsyncRead` and `AsyncWrite`.
+  These require tokio or futures-io features.
+
+- `From<ChanInOut>` conversion for `ChanIn` and `ChanOut`.
+
+- Re-export `sunset` and `embedded_io_async`.
+
 ## 0.5.0 - 2026-06-23
 
 ### Changed

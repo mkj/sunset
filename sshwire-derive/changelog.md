@@ -1,5 +1,24 @@
 # `sunset-sshwire-derive` Changelog
 
+## 0.3.0 - 2026-08-02
+
+### Added
+
+- Allow enum struct and tuple variants.
+
+- Allow `#[sshwire(unknown)]` on unit variants, discarding the name.
+
+- Add `#[sshwire(decode_unknown_fail)]` to return an error instead
+  of storing unknown variants.
+
+### Changed
+
+- Encoding an enum returns `WireError::EncodeUnknown`
+
+### Fixed
+
+- Don't warn about `.finish()` when derive fails.
+
 ## 0.2.2 - 2026-06-23
 
 - Disallow `derive(SSHEncode)` for enums with values. They could
