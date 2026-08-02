@@ -461,7 +461,7 @@ impl SSHEncode for StatusCode {
 }
 
 // TODO: Implement extensions. Low in priority
-/// Provided to implement extensions
+// /// Provided to implement extensions
 // #[derive(Debug, SSHEncode, SSHDecode)]
 // pub struct ExtPair<'a> {
 //     pub name: &'a str,
@@ -495,6 +495,8 @@ pub enum AttrsFlags {
     SSH_FILEXFER_ATTR_ACMODTIME = 0x08,
     SSH_FILEXFER_ATTR_EXTENDED = 0x80000000,
 }
+
+#[allow(clippy::suspicious_op_assign_impl)]
 impl core::ops::AddAssign<AttrsFlags> for u32 {
     fn add_assign(&mut self, other: AttrsFlags) {
         *self |= other as u32;
