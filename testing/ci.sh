@@ -49,6 +49,7 @@ cargo test --lib
 cargo build --example sunsetc --features sunset/backtrace
 # with/without release to test debug_assertions
 cargo build --release --example sunsetc
+cargo clippy --all-targets
 )
 
 (
@@ -63,11 +64,13 @@ cd sftp
 cargo test
 cargo test --doc
 cargo doc
+cargo clippy
 )
 
 (
 cd demo/std
 cargo build
+cargo clippy
 )
 
 (
@@ -82,6 +85,7 @@ cargo bloat --release -n 100 | tee "$OUT/picow-bloat.txt"
 cargo bloat --release --crates | tee "$OUT/picow-bloat-crates.txt"
 cargo build --release --no-default-features --features w5500
 cargo build --release --features romfw
+cargo clippy
 )
 size target/thumbv6m-none-eabi/release/sunset-demo-picow | tee "$OUT/picow-size.txt"
 
