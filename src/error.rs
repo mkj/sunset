@@ -268,7 +268,7 @@ impl<T, E> TrapBug<T> for Result<T, E> {
     #[track_caller]
     fn trap(self) -> Result<T, Error> {
         // call directly so that Location::caller() works
-        if let Ok(i) = self { Ok(i) } else { return Error::bug() }
+        if let Ok(i) = self { Ok(i) } else { Error::bug() }
     }
     #[track_caller]
     fn trap_msg(self, args: Arguments) -> Result<T, Error> {
