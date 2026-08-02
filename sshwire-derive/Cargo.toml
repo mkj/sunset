@@ -13,4 +13,6 @@ proc-macro = true
 virtue = "=0.0.17" # Last released version
 
 [dev-dependencies]
-sunset = { workspace = true, features = ["std"]}
+# Not a workspace dep so it won't have a version number.
+# Workaround for circular dev-dependencies.
+sunset = { path = "..", features = ["std"]}
