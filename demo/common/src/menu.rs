@@ -7,6 +7,8 @@
 //! A basic command-line interface for `#![no_std]` Rust programs. Peforms
 //! zero heap allocation.
 #![deny(missing_docs)]
+// Ignore warnings from upstream source
+#![allow(clippy::all)]
 
 /// The type of function we call when we enter/exit a menu.
 pub type MenuCallbackFn<T> = fn(context: &mut T);
@@ -650,15 +652,13 @@ where
                                 }
                             }
                             Parameter::NamedValue { parameter_name, .. } => {
-                                if arg.contains('=') {
-                                    if let Some(given_name) =
+                                if arg.contains('=')
+                                    && let Some(given_name) =
                                         arg[2..].split('=').next()
-                                    {
-                                        if given_name == *parameter_name {
-                                            found = true;
-                                            break;
-                                        }
-                                    }
+                                    && given_name == *parameter_name
+                                {
+                                    found = true;
+                                    break;
                                 }
                             }
                             _ => {

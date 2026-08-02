@@ -37,7 +37,7 @@ pub async fn listen(
     socket.set_nagle_enabled(false);
     loop {
         info!("Listening on TCP:22...");
-        if let Err(_) = socket.accept(22).await {
+        if socket.accept(22).await.is_err() {
             warn!("accept error");
             continue;
         }

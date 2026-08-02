@@ -75,7 +75,7 @@ pub async fn load_or_create(flash: &mut Fl<'_>) -> Result<SSHConfig> {
 
 pub async fn create(flash: &mut Fl<'_>) -> Result<SSHConfig> {
     let c = SSHConfig::new()?;
-    if let Err(_) = save(flash, &c).await {
+    if save(flash, &c).await.is_err() {
         warn!("Error writing config");
     }
     Ok(c)

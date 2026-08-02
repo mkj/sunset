@@ -38,6 +38,7 @@ async fn wifi_task(
 }
 
 // It would be nice to make Pio0, Sm0, DMA_CH0 generic, but wifi_task can't have generics.
+#[expect(clippy::too_many_arguments)]
 pub(crate) async fn wifi_stack(
     spawner: &Spawner,
     p23: Peri<'static, PIN_23>,
@@ -128,6 +129,7 @@ async fn net_task(
 }
 
 // Get the WiFi firmware and Country Locale Matrix (CLM) blobs.
+#[expect(clippy::type_complexity)]
 fn get_fw() -> (
     &'static Aligned<A4, [u8]>,
     &'static Aligned<A4, [u8]>,
