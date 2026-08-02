@@ -1301,8 +1301,8 @@ mod tests {
         let mut version = RemoteVersion::new(true);
         version.consume(s.as_slice()).unwrap();
 
-        let mut keys = vec![];
-        keys.push(crate::SignKey::generate(crate::KeyType::Ed25519, None).unwrap());
+        let keys =
+            [crate::SignKey::generate(crate::KeyType::Ed25519, None).unwrap()];
         let keys: Vec<&SignKey> = keys.iter().collect();
 
         let mut ts = TrafCatcher::new();

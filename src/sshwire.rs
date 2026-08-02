@@ -871,7 +871,7 @@ pub(crate) mod tests {
     use sunsetlog::init_test_log;
 
     /// Checks that two items serialize the same
-    pub fn assert_serialize_equal<'de, T: SSHEncode>(p1: &T, p2: &T) {
+    pub fn assert_serialize_equal<T: SSHEncode>(p1: &T, p2: &T) {
         let mut buf1 = vec![99; 2000];
         let mut buf2 = vec![88; 1000];
         let l1 = write_ssh(&mut buf1, p1).unwrap();
