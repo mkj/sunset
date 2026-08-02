@@ -18,6 +18,9 @@ jobs:
     env:
       RUSTUP_TOOLCHAIN: ${{ matrix.rust_version }}
     steps:
+      - name: rust toolchain
+        run: rustup component add --toolchain "$RUSTUP_TOOLCHAIN" clippy
+
       - uses: actions/checkout@v6
 
       - name: Cache Rust files
