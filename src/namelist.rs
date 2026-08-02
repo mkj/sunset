@@ -272,7 +272,7 @@ mod tests {
             let x = t.join(",");
             let s: NameList = x.as_str().try_into().unwrap();
             assert_eq!(l.first(), s.first());
-            if t.len() == 0 {
+            if t.is_empty() {
                 assert_eq!(l.first(), "");
             } else {
                 assert_eq!(l.first(), t[0]);
@@ -286,16 +286,16 @@ mod tests {
             let s: NameList = list.try_into().unwrap();
             s.has_algo(has).unwrap()
         }
-        assert_eq!(n("", ""), true);
-        assert_eq!(n("", "one"), false);
-        assert_eq!(n("zzz", ""), false);
-        assert_eq!(n("zzz", "one"), false);
-        assert_eq!(n("zzz", "zzz"), true);
-        assert_eq!(n("zzz", "zz"), false);
-        assert_eq!(n("zz,more", "zzz"), false);
-        assert_eq!(n("zzz,boo", "zzz"), true);
-        assert_eq!(n("zzz,boo", "boo"), true);
-        assert_eq!(n("zzz,boo", "urp"), false);
+        assert!(n("", ""));
+        assert!(!n("", "one"));
+        assert!(!n("zzz", ""));
+        assert!(!n("zzz", "one"));
+        assert!(n("zzz", "zzz"));
+        assert!(!n("zzz", "zz"));
+        assert!(!n("zz,more", "zzz"));
+        assert!(n("zzz,boo", "zzz"));
+        assert!(n("zzz,boo", "boo"));
+        assert!(!n("zzz,boo", "urp"));
     }
 
     #[test]

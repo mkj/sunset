@@ -211,7 +211,7 @@ mod tests {
             assert_eq!(test_version("\x0d\x0aSSH-2.0-@\x0d\x0amore", i, "SSH-2.0-@").unwrap(), 13);
             test_version("\x0d\x0aSSH-2.0bleh \x0d\x0aSSH-2.0-@\x0d\x0a", i, "SSH-2.0-@").unwrap();
 
-            test_version(&long, i, "").unwrap_err();
+            test_version(long, i, "").unwrap_err();
             test_version(&format!("{long}\x0d\x0aSSH-2.0-works\x0d\x0a"), i, "SSH-2.0-works").unwrap();
             test_version(&format!("{long}    \x0aSSH-2.0-works\x0d\x0a"), i, "SSH-2.0-works").unwrap();
             // a CR by itself is insufficient

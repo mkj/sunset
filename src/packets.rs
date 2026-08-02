@@ -1189,12 +1189,8 @@ mod tests {
         let k = SignKey::generate(KeyType::Ed25519, None).unwrap();
         let method =
             AuthMethod::PubKey(MethodPubKey::new(k.pubkey(), None).unwrap());
-        let p = UserauthRequest {
-            username: "matt".into(),
-            service: "conn".into(),
-            method,
-        }
-        .into();
+        let p = UserauthRequest { username: "matt".into(), service: "conn", method }
+            .into();
         test_roundtrip(&p);
 
         // again with a sig
@@ -1251,7 +1247,7 @@ mod tests {
         let l = write_ssh(&mut buf1, &p).unwrap();
         buf1.truncate(l);
         // change a byte
-        buf1[8] = 'X' as u8;
+        buf1[8] = b'X';
         let ctx = ParseContext::default();
         let p2 = packet_from_bytes(&buf1, &ctx).unwrap();
         trace!("broken: {p2:#?}");
@@ -1285,7 +1281,7 @@ mod tests {
         let l = write_ssh(&mut buf1, &p).unwrap();
         buf1.truncate(l);
         // change a byte in the "ssh-ed25519" variant string
-        buf1[60] = 'F' as u8;
+        buf1[60] = b'F';
         let ctx = ParseContext::default();
         let p2 = packet_from_bytes(&buf1, &ctx).unwrap();
         trace!("broken: {p2:#?}");

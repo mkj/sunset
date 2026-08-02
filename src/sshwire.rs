@@ -897,7 +897,7 @@ pub(crate) mod tests {
         let digest1 = hash_ctx.finalize();
 
         let mut hash_ctx = Sha256::new();
-        hash_ctx.update(&(w1 as u32).to_be_bytes());
+        hash_ctx.update((w1 as u32).to_be_bytes());
         hash_ctx.update(&buf);
         let digest2 = hash_ctx.finalize();
 
@@ -905,7 +905,7 @@ pub(crate) mod tests {
 
         // hash_ser
         let mut hash_ctx = Sha256::new();
-        hash_ctx.update(&(w1 as u32).to_be_bytes());
+        hash_ctx.update((w1 as u32).to_be_bytes());
         hash_ser(&mut hash_ctx, &input).unwrap();
         let digest3 = hash_ctx.finalize();
         assert_eq!(digest3, digest2);
@@ -916,14 +916,14 @@ pub(crate) mod tests {
         let l = write_ssh(&mut buf, p).unwrap();
         buf.truncate(l);
 
-        let p2 = packet_from_bytes(&buf, &ctx).unwrap();
+        let p2 = packet_from_bytes(&buf, ctx).unwrap();
         trace!("returned packet {:#?}", p2);
         assert_serialize_equal(p, &p2);
     }
 
     /// With default context
     pub fn test_roundtrip(p: &Packet) {
-        test_roundtrip_context(&p, &ParseContext::default());
+        test_roundtrip_context(p, &ParseContext::default());
     }
 
     /// Tests parsing a packet with a ParseContext.

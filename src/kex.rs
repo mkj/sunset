@@ -1361,7 +1361,7 @@ mod tests {
         assert!(matches!(ev, DispatchEvent::CliEvent(CliEventId::Hostkey)));
         cli.resume_kexdhreply(&serv_dhrep, &mut sess_id, s).unwrap();
         assert!(matches!(tc.next().unwrap(), Packet::NewKeys(_)));
-        assert!(matches!(tc.next(), None));
+        assert!(tc.next().is_none());
 
         let (cout, calgos) = if let Kex::NewKeys { output, algos } = cli {
             (output, algos)
@@ -1381,14 +1381,14 @@ mod tests {
         let sess_id = &sess_id.unwrap();
 
         let mut skeys = crate::encrypt::KeyState::new_cleartext();
-        let enc = KeysSend::new(&sout, &sess_id, &salgos);
-        let dec = KeysRecv::new(&sout, &sess_id, &salgos);
+        let enc = KeysSend::new(&sout, sess_id, &salgos);
+        let dec = KeysRecv::new(&sout, sess_id, &salgos);
         skeys.rekey_send(enc);
         skeys.rekey_recv(dec);
 
         let mut ckeys = crate::encrypt::KeyState::new_cleartext();
-        let enc = KeysSend::new(&cout, &sess_id, &calgos);
-        let dec = KeysRecv::new(&cout, &sess_id, &calgos);
+        let enc = KeysSend::new(&cout, sess_id, &calgos);
+        let dec = KeysRecv::new(&cout, sess_id, &calgos);
         ckeys.rekey_send(enc);
         ckeys.rekey_recv(dec);
 
@@ -1397,8 +1397,7 @@ mod tests {
     }
 
     fn roundtrip(payload: &[u8], enc: &mut KeyState, dec: &mut KeyState) {
-        let mut b = vec![];
-        b.resize(SSH_PAYLOAD_START, 0);
+        let mut b = vec![0; SSH_PAYLOAD_START];
         b.extend_from_slice(payload);
         b.resize(100, 0);
 
