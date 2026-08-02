@@ -171,11 +171,7 @@ impl<'a, CS: CliServ> AsyncSunset<'a, CS> {
         let rx_stop = Signal::<SunsetRawMutex, ()>::new();
 
         let tx = async {
-            let r = self
-                .output_loop(wsock)
-                .await
-                .inspect(|r| warn!("tx complete {r:?}"));
-            r
+            self.output_loop(wsock).await.inspect(|r| warn!("tx complete {r:?}"))
         };
         let tx = select(tx, tx_stop.wait());
 
