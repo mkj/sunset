@@ -335,7 +335,7 @@ impl DemoServer for &'static PicoDemo {
             let mut stdio = serv.stdio(ch).await?;
 
             #[cfg(feature = "serial1")]
-            let default_pipe = self.global.serial1_pipe;
+            let default_pipe = self.serial1_pipe;
             #[cfg(not(feature = "serial1"))]
             let default_pipe = self.usb_pipe;
 
