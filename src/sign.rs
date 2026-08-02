@@ -55,6 +55,7 @@ const MAX_ED25519_SIG_MSG: usize = 1
     + 32
     + 32;
 
+#[allow(clippy::upper_case_acronyms)]
 #[derive(Debug, Clone, Copy)]
 pub enum SigType {
     Ed25519,
@@ -292,10 +293,7 @@ impl TryFrom<Signature<'_>> for OwnedSig {
                 Ok(OwnedSig::Ed25519(s))
             }
             #[cfg(feature = "rsa")]
-            Signature::RSA(s) => {
-                let s = s.sig.0.try_into().map_err(|_| Error::BadSig)?;
-                Ok(OwnedSig::RSA(s))
-            }
+            Signature::RSA(s) => Ok(OwnedSig::RSA(s.sig.0.into())),
             #[cfg(feature = "ecdsa256")]
             Signature::ECDSA256(sig) => {
                 let sig = sig.0;
@@ -369,10 +367,9 @@ impl SignKey {
             #[cfg(feature = "rsa")]
             KeyType::RSA => {
                 let bits = bits.unwrap_or(config::RSA_DEFAULT_KEYSIZE);
-                if bits < config::RSA_MIN_KEYSIZE
-                    || bits > rsa::RsaPublicKey::MAX_SIZE
-                    || (bits % 8 != 0)
-                {
+                let size_range =
+                    config::RSA_MIN_KEYSIZE..=rsa::RsaPublicKey::MAX_SIZE;
+                if !(size_range.contains(&bits) && bits.is_multiple_of(8)) {
                     return Err(Error::msg("Bad key size"));
                 }
 
@@ -409,9 +406,7 @@ impl SignKey {
             SignKey::ECDSA256(k) => PubKey::ECDSA256(ECDSAPubKey { key: k.into() }),
 
             #[cfg(feature = "ecdsa256")]
-            SignKey::AgentECDSA256(pk) => {
-                PubKey::ECDSA256(ECDSAPubKey { key: pk.clone() })
-            }
+            SignKey::AgentECDSA256(pk) => PubKey::ECDSA256(ECDSAPubKey { key: *pk }),
         }
     }
 
@@ -434,7 +429,7 @@ impl SignKey {
             #[cfg(feature = "rsa")]
             PubKey::RSA(k) => Ok(Self::AgentRSA(k.key.clone())),
             #[cfg(feature = "ecdsa256")]
-            PubKey::ECDSA256(k) => Ok(Self::AgentECDSA256(k.key.clone())),
+            PubKey::ECDSA256(k) => Ok(Self::AgentECDSA256(k.key)),
 
             PubKey::Unknown(_) => Err(Error::msg("Unsupported agent key")),
         }

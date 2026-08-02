@@ -821,11 +821,12 @@ impl<'de> SSHDecode<'de> for rsa::BoxedUint {
         S: SSHSource<'de>,
     {
         let b = Mpint::dec(s)?;
-        Ok(rsa::BoxedUint::from_be_slice(b.0.into(), packets::RSAPubKey::MAX_BITS)
-            .map_err(|_| {
-            debug!("RSA too large");
-            WireError::BadNumber
-        })?)
+        rsa::BoxedUint::from_be_slice(b.0, packets::RSAPubKey::MAX_BITS).map_err(
+            |_| {
+                debug!("RSA too large");
+                WireError::BadNumber
+            },
+        )
     }
 }
 
