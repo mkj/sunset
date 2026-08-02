@@ -106,6 +106,7 @@ impl Write for ChanIO<'_> {
 /// <div class="warning">
 ///
 /// This must be read, otherwise the SSH session will block.
+/// Alternatively drop this `ChanIn` and incoming data will be discarded.
 ///
 /// </div>
 ///
@@ -146,6 +147,12 @@ impl Clone for ChanIn<'_> {
     }
 }
 
+impl<'g> From<ChanInOut<'g>> for ChanIn<'g> {
+    fn from(ch: ChanInOut<'g>) -> Self {
+        ChanIn::new(ch.0.clone())
+    }
+}
+
 /// An output-only SSH channel.
 ///
 /// This is used as stderr for a server, or can also be obtained using
@@ -183,6 +190,12 @@ impl<'g> ChanOut<'g> {
         winch: sunset::packets::WinChange,
     ) -> Result<()> {
         self.0.term_window_change(winch).await
+    }
+}
+
+impl<'g> From<ChanInOut<'g>> for ChanOut<'g> {
+    fn from(ch: ChanInOut<'g>) -> Self {
+        ChanOut::new(ch.0.clone())
     }
 }
 
