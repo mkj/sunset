@@ -12,7 +12,7 @@
 
 - Fingerprint no longer has a hash argument, it's always SHA-256.
 
-- `Error::bug()` now returns a `Result` rather than `Result::Err` variant.
+- `Error::bug()` now returns a `Result` rather than `sunset::Error`.
 
 - `sshwire::UnknownVariant` now is used to indicate decoding
   an unknown variant. `sshwire::EncodeUnknown` is the old meaning.
