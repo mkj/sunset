@@ -22,10 +22,9 @@ pub mod packets;
 pub mod sshnames;
 pub mod sshwire;
 // exported so that some Channel error variants can be created with .fail().
-// perhaps the ones of interest should be expored separately.
+// perhaps the ones of interest should be exported separately.
 pub mod error;
 pub mod namelist;
-mod random;
 
 pub mod event;
 
@@ -35,6 +34,7 @@ mod ident;
 mod kex;
 mod sign;
 mod test;
+mod random;
 
 mod cliauth;
 mod client;
