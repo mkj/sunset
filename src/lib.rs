@@ -32,9 +32,9 @@ mod conn;
 mod encrypt;
 mod ident;
 mod kex;
+mod random;
 mod sign;
 mod test;
-mod random;
 
 mod cliauth;
 mod client;
