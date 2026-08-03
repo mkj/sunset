@@ -649,10 +649,13 @@ where
 
 // Platforms like thumbv6m-none-eabi can't atomics, so instead
 // use critical-section.
-type SFTPCoord = cfg_select! {
-    target_has_atomic = "ptr" => bbqueue::traits::coordination::cas::AtomicCoord,
-    _ => bbqueue::traits::coordination::cs::CsCoord,
-};
+// cfg_select format varies with rust nightly
+#[rustfmt::skip]
+type SFTPCoord =
+    cfg_select! {
+        target_has_atomic = "ptr" => bbqueue::traits::coordination::cas::AtomicCoord,
+        _ => bbqueue::traits::coordination::cs::CsCoord,
+    };
 
 /// An async bbqueue with inline storage
 ///
