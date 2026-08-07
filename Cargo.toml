@@ -153,6 +153,12 @@ opt-level = 'z'
 overflow-checks = false
 panic = "abort"
 
+[profile.release-asserts]
+inherits = "release"
+panic = "abort"
+overflow-checks = true
+debug-assertions = true
+
 # do not optimize proc-macro crates = faster builds from scratch
 [profile.dev.build-override]
 codegen-units = 8
