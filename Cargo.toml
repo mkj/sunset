@@ -113,6 +113,10 @@ embedded-io = ["dep:embedded-io"]
 # Arbitrary for fuzzing. std is required for derive(Arbitrary)
 arbitrary = ["dep:arbitrary", "std"]
 
+# Raise config::MAX_CHANNELS from 4 to 16. The channel array is fixed size, so
+# this costs memory; it is off by default for `no_std` targets.
+many-channels = []
+
 # Allocate larger buffers for things such as usernames.
 # See config.rs for details
 larger = []

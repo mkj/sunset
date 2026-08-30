@@ -13,7 +13,11 @@ pub(crate) const SSH_MAX_PACKET: usize = 35000;
 //
 // This size is arbitrary and may be increased, though note that some code paths assume
 // a linear scan of channels can happen quickly, so may need reworking for performance.
-pub const MAX_CHANNELS: usize = 4;
+//
+// The channel array is fixed size, so the default stays small for `no_std`
+// targets. Hosts that multiplex several sessions or forwarded connections over
+// one transport can opt in to more with the `many-channels` feature.
+pub const MAX_CHANNELS: usize = if cfg!(feature = "many-channels") { 16 } else { 4 };
 
 // Enough for longest 23 of "screen.konsole-256color" on my system
 // Unsure if this is specified somewhere

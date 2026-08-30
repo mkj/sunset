@@ -228,6 +228,14 @@ impl Channels {
         self.get(num).is_ok_and(|c| c.valid_send(dt))
     }
 
+    /// Whether a channel can no longer carry data, in any of the ways that can
+    /// happen: refused, closed, or already gone.
+    pub(crate) fn is_finished(&self, num: ChanNum) -> bool {
+        self.get_any(num).is_ok_and(|c| {
+            matches!(c.state, ChanState::PendingDone | ChanState::RecvClose)
+        }) || self.get_any(num).is_err()
+    }
+
     pub fn progress(&mut self, s: &mut TrafSend) -> DispatchEvent {
         for ch in self.ch.iter_mut().filter_map(|c| c.as_mut()) {
             ch.check_send_window_adjust(s);

@@ -681,6 +681,20 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
         self.conn.channels.valid_send(chan.0, dt)
     }
 
+    /// Returns `true` once the channel can no longer carry data.
+    ///
+    /// This covers a channel the peer refused to open, one that has been closed,
+    /// and one already released. The handle must still be returned with
+    /// [`Runner::channel_done`].
+    ///
+    /// Callers waiting for an open to complete need this to tell "not yet" from
+    /// "never". A refused open leaves the channel in a finished state rather
+    /// than removing it, so without this a rejection is indistinguishable from a
+    /// slow open until the caller's own deadline expires.
+    pub fn is_channel_finished(&self, chan: &ChanHandle) -> bool {
+        self.conn.channels.is_finished(chan.0)
+    }
+
     /// Must be called when an application has finished with a channel.
     ///
     /// Channel numbers will not be re-used without calling this, so
@@ -883,6 +897,37 @@ impl<'a> Runner<'a, client::Client> {
 
         let (chan, p) =
             self.conn.channels.open(packets::ChannelOpenType::Session)?;
+        self.traf_out.send_packet(p, &mut self.keys)?;
+        self.wake();
+        Ok(ChanHandle(chan))
+    }
+
+    /// Open a `direct-tcpip` channel, asking the server to connect to
+    /// `address:port` on our behalf.
+    ///
+    /// This is the channel type behind `ssh -L` and `ssh -J`. `origin` and
+    /// `origin_port` describe the local end the server is told about; they are
+    /// informational, and servers commonly log them.
+    ///
+    /// The returned handle is not usable until the server confirms the open.
+    /// [`Runner::is_write_channel_valid`] reports `false` until then, because a
+    /// channel that is still opening is not yet a channel that can carry data.
+    pub fn open_client_tcpip(
+        &mut self,
+        address: &str,
+        port: u16,
+        origin: &str,
+        origin_port: u16,
+    ) -> Result<ChanHandle> {
+        trace!("open_client_tcpip {address}:{port}");
+
+        let ty = packets::ChannelOpenType::DirectTcpip(packets::DirectTcpip {
+            address: address.into(),
+            port: port as u32,
+            origin: origin.into(),
+            origin_port: origin_port as u32,
+        });
+        let (chan, p) = self.conn.channels.open(ty)?;
         self.traf_out.send_packet(p, &mut self.keys)?;
         self.wake();
         Ok(ChanHandle(chan))
