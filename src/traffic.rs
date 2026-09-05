@@ -16,10 +16,8 @@ use heapless::Deque;
 use crate::encrypt::{KeyState, KeysRecv, KeysSend, SSH_PAYLOAD_START};
 use crate::ident::RemoteVersion;
 use crate::*;
-use crate::{
-    channel::{ChanData, ChanNum},
-    packets::Packet,
-};
+use crate::channel::{ChanData, ChanNum};
+use crate::packets::{MessageNumber, Packet};
 
 /// Number of `DeferredPacket`s to queue.
 ///
@@ -155,16 +153,25 @@ impl<'a> TrafIn<'a> {
     /// Called when `payload()` is complete.
     pub(crate) fn done_payload(&mut self) {
         if let RxState::InPayload { .. } = self.state {
+            self.maybe_zeroize_payload();
             self.state = RxState::Idle
         }
     }
 
-    /// Called when `payload()` is complete, zeroizes the payload
-    /// Also calls `done_payload()`.
-    pub(crate) fn zeroize_payload(&mut self) {
-        if let RxState::InPayload { len, .. } = self.state {
-            self.buf[SSH_PAYLOAD_START..SSH_PAYLOAD_START + len].zeroize();
-            self.done_payload()
+    /// Zeroize sensitive payloads.
+    ///
+    /// Currently only Userauth Request for passwords.
+    fn maybe_zeroize_payload(&mut self) {
+        let RxState::InPayload { len, .. } = self.state else {
+            debug_assert!(false);
+            return;
+        };
+
+        debug_assert!(len > 0);
+        match MessageNumber::try_from(self.buf[SSH_PAYLOAD_START]) {
+            Ok(MessageNumber::SSH_MSG_USERAUTH_REQUEST) =>
+                self.buf[SSH_PAYLOAD_START..SSH_PAYLOAD_START + len].zeroize(),
+            _ => (),
         }
     }
 
