@@ -138,12 +138,15 @@ impl<'a> NameList<'a> {
 
     /// Returns whether the `algo` is contained in this list
     ///
-    /// Fails iff given a Local variant
-    pub fn has_algo(&self, algo: &str) -> Result<bool> {
+    /// May panic if given a Local variant in debug mode.
+    pub fn has_algo(&self, algo: &str) -> bool {
         match self {
-            NameList::String(s) => Ok(s.has_algo(algo)),
+            NameList::String(s) => s.has_algo(algo),
             // only expected to be called on remote lists
-            NameList::Local(_) => Error::bug(),
+            NameList::Local(_) => {
+                debug_assert!(false);
+                false
+            }
         }
     }
 
@@ -284,7 +287,7 @@ mod tests {
     fn test_has_algo() {
         fn n(list: &str, has: &str) -> bool {
             let s: NameList = list.try_into().unwrap();
-            s.has_algo(has).unwrap()
+            s.has_algo(has)
         }
         assert!(n("", ""));
         assert!(!n("", "one"));
