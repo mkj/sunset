@@ -550,7 +550,7 @@ impl<'a, CS: CliServ> ChanCore for AsyncSunset<'a, CS> {
         debug_assert_ne!(c, 0);
         if c == 1 {
             // refcount hit zero, wake progress so that any data already
-            // pending will get discarded (by wake_channels()).
+            // pending will get discarded by discard_channels().
             self.wake_progress();
         }
     }
