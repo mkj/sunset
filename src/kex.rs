@@ -474,7 +474,7 @@ impl<CS: CliServ> Kex<CS> {
         p: &packets::KexInit,
         conf: &AlgoConfig,
     ) -> Result<Algos<CS>> {
-        let kexguess2 = p.kex.has_algo(SSH_NAME_KEXGUESS2)?;
+        let kexguess2 = p.kex.has_algo(SSH_NAME_KEXGUESS2);
 
         // For each algorithm we select the first name in the client's
         // list that is also present in the server's list.
@@ -501,8 +501,7 @@ impl<CS: CliServ> Kex<CS> {
         let send_ext_info = if CS::is_client() {
             false
         } else {
-            // OK unwrap: p.kex is a remote list
-            p.kex.has_algo(SSH_NAME_EXT_INFO_C).unwrap()
+            p.kex.has_algo(SSH_NAME_EXT_INFO_C)
         };
 
         // we always send strict-kex, so just check if the other had it
@@ -511,7 +510,7 @@ impl<CS: CliServ> Kex<CS> {
         } else {
             SSH_NAME_STRICT_KEX_C
         };
-        let strict_kex = p.kex.has_algo(other_strict).unwrap();
+        let strict_kex = p.kex.has_algo(other_strict);
 
         debug!("hostsig {:?}    vs   {:?}", p.hostsig, conf.hostsig);
         let hostsig_method = p

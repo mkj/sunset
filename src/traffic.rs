@@ -13,11 +13,11 @@ use zeroize::Zeroize;
 use alloc::boxed::Box;
 use heapless::Deque;
 
+use crate::channel::{ChanData, ChanNum};
 use crate::encrypt::{KeyState, KeysRecv, KeysSend, SSH_PAYLOAD_START};
 use crate::ident::RemoteVersion;
-use crate::*;
-use crate::channel::{ChanData, ChanNum};
 use crate::packets::{MessageNumber, Packet};
+use crate::*;
 
 /// Number of `DeferredPacket`s to queue.
 ///
@@ -169,8 +169,9 @@ impl<'a> TrafIn<'a> {
 
         debug_assert!(len > 0);
         match MessageNumber::try_from(self.buf[SSH_PAYLOAD_START]) {
-            Ok(MessageNumber::SSH_MSG_USERAUTH_REQUEST) =>
-                self.buf[SSH_PAYLOAD_START..SSH_PAYLOAD_START + len].zeroize(),
+            Ok(MessageNumber::SSH_MSG_USERAUTH_REQUEST) => {
+                self.buf[SSH_PAYLOAD_START..SSH_PAYLOAD_START + len].zeroize()
+            }
             _ => (),
         }
     }

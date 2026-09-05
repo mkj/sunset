@@ -181,13 +181,13 @@ impl CliAuth {
         // TODO: look at existing self.state, handle the failure.
         self.state = AuthState::Idle;
 
-        if self.try_pubkey && failure.methods.has_algo(SSH_AUTHMETHOD_PUBLICKEY)? {
+        if self.try_pubkey && failure.methods.has_algo(SSH_AUTHMETHOD_PUBLICKEY) {
             return Ok(DispatchEvent::CliEvent(event::CliEventId::Pubkey));
         }
 
         if matches!(self.state, AuthState::Idle)
             && self.try_password
-            && failure.methods.has_algo(SSH_AUTHMETHOD_PASSWORD)?
+            && failure.methods.has_algo(SSH_AUTHMETHOD_PASSWORD)
         {
             return Ok(DispatchEvent::CliEvent(event::CliEventId::Password));
         }
@@ -276,9 +276,7 @@ impl CliAuth {
     pub fn handle_ext_info(&mut self, p: &packets::ExtInfo) {
         if let Some(ref algs) = p.server_sig_algs {
             // we only worry about rsa-sha256, assuming other older key types are fine
-
-            // OK unwrap: is a remote namelist
-            self.allow_rsa_sha2 = algs.has_algo(SSH_NAME_RSA_SHA256).unwrap();
+            self.allow_rsa_sha2 = algs.has_algo(SSH_NAME_RSA_SHA256);
             trace!("setting allow_rsa_sha2 = {}", self.allow_rsa_sha2);
         }
     }
