@@ -238,8 +238,6 @@ impl<'a> Runner<'a, server::Server> {
             Err(e) => Err(e),
         };
 
-        // auth packets have passwords
-        self.traf_in.zeroize_payload();
         self.resume_nocheck();
         r
     }
