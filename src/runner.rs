@@ -40,7 +40,7 @@ pub struct Runner<'a, CS: conn::CliServ> {
 
     /// Waker when output is ready
     output_waker: Option<Waker>,
-    /// Waker when ready to consume input.
+    /// Waker when ready to consume input
     input_waker: Option<Waker>,
 
     closed_input: bool,
@@ -332,6 +332,8 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
                 Ok(()) => (),
                 Err(Error::NoRoom { .. }) => {
                     // try again once there's space
+                    debug_assert!(self.is_output_pending());
+                    self.wake_output();
                     return Ok(Event::None);
                 }
                 Err(e) => return Err(e),
@@ -748,6 +750,11 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
     // Channel wakes happen elsewhere.
     fn wake(&mut self) {
         trace!("wake");
+        self.wake_input();
+        self.wake_output();
+    }
+
+    fn wake_input(&mut self) {
         if self.is_input_ready() {
             trace!("wake ready_input, waker {:?}", self.input_waker);
             if let Some(w) = self.input_waker.take() {
@@ -757,7 +764,9 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
         } else {
             trace!("no input ready");
         }
+    }
 
+    fn wake_output(&mut self) {
         if self.is_output_pending() {
             if let Some(w) = self.output_waker.take() {
                 trace!("wake output waker");
