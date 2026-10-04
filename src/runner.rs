@@ -191,6 +191,20 @@ impl<'a> Runner<'a, server::Server> {
         Self::new(inbuf, outbuf)
     }
 
+    /// Send `SSH_MSG_USERAUTH_BANNER`, a message shown before authentication
+    ///
+    /// Only meaningful before authentication succeeds
+    /// ([RFC4252](https://tools.ietf.org/html/rfc4252#section-5.4)). Clients
+    /// print `msg` verbatim, so it should normally end with CRLF.
+    pub fn auth_banner(&mut self, msg: &str) -> Result<()> {
+        debug!("auth_banner: {msg}");
+        let p = packets::UserauthBanner { message: msg.into(), lang: "".into() };
+        let mut s = self.traf_out.sender(&mut self.keys);
+        s.send(p)?;
+        self.wake();
+        Ok(())
+    }
+
     pub(crate) fn resume_servhostkeys(&mut self, keys: &[&SignKey]) -> Result<()> {
         let (payload, _seq) = self.traf_in.payload().trap()?;
         let mut s = self.traf_out.sender(&mut self.keys);
@@ -447,10 +461,38 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
         set_waker(&mut self.input_waker, waker)
     }
 
+    /// The `Disconnect` packet currently being handled.
+    pub(crate) fn fetch_disconnect(&mut self) -> Result<event::Disconnected<'_>> {
+        let (payload, _seq) = self.traf_in.payload().trap()?;
+        self.conn.fetch_disconnect(payload)
+    }
+
     /// Indicate that the input SSH tcp socket has closed
     pub fn close_input(&mut self) {
         trace!("close_input");
         self.closed_input = true;
+    }
+
+    /// Send `SSH_MSG_DISCONNECT`, telling the peer why the connection is ending
+    ///
+    /// `desc` is human-readable and may be shown to the user. The packet is
+    /// only queued: the caller must keep running until output has drained,
+    /// then close the connection.
+    pub fn disconnect(
+        &mut self,
+        reason: DisconnectReason,
+        desc: &str,
+    ) -> Result<()> {
+        debug!("disconnect {reason:?}: {desc}");
+        let p = packets::Disconnect {
+            reason: reason as u32,
+            desc: desc.into(),
+            lang: "",
+        };
+        let mut s = self.traf_out.sender(&mut self.keys);
+        s.send(p)?;
+        self.wake();
+        Ok(())
     }
 
     /// Write any pending output to the wire, returning the size written

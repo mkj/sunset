@@ -60,7 +60,7 @@ pub use channel::{ChanOpened, Pty, SessionCommand};
 pub use error::{Error, Result};
 pub use packets::{PubKey, Signature};
 pub use sign::{KeyType, OwnedSig, SignKey};
-pub use sshnames::ChanFail;
+pub use sshnames::{ChanFail, DisconnectReason};
 
 pub use event::{CliEvent, Event, ServEvent};
 pub use runner::ChanHandle;

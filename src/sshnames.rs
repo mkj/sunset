@@ -81,6 +81,54 @@ pub enum ChanFail {
     SSH_OPEN_RESOURCE_SHORTAGE = 4,
 }
 
+/// Reason codes for `SSH_MSG_DISCONNECT`
+///
+/// [RFC4253](https://tools.ietf.org/html/rfc4253#section-11.1)
+#[allow(non_camel_case_types)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone, Hash)]
+pub enum DisconnectReason {
+    SSH_DISCONNECT_HOST_NOT_ALLOWED_TO_CONNECT = 1,
+    SSH_DISCONNECT_PROTOCOL_ERROR = 2,
+    SSH_DISCONNECT_KEY_EXCHANGE_FAILED = 3,
+    SSH_DISCONNECT_RESERVED = 4,
+    SSH_DISCONNECT_MAC_ERROR = 5,
+    SSH_DISCONNECT_COMPRESSION_ERROR = 6,
+    SSH_DISCONNECT_SERVICE_NOT_AVAILABLE = 7,
+    SSH_DISCONNECT_PROTOCOL_VERSION_NOT_SUPPORTED = 8,
+    SSH_DISCONNECT_HOST_KEY_NOT_VERIFIABLE = 9,
+    SSH_DISCONNECT_CONNECTION_LOST = 10,
+    SSH_DISCONNECT_BY_APPLICATION = 11,
+    SSH_DISCONNECT_TOO_MANY_CONNECTIONS = 12,
+    SSH_DISCONNECT_AUTH_CANCELLED_BY_USER = 13,
+    SSH_DISCONNECT_NO_MORE_AUTH_METHODS_AVAILABLE = 14,
+    SSH_DISCONNECT_ILLEGAL_USER_NAME = 15,
+}
+
+impl DisconnectReason {
+    /// Returns the reason for a wire code, or `None` if it is not in RFC4253.
+    pub fn from_code(code: u32) -> Option<Self> {
+        let r = match code {
+            1 => Self::SSH_DISCONNECT_HOST_NOT_ALLOWED_TO_CONNECT,
+            2 => Self::SSH_DISCONNECT_PROTOCOL_ERROR,
+            3 => Self::SSH_DISCONNECT_KEY_EXCHANGE_FAILED,
+            4 => Self::SSH_DISCONNECT_RESERVED,
+            5 => Self::SSH_DISCONNECT_MAC_ERROR,
+            6 => Self::SSH_DISCONNECT_COMPRESSION_ERROR,
+            7 => Self::SSH_DISCONNECT_SERVICE_NOT_AVAILABLE,
+            8 => Self::SSH_DISCONNECT_PROTOCOL_VERSION_NOT_SUPPORTED,
+            9 => Self::SSH_DISCONNECT_HOST_KEY_NOT_VERIFIABLE,
+            10 => Self::SSH_DISCONNECT_CONNECTION_LOST,
+            11 => Self::SSH_DISCONNECT_BY_APPLICATION,
+            12 => Self::SSH_DISCONNECT_TOO_MANY_CONNECTIONS,
+            13 => Self::SSH_DISCONNECT_AUTH_CANCELLED_BY_USER,
+            14 => Self::SSH_DISCONNECT_NO_MORE_AUTH_METHODS_AVAILABLE,
+            15 => Self::SSH_DISCONNECT_ILLEGAL_USER_NAME,
+            _ => return None,
+        };
+        Some(r)
+    }
+}
+
 /// SSH agent message numbers
 ///
 /// [draft-miller-ssh-agent](https://datatracker.ietf.org/doc/html/draft-miller-ssh-agent-14#section-5.1)

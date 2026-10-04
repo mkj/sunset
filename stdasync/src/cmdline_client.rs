@@ -325,6 +325,18 @@ impl CmdlineClient {
                             EscapeBanner(b.banner()?)
                         )
                     }
+                    CliEvent::Disconnected(d) => {
+                        let desc = EscapeBanner(d.desc()?);
+                        match d.reason() {
+                            Some(r) => {
+                                println!("Disconnected by server ({r:?}): {desc}")
+                            }
+                            None => println!(
+                                "Disconnected by server (reason {}): {desc}",
+                                d.reason_code()
+                            ),
+                        }
+                    }
                     CliEvent::Defunct => {
                         trace!("break defunct");
                         break Ok::<_, Error>(());

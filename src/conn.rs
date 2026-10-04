@@ -2,7 +2,7 @@
 
 use self::{
     cliauth::CliAuth,
-    event::Banner,
+    event::{Banner, Disconnected},
     packets::{AuthMethod, UserauthRequest},
 };
 
@@ -116,10 +116,6 @@ impl DispatchEvent {
 /// Returned state from `handle_payload()` or `progress()` for `Runner` to use.
 pub(crate) struct Dispatched {
     pub event: DispatchEvent,
-
-    /// packet was Disconnect
-    // TODO replace with an event
-    pub disconnect: bool,
 }
 
 pub trait CliServ: Sized + Send + Default + core::fmt::Debug {
@@ -278,8 +274,7 @@ impl<CS: CliServ> Conn<CS> {
         if !self.is_kex_sending() {
             let event = self.channels.progress(s);
             if !event.is_none() {
-                // TODO better Dispatched constructor
-                return Ok(Dispatched { event, disconnect: false });
+                return Ok(Dispatched { event });
             }
         }
 
@@ -479,9 +474,12 @@ impl<CS: CliServ> Conn<CS> {
                 log!(level, "SSH debug message from remote host: {}", p.message);
             }
             Packet::Disconnect(_p) => {
-                // We ignore p.reason.
                 // SSH2_DISCONNECT_BY_APPLICATION is normal, sent by openssh client.
-                disp.disconnect = true;
+                disp.event = if self.is_server() {
+                    DispatchEvent::ServEvent(ServEventId::Disconnected)
+                } else {
+                    DispatchEvent::CliEvent(CliEventId::Disconnected)
+                };
             }
             Packet::UserauthRequest(p) => {
                 let Some(serv) = self.cliserv.try_mut_server() else {
@@ -552,6 +550,17 @@ impl<CS: CliServ> Conn<CS> {
             }
         };
         Ok(disp)
+    }
+
+    pub(crate) fn fetch_disconnect<'p>(
+        &self,
+        payload: &'p [u8],
+    ) -> Result<Disconnected<'p>> {
+        if let Packet::Disconnect(d) = self.packet(payload)? {
+            Ok(Disconnected(d))
+        } else {
+            Error::bug()
+        }
     }
 }
 

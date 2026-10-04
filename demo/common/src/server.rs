@@ -127,6 +127,10 @@ impl DemoCommon {
                 info!("Ignored request for subsystem '{}'", a.command()?);
                 Ok(())
             }
+            ServEvent::Disconnected(d) => {
+                info!("Client disconnected: {:?}", d.reason());
+                Ok(())
+            }
             ServEvent::Defunct
             | ServEvent::SessionShell(_)
             | ServEvent::SessionExec(_) => {

@@ -1171,6 +1171,58 @@ mod tests {
     use crate::sunsetlog::init_test_log;
 
     #[test]
+    fn disconnect_wire_format() {
+        init_test_log();
+        let p = Packet::Disconnect(packets::Disconnect {
+            reason: DisconnectReason::SSH_DISCONNECT_BY_APPLICATION as u32,
+            desc: "bye".into(),
+            lang: "",
+        });
+        let mut buf = vec![0u8; 64];
+        let l = write_ssh(&mut buf, &p).unwrap();
+        assert_eq!(
+            &buf[..l],
+            &[
+                1, // SSH_MSG_DISCONNECT
+                0, 0, 0, 11, // SSH_DISCONNECT_BY_APPLICATION
+                0, 0, 0, 3, b'b', b'y', b'e', // description
+                0, 0, 0, 0, // empty language tag
+            ]
+        );
+        test_roundtrip(&p);
+    }
+
+    #[test]
+    fn disconnect_reason_from_code() {
+        for c in 1..=15 {
+            assert_eq!(DisconnectReason::from_code(c).map(|r| r as u32), Some(c));
+        }
+        // Unknown codes are not a protocol error.
+        assert_eq!(DisconnectReason::from_code(0), None);
+        assert_eq!(DisconnectReason::from_code(16), None);
+    }
+
+    #[test]
+    fn banner_wire_format() {
+        init_test_log();
+        let p = Packet::UserauthBanner(packets::UserauthBanner {
+            message: "hi\r\n".into(),
+            lang: "".into(),
+        });
+        let mut buf = vec![0u8; 64];
+        let l = write_ssh(&mut buf, &p).unwrap();
+        assert_eq!(
+            &buf[..l],
+            &[
+                53, // SSH_MSG_USERAUTH_BANNER
+                0, 0, 0, 4, b'h', b'i', b'\r', b'\n', // message
+                0, 0, 0, 0, // empty language tag
+            ]
+        );
+        test_roundtrip(&p);
+    }
+
+    #[test]
     /// check round trip of packet enums is right
     fn packet_type() {
         for i in 0..=255 {

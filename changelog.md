@@ -1,5 +1,23 @@
 # Sunset Changelog
 
+## Unreleased
+
+### Changed
+
+- `CliEvent` and `ServEvent` have a new `Disconnected` variant, so
+  exhaustive matches on them need updating.
+
+### Added
+
+- `Runner::disconnect()` and `SSHServer::disconnect()` send
+  `SSH_MSG_DISCONNECT`, with `DisconnectReason` codes from RFC4253 s11.1.
+
+- A received `SSH_MSG_DISCONNECT` is reported as a `Disconnected` event
+  carrying the peer's reason and description.
+
+- `Runner::auth_banner()` and `SSHServer::auth_banner()` send
+  `SSH_MSG_USERAUTH_BANNER` (RFC4252 s5.4).
+
 ## 0.6.0 - 2026-08-02
 
 ### Changed
