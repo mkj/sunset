@@ -22,6 +22,12 @@ tokio = { workspace = true, optional = true }
 embedded-io-adapters = { workspace = true, optional = true }
 
 [features]
+default = ["mlkem"]
+# Post-quantum mlkem768x25519-sha256 key exchange. Disabling it (with
+# default-features = false) leaves curve25519-sha256, and saves ~26kB of
+# stack and ~13kB of flash on a Cortex-M7.
+mlkem = ["sunset/mlkem"]
+
 # Use a critical-section mutex to lock state. This feature must be enabled
 # to run on executors that require futures to be Send (such as default Tokio).
 # The application should depend on critical-section "std" feature.

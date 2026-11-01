@@ -20,7 +20,9 @@ members = [
 ]
 
 [workspace.dependencies]
-sunset = { path = ".", version = "0.6" }
+# default-features is off here so that sunset-async can make mlkem optional;
+# members inheriting with `workspace = true` cannot turn defaults off themselves.
+sunset = { path = ".", version = "0.6", default-features = false }
 sunset-sshwire-derive = { version = "0.3", path = "sshwire-derive" }
 sunset-async = { path = "async", version = "0.6" }
 sunset-demo-common = { path = "demo/common" }
