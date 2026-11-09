@@ -875,7 +875,7 @@ pub struct Subsystem<'a> {
 /// The contents of a `"pty-req"` request.
 ///
 /// Note that most function arguments use [`channel::Pty`] rather than this struct.
-#[derive(Debug, SSHEncode, SSHDecode)]
+#[derive(Debug, SSHEncode, SSHDecode, Clone)]
 #[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub struct PtyReq<'a> {
     pub term: TextString<'a>,

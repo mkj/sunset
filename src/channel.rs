@@ -565,6 +565,16 @@ impl Channels {
         }
     }
 
+    pub fn fetch_servpty<'p>(&self, p: &Packet<'p>) -> Result<packets::PtyReq<'p>> {
+        match p {
+            Packet::ChannelRequest(ChannelRequest {
+                req: ChannelReqType::Pty(pty),
+                ..
+            }) => Ok(pty.clone()),
+            _ => Error::bug(),
+        }
+    }
+
     pub fn fetch_servwinchange(&self, p: &Packet) -> Result<packets::WinChange> {
         match p {
             Packet::ChannelRequest(ChannelRequest {
