@@ -297,6 +297,10 @@ pub enum ServEvent<'g, 'a> {
     ///
     /// TODO details
     SessionPty(ServPtyRequest<'g, 'a>),
+    /// The client's terminal changed size.
+    ///
+    /// Needs no response.
+    SessionWinChange(ServWinChange<'g, 'a>),
     /// Server has received one environment variable.
     /// Note: input strings are not sanitised.
     SessionEnv(ServEnvironmentRequest<'g, 'a>),
@@ -325,6 +329,7 @@ impl Debug for ServEvent<'_, '_> {
             Self::SessionExec(_) => "SessionExec",
             Self::SessionSubsystem(_) => "SessionSubsystem",
             Self::SessionPty(_) => "SessionPty",
+            Self::SessionWinChange(_) => "SessionWinChange",
             Self::SessionEnv(_) => "Environment",
             Self::Defunct => "Defunct",
             Self::PollAgain => "PollAgain",
@@ -853,6 +858,31 @@ impl Drop for ServPtyRequest<'_, '_> {
     }
 }
 
+/// A client's terminal size change, `window-change`.
+pub struct ServWinChange<'g, 'a> {
+    runner: &'g mut Runner<'a, Server>,
+    num: ChanNum,
+}
+
+impl<'g, 'a> ServWinChange<'g, 'a> {
+    fn new(runner: &'g mut Runner<'a, Server>, num: ChanNum) -> Self {
+        Self { runner, num }
+    }
+
+    /// The terminal's new size.
+    pub fn size(&self) -> Result<WinChange> {
+        self.runner.fetch_servwinchange()
+    }
+
+    /// Return the associated channel number.
+    ///
+    /// This will correspond to a `ChanHandle::num()`
+    /// from a previous [`ServOpenSession`] event.
+    pub fn channel(&self) -> ChanNum {
+        self.num
+    }
+}
+
 /// An environment variable request
 ///
 pub struct ServEnvironmentRequest<'g, 'a> {
@@ -942,6 +972,9 @@ pub(crate) enum ServEventId {
     SessionPty {
         num: ChanNum,
     },
+    SessionWinChange {
+        num: ChanNum,
+    },
     Environment {
         num: ChanNum,
     },
@@ -1002,6 +1035,10 @@ impl ServEventId {
                 debug_assert!(matches!(p, Some(Packet::ChannelRequest(_))));
                 Ok(ServEvent::SessionPty(ServPtyRequest::new(runner, num)))
             }
+            Self::SessionWinChange { num } => {
+                debug_assert!(matches!(p, Some(Packet::ChannelRequest(_))));
+                Ok(ServEvent::SessionWinChange(ServWinChange::new(runner, num)))
+            }
             Self::Environment { num } => {
                 debug_assert!(matches!(p, Some(Packet::ChannelRequest(_))));
                 Ok(ServEvent::SessionEnv(ServEnvironmentRequest::new(runner, num)))
@@ -1014,7 +1051,9 @@ impl ServEventId {
     // Used for internal correctness checks.
     pub(crate) fn needs_resume(&self) -> bool {
         match self {
-            Self::Defunct | Self::Authenticated => false,
+            Self::Defunct | Self::Authenticated | Self::SessionWinChange { .. } => {
+                false
+            }
             Self::Hostkeys
             | Self::FirstAuth
             | Self::PasswordAuth

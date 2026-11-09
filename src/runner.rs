@@ -855,6 +855,16 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
         self.conn.channels.fetch_servcommand(&p)
     }
 
+    pub(crate) fn fetch_servwinchange(&self) -> Result<packets::WinChange> {
+        debug_assert!(matches!(
+            self.resume_event,
+            DispatchEvent::ServEvent(ServEventId::SessionWinChange { .. })
+        ));
+        let (payload, _seq) = self.traf_in.payload().trap()?;
+        let p = self.conn.packet(payload)?;
+        self.conn.channels.fetch_servwinchange(&p)
+    }
+
     pub(crate) fn fetch_env_name(&self) -> Result<TextString<'_>> {
         Self::check_chanreq(&self.resume_event);
         let (payload, _seq) = self.traf_in.payload().trap()?;
