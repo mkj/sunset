@@ -432,7 +432,7 @@ pub struct RSAPubKey {
 
 #[cfg(feature = "rsa")]
 impl RSAPubKey {
-    /// Bits for `rsa::BoxedUint::from_be_slice()`.
+    /// The largest RSA key accepted, in bits.
     pub(crate) const MAX_BITS: u32 = 8192;
 }
 
