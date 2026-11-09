@@ -627,11 +627,11 @@ impl<'de> SSHDecode<'de> for SignKey {
             }
             #[cfg(feature = "rsa")]
             SSH_NAME_RSA => {
-                let n = SSHDecode::dec(s)?;
+                let n: rsa::BoxedUint = SSHDecode::dec(s)?;
                 let e = SSHDecode::dec(s)?;
-                let d = SSHDecode::dec(s)?;
-                let p = SSHDecode::dec(s)?;
-                let q = SSHDecode::dec(s)?;
+                let d = dec_rsa_secret(s, &n)?;
+                let p = dec_rsa_secret(s, &n)?;
+                let q = dec_rsa_secret(s, &n)?;
                 let k = rsa::RsaPrivateKey::from_components(n, e, d, vec![p, q])
                     .map_err(|_| WireError::BadKey)?;
                 Self::RSA(k)
@@ -649,6 +649,23 @@ impl<'de> SSHDecode<'de> for SignKey {
             _ => return Err(WireError::UnknownVariant),
         })
     }
+}
+
+/// Decodes a private RSA key part, sized to match the modulus.
+///
+/// Sizing a secret to its own encoded length, as `BoxedUint::dec()` does,
+/// would make later operations' timing depend on that length.
+#[cfg(feature = "rsa")]
+fn dec_rsa_secret<'de, S>(
+    s: &mut S,
+    n: &rsa::BoxedUint,
+) -> WireResult<rsa::BoxedUint>
+where
+    S: sshwire::SSHSource<'de>,
+{
+    let m = sshwire::Mpint::dec(s)?;
+    rsa::BoxedUint::from_be_slice(m.as_ref(), n.bits_precision())
+        .map_err(|_| WireError::BadKey)
 }
 
 #[cfg(feature = "openssh-key")]
@@ -701,6 +718,45 @@ pub mod tests {
                 assert_eq!(l, v.len());
                 assert_eq!(k, dk);
             }
+        }
+    }
+
+    /// Keys and signatures still verify after being encoded and decoded,
+    /// as when sunset checks the other side's key.
+    #[test]
+    fn wire_signature_verifies() {
+        let keys = [
+            (KeyType::Ed25519, None, SigType::Ed25519),
+            #[cfg(feature = "rsa")]
+            (KeyType::RSA, Some(2048), SigType::RSA),
+            #[cfg(feature = "rsa")]
+            (KeyType::RSA, Some(3072), SigType::RSA),
+            #[cfg(feature = "ecdsa256")]
+            (KeyType::ECDSA256, None, SigType::ECDSA256),
+        ];
+        let msg = BinString(b"signed message");
+
+        for (ty, bits, sig_type) in keys {
+            let generated = SignKey::generate(ty, bits).unwrap();
+            let mut k = vec![];
+            ssh_push_vec(&mut k, &generated).unwrap();
+            let (k, _): (SignKey, _) = read_ssh(&k, None).unwrap();
+            let owned = k.sign(&msg).unwrap();
+
+            let mut pubkey = vec![];
+            ssh_push_vec(&mut pubkey, &k.pubkey()).unwrap();
+            let (pubkey, _): (PubKey, _) = read_ssh(&pubkey, None).unwrap();
+
+            let mut sig = vec![];
+            ssh_push_vec(&mut sig, &Signature::from(&owned)).unwrap();
+            let (sig, _): (Signature, _) = read_ssh(&sig, None).unwrap();
+
+            sig_type.verify(&pubkey, &msg, &sig).unwrap();
+            assert!(
+                sig_type
+                    .verify(&pubkey, &BinString(b"another message"), &sig)
+                    .is_err()
+            );
         }
     }
 }

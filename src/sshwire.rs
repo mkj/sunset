@@ -814,6 +814,11 @@ impl SSHEncode for rsa::BoxedUint {
     }
 }
 
+/// Decodes an RSA modulus or exponent.
+///
+/// The number is sized to its encoded length. `rsa` sizes a signature the
+/// same way, and only verifies a signature that is the same size as the
+/// modulus.
 #[cfg(feature = "rsa")]
 impl<'de> SSHDecode<'de> for rsa::BoxedUint {
     fn dec<S>(s: &mut S) -> WireResult<Self>
@@ -821,12 +826,11 @@ impl<'de> SSHDecode<'de> for rsa::BoxedUint {
         S: SSHSource<'de>,
     {
         let b = Mpint::dec(s)?;
-        rsa::BoxedUint::from_be_slice(b.0, packets::RSAPubKey::MAX_BITS).map_err(
-            |_| {
-                debug!("RSA too large");
-                WireError::BadNumber
-            },
-        )
+        if b.0.len() * 8 > packets::RSAPubKey::MAX_BITS as usize {
+            debug!("RSA too large");
+            return Err(WireError::BadNumber);
+        }
+        Ok(rsa::BoxedUint::from_be_slice_vartime(b.0))
     }
 }
 
