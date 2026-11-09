@@ -58,7 +58,7 @@ pub use auth::AuthSigMsg;
 pub use channel::{ChanData, ChanNum, CliSessionExit, CliSessionOpener};
 pub use channel::{ChanOpened, Pty, SessionCommand};
 pub use error::{Error, Result};
-pub use packets::{PubKey, Signature};
+pub use packets::{PubKey, Signature, WinChange};
 pub use sign::{KeyType, OwnedSig, SignKey};
 pub use sshnames::ChanFail;
 

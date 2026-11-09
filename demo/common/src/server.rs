@@ -123,6 +123,7 @@ impl DemoCommon {
             ServEvent::OpenSession(a) => self.open_session(a),
             ServEvent::SessionPty(a) => a.succeed(),
             ServEvent::SessionEnv(a) => a.succeed(),
+            ServEvent::SessionWinChange(_) => Ok(()),
             ServEvent::SessionSubsystem(a) => {
                 info!("Ignored request for subsystem '{}'", a.command()?);
                 Ok(())

@@ -565,6 +565,16 @@ impl Channels {
         }
     }
 
+    pub fn fetch_servwinchange(&self, p: &Packet) -> Result<packets::WinChange> {
+        match p {
+            Packet::ChannelRequest(ChannelRequest {
+                req: ChannelReqType::WinChange(winch),
+                ..
+            }) => Ok(winch.clone()),
+            _ => Error::bug(),
+        }
+    }
+
     pub fn fetch_env_name<'p>(&self, p: &Packet<'p>) -> Result<TextString<'p>> {
         match p {
             Packet::ChannelRequest(ChannelRequest {
@@ -936,6 +946,9 @@ impl Channel {
             }
             ChannelReqType::Environment(_) => {
                 Ok(DispatchEvent::ServEvent(ServEventId::Environment { num }))
+            }
+            ChannelReqType::WinChange(_) => {
+                Ok(DispatchEvent::ServEvent(ServEventId::SessionWinChange { num }))
             }
             _ => {
                 if let ChannelReqType::Unknown(u) = &p.req {
