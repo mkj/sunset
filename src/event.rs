@@ -295,7 +295,8 @@ pub enum ServEvent<'g, 'a> {
     SessionSubsystem(ServExecRequest<'g, 'a>),
     /// Client requested a PTY for the channel.
     ///
-    /// TODO details
+    /// [`ServPtyRequest::term()`] and [`ServPtyRequest::size()`] have its
+    /// terminal type and size.
     SessionPty(ServPtyRequest<'g, 'a>),
     /// The client's terminal changed size.
     ///
@@ -803,7 +804,7 @@ impl Drop for ServExecRequest<'_, '_> {
 
 /// A PTY request
 ///
-/// Placeholder, doesn't yet return the PTY information.
+/// Terminal modes are not yet available.
 pub struct ServPtyRequest<'g, 'a> {
     runner: &'g mut Runner<'a, Server>,
     num: ChanNum,
@@ -815,7 +816,26 @@ impl<'g, 'a> ServPtyRequest<'g, 'a> {
         Self { runner, num, done: false }
     }
 
-    // TODO return PTY information to the caller
+    /// The client's terminal type, its `TERM`.
+    pub fn term(&self) -> Result<&str> {
+        self.raw_term()?.to_str()
+    }
+
+    /// The client's terminal type, not checked as UTF-8.
+    pub fn raw_term(&self) -> Result<TextString<'_>> {
+        Ok(self.runner.fetch_servpty()?.term)
+    }
+
+    /// The terminal's initial size.
+    pub fn size(&self) -> Result<WinChange> {
+        let p = self.runner.fetch_servpty()?;
+        Ok(WinChange {
+            cols: p.cols,
+            rows: p.rows,
+            width: p.width,
+            height: p.height,
+        })
+    }
 
     /// Indicate that the request succeeded.
     ///
