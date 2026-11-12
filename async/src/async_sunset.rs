@@ -514,6 +514,9 @@ pub(crate) trait ChanCore: MaybeSend {
         num: ChanNum,
         winch: &sunset::packets::WinChange,
     ) -> Poll<Result<()>>;
+
+    fn poll_close_channel(&self, cx: &mut Context, num: ChanNum)
+    -> Poll<Result<()>>;
 }
 
 impl<'a, CS: CliServ> ChanCore for AsyncSunset<'a, CS> {
@@ -658,5 +661,29 @@ impl<'a, CS: CliServ> ChanCore for AsyncSunset<'a, CS> {
         };
         let (runner, h) = inner.fetch(num)?;
         Poll::Ready(runner.term_window_change(h, winch))
+    }
+
+    fn poll_close_channel(
+        &self,
+        cx: &mut Context,
+        num: ChanNum,
+    ) -> Poll<Result<()>> {
+        // Attempt to lock .inner
+        let i = self.inner.lock();
+        let i = pin!(i);
+        let Ready(mut inner) = i.poll(cx) else {
+            return Pending;
+        };
+        let (runner, h) = inner.fetch(num)?;
+        match runner.close_channel(h) {
+            Err(sunset::Error::BusySend { .. }) => {
+                runner.set_channel_write_waker(h, Normal, cx.waker());
+                Poll::Pending
+            }
+            r => {
+                self.wake_progress();
+                Poll::Ready(r)
+            }
+        }
     }
 }

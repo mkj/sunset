@@ -55,6 +55,8 @@ cargo clippy --all-targets
 (
 cd async
 cargo test
+# client and server sessions over tokio
+cargo test --features std,tokio
 cargo test --doc
 cargo doc
 )

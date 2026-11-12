@@ -681,11 +681,31 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
         self.conn.channels.valid_send(chan.0, dt)
     }
 
+    /// Close a channel.
+    ///
+    /// Sends EOF and Close, further writes will fail. Reads continue
+    /// until the peer closes. Does nothing if already closing.
+    ///
+    /// May fail with `BusySend`, retry when the channel is writable.
+    pub fn close_channel(&mut self, chan: &ChanHandle) -> Result<()> {
+        let mut s = self.traf_out.sender(&mut self.keys);
+        self.conn.channels.close(chan.0, &mut s)?;
+        self.wake();
+        Ok(())
+    }
+
     /// Must be called when an application has finished with a channel.
+    ///
+    /// Closes the channel if it hasn't been already.
     ///
     /// Channel numbers will not be re-used without calling this, so
     /// failing to call this may result in running out of channels.
     pub fn channel_done(&mut self, chan: ChanHandle) -> Result<()> {
+        match self.close_channel(&chan) {
+            // progress() will retry
+            Err(Error::BusySend { .. }) => (),
+            r => r?,
+        }
         self.conn.channels.done(chan.0)?;
         // Prevent giving any already-received data for this channel.
         self.traf_in.discard_read_channel(chan.0);
