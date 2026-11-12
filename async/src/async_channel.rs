@@ -55,6 +55,10 @@ impl ChanIO<'_> {
     ) -> Result<()> {
         poll_fn(|cx| self.sunset.poll_term_window_change(cx, self.num, &winch)).await
     }
+
+    pub async fn close_channel(&self) -> Result<()> {
+        poll_fn(|cx| self.sunset.poll_close_channel(cx, self.num)).await
+    }
 }
 
 impl Drop for ChanIO<'_> {
@@ -191,6 +195,14 @@ impl<'g> ChanOut<'g> {
     ) -> Result<()> {
         self.0.term_window_change(winch).await
     }
+
+    /// Close the channel.
+    ///
+    /// Sends EOF and Close, further writes will fail.
+    /// Dropping all handles also closes the channel.
+    pub async fn close_channel(&self) -> Result<()> {
+        self.0.close_channel().await
+    }
 }
 
 impl<'g> From<ChanInOut<'g>> for ChanOut<'g> {
@@ -251,6 +263,14 @@ impl<'g> ChanInOut<'g> {
         winch: sunset::packets::WinChange,
     ) -> Result<()> {
         self.0.term_window_change(winch).await
+    }
+
+    /// Close the channel.
+    ///
+    /// Sends EOF and Close, further writes will fail.
+    /// Dropping all handles also closes the channel.
+    pub async fn close_channel(&self) -> Result<()> {
+        self.0.close_channel().await
     }
 }
 

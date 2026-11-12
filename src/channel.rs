@@ -106,7 +106,16 @@ impl Channels {
         let ch = self.get_mut(num)?;
         debug_assert!(!ch.app_done);
         ch.app_done = true;
+        if matches!(ch.state, ChanState::RecvClose | ChanState::PendingDone) {
+            // Already closed by the peer, or failed to open
+            self.remove_any(num)?;
+        }
         Ok(())
+    }
+
+    /// Send EOF and Close if required.
+    pub fn close(&mut self, num: ChanNum, s: &mut TrafSend) -> Result<()> {
+        self.get_mut(num)?.send_close(s)
     }
 
     fn remove_any(&mut self, num: ChanNum) -> Result<()> {
@@ -231,6 +240,11 @@ impl Channels {
     pub fn progress(&mut self, s: &mut TrafSend) -> DispatchEvent {
         for ch in self.ch.iter_mut().filter_map(|c| c.as_mut()) {
             ch.check_send_window_adjust(s);
+
+            if ch.app_done && !ch.sent_close {
+                // Retry if channel_done() couldn't send it
+                let _ = ch.send_close(s);
+            }
 
             if ch.open_confirmed {
                 ch.open_confirmed = false;
@@ -482,8 +496,13 @@ impl Channels {
             }
             Packet::ChannelClose(p) => {
                 let is_client = self.is_client;
-                let ch = self.get_mut(ChanNum(p.num))?;
+                let num = ChanNum(p.num);
+                let ch = self.get_mut(num)?;
                 ch.handle_close(s, is_client)?;
+                if ch.app_done {
+                    // Closed both ways and the application is done with it
+                    self.remove_any(num)?;
+                }
             }
             Packet::ChannelRequest(p) => {
                 let is_client = self.is_client;
@@ -1057,9 +1076,31 @@ impl Channel {
 
     // None on close
     fn send_allowed(&self) -> Option<usize> {
+        if self.sent_close {
+            return None;
+        }
         let r = self.send.as_ref().map(|s| usize::min(s.window, s.max_packet));
         trace!("send_allowed {r:?}");
         r
+    }
+
+    /// Send EOF and Close if required.
+    fn send_close(&mut self, s: &mut TrafSend) -> Result<()> {
+        if self.sent_close {
+            return Ok(());
+        }
+        let Ok(num) = self.send_num() else {
+            // not open yet
+            return Ok(());
+        };
+
+        if !self.sent_eof {
+            s.send(packets::ChannelEof { num })?;
+            self.sent_eof = true;
+        }
+        s.send(packets::ChannelClose { num })?;
+        self.sent_close = true;
+        Ok(())
     }
 
     pub(crate) fn valid_send(&self, _dt: ChanData) -> bool {
