@@ -42,5 +42,5 @@ futures-io = ["dep:futures-io", "embedded-io-adapters/futures-03"]
 tokio = ["dep:tokio", "embedded-io-adapters/tokio-1"]
 
 [dev-dependencies]
-sunset = { workspace = true, features = ["std"] }
+sunset = { workspace = true, features = ["rsa", "std"] }
 tokio = { workspace = true, features = ["macros", "rt", "io-util", "sync", "time"] }

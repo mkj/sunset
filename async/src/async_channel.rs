@@ -59,6 +59,10 @@ impl ChanIO<'_> {
     pub async fn close_channel(&self) -> Result<()> {
         poll_fn(|cx| self.sunset.poll_close_channel(cx, self.num)).await
     }
+
+    pub async fn exit_status(&self, status: u32) -> Result<()> {
+        poll_fn(|cx| self.sunset.poll_exit_status(cx, self.num, status)).await
+    }
 }
 
 impl Drop for ChanIO<'_> {
@@ -203,6 +207,14 @@ impl<'g> ChanOut<'g> {
     pub async fn close_channel(&self) -> Result<()> {
         self.0.close_channel().await
     }
+
+    /// Send the session's exit status
+    ///
+    /// Only applicable to server session channels.
+    /// Should be followed by [`close_channel()`](Self::close_channel).
+    pub async fn exit_status(&self, status: u32) -> Result<()> {
+        self.0.exit_status(status).await
+    }
 }
 
 impl<'g> From<ChanInOut<'g>> for ChanOut<'g> {
@@ -271,6 +283,14 @@ impl<'g> ChanInOut<'g> {
     /// Dropping all handles also closes the channel.
     pub async fn close_channel(&self) -> Result<()> {
         self.0.close_channel().await
+    }
+
+    /// Send the session's exit status
+    ///
+    /// Only applicable to server session channels.
+    /// Should be followed by [`close_channel()`](Self::close_channel).
+    pub async fn exit_status(&self, status: u32) -> Result<()> {
+        self.0.exit_status(status).await
     }
 }
 
