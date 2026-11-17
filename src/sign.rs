@@ -341,11 +341,11 @@ pub enum SignKey {
 
     #[cfg(feature = "rsa")]
     // TODO zeroize doesn't seem supported? though BigUint has Zeroize
-    RSA(rsa::RsaPrivateKey),
+    RSA(rsa::PrivateKey),
 
     #[cfg(feature = "rsa")]
     #[zeroize(skip)]
-    AgentRSA(rsa::RsaPublicKey),
+    AgentRSA(rsa::PublicKey),
 
     #[cfg(feature = "ecdsa256")]
     ECDSA256(ecdsa::SigningKey<p256::NistP256>),
@@ -369,19 +369,17 @@ impl SignKey {
             #[cfg(feature = "rsa")]
             KeyType::RSA => {
                 let bits = bits.unwrap_or(config::RSA_DEFAULT_KEYSIZE);
-                let size_range =
-                    config::RSA_MIN_KEYSIZE..=rsa::RsaPublicKey::MAX_SIZE;
+                let size_range = config::RSA_MIN_KEYSIZE..=rsa::PublicKey::MAX_SIZE;
                 if !(size_range.contains(&bits) && bits.is_multiple_of(8)) {
                     return Err(Error::msg("Bad key size"));
                 }
 
-                let k = rsa::RsaPrivateKey::new(&mut random::rng(), bits).map_err(
-                    |e| {
+                let k =
+                    rsa::PrivateKey::new(&mut random::rng(), bits).map_err(|e| {
                         debug!("RSA key generation error {e}");
                         // RNG shouldn't fail, keysize has been checked
                         Error::build_bug()
-                    },
-                )?;
+                    })?;
                 Ok(Self::RSA(k))
             }
             #[cfg(feature = "ecdsa256")]
@@ -632,7 +630,7 @@ impl<'de> SSHDecode<'de> for SignKey {
                 let d = dec_rsa_secret(s, &n)?;
                 let p = dec_rsa_secret(s, &n)?;
                 let q = dec_rsa_secret(s, &n)?;
-                let k = rsa::RsaPrivateKey::from_components(n, e, d, vec![p, q])
+                let k = rsa::PrivateKey::from_components(n, e, d, vec![p, q])
                     .map_err(|_| WireError::BadKey)?;
                 Self::RSA(k)
             }

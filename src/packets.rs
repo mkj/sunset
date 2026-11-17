@@ -427,7 +427,7 @@ pub struct Ed25519PubKey {
 pub struct RSAPubKey {
     // mpint     e
     // mpint     n
-    pub key: rsa::RsaPublicKey,
+    pub key: rsa::PublicKey,
 }
 
 #[cfg(feature = "rsa")]
@@ -453,7 +453,7 @@ impl<'de> SSHDecode<'de> for RSAPubKey {
     {
         let e = SSHDecode::dec(s)?;
         let n = SSHDecode::dec(s)?;
-        let key = rsa::RsaPublicKey::new(n, e).map_err(|e| {
+        let key = rsa::PublicKey::new(n, e).map_err(|e| {
             debug!("Invalid RSA public key: {e}");
             WireError::BadKey
         })?;
@@ -465,7 +465,7 @@ impl<'de> SSHDecode<'de> for RSAPubKey {
 impl Debug for RSAPubKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("RSAPubKey")
-            .field(".key bits", &(self.key.n().bits()))
+            .field(".key bits", &(self.key.n().bit_width()))
             .finish_non_exhaustive()
     }
 }
@@ -480,7 +480,7 @@ impl Arbitrary<'_> for RSAPubKey {
         let n = rsa::BoxedUint::from_be_slice_vartime(
             arbitrary::Arbitrary::arbitrary(u)?,
         );
-        let key = rsa::RsaPublicKey::new(n, e)
+        let key = rsa::PublicKey::new(n, e)
             .map_err(|_| arbitrary::Error::IncorrectFormat)?;
         Ok(Self { key })
     }

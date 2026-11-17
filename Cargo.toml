@@ -50,7 +50,7 @@ log = "0.4"
 
 heapless = "0.9"
 
-ssh-key = { version = "0.7.0-rc.11", default-features = false }
+ssh-key = { version = "0.7.0-rc.12", default-features = false }
 sha2 = { version = "0.11", default-features = false }
 hmac = "0.13"
 subtle = { version = "2.6", default-features = false }
@@ -87,8 +87,7 @@ subtle.workspace = true
 ed25519-dalek = { version = "3.0", default-features = false, features = ["zeroize", "rand_core"] }
 x25519-dalek = { version = "3.0", default-features = false, features = ["zeroize"] }
 ml-kem = { version = "0.3.2", default-features = false, features = ["zeroize"], optional = true }
-# TODO rc version
-rsa = { version = "=0.10.0-rc.18", default-features = false, optional = true, features = ["sha2"] }
+rsa = { version = "0.10", default-features = false, optional = true, features = ["pkcs1v15"] }
 ssh-key = { workspace = true, optional = true }
 
 embedded-io = { workspace = true, optional = true }
