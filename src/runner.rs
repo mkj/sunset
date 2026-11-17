@@ -747,6 +747,24 @@ impl<'a, CS: CliServ> Runner<'a, CS> {
         self.conn.channels.wake_write(CS::is_client())
     }
 
+    /// Send a session's exit status.
+    ///
+    /// Only call on a server session, before closing the channel.
+    /// May fail with `BusySend`, retry when the channel is writable.
+    pub fn channel_exit_status(
+        &mut self,
+        chan: &ChanHandle,
+        status: u32,
+    ) -> Result<()> {
+        if CS::is_client() {
+            trace!("exit status as client");
+            Err(error::BadUsage.build())
+        } else {
+            let mut s = self.traf_out.sender(&mut self.keys);
+            self.conn.channels.exit_status(chan.0, status, &mut s)
+        }
+    }
+
     /// Send a terminal window size change report.
     ///
     /// Only call on a client session with a pty
