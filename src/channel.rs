@@ -1026,12 +1026,10 @@ impl Channel {
         }
     }
 
-    fn handle_eof(&mut self, s: &mut TrafSend, is_client: bool) -> Result<()> {
-        //TODO: check existing state?
-        if !self.sent_eof {
-            s.send(packets::ChannelEof { num: self.send_num()? })?;
-            self.sent_eof = true;
-        }
+    fn handle_eof(&mut self, _s: &mut TrafSend, is_client: bool) -> Result<()> {
+        // EOF only ends the peer's direction (RFC 4254 5.3). Our side stays
+        // open until the application closes the channel, so data written after
+        // the peer's EOF (a command's output after its stdin ended) still arrives.
 
         // Wake readers on EOF
         self.wake_read(ChanData::Normal, is_client);
