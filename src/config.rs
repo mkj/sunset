@@ -1,6 +1,16 @@
-// TODO
+/// A channel's initial window and maximum packet.
+///
+/// Without `alloc` packet buffers are small. With `alloc` they hold
+/// `SSH_MAX_PACKET`, so packets can be larger, and a larger window lets
+/// the peer keep sending while the application reads.
+#[cfg(not(feature = "alloc"))]
 pub const DEFAULT_WINDOW: usize = 1000;
+#[cfg(not(feature = "alloc"))]
 pub const DEFAULT_MAX_PACKET: usize = 1000;
+#[cfg(feature = "alloc")]
+pub const DEFAULT_WINDOW: usize = 256 * 1024;
+#[cfg(feature = "alloc")]
+pub const DEFAULT_MAX_PACKET: usize = 32 * 1024;
 
 /// Maximum SSH packet size, from RFC4253.
 ///
