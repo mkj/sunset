@@ -388,10 +388,8 @@ where
                         output_producer.send_packet(&response).await?;
                     }
                     Err(status_code) => {
-                        error!("Open failed: {:?}", status_code);
-                        output_producer
-                            .send_status(req_id, StatusCode::SSH_FX_FAILURE, "")
-                            .await?;
+                        error!("OpenDir failed: {:?}", status_code);
+                        output_producer.send_status(req_id, status_code, "").await?;
                     }
                 };
             }
@@ -417,11 +415,7 @@ where
                     Err(e) => {
                         error!("SFTP Close thrown: {:?}", e);
                         output_producer
-                            .send_status(
-                                req_id,
-                                StatusCode::SSH_FX_FAILURE,
-                                "Could not Close the handle",
-                            )
+                            .send_status(req_id, e, "Could not Close the handle")
                             .await?;
                     }
                 }
@@ -464,9 +458,7 @@ where
                     }
                     Err(status_code) => {
                         error!("Open failed: {:?}", status_code);
-                        output_producer
-                            .send_status(req_id, StatusCode::SSH_FX_FAILURE, "")
-                            .await?;
+                        output_producer.send_status(req_id, status_code, "").await?;
                     }
                 };
             }
@@ -541,9 +533,7 @@ where
 
             if let Err(e) = self.file_server.write(handle, offset, data).await {
                 error!("SFTP write thrown: {:?}", e);
-                output_producer
-                    .send_status(req_id, StatusCode::SSH_FX_FAILURE, "error writing")
-                    .await?;
+                output_producer.send_status(req_id, e, "error writing").await?;
                 self.state = HandlerState::Drain { remaining };
                 return Ok(());
             }
@@ -705,5 +695,132 @@ impl bbqueue::traits::notifier::AsyncNotifier for OneFutNotifier {
     }
     async fn wait_for_not_full<T, F: FnMut() -> Option<T>>(&self, f: F) -> T {
         self.wait_for_not_empty(f).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::proto::PFlags;
+    use crate::sftphandler::MockWriter;
+    use crate::sftpserver::SftpOpResult;
+    use sunset::sshwire::BinString;
+
+    /// Returns specific errors for SFTP requests.
+    struct Refusing;
+
+    impl SftpServer for Refusing {
+        async fn open(&mut self, _: &str, _: &PFlags) -> SftpOpResult<FileHandle> {
+            Err(StatusCode::SSH_FX_NO_SUCH_FILE)
+        }
+
+        async fn opendir(&mut self, _: &str) -> SftpOpResult<DirHandle> {
+            Err(StatusCode::SSH_FX_PERMISSION_DENIED)
+        }
+
+        async fn close(&mut self, _: FileHandle) -> SftpOpResult<()> {
+            Err(StatusCode::SSH_FX_PERMISSION_DENIED)
+        }
+
+        async fn write(
+            &mut self,
+            _: FileHandle,
+            _: u64,
+            _: &[u8],
+        ) -> SftpOpResult<()> {
+            Err(StatusCode::SSH_FX_PERMISSION_DENIED)
+        }
+    }
+
+    fn check_status(packet: SftpPacket<'_>, data: &[u8], code: u32) {
+        let mut server = Refusing;
+        let mut handler = Handler::new(&mut server);
+        handler.state = HandlerState::Normal;
+        let mut mock = MockWriter::new();
+        let mut buf = [0u8; 128];
+        let mut producer = SftpOutputProducer::new(&mut mock, &mut buf);
+
+        embassy_futures::block_on(async {
+            handler.process_packet(packet, &mut producer).await.unwrap();
+            if !data.is_empty() {
+                let queue = SFTPBBQueue::<INPUT_BUF>::new();
+                let prod = queue.stream_producer();
+                let mut grant = prod.wait_grant_max_remaining(data.len()).await;
+                grant[..data.len()].copy_from_slice(data);
+                grant.commit(data.len());
+                handler.process_write(&queue, &mut producer).await.unwrap();
+            }
+        });
+
+        let buf = &mock.buffer;
+        assert_eq!(buf[4], 101, "expected SSH_FXP_STATUS packet type");
+        assert_eq!(u32::from_be_bytes(buf[5..9].try_into().unwrap()), 42);
+        assert_eq!(u32::from_be_bytes(buf[9..13].try_into().unwrap()), code);
+        assert_eq!(
+            buf.len(),
+            4 + u32::from_be_bytes(buf[..4].try_into().unwrap()) as usize
+        );
+    }
+
+    #[test]
+    fn failures_report_the_servers_status_code() {
+        const NO_SUCH_FILE: u32 = 2;
+        const PERMISSION_DENIED: u32 = 3;
+        const BAD_MESSAGE: u32 = 5;
+        const OP_UNSUPPORTED: u32 = 8;
+
+        let req_id = ReqId(42);
+        let mut file_buf = FileHandle::buffer();
+        let file = FileHandle(0).encode(&mut file_buf);
+        let mut dir_buf = DirHandle::buffer();
+        let dir = DirHandle(0).encode(&mut dir_buf);
+
+        check_status(
+            SftpPacket::Open(
+                req_id,
+                proto::Open {
+                    filename: "/missing".into(),
+                    pflags: PFlags::SSH_FXF_READ,
+                    attrs: proto::Attrs::default(),
+                },
+            ),
+            &[],
+            NO_SUCH_FILE,
+        );
+        check_status(
+            SftpPacket::OpenDir(
+                req_id,
+                proto::OpenDir { dirname: "/secret".into() },
+            ),
+            &[],
+            PERMISSION_DENIED,
+        );
+        check_status(
+            SftpPacket::Close(req_id, proto::Close { handle: file }),
+            &[],
+            PERMISSION_DENIED,
+        );
+        // Exercise the default closedir implementation.
+        check_status(
+            SftpPacket::Close(req_id, proto::Close { handle: dir }),
+            &[],
+            OP_UNSUPPORTED,
+        );
+        check_status(
+            SftpPacket::Close(
+                req_id,
+                proto::Close { handle: proto::OpaqueHandle(BinString(&[0])) },
+            ),
+            &[],
+            BAD_MESSAGE,
+        );
+        check_status(
+            SftpPacket::Write(
+                req_id,
+                proto::Write { handle: file, offset: 0, data_len: 4 },
+            ),
+            b"data",
+            PERMISSION_DENIED,
+        );
     }
 }
