@@ -446,6 +446,11 @@ where
                                 "Bad handle",
                             )
                             .await?;
+                        // The payload follows the header and must not be
+                        // parsed as further requests.
+                        self.state = HandlerState::Drain {
+                            remaining: write.data_len as usize,
+                        };
                     }
                 };
             }
@@ -557,6 +562,9 @@ where
         output_producer.send_status(req_id, StatusCode::SSH_FX_OK, "").await
     }
 
+    /// Discard `len` bytes of a write payload, then resume normal processing.
+    ///
+    /// Must be called with `HandlerState::Drain`
     async fn drain(
         &mut self,
         input: &SFTPBBQueue<INPUT_BUF>,
@@ -569,6 +577,7 @@ where
             inp.release(l);
             len -= l;
         }
+        self.state = HandlerState::Normal;
 
         Ok(())
     }
@@ -705,5 +714,211 @@ impl bbqueue::traits::notifier::AsyncNotifier for OneFutNotifier {
     }
     async fn wait_for_not_full<T, F: FnMut() -> Option<T>>(&self, f: F) -> T {
         self.wait_for_not_empty(f).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    extern crate std;
+    use core::future::Future;
+    use core::pin::pin;
+    use core::task::Context;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::task::Wake;
+    use std::vec::Vec;
+
+    use super::*;
+    use crate::proto::SftpNum::{
+        SSH_FXP_INIT, SSH_FXP_REALPATH, SSH_FXP_STATUS, SSH_FXP_VERSION,
+        SSH_FXP_WRITE,
+    };
+    use crate::proto::{NameEntry, PFlags, SftpNum};
+    use crate::sftphandler::MockWriter;
+    use crate::sftpserver::SftpOpResult;
+
+    /// Serves a fixed request stream, then stays pending (never EOF), so
+    /// the handler is only stopped by the test.
+    struct ScriptReader {
+        data: Vec<u8>,
+        pos: usize,
+    }
+
+    impl embedded_io_async::ErrorType for ScriptReader {
+        type Error = sunset::Error;
+    }
+
+    impl Read for ScriptReader {
+        async fn read(&mut self, buf: &mut [u8]) -> Result<usize, sunset::Error> {
+            if self.pos == self.data.len() {
+                core::future::pending::<()>().await;
+            }
+            let n = buf.len().min(self.data.len() - self.pos);
+            buf[..n].copy_from_slice(&self.data[self.pos..self.pos + n]);
+            self.pos += n;
+            Ok(n)
+        }
+    }
+
+    fn packet(ty: SftpNum, body: &[u8]) -> Vec<u8> {
+        let mut p = ((body.len() + 1) as u32).to_be_bytes().to_vec();
+        p.push(ty.into());
+        p.extend_from_slice(body);
+        p
+    }
+
+    fn string(b: &[u8]) -> Vec<u8> {
+        let mut s = (b.len() as u32).to_be_bytes().to_vec();
+        s.extend_from_slice(b);
+        s
+    }
+
+    fn init() -> Vec<u8> {
+        packet(SSH_FXP_INIT, &SFTP_VERSION.to_be_bytes())
+    }
+
+    fn write(req_id: u32, handle: &[u8], offset: u64, data: &[u8]) -> Vec<u8> {
+        let mut b = req_id.to_be_bytes().to_vec();
+        b.extend(string(handle));
+        b.extend(offset.to_be_bytes());
+        b.extend(string(data));
+        packet(SSH_FXP_WRITE, &b)
+    }
+
+    fn realpath(req_id: u32, path: &str) -> Vec<u8> {
+        let mut b = req_id.to_be_bytes().to_vec();
+        b.extend(string(path.as_bytes()));
+        packet(SSH_FXP_REALPATH, &b)
+    }
+
+    /// Wire encoding of `FileHandle(n)`.
+    fn file_handle(n: u32) -> Vec<u8> {
+        let mut buf = FileHandle::buffer();
+        FileHandle(n).encode(&mut buf).0.0.to_vec()
+    }
+
+    /// `(packet type, request id, status code)` for each reply;
+    /// request id and status are 0 where they do not apply.
+    fn replies(out: &[u8]) -> Vec<(SftpNum, u32, u32)> {
+        let mut v = Vec::new();
+        let mut rest = out;
+        while rest.len() >= 5 {
+            let len = u32::from_be_bytes(rest[..4].try_into().unwrap()) as usize;
+            assert!(len > 0 && len <= rest.len() - 4, "invalid response length");
+            let body = &rest[4..4 + len];
+            let id =
+                |i: usize| u32::from_be_bytes(body[i..i + 4].try_into().unwrap());
+            v.push(match SftpNum::from(body[0]) {
+                SSH_FXP_STATUS => (SSH_FXP_STATUS, id(1), id(5)),
+                SSH_FXP_VERSION => (SSH_FXP_VERSION, 0, 0),
+                t => (t, id(1), 0),
+            });
+            rest = &rest[4 + len..];
+        }
+        assert!(rest.is_empty(), "incomplete response packet");
+        v
+    }
+
+    #[derive(Default)]
+    struct TestWake(AtomicBool);
+
+    impl Wake for TestWake {
+        fn wake(self: Arc<Self>) {
+            self.0.store(true, Ordering::Relaxed);
+        }
+    }
+
+    /// Run the handler over `input` until it has nothing left to do.
+    fn run(
+        server: &mut impl SftpServer,
+        input: Vec<u8>,
+    ) -> Vec<(SftpNum, u32, u32)> {
+        let mut handler = SftpServerHandler::new_default_buffers();
+        let mut out = MockWriter::new();
+        let reader = ScriptReader { data: input, pos: 0 };
+        {
+            let wake = Arc::new(TestWake::default());
+            let waker = Waker::from(wake.clone());
+            let mut cx = Context::from_waker(&waker);
+            let mut fut = pin!(handler.run(server, reader, &mut out));
+            // All mock I/O is immediate except for the reader at end of input.
+            // Poll until pending without another wake from the handler's queue.
+            loop {
+                wake.0.store(false, Ordering::Relaxed);
+                match fut.as_mut().poll(&mut cx) {
+                    Poll::Ready(r) => panic!("handler stopped: {r:?}"),
+                    Poll::Pending if !wake.0.load(Ordering::Relaxed) => break,
+                    Poll::Pending => {}
+                }
+            }
+        }
+        replies(&out.buffer)
+    }
+
+    /// Accepts any handle; every write fails.
+    struct FailingWrites;
+
+    impl SftpServer for FailingWrites {
+        async fn open(&mut self, _: &str, _: &PFlags) -> SftpOpResult<FileHandle> {
+            Ok(FileHandle(0))
+        }
+
+        async fn write(
+            &mut self,
+            _: FileHandle,
+            _: u64,
+            _: &[u8],
+        ) -> SftpOpResult<()> {
+            Err(StatusCode::SSH_FX_FAILURE)
+        }
+
+        async fn realpath(&mut self, _: &str) -> SftpOpResult<NameEntry<'_>> {
+            Err(StatusCode::SSH_FX_NO_SUCH_FILE)
+        }
+    }
+
+    #[test]
+    fn requests_after_a_failed_write_are_answered() {
+        // Larger than the input queue, so the failure happens mid-payload
+        // and the rest of the write must be drained.
+        let mut input = init();
+        input.extend(write(1, &file_handle(0), 0, &[0xaa; 600]));
+        input.extend(write(2, &file_handle(0), 600, &[0xbb; 600]));
+        input.extend(realpath(3, "/"));
+
+        let r = run(&mut FailingWrites, input);
+        let failure = u32::from(&StatusCode::SSH_FX_FAILURE);
+        let no_such_file = u32::from(&StatusCode::SSH_FX_NO_SUCH_FILE);
+        assert_eq!(
+            r,
+            [
+                (SSH_FXP_VERSION, 0, 0),
+                (SSH_FXP_STATUS, 1, failure),
+                (SSH_FXP_STATUS, 2, failure),
+                (SSH_FXP_STATUS, 3, no_such_file),
+            ]
+        );
+    }
+
+    #[test]
+    fn write_with_bad_handle_skips_its_payload() {
+        let mut input = init();
+        // A 3 byte handle is not a valid FileHandle encoding. The payload
+        // looks like packets and must not be parsed as such.
+        let bogus = realpath(99, "/payload");
+        input.extend(write(1, &[1, 2, 3], 0, &bogus));
+        input.extend(realpath(2, "/"));
+
+        let r = run(&mut FailingWrites, input);
+        let failure = u32::from(&StatusCode::SSH_FX_FAILURE);
+        let no_such_file = u32::from(&StatusCode::SSH_FX_NO_SUCH_FILE);
+        assert_eq!(
+            r,
+            [
+                (SSH_FXP_VERSION, 0, 0),
+                (SSH_FXP_STATUS, 1, failure),
+                (SSH_FXP_STATUS, 2, no_such_file),
+            ]
+        );
     }
 }
