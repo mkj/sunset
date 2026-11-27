@@ -15,8 +15,7 @@ long-paths-4096 = []
 long-paths-1024 = []
 
 [dependencies]
-sunset.workspace = true
-sunset-async.workspace = true
+sunset = { workspace = true, features = ["embedded-io"] }
 sunset-sshwire-derive.workspace = true
 
 embedded-io-async.workspace = true

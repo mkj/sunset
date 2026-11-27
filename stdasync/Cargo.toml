@@ -13,7 +13,6 @@ sunset-async.workspace = true
 
 log = { workspace = true, features = ["release_max_level_trace"] }
 rpassword = "7.2"
-argh = "0.1"
 zeroize.workspace = true
 
 ssh-key = { workspace = true, features = [ "std"] }
@@ -34,6 +33,7 @@ tokio = ["sunset-async/tokio"]
 futures-io = ["sunset-async/futures-io"]
 
 [dev-dependencies]
+argh = "0.1"
 # build examples with rsa, ecdsa
 sunset = { workspace = true, features = ["rsa", "ecdsa256"] }
 

@@ -36,14 +36,12 @@ impl<'g> SftpSink<'g> {
         if self.index <= SFTP_FIELD_LEN_LENGTH {
             warn!("SftpSink trying to terminate it before pushing data");
             return 0;
-        } // size is 0
+        }
+
         let used_size = self.payload_len() as u32;
 
-        used_size
-            .to_be_bytes()
-            .iter()
-            .enumerate()
-            .for_each(|(i, v)| self.buffer[i] = *v);
+        self.buffer[..SFTP_FIELD_LEN_LENGTH]
+            .copy_from_slice(&used_size.to_be_bytes());
 
         self.index
     }
@@ -84,9 +82,7 @@ impl<'g> SftpSink<'g> {
     pub fn reset(&mut self) {
         debug!("SftpSink reset called when index was {:?}", self.index);
         self.index = SFTP_FIELD_LEN_LENGTH;
-        for i in 0..SFTP_FIELD_LEN_LENGTH {
-            self.buffer[i] = 0;
-        }
+        self.buffer[..SFTP_FIELD_LEN_LENGTH].fill(0);
     }
 }
 
