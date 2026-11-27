@@ -4,8 +4,8 @@ use core::task::{Poll, Waker};
 
 use crate::error::SftpError;
 use crate::proto::{
-    self, InitVersionClient, InitVersionLowest, LStat, MAX_REQUEST_LEN, ReqId,
-    SFTP_VERSION, SftpPacket, Stat, StatusCode,
+    self, FSetStat, InitVersionClient, InitVersionLowest, LStat, MAX_REQUEST_LEN,
+    ReqId, SFTP_VERSION, SetStat, SftpPacket, Stat, StatusCode,
 };
 use crate::server::DirReadHeaderReply;
 use crate::sftperror::SftpResult;
@@ -359,6 +359,27 @@ where
                     }
                 };
             }
+            SftpPacket::SetStat(req_id, SetStat { file_path, attrs }) => {
+                let res = match file_path.to_str() {
+                    Ok(path) => self.file_server.setstat(path, &attrs).await,
+                    Err(_) => Err(StatusCode::SSH_FX_BAD_MESSAGE),
+                };
+                let code = res.err().unwrap_or(StatusCode::SSH_FX_OK);
+                output_producer.send_status(req_id, code, "").await?;
+            }
+            SftpPacket::FSetStat(req_id, FSetStat { handle, attrs }) => {
+                let res = match decode_opaque_handle(handle) {
+                    Ok(FileOrDirHandle::File(h)) => {
+                        self.file_server.fsetstat(h, &attrs).await
+                    }
+                    Ok(FileOrDirHandle::Dir(_)) => {
+                        Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
+                    }
+                    Err(e) => Err(e),
+                };
+                let code = res.err().unwrap_or(StatusCode::SSH_FX_OK);
+                output_producer.send_status(req_id, code, "").await?;
+            }
             SftpPacket::ReadDir(req_id, read_dir) => {
                 let dir_read_header_reply =
                     DirReadHeaderReply::new(req_id, output_producer);
@@ -705,5 +726,193 @@ impl bbqueue::traits::notifier::AsyncNotifier for OneFutNotifier {
     }
     async fn wait_for_not_full<T, F: FnMut() -> Option<T>>(&self, f: F) -> T {
         self.wait_for_not_empty(f).await
+    }
+}
+
+#[cfg(test)]
+mod attribute_tests {
+    extern crate std;
+
+    use super::*;
+    use crate::proto::{Attrs, PFlags};
+    use crate::server::SftpOpResult;
+    use crate::sftphandler::MockWriter;
+
+    // Feed wire-format requests through the real decoder and dispatcher.
+    // Process one request at a time so the input EOF cannot race the reply.
+    fn check_request(
+        server: &mut impl SftpServer,
+        packet_type: u8,
+        target: &[u8],
+        attrs: &[u8],
+        expected_code: u32,
+    ) {
+        const REQ_ID: u32 = 42;
+        let len = 1 + 4 + 4 + target.len() + attrs.len();
+        let mut request = (len as u32).to_be_bytes().to_vec();
+        request.push(packet_type);
+        request.extend(REQ_ID.to_be_bytes());
+        request.extend((target.len() as u32).to_be_bytes());
+        request.extend(target);
+        request.extend(attrs);
+
+        let queue = SFTPBBQueue::<INPUT_BUF>::new();
+        let mut handler = Handler::new(server);
+        let mut in_buf = [0; MAX_REQUEST_LEN];
+        let mut out_buf = [0; MAX_REQUEST_LEN];
+        let mut writer = MockWriter::new();
+        let mut output = SftpOutputProducer::new(&mut writer, &mut out_buf);
+
+        embassy_futures::block_on(async {
+            let feed = async {
+                let prod = queue.stream_producer();
+                let mut remaining = request.as_slice();
+                while !remaining.is_empty() {
+                    let mut grant =
+                        prod.wait_grant_max_remaining(remaining.len()).await;
+                    let n = grant.len().min(remaining.len());
+                    grant[..n].copy_from_slice(&remaining[..n]);
+                    grant.commit(n);
+                    remaining = &remaining[n..];
+                }
+            };
+            let (_, result) = embassy_futures::join::join(
+                feed,
+                handler.process_one(&queue, &mut output, &mut in_buf, false),
+            )
+            .await;
+            result.unwrap();
+        });
+
+        // One SSH_FXP_STATUS response, with the original request ID.
+        let mut expected = 17u32.to_be_bytes().to_vec();
+        expected.push(101);
+        expected.extend(REQ_ID.to_be_bytes());
+        expected.extend(expected_code.to_be_bytes());
+        expected.extend([0; 8]); // Empty message and language strings.
+        assert_eq!(writer.buffer, expected);
+    }
+
+    const SETSTAT: u8 = 9;
+    const FSETSTAT: u8 = 10;
+    const FILE_HANDLE: &[u8] = &[0, 0, 0, 0, 7];
+    const DIR_HANDLE: &[u8] = &[1, 0, 0, 0, 7];
+    const NO_ATTRS: &[u8] = &[0; 4];
+    const ALL_ATTRS: &[u8] = &[
+        0, 0, 0, 15, // flags: size, uid/gid, permissions, atime/mtime
+        0, 0, 0, 1, 0, 0, 0, 2, // size
+        0, 0, 0, 3, // uid
+        0, 0, 0, 4, // gid
+        0, 0, 0x81, 0xa4, // permissions (0100644)
+        0, 0, 0, 5, // atime
+        0, 0, 0, 6, // mtime
+    ];
+
+    struct Recorder<'a> {
+        path: &'a str,
+        attrs: Attrs,
+        fail: bool,
+        setstat_calls: usize,
+        fsetstat_calls: usize,
+    }
+
+    impl SftpServer for Recorder<'_> {
+        async fn open(&mut self, _: &str, _: &PFlags) -> SftpOpResult<FileHandle> {
+            unreachable!()
+        }
+
+        async fn setstat(&mut self, path: &str, attrs: &Attrs) -> SftpOpResult<()> {
+            assert_eq!(path, self.path);
+            assert_eq!(attrs, &self.attrs);
+            self.setstat_calls += 1;
+            if self.fail {
+                Err(StatusCode::SSH_FX_PERMISSION_DENIED)
+            } else {
+                Ok(())
+            }
+        }
+
+        async fn fsetstat(
+            &mut self,
+            handle: FileHandle,
+            attrs: &Attrs,
+        ) -> SftpOpResult<()> {
+            assert_eq!(handle, FileHandle(7));
+            assert_eq!(attrs, &self.attrs);
+            self.fsetstat_calls += 1;
+            if self.fail { Err(StatusCode::SSH_FX_NO_SUCH_FILE) } else { Ok(()) }
+        }
+    }
+
+    #[test]
+    fn setstat_and_fsetstat_dispatch() {
+        let path = "/a/file";
+        let mut server = Recorder {
+            path,
+            attrs: Attrs {
+                size: Some(0x1_0000_0002),
+                uid: Some(3),
+                gid: Some(4),
+                permissions: Some(0o100644),
+                atime: Some(5),
+                mtime: Some(6),
+                ..Attrs::default()
+            },
+            fail: false,
+            setstat_calls: 0,
+            fsetstat_calls: 0,
+        };
+        check_request(&mut server, SETSTAT, path.as_bytes(), ALL_ATTRS, 0);
+        check_request(&mut server, FSETSTAT, FILE_HANDLE, ALL_ATTRS, 0);
+        assert_eq!((server.setstat_calls, server.fsetstat_calls), (1, 1));
+
+        // Only permissions are present; every other field must remain None.
+        let permissions = [0, 0, 0, 4, 0, 0, 1, 0x80];
+        server.attrs = Attrs { permissions: Some(0o600), ..Attrs::default() };
+        check_request(&mut server, SETSTAT, path.as_bytes(), &permissions, 0);
+        check_request(&mut server, FSETSTAT, FILE_HANDLE, &permissions, 0);
+        assert_eq!((server.setstat_calls, server.fsetstat_calls), (2, 2));
+
+        server.attrs = Attrs::default();
+        server.fail = true;
+        check_request(&mut server, SETSTAT, path.as_bytes(), NO_ATTRS, 3);
+        check_request(&mut server, FSETSTAT, FILE_HANDLE, NO_ATTRS, 2);
+        assert_eq!((server.setstat_calls, server.fsetstat_calls), (3, 3));
+    }
+
+    #[test]
+    fn invalid_attribute_request_targets() {
+        let mut server = Recorder {
+            path: "",
+            attrs: Attrs::default(),
+            fail: false,
+            setstat_calls: 0,
+            fsetstat_calls: 0,
+        };
+        check_request(&mut server, FSETSTAT, DIR_HANDLE, NO_ATTRS, 8);
+        for handle in
+            [&[][..], &FILE_HANDLE[..4], &[0, 0, 0, 0, 7, 0], &[2, 0, 0, 0, 7]]
+        {
+            check_request(&mut server, FSETSTAT, handle, NO_ATTRS, 5);
+        }
+        check_request(&mut server, SETSTAT, &[0xff], NO_ATTRS, 5);
+        assert_eq!((server.setstat_calls, server.fsetstat_calls), (0, 0));
+    }
+
+    #[test]
+    fn attribute_requests_default_to_unsupported() {
+        struct Unsupported;
+        impl SftpServer for Unsupported {
+            async fn open(
+                &mut self,
+                _: &str,
+                _: &PFlags,
+            ) -> SftpOpResult<FileHandle> {
+                unreachable!()
+            }
+        }
+
+        check_request(&mut Unsupported, SETSTAT, b"file", NO_ATTRS, 8);
+        check_request(&mut Unsupported, FSETSTAT, FILE_HANDLE, NO_ATTRS, 8);
     }
 }

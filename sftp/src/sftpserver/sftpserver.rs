@@ -313,4 +313,46 @@ pub trait SftpServer {
             Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
         }
     }
+
+    /// Changes attributes of a file or directory (`SSH_FXP_SETSTAT`).
+    ///
+    /// Only fields present in `attrs` should be changed. Implementations must
+    /// validate the path against any filesystem boundary, check authorization,
+    /// and reject unsupported or invalid attribute changes.
+    #[allow(unused_variables)]
+    fn setstat(
+        &mut self,
+        file_path: &str,
+        attrs: &Attrs,
+    ) -> impl core::future::Future<Output = SftpOpResult<()>> {
+        async move {
+            log::warn!(
+                "SftpServer SetStat operation not defined: file_path = {:?}",
+                file_path
+            );
+            Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
+        }
+    }
+
+    /// Changes attributes of an open file (`SSH_FXP_FSETSTAT`).
+    ///
+    /// Only fields present in `attrs` should be changed. Implementations must
+    /// validate that the handle refers to a currently open file, check
+    /// authorization, and reject unsupported or invalid attribute changes.
+    /// Changes should be made to the open file, not by reopening its path.
+    /// Directory handles are not supported by this operation.
+    #[allow(unused_variables)]
+    fn fsetstat(
+        &mut self,
+        handle: FileHandle,
+        attrs: &Attrs,
+    ) -> impl core::future::Future<Output = SftpOpResult<()>> {
+        async move {
+            log::warn!(
+                "SftpServer FSetStat operation not defined: handle = {:?}",
+                handle
+            );
+            Err(StatusCode::SSH_FX_OP_UNSUPPORTED)
+        }
+    }
 }
