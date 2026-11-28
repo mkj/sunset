@@ -269,6 +269,25 @@ pub struct Stat<'a> {
     pub file_path: TextString<'a>,
 }
 
+/// Used for `ssh_fxp_setstat` [requests](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.9).
+#[derive(Debug, SSHEncode, SSHDecode)]
+pub struct SetStat<'a> {
+    /// The path of the element whose attributes are to be changed
+    pub file_path: TextString<'a>,
+    /// The attributes to apply. Only the fields that are present change.
+    pub attrs: Attrs,
+}
+
+/// Used for `ssh_fxp_fsetstat` [requests](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.9).
+#[derive(Debug, SSHEncode, SSHDecode)]
+pub struct FSetStat<'a> {
+    /// An opaque handle that is used by the server to identify an open
+    /// file or folder.
+    pub handle: OpaqueHandle<'a>,
+    /// The attributes to apply. Only the fields that are present change.
+    pub attrs: Attrs,
+}
+
 // ============================= Responses =============================
 
 /// Used for `ssh_fxp_realpath` [response](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.11).
@@ -923,6 +942,8 @@ sftpmessages! [
             (5, Read, Read<'a>, "ssh_fxp_read"),
             (6, Write, Write<'a>, "ssh_fxp_write"),
             (7, LStat, LStat<'a>, "ssh_fxp_lstat"),
+            (9, SetStat, SetStat<'a>, "ssh_fxp_setstat"),
+            (10, FSetStat, FSetStat<'a>, "ssh_fxp_fsetstat"),
             (11, OpenDir, OpenDir<'a>, "ssh_fxp_opendir"),
             (12, ReadDir, ReadDir<'a>, "ssh_fxp_readdir"),
             (16, PathInfo, PathInfo<'a>, "ssh_fxp_realpath"),

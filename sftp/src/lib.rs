@@ -44,7 +44,7 @@
 //!
 //! - [ ] [Append, create and truncate files](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.3)
 //! - [ ] [Reading](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.8) files attributes
-//! - [ ] [Setting](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.9) files attributes
+//! - [x] [Setting](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.9) files attributes
 //! - [ ] [Dealing with Symbolic links](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-6.10)
 //! - [ ] [Vendor Specific](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02#section-8)
 //!   request and responses
